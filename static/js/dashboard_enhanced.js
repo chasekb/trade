@@ -993,10 +993,10 @@ class EnhancedTradingDashboard {
     }
 
     startDataRefresh() {
-        // Refresh data summary every 30 seconds
+        // Refresh data summary every 5 seconds
         setInterval(() => {
             this.loadDataSummary();
-        }, 30000);
+        }, 5000);
         
         // Refresh subscriptions every 60 seconds
         setInterval(() => {
