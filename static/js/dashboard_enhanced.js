@@ -457,7 +457,23 @@ class EnhancedTradingDashboard {
             lastCandle.high = Math.max(lastCandle.high, price);
             lastCandle.low = Math.min(lastCandle.low, price);
         } else {
-            // Create a new candle
+            // Fill in missing candles between last candle and current period
+            let fillTime = new Date(lastCandleTime.getTime() + periodMs);
+            while (fillTime.getTime() < currentPeriodStart.getTime()) {
+                const fillCandle = {
+                    timestamp: fillTime.toISOString(),
+                    open: lastCandle.close, // Use last close as open
+                    high: lastCandle.close,
+                    low: lastCandle.close,
+                    close: lastCandle.close,
+                    volume: 0,
+                    price: lastCandle.close
+                };
+                this.candlesData.push(fillCandle);
+                fillTime = new Date(fillTime.getTime() + periodMs);
+            }
+            
+            // Create the current candle
             const newCandle = {
                 timestamp: currentPeriodStart.toISOString(),
                 open: price,
@@ -498,6 +514,11 @@ class EnhancedTradingDashboard {
                 this.candlesData = data;
                 console.log(`Loaded ${data.length} candles for period ${this.getCandlePeriodLabel()}`);
                 console.log('First candle:', data[0]);
+                console.log('Last candle:', data[data.length - 1]);
+                
+                // Fill in any gaps with real-time data
+                this.fillDataGaps();
+                
                 this.updateCandlestickChart();
             } else {
                 console.warn('No candles data received');
@@ -507,6 +528,43 @@ class EnhancedTradingDashboard {
         } catch (error) {
             console.error('Failed to load candles data:', error);
             this.showNotification('Failed to load candles data', 'error');
+        }
+    }
+    
+    fillDataGaps() {
+        if (this.candlesData.length === 0) return;
+        
+        const now = new Date();
+        const currentTime = now.getTime();
+        const periodMs = this.currentCandlePeriod * 1000;
+        
+        // Find the current candle period
+        const currentPeriodStart = new Date(Math.floor(currentTime / periodMs) * periodMs);
+        
+        // Get the last candle time
+        const lastCandle = this.candlesData[this.candlesData.length - 1];
+        const lastCandleTime = new Date(lastCandle.timestamp);
+        
+        // If there's a gap, fill it with placeholder candles
+        if (lastCandleTime.getTime() < currentPeriodStart.getTime()) {
+            console.log(`Filling data gap from ${lastCandleTime.toISOString()} to ${currentPeriodStart.toISOString()}`);
+            
+            let fillTime = new Date(lastCandleTime.getTime() + periodMs);
+            while (fillTime.getTime() < currentPeriodStart.getTime()) {
+                const fillCandle = {
+                    timestamp: fillTime.toISOString(),
+                    open: lastCandle.close, // Use last close as open
+                    high: lastCandle.close,
+                    low: lastCandle.close,
+                    close: lastCandle.close,
+                    volume: 0,
+                    price: lastCandle.close
+                };
+                this.candlesData.push(fillCandle);
+                fillTime = new Date(fillTime.getTime() + periodMs);
+            }
+            
+            console.log(`Added ${Math.floor((currentPeriodStart.getTime() - lastCandleTime.getTime()) / periodMs)} placeholder candles`);
         }
     }
 

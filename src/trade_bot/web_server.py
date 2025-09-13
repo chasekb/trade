@@ -409,13 +409,42 @@ async def get_candles_data(
     if cache_key not in historical_data_cache:
         data_provider = CoinbaseDataProvider(product_id)
         end_time = datetime.now()
-        start_time = end_time - timedelta(days=days)
         
-        candles_data = await data_provider.get_historical_candles(
-            start_time=start_time,
-            end_time=end_time,
-            granularity=granularity
-        )
+        # For recent data, try smaller chunks to avoid rate limits
+        if days <= 1:
+            # For 1 day or less, fetch directly
+            start_time = end_time - timedelta(days=days)
+            candles_data = await data_provider.get_historical_candles(
+                start_time=start_time,
+                end_time=end_time,
+                granularity=granularity
+            )
+        else:
+            # For longer periods, fetch in chunks to get more recent data
+            candles_data = []
+            
+            # First, try to get the most recent 24 hours
+            recent_start = end_time - timedelta(hours=24)
+            recent_data = await data_provider.get_historical_candles(
+                start_time=recent_start,
+                end_time=end_time,
+                granularity=granularity
+            )
+            candles_data.extend(recent_data)
+            
+            # Then get older data if we need more
+            if len(candles_data) < 24:  # If we didn't get enough recent data
+                older_start = end_time - timedelta(days=days)
+                older_end = recent_start
+                older_data = await data_provider.get_historical_candles(
+                    start_time=older_start,
+                    end_time=older_end,
+                    granularity=granularity
+                )
+                candles_data.extend(older_data)
+            
+            # Sort by timestamp to ensure proper order
+            candles_data.sort(key=lambda x: x['timestamp'])
         
         historical_data_cache[cache_key] = candles_data
     
