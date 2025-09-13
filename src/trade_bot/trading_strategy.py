@@ -66,7 +66,7 @@ class SimpleMovingAverageStrategy:
         recent_prices = [p['price'] for p in self.price_history[-window:]]
         return sum(recent_prices) / len(recent_prices)
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on current market conditions."""
         self.add_price(current_price, timestamp)
         
@@ -325,7 +325,7 @@ class BollingerBandsStrategy:
         
         return upper_band, sma, lower_band
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on Bollinger Bands."""
         if len(self.price_history) < self.period:
             return None
@@ -570,7 +570,7 @@ class RSIStrategy:
         
         return rsi
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on RSI."""
         if len(self.price_history) < self.period + 1:
             return None
@@ -819,7 +819,7 @@ class EMAStrategy:
         
         return ema
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on EMA."""
         if len(self.price_history) < self.long_ema:
             return None
@@ -1122,7 +1122,7 @@ class MACDStrategy:
         
         return macd_line, signal_line, histogram
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on MACD."""
         if len(self.price_history) < self.slow_ema + self.signal_ema - 1:
             return None
@@ -1441,7 +1441,7 @@ class StochasticStrategy:
         
         return k_percent, d_percent
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on Stochastic Oscillator."""
         if len(self.price_history) < self.k_period + self.d_period - 1:
             return None
@@ -1715,7 +1715,7 @@ class DCAStrategy:
         days_since_last = (current_date - self.last_dca_date).days
         return days_since_last >= self.config.dca_frequency
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on DCA and optional base strategy."""
         signals = []
         
@@ -2158,7 +2158,7 @@ class ATRStrategy:
             return position_value / (current_price * atr_value)
         return 0.0
     
-    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on ATR analysis."""
         if len(self.price_history) < self.period + 1:
             self.no_signal_count += 1

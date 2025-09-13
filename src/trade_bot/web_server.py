@@ -578,8 +578,6 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = StochasticStrategy
         elif request.strategy_type == "dca":
             strategy_class = DCAStrategy
-        elif request.strategy_type == "buy_hold":
-            strategy_class = BuyAndHoldStrategy
         elif request.strategy_type == "atr":
             strategy_class = ATRStrategy
         
@@ -620,8 +618,6 @@ async def run_backtest(request: BacktestRequest):
                 }
             elif request.strategy_type == "dca":
                 strategy_params = {}  # DCA doesn't need strategy-specific params
-            elif request.strategy_type == "buy_hold":
-                strategy_params = {}  # Buy and Hold doesn't need strategy-specific params
             elif request.strategy_type == "atr":
                 strategy_params = {
                     'period': 14,
@@ -635,12 +631,32 @@ async def run_backtest(request: BacktestRequest):
                     'long_window': request.long_window
                 }
         
-        # Create backtester
-        backtester = Backtester(
-            config=config,
-            strategy_class=strategy_class,
-            strategy_params=strategy_params
-        )
+        # Create backtester with buy and hold wrapper if enabled
+        if request.enable_buy_hold:
+            # Update config with buy and hold settings
+            config.enable_buy_hold = request.enable_buy_hold
+            config.buy_hold_exit_condition = request.buy_hold_exit_condition
+            config.buy_hold_profit_target = request.buy_hold_profit_target
+            
+            # Create base strategy first
+            base_strategy = strategy_class(config, **strategy_params)
+            
+            # Wrap with buy and hold strategy
+            wrapped_strategy = BuyAndHoldStrategy(config, base_strategy)
+            
+            # Create backtester with wrapped strategy
+            backtester = Backtester(
+                config=config,
+                strategy_class=lambda config, **kwargs: wrapped_strategy,
+                strategy_params={}
+            )
+        else:
+            # Create backtester normally
+            backtester = Backtester(
+                config=config,
+                strategy_class=strategy_class,
+                strategy_params=strategy_params
+            )
         
         # Run backtest
         result = await backtester.run_backtest(backtest_data)

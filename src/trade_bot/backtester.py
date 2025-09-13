@@ -324,7 +324,8 @@ class Backtester:
             strategy.add_price(price, timestamp)
             
             # Generate signal
-            signal = strategy.generate_signal(price, timestamp)
+            is_end_of_period = (i == len(historical_data) - 1)
+            signal = strategy.generate_signal(price, timestamp, is_end_of_period)
             
             # Execute trade if signal exists
             if signal:

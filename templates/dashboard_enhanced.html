@@ -209,7 +209,6 @@
                                 <option value="macd">MACD Strategy</option>
                                 <option value="stochastic">Stochastic Oscillator</option>
                                 <option value="dca">Dollar Cost Averaging (DCA)</option>
-                                <option value="buy_hold">Buy and Hold</option>
                                 <option value="atr">Average True Range (ATR)</option>
                             </select>
                         </div>
@@ -490,13 +489,13 @@
 
                 <!-- Buy and Hold Options -->
                 <div class="mb-6">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Buy and Hold Strategy</h3>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Buy and Hold Mode</h3>
                     <div class="bg-green-50 p-4 rounded-lg mb-4">
                         <div class="flex items-center mb-2">
                             <input type="checkbox" id="enable-buy-hold" class="mr-2">
                             <label for="enable-buy-hold" class="text-sm font-medium text-gray-700">Enable Buy and Hold Mode</label>
                         </div>
-                        <p class="text-sm text-gray-600">Hold positions indefinitely instead of using stop/loss. Only processes buy signals, ignores sell signals from base strategy.</p>
+                        <p class="text-sm text-gray-600">Apply buy and hold behavior to any strategy. Holds positions indefinitely instead of using stop/loss. Only processes buy signals, ignores sell signals from the selected strategy.</p>
                     </div>
                     
                     <div id="buy-hold-options" class="grid grid-cols-1 md:grid-cols-2 gap-4 hidden">
