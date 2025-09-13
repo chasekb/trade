@@ -17,6 +17,7 @@ class EnhancedTradingDashboard {
         this.currentLayout = null; // Store current layout
         this.percentageTimeframe = '24h'; // Default percentage timeframe
         this.historicalPrices = {}; // Store historical prices for percentage calculation
+        this.apiChange24h = null; // Store API's 24h change as fallback
         
         this.init();
     }
@@ -324,11 +325,15 @@ class EnhancedTradingDashboard {
         // Update price data
         if (data.ticker) {
             const price = parseFloat(data.ticker.price || 0);
+            const apiChange24h = parseFloat(data.ticker.price_change_24h || 0);
             
             document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
             
             // Store current price for percentage calculation
             this.historicalPrices[new Date().toISOString()] = price;
+            
+            // Store API's 24h change as fallback
+            this.apiChange24h = apiChange24h;
             
             // Clean up old historical prices (keep only last 1000 entries)
             const priceEntries = Object.entries(this.historicalPrices);
@@ -366,7 +371,17 @@ class EnhancedTradingDashboard {
     
     updatePercentageChange() {
         const currentPrice = parseFloat(document.getElementById('current-price').textContent.replace('$', ''));
-        if (!currentPrice || currentPrice === 0) return;
+        if (!currentPrice || currentPrice === 0) {
+            console.log('No current price available for percentage calculation');
+            return;
+        }
+        
+        console.log('Updating percentage change:', {
+            currentPrice,
+            timeframe: this.percentageTimeframe,
+            historicalPricesCount: Object.keys(this.historicalPrices).length,
+            candlesDataCount: this.candlesData.length
+        });
         
         const now = new Date();
         let targetTime;
@@ -397,6 +412,9 @@ class EnhancedTradingDashboard {
         let closestTime = null;
         let minTimeDiff = Infinity;
         
+        console.log('Looking for historical price at target time:', targetTime.toISOString());
+        console.log('Available historical prices:', Object.keys(this.historicalPrices).slice(0, 5));
+        
         for (const [timeStr, price] of Object.entries(this.historicalPrices)) {
             const time = new Date(timeStr);
             const timeDiff = Math.abs(time.getTime() - targetTime.getTime());
@@ -407,6 +425,12 @@ class EnhancedTradingDashboard {
                 closestTime = time;
             }
         }
+        
+        console.log('Found historical price:', {
+            historicalPrice,
+            closestTime: closestTime?.toISOString(),
+            timeDiff: minTimeDiff
+        });
         
         // If no historical price found, try to get from candles data
         if (!historicalPrice && this.candlesData.length > 0) {
@@ -433,6 +457,14 @@ class EnhancedTradingDashboard {
         let percentageChange = 0;
         if (historicalPrice && historicalPrice > 0) {
             percentageChange = ((currentPrice - historicalPrice) / historicalPrice) * 100;
+        } else {
+            // Fallback: use API's built-in percentage change for 24h
+            if (this.percentageTimeframe === '24h' && this.apiChange24h !== undefined) {
+                percentageChange = this.apiChange24h;
+                console.log('Using API fallback for 24h change:', this.apiChange24h);
+            } else {
+                console.log('No historical price found and no API fallback available');
+            }
         }
         
         // Update the display
@@ -743,6 +775,19 @@ class EnhancedTradingDashboard {
                 console.log(`Loaded ${data.length} candles for period ${this.getCandlePeriodLabel()}`);
                 console.log('First candle:', data[0]);
                 console.log('Last candle:', data[data.length - 1]);
+                
+                // Store historical prices from candle data
+                this.candlesData.forEach(candle => {
+                    this.historicalPrices[candle.timestamp] = parseFloat(candle.close);
+                });
+                
+                console.log('Stored historical prices from candles:', {
+                    count: this.candlesData.length,
+                    firstPrice: this.candlesData[0]?.close,
+                    lastPrice: this.candlesData[this.candlesData.length - 1]?.close,
+                    firstTime: this.candlesData[0]?.timestamp,
+                    lastTime: this.candlesData[this.candlesData.length - 1]?.timestamp
+                });
                 
                 // Fill in any gaps with real-time data
                 this.fillDataGaps();
