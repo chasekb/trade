@@ -134,7 +134,7 @@ config = TradingConfig.from_env()
 
 
 def clean_for_json(data):
-    """Clean data for JSON serialization by replacing NaN and infinite values."""
+    """Clean data for JSON serialization by replacing NaN, infinite values, and converting datetime objects."""
     if isinstance(data, dict):
         return {k: clean_for_json(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -143,6 +143,8 @@ def clean_for_json(data):
         if math.isnan(data) or math.isinf(data):
             return None
         return data
+    elif isinstance(data, datetime):
+        return data.isoformat()
     else:
         return data
 
