@@ -1098,6 +1098,13 @@ class EnhancedTradingDashboard {
                 slow_ema: parseInt(document.getElementById('macd-slow').value),
                 signal_ema: parseInt(document.getElementById('macd-signal').value)
             };
+        } else if (strategyType === 'stochastic') {
+            strategyParams = {
+                k_period: parseInt(document.getElementById('stoch-k-period').value),
+                d_period: parseInt(document.getElementById('stoch-d-period').value),
+                overbought: parseInt(document.getElementById('stoch-overbought').value),
+                oversold: parseInt(document.getElementById('stoch-oversold').value)
+            };
         } else if (strategyType === 'bollinger') {
             strategyParams = {
                 period: parseInt(document.getElementById('bb-period').value),
@@ -1357,6 +1364,39 @@ class EnhancedTradingDashboard {
                             <div class="flex justify-between">
                                 <span class="text-gray-600">MACD Divergence Sell:</span>
                                 <span class="font-medium">${signalsByType.macd_divergence_sell || 0}</span>
+                            </div>
+                            <!-- Stochastic Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">K Cross Above D:</span>
+                                <span class="font-medium">${signalsByType.k_cross_above_d || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">K Cross Below D:</span>
+                                <span class="font-medium">${signalsByType.k_cross_below_d || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">K Cross Oversold:</span>
+                                <span class="font-medium">${signalsByType.k_cross_oversold || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">K Cross Overbought:</span>
+                                <span class="font-medium">${signalsByType.k_cross_overbought || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">D Cross Oversold:</span>
+                                <span class="font-medium">${signalsByType.d_cross_oversold || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">D Cross Overbought:</span>
+                                <span class="font-medium">${signalsByType.d_cross_overbought || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Stochastic Divergence Buy:</span>
+                                <span class="font-medium">${signalsByType.stochastic_divergence_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Stochastic Divergence Sell:</span>
+                                <span class="font-medium">${signalsByType.stochastic_divergence_sell || 0}</span>
                             </div>
                             <!-- Common Signals -->
                             <div class="flex justify-between">

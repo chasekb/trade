@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, Any
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
-from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy
+from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy
 from .database import BacktestDatabase
 import math
 from .websocket_client import WebSocketClient
@@ -562,6 +562,8 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = BollingerBandsStrategy
         elif request.strategy_type == "macd":
             strategy_class = MACDStrategy
+        elif request.strategy_type == "stochastic":
+            strategy_class = StochasticStrategy
         
         # Use strategy_params if provided, otherwise fall back to legacy parameters
         if request.strategy_params:
@@ -590,6 +592,13 @@ async def run_backtest(request: BacktestRequest):
                     'fast_ema': 12,
                     'slow_ema': 26,
                     'signal_ema': 9
+                }
+            elif request.strategy_type == "stochastic":
+                strategy_params = {
+                    'k_period': 14,
+                    'd_period': 3,
+                    'overbought': 80,
+                    'oversold': 20
                 }
             else:
                 strategy_params = {

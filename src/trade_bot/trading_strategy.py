@@ -1350,3 +1350,322 @@ class MACDStrategy:
             'entry_price': self.entry_price,
             'unrealized_pnl': (self.position * self.entry_price) if self.position > 0 else 0.0
         }
+
+
+class StochasticStrategy:
+    """Stochastic Oscillator trading strategy."""
+    
+    def __init__(self, config: TradingConfig, k_period: int = 14, d_period: int = 3, overbought: int = 80, oversold: int = 20):
+        self.config = config
+        self.k_period = k_period
+        self.d_period = d_period
+        self.overbought = overbought
+        self.oversold = oversold
+        self.price_history: list = []
+        self.position = 0.0  # Current position size
+        self.entry_price = 0.0
+        
+        # Stochastic values
+        self.k_percent = None
+        self.d_percent = None
+        self.prev_k_percent = None
+        self.prev_d_percent = None
+        
+        # Signal tracking
+        self.signal_count = 0
+        self.signals_by_type = {
+            "k_cross_above_d": 0,
+            "k_cross_below_d": 0,
+            "k_cross_oversold": 0,
+            "k_cross_overbought": 0,
+            "d_cross_oversold": 0,
+            "d_cross_overbought": 0,
+            "stochastic_divergence_buy": 0,
+            "stochastic_divergence_sell": 0,
+            "stop_loss": 0,
+            "take_profit": 0
+        }
+        self.no_signal_count = 0  # Count when we have enough data but no signal
+        
+    def add_price(self, price: float, timestamp: datetime) -> None:
+        """Add a new price point to the history."""
+        self.price_history.append({
+            "price": price,
+            "timestamp": timestamp
+        })
+        
+        # Keep only recent data to avoid memory issues
+        if len(self.price_history) > self.k_period * 3:
+            self.price_history = self.price_history[-self.k_period * 2:]
+    
+    def calculate_stochastic(self, prices: List[float]) -> tuple:
+        """Calculate Stochastic Oscillator for given prices."""
+        if len(prices) < self.k_period:
+            return None, None
+        
+        # Get the most recent k_period prices
+        recent_prices = prices[-self.k_period:]
+        
+        # Calculate %K
+        highest_high = max(recent_prices)
+        lowest_low = min(recent_prices)
+        
+        if highest_high == lowest_low:
+            k_percent = 50.0  # Neutral when no range
+        else:
+            current_close = recent_prices[-1]
+            k_percent = ((current_close - lowest_low) / (highest_high - lowest_low)) * 100
+        
+        # Calculate %D (simple moving average of %K)
+        if len(prices) >= self.k_period + self.d_period - 1:
+            # Get k_percent values for %D calculation
+            k_values = []
+            for i in range(self.k_period, len(prices) + 1):
+                if i >= self.k_period:
+                    period_prices = prices[i-self.k_period:i]
+                    if len(period_prices) >= self.k_period:
+                        hh = max(period_prices)
+                        ll = min(period_prices)
+                        if hh == ll:
+                            k_val = 50.0
+                        else:
+                            k_val = ((period_prices[-1] - ll) / (hh - ll)) * 100
+                        k_values.append(k_val)
+            
+            if len(k_values) >= self.d_period:
+                d_percent = sum(k_values[-self.d_period:]) / self.d_period
+            else:
+                d_percent = None
+        else:
+            d_percent = None
+        
+        return k_percent, d_percent
+    
+    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+        """Generate trading signal based on Stochastic Oscillator."""
+        if len(self.price_history) < self.k_period + self.d_period - 1:
+            return None
+        
+        # Check stop loss first (highest priority)
+        if self.position > 0:
+            loss_percentage = (current_price - self.entry_price) / self.entry_price
+            if loss_percentage <= -self.config.stop_loss_percentage:
+                self.signal_count += 1
+                self.signals_by_type["stop_loss"] += 1
+                return TradeSignal(
+                    action="sell",
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
+                )
+        
+        # Check take profit second
+        if self.position > 0:
+            profit_percentage = (current_price - self.entry_price) / self.entry_price
+            if profit_percentage >= self.config.take_profit_percentage:
+                self.signal_count += 1
+                self.signals_by_type["take_profit"] += 1
+                return TradeSignal(
+                    action="sell",
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Take profit triggered: {profit_percentage:.2%} profit"
+                )
+        
+        # Calculate current Stochastic
+        recent_prices = [p["price"] for p in self.price_history[-self.k_period:]]
+        self.k_percent, self.d_percent = self.calculate_stochastic(recent_prices)
+        
+        if self.k_percent is None or self.d_percent is None:
+            return None
+        
+        # Calculate previous Stochastic for comparison
+        self.prev_k_percent = None
+        self.prev_d_percent = None
+        
+        if len(self.price_history) >= self.k_period + self.d_period:
+            prev_prices = [p["price"] for p in self.price_history[-(self.k_period + 1):-1]]
+            self.prev_k_percent, self.prev_d_percent = self.calculate_stochastic(prev_prices)
+        
+        # Log Stochastic values for debugging
+        prev_k_str = f"{self.prev_k_percent:.2f}" if self.prev_k_percent is not None else "N/A"
+        prev_d_str = f"{self.prev_d_percent:.2f}" if self.prev_d_percent is not None else "N/A"
+        logger.debug(f"Stochastic: K={self.k_percent:.2f}, D={self.d_percent:.2f}, prev_K={prev_k_str}, prev_D={prev_d_str}, position={self.position}")
+        
+        # Log when we have enough data for strategy
+        if len(self.price_history) == self.k_period + self.d_period:
+            logger.info(f"Stochastic strategy now has enough data for full calculations: {len(self.price_history)} points")
+        
+        # Signal conditions
+        if self.prev_k_percent is not None and self.prev_d_percent is not None:
+            # %K crosses above %D (bullish signal)
+            if (self.k_percent > self.d_percent and 
+                self.prev_k_percent <= self.prev_d_percent and
+                self.position == 0):
+                
+                self.signal_count += 1
+                self.signals_by_type["k_cross_above_d"] += 1
+                quantity = self.config.max_position_size / current_price
+                logger.debug(f"K cross above D: K={self.k_percent:.2f}, D={self.d_percent:.2f}")
+                return TradeSignal(
+                    action="buy",
+                    price=current_price,
+                    quantity=quantity,
+                    timestamp=timestamp,
+                    reason=f"K cross above D: %K {self.k_percent:.2f} > %D {self.d_percent:.2f}"
+                )
+            
+            # %K crosses below %D (bearish signal)
+            elif (self.k_percent < self.d_percent and 
+                  self.prev_k_percent >= self.prev_d_percent and
+                  self.position > 0):
+                
+                self.signal_count += 1
+                self.signals_by_type["k_cross_below_d"] += 1
+                logger.debug(f"K cross below D: K={self.k_percent:.2f}, D={self.d_percent:.2f}")
+                return TradeSignal(
+                    action="sell",
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"K cross below D: %K {self.k_percent:.2f} < %D {self.d_percent:.2f}"
+                )
+            
+            # %K crosses above oversold level
+            elif (self.k_percent > self.oversold and 
+                  self.prev_k_percent <= self.oversold and
+                  self.position == 0):
+                
+                self.signal_count += 1
+                self.signals_by_type["k_cross_oversold"] += 1
+                quantity = self.config.max_position_size / current_price
+                logger.debug(f"K cross oversold: K={self.k_percent:.2f}, oversold={self.oversold}")
+                return TradeSignal(
+                    action="buy",
+                    price=current_price,
+                    quantity=quantity,
+                    timestamp=timestamp,
+                    reason=f"K cross oversold: %K {self.k_percent:.2f} > {self.oversold} (oversold level)"
+                )
+            
+            # %K crosses below overbought level
+            elif (self.k_percent < self.overbought and 
+                  self.prev_k_percent >= self.overbought and
+                  self.position > 0):
+                
+                self.signal_count += 1
+                self.signals_by_type["k_cross_overbought"] += 1
+                logger.debug(f"K cross overbought: K={self.k_percent:.2f}, overbought={self.overbought}")
+                return TradeSignal(
+                    action="sell",
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"K cross overbought: %K {self.k_percent:.2f} < {self.overbought} (overbought level)"
+                )
+            
+            # %D crosses above oversold level
+            elif (self.d_percent > self.oversold and 
+                  self.prev_d_percent <= self.oversold and
+                  self.position == 0):
+                
+                self.signal_count += 1
+                self.signals_by_type["d_cross_oversold"] += 1
+                quantity = self.config.max_position_size / current_price
+                logger.debug(f"D cross oversold: D={self.d_percent:.2f}, oversold={self.oversold}")
+                return TradeSignal(
+                    action="buy",
+                    price=current_price,
+                    quantity=quantity,
+                    timestamp=timestamp,
+                    reason=f"D cross oversold: %D {self.d_percent:.2f} > {self.oversold} (oversold level)"
+                )
+            
+            # %D crosses below overbought level
+            elif (self.d_percent < self.overbought and 
+                  self.prev_d_percent >= self.overbought and
+                  self.position > 0):
+                
+                self.signal_count += 1
+                self.signals_by_type["d_cross_overbought"] += 1
+                logger.debug(f"D cross overbought: D={self.d_percent:.2f}, overbought={self.overbought}")
+                return TradeSignal(
+                    action="sell",
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"D cross overbought: %D {self.d_percent:.2f} < {self.overbought} (overbought level)"
+                )
+            
+            # Stochastic divergence signals (simplified)
+            # Buy when both %K and %D are oversold and price is near recent low
+            elif (self.k_percent < self.oversold + 10 and 
+                  self.d_percent < self.oversold + 10 and
+                  self.position == 0 and
+                  current_price <= min([p["price"] for p in self.price_history[-5:]])):  # Price near recent low
+                
+                self.signal_count += 1
+                self.signals_by_type["stochastic_divergence_buy"] += 1
+                quantity = self.config.max_position_size / current_price
+                logger.debug(f"Stochastic divergence buy: K={self.k_percent:.2f}, D={self.d_percent:.2f}, price={current_price:.2f}")
+                return TradeSignal(
+                    action="buy",
+                    price=current_price,
+                    quantity=quantity,
+                    timestamp=timestamp,
+                    reason=f"Stochastic divergence buy: Both %K {self.k_percent:.2f} and %D {self.d_percent:.2f} oversold, price near recent low"
+                )
+            
+            # Sell when both %K and %D are overbought and price is near recent high
+            elif (self.k_percent > self.overbought - 10 and 
+                  self.d_percent > self.overbought - 10 and
+                  self.position > 0 and
+                  current_price >= max([p["price"] for p in self.price_history[-5:]])):  # Price near recent high
+                
+                self.signal_count += 1
+                self.signals_by_type["stochastic_divergence_sell"] += 1
+                logger.debug(f"Stochastic divergence sell: K={self.k_percent:.2f}, D={self.d_percent:.2f}, price={current_price:.2f}")
+                return TradeSignal(
+                    action="sell",
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Stochastic divergence sell: Both %K {self.k_percent:.2f} and %D {self.d_percent:.2f} overbought, price near recent high"
+                )
+        
+        # Count when we have enough data but no signal is generated
+        if len(self.price_history) >= self.k_period + self.d_period:
+            self.no_signal_count += 1
+            
+        return None
+    
+    def update_position(self, signal: TradeSignal) -> None:
+        """Update position based on trade signal."""
+        if signal.action == "buy":
+            self.position = signal.quantity
+            self.entry_price = signal.price
+            logger.info(f"Position opened: {signal.quantity:.6f} at {signal.price}")
+        elif signal.action == "sell":
+            self.position = 0.0
+            self.entry_price = 0.0
+            logger.info(f"Position closed: {signal.quantity:.6f} at {signal.price}")
+    
+    def get_signal_stats(self) -> dict:
+        """Get signal statistics."""
+        return {
+            "total_signals": self.signal_count,
+            "signals_by_type": self.signals_by_type.copy(),
+            "price_history_length": len(self.price_history),
+            "no_signal_count": self.no_signal_count,
+            "signal_rate": self.signal_count / max(len(self.price_history), 1) * 100
+        }
+    
+    def get_position_info(self) -> Dict[str, Any]:
+        """Get current position information."""
+        return {
+            "position": self.position,
+            "entry_price": self.entry_price,
+            "unrealized_pnl": (self.position * self.entry_price) if self.position > 0 else 0.0
+        }

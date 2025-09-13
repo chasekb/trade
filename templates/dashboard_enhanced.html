@@ -207,6 +207,7 @@
                                 <option value="rsi">RSI Strategy</option>
                                 <option value="bollinger">Bollinger Bands</option>
                                 <option value="macd">MACD Strategy</option>
+                                <option value="stochastic">Stochastic Oscillator</option>
                             </select>
                         </div>
                         <div>
@@ -343,6 +344,34 @@
                                 <input type="number" id="macd-signal" value="9" min="2" max="50" 
                                        class="w-full border border-gray-300 rounded-md px-3 py-2"
                                        placeholder="Signal EMA period">
+                            </div>
+                        </div>
+
+                        <!-- Stochastic Parameters -->
+                        <div id="stochastic-params" class="strategy-param-group hidden">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">%K Period</label>
+                                <input type="number" id="stoch-k-period" value="14" min="2" max="50" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="%K period">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">%D Period</label>
+                                <input type="number" id="stoch-d-period" value="3" min="2" max="20" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="%D period">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Overbought Level</label>
+                                <input type="number" id="stoch-overbought" value="80" min="50" max="95" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="Overbought threshold">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Oversold Level</label>
+                                <input type="number" id="stoch-oversold" value="20" min="5" max="50" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="Oversold threshold">
                             </div>
                         </div>
 
