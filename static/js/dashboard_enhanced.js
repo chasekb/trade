@@ -451,11 +451,20 @@ class EnhancedTradingDashboard {
             maxPrice = Math.max(...allPrices);
             const priceRange = maxPrice - minPrice;
             padding = priceRange * 0.05; // 5% padding
+            
+            console.log(`Price range for ${this.currentSymbol}:`, {
+                minPrice: minPrice,
+                maxPrice: maxPrice,
+                priceRange: priceRange,
+                padding: padding,
+                yAxisRange: [minPrice - padding, maxPrice + padding]
+            });
         } else {
             // Fallback for empty data
             minPrice = 0;
             maxPrice = 100;
             padding = 10;
+            console.log(`Using fallback price range for ${this.currentSymbol}:`, [minPrice, maxPrice]);
         }
         
         const layout = {
@@ -469,7 +478,8 @@ class EnhancedTradingDashboard {
                 title: 'Price (USD)',
                 domain: [0.3, 1],
                 range: [minPrice - padding, maxPrice + padding],
-                autorange: true
+                autorange: false,
+                fixedrange: false
             },
             yaxis2: {
                 title: 'Volume',
@@ -484,8 +494,9 @@ class EnhancedTradingDashboard {
         };
         
         if (forceRescale) {
-            // Use react to update the chart with new scaling
-            Plotly.react('price-chart', [candlestickTrace, volumeTrace], layout, {
+            // Clear the chart completely and recreate it to ensure proper scaling
+            Plotly.purge('price-chart');
+            Plotly.newPlot('price-chart', [candlestickTrace, volumeTrace], layout, {
                 responsive: true,
                 displayModeBar: true,
                 modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
@@ -847,6 +858,9 @@ class EnhancedTradingDashboard {
         try {
             // Update WebSocket subscriptions (if connected)
             await this.updateWebSocketSubscriptions();
+            
+            // Clear existing chart data
+            this.candlesData = [];
             
             // Reload chart data with rescaling
             await this.loadCandlesData();
