@@ -1127,6 +1127,12 @@ class EnhancedTradingDashboard {
         const netProfit = result.result.net_profit?.toFixed(2) || 'N/A';
         const finalBalance = result.result.final_balance?.toFixed(2) || 'N/A';
         
+        // Signal statistics
+        const totalSignals = result.result.total_signals || 0;
+        const signalRate = result.result.signal_rate?.toFixed(2) || '0.00';
+        const noSignalCount = result.result.no_signal_count || 0;
+        const signalsByType = result.result.signals_by_type || {};
+        
         const html = `
             <div class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6">
                 <div class="flex items-center justify-between mb-4">
@@ -1184,6 +1190,68 @@ class EnhancedTradingDashboard {
                         <p><strong>Initial Balance:</strong> $${result.result.initial_balance?.toFixed(2) || 'N/A'}</p>
                         <p><strong>Winning Trades:</strong> ${result.result.winning_trades} | <strong>Losing Trades:</strong> ${result.result.losing_trades}</p>
                         <p><strong>Average Win:</strong> $${result.result.avg_win?.toFixed(2) || 'N/A'} | <strong>Average Loss:</strong> $${result.result.avg_loss?.toFixed(2) || 'N/A'}</p>
+                    </div>
+                </div>
+                
+                <!-- Signal Statistics -->
+                <div class="bg-white rounded-lg p-4 shadow-sm mb-6">
+                    <h4 class="font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-signal mr-2"></i>Signal Statistics
+                    </h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-blue-600">${totalSignals}</div>
+                            <div class="text-sm text-gray-600">Total Signals</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-green-600">${signalRate}%</div>
+                            <div class="text-sm text-gray-600">Signal Rate</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-orange-600">${noSignalCount}</div>
+                            <div class="text-sm text-gray-600">No Signal Count</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-purple-600">${totalTrades}</div>
+                            <div class="text-sm text-gray-600">Executed Trades</div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <h5 class="font-medium text-gray-700 mb-2">Signal Breakdown by Type:</h5>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Golden Cross:</span>
+                                <span class="font-medium">${signalsByType.golden_cross || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Death Cross:</span>
+                                <span class="font-medium">${signalsByType.death_cross || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Momentum Buy:</span>
+                                <span class="font-medium">${signalsByType.momentum_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Momentum Sell:</span>
+                                <span class="font-medium">${signalsByType.momentum_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Trend Buy:</span>
+                                <span class="font-medium">${signalsByType.trend_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Trend Sell:</span>
+                                <span class="font-medium">${signalsByType.trend_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Stop Loss:</span>
+                                <span class="font-medium">${signalsByType.stop_loss || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Take Profit:</span>
+                                <span class="font-medium">${signalsByType.take_profit || 0}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 

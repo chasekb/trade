@@ -34,6 +34,11 @@ class BacktestResult:
     end_date: datetime
     initial_balance: float
     final_balance: float
+    # Signal statistics
+    total_signals: int = 0
+    signals_by_type: dict = None
+    signal_rate: float = 0.0
+    no_signal_count: int = 0
 
 
 class Backtester:
@@ -188,7 +193,7 @@ class Backtester:
         if current_drawdown > self.max_drawdown:
             self.max_drawdown = current_drawdown
     
-    def _calculate_metrics(self) -> BacktestResult:
+    def _calculate_metrics(self, signal_stats: dict = None) -> BacktestResult:
         """Calculate backtest performance metrics."""
         if not self.trades:
             return BacktestResult(
@@ -197,7 +202,11 @@ class Backtester:
                 avg_win=0.0, avg_loss=0.0, largest_win=0.0, largest_loss=0.0,
                 total_fees=self.fees_paid, net_profit=0.0,
                 start_date=datetime.now(), end_date=datetime.now(),
-                initial_balance=self.initial_balance, final_balance=self.balance
+                initial_balance=self.initial_balance, final_balance=self.balance,
+                total_signals=signal_stats.get('total_signals', 0) if signal_stats else 0,
+                signals_by_type=signal_stats.get('signals_by_type', {}) if signal_stats else {},
+                signal_rate=signal_stats.get('signal_rate', 0.0) if signal_stats else 0.0,
+                no_signal_count=signal_stats.get('no_signal_count', 0) if signal_stats else 0
             )
         
         # Calculate trade statistics
@@ -211,7 +220,11 @@ class Backtester:
                 avg_win=0.0, avg_loss=0.0, largest_win=0.0, largest_loss=0.0,
                 total_fees=self.fees_paid, net_profit=0.0,
                 start_date=datetime.now(), end_date=datetime.now(),
-                initial_balance=self.initial_balance, final_balance=self.balance
+                initial_balance=self.initial_balance, final_balance=self.balance,
+                total_signals=signal_stats.get('total_signals', 0) if signal_stats else 0,
+                signals_by_type=signal_stats.get('signals_by_type', {}) if signal_stats else {},
+                signal_rate=signal_stats.get('signal_rate', 0.0) if signal_stats else 0.0,
+                no_signal_count=signal_stats.get('no_signal_count', 0) if signal_stats else 0
             )
         
         # Calculate P&L for each trade
@@ -268,7 +281,11 @@ class Backtester:
             start_date=start_date,
             end_date=end_date,
             initial_balance=self.initial_balance,
-            final_balance=self.balance
+            final_balance=self.balance,
+            total_signals=signal_stats.get('total_signals', 0) if signal_stats else 0,
+            signals_by_type=signal_stats.get('signals_by_type', {}) if signal_stats else {},
+            signal_rate=signal_stats.get('signal_rate', 0.0) if signal_stats else 0.0,
+            no_signal_count=signal_stats.get('no_signal_count', 0) if signal_stats else 0
         )
     
     async def run_backtest(self, historical_data: List[Dict[str, Any]]) -> BacktestResult:
@@ -346,7 +363,7 @@ class Backtester:
         signal_stats = strategy.get_signal_stats()
         
         # Calculate final metrics
-        result = self._calculate_metrics()
+        result = self._calculate_metrics(signal_stats)
         
         self.logger.info(f"Backtest completed: {signal_count} signals generated, {result.total_trades} trades executed, {result.win_rate:.1%} win rate, {result.total_return:.1%} return")
         self.logger.info(f"Signal breakdown: {signal_stats['signals_by_type']}")
