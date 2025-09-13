@@ -102,11 +102,19 @@ class Backtester:
                     trade = {
                         'timestamp': timestamp,
                         'action': 'buy',
+                        'side': 'buy',
                         'price': current_price,
+                        'entry_price': current_price,
+                        'exit_price': None,
                         'quantity': quantity,
                         'fees': fees,
                         'balance': self.balance,
-                        'reason': signal.reason
+                        'reason': signal.reason,
+                        'signal': signal.reason,
+                        'entry_time': timestamp,
+                        'exit_time': None,
+                        'profit_loss': None,
+                        'pnl': None
                     }
                     self.trades.append(trade)
                     
@@ -122,16 +130,26 @@ class Backtester:
             self.balance += net_proceeds
             self.fees_paid += fees
             
+            # Calculate P&L
+            pnl = net_proceeds - (self.entry_price * self.position)
+            
             # Record trade
             trade = {
                 'timestamp': timestamp,
                 'action': 'sell',
+                'side': 'sell',
                 'price': current_price,
+                'entry_price': self.entry_price,
+                'exit_price': current_price,
                 'quantity': self.position,
                 'fees': fees,
                 'balance': self.balance,
                 'reason': signal.reason,
-                'profit_loss': net_proceeds - (self.entry_price * self.position)
+                'signal': signal.reason,
+                'entry_time': None,  # Will be filled from previous buy trade
+                'exit_time': timestamp,
+                'profit_loss': pnl,
+                'pnl': pnl
             }
             self.trades.append(trade)
             
@@ -332,6 +350,45 @@ class Backtester:
         if not self.trades:
             return pd.DataFrame()
         
-        df = pd.DataFrame(self.trades)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Process trades to create proper trade pairs
+        processed_trades = self._process_trade_pairs()
+        
+        df = pd.DataFrame(processed_trades)
+        if not df.empty:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
         return df
+    
+    def _process_trade_pairs(self) -> List[Dict[str, Any]]:
+        """Process trades to create completed trade pairs with complete information."""
+        completed_trades = []
+        open_positions = []
+        
+        for trade in self.trades:
+            if trade['action'] == 'buy':
+                # Store as open position
+                open_positions.append(trade)
+                
+            elif trade['action'] == 'sell' and open_positions:
+                # Find the most recent open position to close
+                buy_trade = open_positions.pop(0)  # FIFO - first in, first out
+                
+                # Create completed trade entry
+                completed_trade = {
+                    'timestamp': trade['timestamp'],  # Use sell timestamp as trade completion time
+                    'action': 'completed',
+                    'side': 'long',  # Assuming long positions for now
+                    'entry_price': buy_trade['entry_price'],
+                    'exit_price': trade['exit_price'],
+                    'quantity': trade['quantity'],
+                    'entry_time': buy_trade['entry_time'],
+                    'exit_time': trade['exit_time'],
+                    'profit_loss': trade['profit_loss'],
+                    'pnl': trade['pnl'],
+                    'fees': buy_trade['fees'] + trade['fees'],
+                    'signal': trade['signal'],
+                    'reason': trade['reason'],
+                    'duration': (trade['exit_time'] - buy_trade['entry_time']).total_seconds() / 3600  # hours
+                }
+                completed_trades.append(completed_trade)
+        
+        return completed_trades

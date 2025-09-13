@@ -1193,25 +1193,26 @@ class EnhancedTradingDashboard {
         }
 
         const tableRows = trades.map((trade, index) => {
-            const entryTime = new Date(trade.entry_time).toLocaleString();
+            const entryTime = trade.entry_time ? new Date(trade.entry_time).toLocaleString() : 'N/A';
             const exitTime = trade.exit_time ? new Date(trade.exit_time).toLocaleString() : 'N/A';
-            const pnl = parseFloat(trade.pnl || 0);
+            const pnl = parseFloat(trade.pnl || trade.profit_loss || 0);
             const pnlClass = pnl > 0 ? 'text-green-600' : pnl < 0 ? 'text-red-600' : 'text-gray-600';
             const pnlIcon = pnl > 0 ? 'fas fa-arrow-up' : pnl < 0 ? 'fas fa-arrow-down' : 'fas fa-minus';
+            const duration = trade.duration ? `${trade.duration.toFixed(1)}h` : 'N/A';
             
             return `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">
                     <td class="px-4 py-3 text-sm text-gray-600">${index + 1}</td>
-                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${trade.side || 'N/A'}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${trade.side || 'Long'}</td>
                     <td class="px-4 py-3 text-sm text-gray-600">$${parseFloat(trade.entry_price || 0).toFixed(2)}</td>
-                    <td class="px-4 py-3 text-sm text-gray-600">${trade.quantity || 'N/A'}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${parseFloat(trade.quantity || 0).toFixed(6)}</td>
                     <td class="px-4 py-3 text-sm text-gray-600">$${parseFloat(trade.exit_price || 0).toFixed(2)}</td>
                     <td class="px-4 py-3 text-sm text-gray-600">${entryTime}</td>
                     <td class="px-4 py-3 text-sm text-gray-600">${exitTime}</td>
                     <td class="px-4 py-3 text-sm font-medium ${pnlClass}">
                         <i class="${pnlIcon} mr-1"></i>$${pnl.toFixed(2)}
                     </td>
-                    <td class="px-4 py-3 text-sm text-gray-600">${trade.signal || 'N/A'}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${duration}</td>
                 </tr>
             `;
         }).join('');
@@ -1229,7 +1230,7 @@ class EnhancedTradingDashboard {
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Time</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exit Time</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P&L</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Signal</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -1247,19 +1248,20 @@ class EnhancedTradingDashboard {
         }
 
         // Create CSV content
-        const headers = ['Trade #', 'Side', 'Entry Price', 'Quantity', 'Exit Price', 'Entry Time', 'Exit Time', 'P&L', 'Signal'];
+        const headers = ['Trade #', 'Side', 'Entry Price', 'Quantity', 'Exit Price', 'Entry Time', 'Exit Time', 'P&L', 'Duration (hours)', 'Fees'];
         const csvContent = [
             headers.join(','),
             ...trades.map((trade, index) => [
                 index + 1,
-                trade.side || 'N/A',
+                trade.side || 'Long',
                 trade.entry_price || 0,
-                trade.quantity || 'N/A',
+                trade.quantity || 0,
                 trade.exit_price || 0,
                 trade.entry_time || 'N/A',
                 trade.exit_time || 'N/A',
-                trade.pnl || 0,
-                trade.signal || 'N/A'
+                trade.pnl || trade.profit_loss || 0,
+                trade.duration || 0,
+                trade.fees || 0
             ].join(','))
         ].join('\n');
 
