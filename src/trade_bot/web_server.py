@@ -344,14 +344,18 @@ class WebSocketManager:
 
 # Initialize WebSocket manager
 manager = WebSocketManager()
+realtime_data_enabled = True  # Global flag to control real-time data collection
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup."""
     logger.info("Starting Trading Dashboard...")
-    # Start real-time data collection
-    await manager.start_real_time_data()
+    # Start real-time data collection if enabled
+    if realtime_data_enabled:
+        await manager.start_real_time_data()
+    else:
+        logger.info("Real-time data collection is disabled")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -653,6 +657,37 @@ async def get_rate_limit_status():
         "reset_in_minutes": round(reset_time / 60, 2) if reset_time > 0 else 0,
         "compliance": "Coinbase App API Rate Limiting - 10,000 requests per hour per API key"
     }
+
+
+@app.get("/api/realtime-status")
+async def get_realtime_status():
+    """Get real-time data collection status."""
+    return {
+        "enabled": realtime_data_enabled,
+        "websocket_connected": manager.websocket_client is not None and manager.websocket_client.connected if manager.websocket_client else False,
+        "active_connections": len(manager.active_connections)
+    }
+
+
+@app.post("/api/toggle-realtime")
+async def toggle_realtime_data():
+    """Toggle real-time data collection on/off."""
+    global realtime_data_enabled
+    
+    if realtime_data_enabled:
+        # Stop real-time data collection
+        realtime_data_enabled = False
+        if manager.websocket_client:
+            await manager.websocket_client.disconnect()
+            manager.websocket_client = None
+        logger.info("Real-time data collection stopped")
+        return {"status": "stopped", "message": "Real-time data collection has been stopped"}
+    else:
+        # Start real-time data collection
+        realtime_data_enabled = True
+        await manager.start_real_time_data()
+        logger.info("Real-time data collection started")
+        return {"status": "started", "message": "Real-time data collection has been started"}
 
 @app.post("/api/subscribe")
 async def subscribe_to_channel(request: SubscriptionRequest):

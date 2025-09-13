@@ -32,6 +32,7 @@ class EnhancedTradingDashboard {
         setTimeout(() => {
             this.loadInitialData();
             this.startDataRefresh();
+            this.loadRealtimeStatus();
         }, 100);
     }
 
@@ -128,6 +129,11 @@ class EnhancedTradingDashboard {
         });
         document.getElementById('tab-settings').addEventListener('click', () => {
             this.switchTab('settings');
+        });
+        
+        // Real-time data toggle
+        document.getElementById('realtime-toggle').addEventListener('change', (e) => {
+            this.toggleRealtimeData(e.target.checked);
         });
         
         // Percentage timeframe selector
@@ -511,6 +517,78 @@ class EnhancedTradingDashboard {
             percentageChange,
             timeframe: this.percentageTimeframe
         });
+    }
+
+    async toggleRealtimeData(enabled) {
+        try {
+            const response = await fetch('/api/toggle-realtime', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                // Update the status display
+                const statusElement = document.getElementById('realtime-status');
+                if (enabled) {
+                    statusElement.textContent = 'Connected';
+                    statusElement.className = 'text-sm text-green-500';
+                    this.showNotification('Real-time data collection started', 'success');
+                } else {
+                    statusElement.textContent = 'Disabled';
+                    statusElement.className = 'text-sm text-red-500';
+                    this.showNotification('Real-time data collection stopped', 'warning');
+                }
+                
+                // If disabling, close WebSocket connection
+                if (!enabled && this.ws) {
+                    this.ws.close();
+                    this.isConnected = false;
+                }
+                // If enabling, reconnect WebSocket
+                else if (enabled && !this.isConnected) {
+                    this.connectWebSocket();
+                }
+            } else {
+                this.showNotification(`Failed to toggle real-time data: ${result.error}`, 'error');
+                // Revert the toggle state
+                document.getElementById('realtime-toggle').checked = !enabled;
+            }
+        } catch (error) {
+            console.error('Error toggling real-time data:', error);
+            this.showNotification('Failed to toggle real-time data', 'error');
+            // Revert the toggle state
+            document.getElementById('realtime-toggle').checked = !enabled;
+        }
+    }
+
+    async loadRealtimeStatus() {
+        try {
+            const response = await fetch('/api/realtime-status');
+            const status = await response.json();
+            
+            // Update the toggle state
+            const toggle = document.getElementById('realtime-toggle');
+            const statusElement = document.getElementById('realtime-status');
+            
+            toggle.checked = status.enabled;
+            
+            if (status.enabled && status.websocket_connected) {
+                statusElement.textContent = 'Connected';
+                statusElement.className = 'text-sm text-green-500';
+            } else if (status.enabled && !status.websocket_connected) {
+                statusElement.textContent = 'Connecting...';
+                statusElement.className = 'text-sm text-yellow-500';
+            } else {
+                statusElement.textContent = 'Disabled';
+                statusElement.className = 'text-sm text-red-500';
+            }
+        } catch (error) {
+            console.error('Error loading real-time status:', error);
+        }
     }
 
     addToDataFeed(data) {
