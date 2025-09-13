@@ -12,11 +12,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
 from .trading_strategy import SimpleMovingAverageStrategy
+import math
 from .websocket_client import WebSocketClient
 from .data_handler import DataHandler
 
@@ -39,6 +41,32 @@ websocket_clients: List[WebSocket] = []
 
 # Configuration
 config = TradingConfig.from_env()
+
+
+def clean_for_json(data):
+    """Clean data for JSON serialization by replacing NaN and infinite values."""
+    if isinstance(data, dict):
+        return {k: clean_for_json(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [clean_for_json(item) for item in data]
+    elif isinstance(data, float):
+        if math.isnan(data) or math.isinf(data):
+            return None
+        return data
+    else:
+        return data
+
+
+# Pydantic models for API requests
+class SubscriptionRequest(BaseModel):
+    channel: str
+    product_id: str = None
+
+class BacktestRequest(BaseModel):
+    product_id: str = None
+    days: int = 7
+    short_window: int = 5
+    long_window: int = 20
 
 
 class WebSocketManager:
@@ -78,16 +106,22 @@ class WebSocketManager:
                 self.disconnect(connection)
     
     async def start_real_time_data(self):
-        """Start the real-time data feed."""
+        """Start the real-time data feed with all subscription types."""
         if not self.websocket_client:
             self.websocket_client = WebSocketClient(config)
             self.data_handler = DataHandler(config)
             
-            # Register message handlers
+            # Register message handlers for Coinbase channel names
+            # Per documentation: https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/websocket/websocket-channels
             self.websocket_client.register_handler('ticker', self._handle_ticker_message)
-            self.websocket_client.register_handler('l2update', self._handle_l2update_message)
+            self.websocket_client.register_handler('ticker_batch', self._handle_ticker_message)
+            self.websocket_client.register_handler('level2', self._handle_level2_message)
+            self.websocket_client.register_handler('candles', self._handle_candles_message)
+            self.websocket_client.register_handler('status', self._handle_status_message)
+            self.websocket_client.register_handler('market_trades', self._handle_market_trades_message)
+            self.websocket_client.register_handler('user', self._handle_user_message)
             
-            # Start the websocket client
+            # Start the websocket client (with error handling)
             asyncio.create_task(self._run_websocket_client())
             
             # Start the data collection task
@@ -97,41 +131,115 @@ class WebSocketManager:
         """Run the websocket client in the background."""
         try:
             await self.websocket_client.connect()
+            
+            # Subscribe to heartbeats first to keep connection alive
+            # Per Coinbase documentation: "Use heartbeats to keep all subscriptions open"
+            await self.websocket_client.subscribe_to_channel('heartbeats', [])
+            
+            # Subscribe to data channels
             await self.websocket_client.subscribe_to_ticker(config.product_id)
             await self.websocket_client.subscribe_to_level2(config.product_id)
+            
             await self.websocket_client.listen()
         except Exception as e:
             logger.error(f"WebSocket client error: {e}")
     
     async def _handle_ticker_message(self, data):
-        """Handle ticker messages."""
-        if 'ticker' in data:
-            self.data_handler.add_ticker_data(data['ticker'])
+        """Handle ticker messages per Coinbase documentation format."""
+        # Per documentation: ticker messages have 'events' array with 'tickers' data
+        events = data.get('events', [])
+        for event in events:
+            if 'tickers' in event:
+                for ticker in event['tickers']:
+                    self.data_handler.add_ticker_data(ticker)
     
-    async def _handle_l2update_message(self, data):
-        """Handle level2 update messages."""
-        if 'changes' in data:
-            self.data_handler.add_level2_data(data)
+    async def _handle_level2_message(self, data):
+        """Handle level2 messages per Coinbase documentation format."""
+        # Per documentation: level2 messages have 'events' array with 'updates' or 'snapshot' data
+        events = data.get('events', [])
+        for event in events:
+            if event.get('type') in ['snapshot', 'update']:
+                self.data_handler.add_level2_data(event)
+    
+    async def _handle_candles_message(self, data):
+        """Handle candles/OHLCV messages per Coinbase documentation format."""
+        # Per documentation: candles messages have 'events' array with 'candles' data
+        events = data.get('events', [])
+        for event in events:
+            if 'candles' in event:
+                for candle in event['candles']:
+                    self.data_handler.add_candles_data(candle)
+    
+    async def _handle_status_message(self, data):
+        """Handle product status messages per Coinbase documentation format."""
+        # Per documentation: status messages have 'events' array with 'products' data
+        events = data.get('events', [])
+        for event in events:
+            if 'products' in event:
+                for product in event['products']:
+                    self.data_handler.add_status_data(product)
+    
+    async def _handle_market_trades_message(self, data):
+        """Handle market trades messages per Coinbase documentation format."""
+        # Per documentation: market_trades messages have 'events' array with 'trades' data
+        events = data.get('events', [])
+        for event in events:
+            if 'trades' in event:
+                for trade in event['trades']:
+                    self.data_handler.add_market_trades_data(trade)
+    
+    async def _handle_user_message(self, data):
+        """Handle user messages per Coinbase documentation format."""
+        # Per documentation: user messages have 'events' array with user-specific data
+        events = data.get('events', [])
+        for event in events:
+            # Handle different types of user events (orders, positions, etc.)
+            if 'orders' in event:
+                for order in event['orders']:
+                    self.data_handler.add_trade_data(order)
+            elif 'positions' in event:
+                for position in event['positions']:
+                    self.data_handler.add_trade_data(position)
     
     async def _collect_real_time_data(self):
         """Collect real-time data and broadcast to clients."""
         while True:
             try:
-                # Get latest data from data handler
+                # Check if data handler is initialized
+                if not self.data_handler:
+                    await asyncio.sleep(1)
+                    continue
+                    
+                # Get latest data from data handler for all types
                 ticker_data = self.data_handler.get_latest_ticker()
                 trade_data = self.data_handler.get_latest_trades()
+                level2_data = self.data_handler.get_latest_level2()
+                candles_data = self.data_handler.get_latest_candles()
+                matches_data = self.data_handler.get_latest_matches()
+                status_data = self.data_handler.get_latest_status()
+                market_trades_data = self.data_handler.get_latest_market_trades()
                 
-                if ticker_data:
-                    real_time_data[config.product_id] = {
-                        'ticker': ticker_data,
-                        'trades': trade_data,
-                        'timestamp': datetime.now().isoformat()
-                    }
+                # Prepare comprehensive real-time data
+                current_data = {
+                    'ticker': ticker_data,
+                    'trades': trade_data,
+                    'level2': level2_data,
+                    'candles': candles_data,
+                    'matches': matches_data,
+                    'status': status_data,
+                    'market_trades': market_trades_data,
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                # Only broadcast if we have some data
+                if any([ticker_data, trade_data, level2_data, candles_data, 
+                       matches_data, status_data, market_trades_data]):
+                    real_time_data[config.product_id] = current_data
                     
                     # Broadcast to all connected clients
                     await self.broadcast(json.dumps({
                         'type': 'real_time_data',
-                        'data': real_time_data[config.product_id]
+                        'data': current_data
                     }))
                 
                 await asyncio.sleep(1)  # Update every second
@@ -156,7 +264,7 @@ async def startup_event():
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
     """Serve the main dashboard page."""
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse("dashboard_enhanced.html", {
         "request": request,
         "product_id": config.product_id
     })
@@ -197,21 +305,15 @@ async def get_historical_data(
 
 
 @app.post("/api/run-backtest")
-async def run_backtest(
-    product_id: str = None,
-    days: int = 7,
-    short_window: int = 5,
-    long_window: int = 20
-):
+async def run_backtest(request: BacktestRequest):
     """Run a backtest and return results."""
-    if not product_id:
-        product_id = config.product_id
+    product_id = request.product_id or config.product_id
     
     try:
         # Get historical data
         data_provider = CoinbaseDataProvider(product_id)
         end_time = datetime.now()
-        start_time = end_time - timedelta(days=days)
+        start_time = end_time - timedelta(days=request.days)
         
         historical_data = await data_provider.get_historical_candles(
             start_time=start_time,
@@ -227,8 +329,8 @@ async def run_backtest(
             config=config,
             strategy_class=SimpleMovingAverageStrategy,
             strategy_params={
-                'short_window': short_window,
-                'long_window': long_window
+                'short_window': request.short_window,
+                'long_window': request.long_window
             }
         )
         
@@ -236,19 +338,25 @@ async def run_backtest(
         result = await backtester.run_backtest(historical_data)
         
         # Store results
-        backtest_key = f"{product_id}_{days}_{short_window}_{long_window}"
+        backtest_key = f"{product_id}_{request.days}_{request.short_window}_{request.long_window}"
+        
+        # Clean data for JSON serialization
+        trades_data = clean_for_json(backtester.get_trades_df().to_dict('records'))
+        equity_data = clean_for_json(backtester.get_equity_curve_df().to_dict('records'))
+        result_data = clean_for_json(result)
+        
         backtest_results[backtest_key] = {
-            'result': result,
-            'trades_df': backtester.get_trades_df().to_dict('records'),
-            'equity_df': backtester.get_equity_curve_df().to_dict('records'),
+            'result': result_data,
+            'trades_df': trades_data,
+            'equity_df': equity_data,
             'timestamp': datetime.now().isoformat()
         }
         
         return {
             'success': True,
-            'result': result,
-            'trades': backtester.get_trades_df().to_dict('records'),
-            'equity_curve': backtester.get_equity_curve_df().to_dict('records')
+            'result': result_data,
+            'trades': trades_data,
+            'equity_curve': equity_data
         }
         
     except Exception as e:
@@ -306,6 +414,57 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
+@app.get("/api/subscriptions")
+async def get_subscriptions():
+    """Get current WebSocket subscription information."""
+    if manager.websocket_client:
+        return await manager.websocket_client.get_subscription_info()
+    return {"error": "WebSocket client not initialized"}
+
+@app.post("/api/subscribe")
+async def subscribe_to_channel(request: SubscriptionRequest):
+    """Subscribe to a specific channel for a product."""
+    if not manager.websocket_client:
+        return {"error": "WebSocket client not initialized"}
+    
+    product_id = request.product_id or config.product_id
+    
+    try:
+        await manager.websocket_client.subscribe_to_channel(request.channel, [product_id])
+        return {"success": True, "channel": request.channel, "product_id": product_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/unsubscribe")
+async def unsubscribe_from_channel(request: SubscriptionRequest):
+    """Unsubscribe from a specific channel for a product."""
+    if not manager.websocket_client:
+        return {"error": "WebSocket client not initialized"}
+    
+    product_id = request.product_id or config.product_id
+    
+    try:
+        await manager.websocket_client.unsubscribe_from_channel(request.channel, [product_id])
+        return {"success": True, "channel": request.channel, "product_id": product_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/data-summary")
+async def get_data_summary():
+    """Get summary of all collected data."""
+    if not manager.data_handler:
+        return {"error": "Data handler not initialized"}
+    
+    return manager.data_handler.get_summary_stats()
+
+@app.get("/api/available-channels")
+async def get_available_channels():
+    """Get list of available WebSocket channels."""
+    return {
+        "channels": WebSocketClient.AVAILABLE_CHANNELS,
+        "description": "Available WebSocket subscription channels from Coinbase Advanced Trading API"
+    }
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
@@ -314,7 +473,9 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "active_connections": len(manager.active_connections),
         "cached_data_points": len(historical_data_cache),
-        "backtest_results": len(backtest_results)
+        "backtest_results": len(backtest_results),
+        "websocket_connected": manager.websocket_client is not None and manager.websocket_client.running,
+        "data_handler_initialized": manager.data_handler is not None
     }
 
 
