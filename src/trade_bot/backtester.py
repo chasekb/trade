@@ -342,10 +342,16 @@ class Backtester:
             )
             self._execute_trade(signal, last_price, last_timestamp)
         
+        # Get signal statistics from strategy
+        signal_stats = strategy.get_signal_stats()
+        
         # Calculate final metrics
         result = self._calculate_metrics()
         
         self.logger.info(f"Backtest completed: {signal_count} signals generated, {result.total_trades} trades executed, {result.win_rate:.1%} win rate, {result.total_return:.1%} return")
+        self.logger.info(f"Signal breakdown: {signal_stats['signals_by_type']}")
+        self.logger.info(f"Strategy processed {signal_stats['price_history_length']} price points")
+        self.logger.info(f"No signal count: {signal_stats['no_signal_count']}, Signal rate: {signal_stats['signal_rate']:.2f}%")
         
         return result
     
