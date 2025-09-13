@@ -281,9 +281,22 @@ class Backtester:
             BacktestResult with performance metrics
         """
         self.logger.info(f"Starting backtest with {len(historical_data)} data points")
+        self.logger.info(f"Strategy parameters: {self.strategy_params}")
+        
+        # Log data sample for debugging
+        if historical_data:
+            self.logger.info(f"First data point: {historical_data[0]}")
+            self.logger.info(f"Last data point: {historical_data[-1]}")
+            if len(historical_data) > 1:
+                time_diff = (datetime.fromisoformat(historical_data[1]['timestamp'].replace('Z', '+00:00')) - 
+                           datetime.fromisoformat(historical_data[0]['timestamp'].replace('Z', '+00:00')))
+                self.logger.info(f"Data frequency: {time_diff.total_seconds()} seconds between points")
         
         # Initialize strategy
         strategy = self.strategy_class(self.config, **self.strategy_params)
+        
+        # Track signals for debugging
+        signal_count = 0
         
         # Process each data point
         for i, data_point in enumerate(historical_data):
@@ -298,11 +311,12 @@ class Backtester:
             
             # Execute trade if signal exists
             if signal:
-                self.logger.debug(f"Signal generated: {signal.action} at ${price:.2f}, reason: {signal.reason}")
+                signal_count += 1
+                self.logger.info(f"Signal #{signal_count} generated: {signal.action} at ${price:.2f}, reason: {signal.reason}")
                 if self._execute_trade(signal, price, timestamp):
                     # Update strategy position to keep it in sync
                     strategy.update_position(signal)
-                    self.logger.debug(f"Trade executed: {signal.action}, new position: {strategy.position}")
+                    self.logger.info(f"Trade executed: {signal.action}, new position: {strategy.position}")
                 else:
                     self.logger.debug(f"Trade not executed: {signal.action} at ${price:.2f}")
             
@@ -331,7 +345,7 @@ class Backtester:
         # Calculate final metrics
         result = self._calculate_metrics()
         
-        self.logger.info(f"Backtest completed: {result.total_trades} trades, {result.win_rate:.1%} win rate, {result.total_return:.1%} return")
+        self.logger.info(f"Backtest completed: {signal_count} signals generated, {result.total_trades} trades executed, {result.win_rate:.1%} win rate, {result.total_return:.1%} return")
         
         return result
     
