@@ -22,6 +22,7 @@ class TradingConfig:
     max_position_size: float = 1000.0
     stop_loss_percentage: float = 0.02  # 2%
     take_profit_percentage: float = 0.04  # 4%
+    trading_fee_percentage: float = 0.001  # 0.1%
     
     # Output settings
     output_dir: str = "outputs"
@@ -38,6 +39,7 @@ class TradingConfig:
             max_position_size=float(os.getenv("MAX_POSITION_SIZE", "1000.0")),
             stop_loss_percentage=float(os.getenv("STOP_LOSS_PERCENTAGE", "0.02")),
             take_profit_percentage=float(os.getenv("TAKE_PROFIT_PERCENTAGE", "0.04")),
+            trading_fee_percentage=float(os.getenv("TRADING_FEE_PERCENTAGE", "0.001")),
             output_dir=os.getenv("OUTPUT_DIR", "outputs"),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )
