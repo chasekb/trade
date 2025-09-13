@@ -391,6 +391,35 @@ async def get_historical_data(
     
     return historical_data_cache[cache_key]
 
+@app.get("/api/candles")
+async def get_candles_data(
+    product_id: str = None,
+    days: int = 7,
+    granularity: int = 3600
+):
+    """Get candles data for a product with specified granularity."""
+    await check_rate_limit()
+    
+    if not product_id:
+        product_id = config.product_id
+    
+    cache_key = f"candles_{product_id}_{days}_{granularity}"
+    
+    if cache_key not in historical_data_cache:
+        data_provider = CoinbaseDataProvider(product_id)
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=days)
+        
+        candles_data = await data_provider.get_historical_candles(
+            start_time=start_time,
+            end_time=end_time,
+            granularity=granularity
+        )
+        
+        historical_data_cache[cache_key] = candles_data
+    
+    return historical_data_cache[cache_key]
+
 
 @app.post("/api/run-backtest")
 async def run_backtest(request: BacktestRequest):

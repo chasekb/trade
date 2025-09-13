@@ -6,10 +6,12 @@ class EnhancedTradingDashboard {
         this.priceData = [];
         this.historicalData = [];
         this.backtestData = [];
+        this.candlesData = [];
         this.charts = {};
         this.isConnected = false;
         this.subscriptions = {};
         this.dataSummary = {};
+        this.currentCandlePeriod = 3600; // Default to 1 hour
         
         this.init();
     }
@@ -71,6 +73,17 @@ class EnhancedTradingDashboard {
         // Backtesting
         document.getElementById('run-backtest').addEventListener('click', () => {
             this.runBacktest();
+        });
+        
+        // Candle period selector
+        document.getElementById('candle-period').addEventListener('change', (e) => {
+            this.currentCandlePeriod = parseInt(e.target.value);
+            this.loadCandlesData();
+        });
+        
+        // Refresh candles button
+        document.getElementById('refresh-candles').addEventListener('click', () => {
+            this.loadCandlesData();
         });
     }
 
@@ -229,6 +242,21 @@ class EnhancedTradingDashboard {
         if (data.type === 'real_time_data') {
             this.updateRealTimeData(data.data);
             this.addToDataFeed(data.data);
+            
+            // Update candlestick chart if we have new candle data
+            if (data.data.candles && data.data.candles.length > 0) {
+                // Add new candle data to our existing data
+                data.data.candles.forEach(candle => {
+                    this.candlesData.push(candle);
+                });
+                
+                // Keep only last 200 candles to prevent memory issues
+                if (this.candlesData.length > 200) {
+                    this.candlesData = this.candlesData.slice(-200);
+                }
+                
+                this.updateCandlestickChart();
+            }
         }
     }
 
@@ -301,26 +329,7 @@ class EnhancedTradingDashboard {
     updateCharts() {
         if (this.priceData.length === 0) return;
         
-        // Price chart
-        const priceTrace = {
-            x: this.priceData.map(d => d.time),
-            y: this.priceData.map(d => d.price),
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Price',
-            line: { color: '#3B82F6' }
-        };
-        
-        const priceLayout = {
-            title: 'Real-time Price',
-            xaxis: { title: 'Time' },
-            yaxis: { title: 'Price (USD)' },
-            margin: { t: 30, r: 30, b: 30, l: 30 }
-        };
-        
-        Plotly.newPlot('price-chart', [priceTrace], priceLayout, {responsive: true});
-        
-        // Volume chart
+        // Volume chart (keep existing)
         const volumeTrace = {
             x: this.priceData.map(d => d.time),
             y: this.priceData.map(d => d.volume),
@@ -338,10 +347,117 @@ class EnhancedTradingDashboard {
         
         Plotly.newPlot('volume-chart', [volumeTrace], volumeLayout, {responsive: true});
     }
+    
+    updateCandlestickChart() {
+        if (this.candlesData.length === 0) {
+            // Show loading message
+            const chartDiv = document.getElementById('price-chart');
+            chartDiv.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Loading candlestick data...</div>';
+            return;
+        }
+        
+        // Prepare candlestick data
+        const times = this.candlesData.map(candle => new Date(candle.timestamp));
+        const opens = this.candlesData.map(candle => parseFloat(candle.open));
+        const highs = this.candlesData.map(candle => parseFloat(candle.high));
+        const lows = this.candlesData.map(candle => parseFloat(candle.low));
+        const closes = this.candlesData.map(candle => parseFloat(candle.close));
+        const volumes = this.candlesData.map(candle => parseFloat(candle.volume));
+        
+        // Create candlestick trace
+        const candlestickTrace = {
+            x: times,
+            open: opens,
+            high: highs,
+            low: lows,
+            close: closes,
+            type: 'candlestick',
+            name: 'Price',
+            increasing: { line: { color: '#10B981' } },
+            decreasing: { line: { color: '#EF4444' } }
+        };
+        
+        // Create volume trace
+        const volumeTrace = {
+            x: times,
+            y: volumes,
+            type: 'bar',
+            name: 'Volume',
+            yaxis: 'y2',
+            marker: {
+                color: 'rgba(59, 130, 246, 0.3)',
+                line: {
+                    color: 'rgba(59, 130, 246, 0.8)',
+                    width: 1
+                }
+            }
+        };
+        
+        const layout = {
+            title: `Price Chart (${this.getCandlePeriodLabel()})`,
+            xaxis: { 
+                title: 'Time',
+                type: 'date',
+                rangeslider: { visible: false }
+            },
+            yaxis: { 
+                title: 'Price (USD)',
+                domain: [0.3, 1]
+            },
+            yaxis2: {
+                title: 'Volume',
+                domain: [0, 0.3],
+                side: 'right'
+            },
+            showlegend: true,
+            margin: { t: 40, r: 40, b: 40, l: 40 },
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            paper_bgcolor: 'rgba(0,0,0,0)'
+        };
+        
+        Plotly.newPlot('price-chart', [candlestickTrace, volumeTrace], layout, {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+        });
+    }
+    
+    getCandlePeriodLabel() {
+        const periodMap = {
+            60: '1m',
+            300: '5m',
+            900: '15m',
+            3600: '1h',
+            21600: '6h',
+            86400: '1d'
+        };
+        return periodMap[this.currentCandlePeriod] || '1h';
+    }
 
     async loadInitialData() {
         await this.loadDataSummary();
         await this.loadHistoricalData();
+        await this.loadCandlesData();
+    }
+    
+    async loadCandlesData() {
+        try {
+            const response = await fetch(`/api/candles?granularity=${this.currentCandlePeriod}&days=7`);
+            const data = await response.json();
+            
+            if (Array.isArray(data) && data.length > 0) {
+                this.candlesData = data;
+                this.updateCandlestickChart();
+                console.log(`Loaded ${data.length} candles for period ${this.getCandlePeriodLabel()}`);
+            } else {
+                console.warn('No candles data received');
+                // Show empty chart
+                this.updateCandlestickChart();
+            }
+        } catch (error) {
+            console.error('Failed to load candles data:', error);
+            this.showNotification('Failed to load candles data', 'error');
+        }
     }
 
     async loadHistoricalData() {
