@@ -299,8 +299,15 @@ class EnhancedTradingDashboard {
         console.log('WebSocket message received:', {
             product_id: data.product_id,
             currentSymbol: this.currentSymbol,
-            type: data.type
+            type: data.type,
+            isSwitchingSymbol: this.isSwitchingSymbol
         });
+        
+        // Skip all WebSocket messages if we're switching symbols
+        if (this.isSwitchingSymbol) {
+            console.log('Skipping WebSocket message during symbol switch');
+            return;
+        }
         
         // Check if the message is for the current symbol
         if (data.product_id && data.product_id !== this.currentSymbol) {
@@ -1160,6 +1167,10 @@ class EnhancedTradingDashboard {
             // Update historical data
             await this.loadHistoricalData();
             
+            // Wait a bit more to ensure WebSocket subscriptions are fully processed
+            console.log('Waiting for WebSocket subscriptions to stabilize...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
             // Show success notification
             this.showNotification(`Successfully switched to ${this.currentSymbol}`, 'success');
         } catch (error) {
@@ -1182,25 +1193,36 @@ class EnhancedTradingDashboard {
         try {
             // Get current subscriptions to unsubscribe from
             const subscriptions = await this.loadSubscriptions();
-            console.log('Current subscriptions:', subscriptions);
+            console.log('Current subscriptions before switch:', subscriptions);
             
             // Unsubscribe from all current channels for any symbol
             const channels = ['ticker', 'level2', 'candles', 'matches', 'status', 'market_trades'];
             for (const channel of channels) {
                 if (subscriptions[channel] && subscriptions[channel].length > 0) {
                     for (const productId of subscriptions[channel]) {
+                        console.log(`Unsubscribing from ${channel} for ${productId}`);
                         await this.unsubscribeFromChannel(channel, productId);
                     }
                 }
             }
             
-            // Wait a moment for unsubscriptions to complete
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Wait longer for unsubscriptions to complete
+            console.log('Waiting for unsubscriptions to complete...');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Verify unsubscriptions worked
+            const updatedSubscriptions = await this.loadSubscriptions();
+            console.log('Subscriptions after unsubscribe:', updatedSubscriptions);
             
             // Subscribe to new symbol
+            console.log(`Subscribing to ${this.currentSymbol}...`);
             await this.subscribeToChannel('ticker', this.currentSymbol);
             await this.subscribeToChannel('level2', this.currentSymbol);
             await this.subscribeToChannel('candles', this.currentSymbol);
+            
+            // Verify final subscriptions
+            const finalSubscriptions = await this.loadSubscriptions();
+            console.log('Final subscriptions:', finalSubscriptions);
             
             console.log(`Successfully switched to ${this.currentSymbol}`);
         } catch (error) {
