@@ -13,6 +13,7 @@ class EnhancedTradingDashboard {
         this.dataSummary = {};
         this.currentCandlePeriod = 3600; // Default to 1 hour
         this.currentSymbol = 'BTC-USD'; // Default symbol
+        this.currentYAxisRange = null; // Store current y-axis range
         
         this.init();
     }
@@ -494,6 +495,10 @@ class EnhancedTradingDashboard {
         };
         
         if (forceRescale) {
+            // Store the y-axis range for this symbol
+            this.currentYAxisRange = [minPrice - padding, maxPrice + padding];
+            console.log(`Storing y-axis range for ${this.currentSymbol}:`, this.currentYAxisRange);
+            
             // Clear the chart completely and recreate it to ensure proper scaling
             Plotly.purge('price-chart');
             Plotly.newPlot('price-chart', [candlestickTrace, volumeTrace], layout, {
@@ -502,12 +507,28 @@ class EnhancedTradingDashboard {
                 modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
             });
         } else {
-            // Use newPlot for initial chart creation
-            Plotly.newPlot('price-chart', [candlestickTrace, volumeTrace], layout, {
-                responsive: true,
-                displayModeBar: true,
-                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
-            });
+            // Check if chart already exists
+            const chartDiv = document.getElementById('price-chart');
+            if (chartDiv && chartDiv.data && this.currentYAxisRange) {
+                // Chart exists, use react to update data but preserve y-axis range
+                const preservedLayout = {
+                    'yaxis.range': this.currentYAxisRange,
+                    'yaxis.autorange': false
+                };
+                
+                Plotly.react('price-chart', [candlestickTrace, volumeTrace], preservedLayout, {
+                    responsive: true,
+                    displayModeBar: true,
+                    modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+                });
+            } else {
+                // Chart doesn't exist, create it
+                Plotly.newPlot('price-chart', [candlestickTrace, volumeTrace], layout, {
+                    responsive: true,
+                    displayModeBar: true,
+                    modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+                });
+            }
         }
     }
     
@@ -578,8 +599,8 @@ class EnhancedTradingDashboard {
             }
         }
         
-        // Update the chart with auto-scaling
-        this.updateCandlestickChart(true);
+        // Update the chart with real-time data (no rescaling)
+        this.updateCandlestickChart(false);
     }
 
     async loadInitialData() {
@@ -859,8 +880,9 @@ class EnhancedTradingDashboard {
             // Update WebSocket subscriptions (if connected)
             await this.updateWebSocketSubscriptions();
             
-            // Clear existing chart data
+            // Clear existing chart data and y-axis range
             this.candlesData = [];
+            this.currentYAxisRange = null;
             
             // Reload chart data with rescaling
             await this.loadCandlesData();
