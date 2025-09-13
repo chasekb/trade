@@ -2047,3 +2047,327 @@ class BuyAndHoldStrategy:
             'buy_signals': self.buy_signals,
             'sell_signals': self.sell_signals
         }
+
+
+class ATRStrategy:
+    """Average True Range (ATR) trading strategy based on volatility."""
+    
+    def __init__(self, config: TradingConfig, period: int = 14, atr_multiplier: float = 2.0, 
+                 volatility_threshold: float = 1.5, position_size_atr: float = 0.02):
+        self.config = config
+        self.period = period
+        self.atr_multiplier = atr_multiplier  # Multiplier for ATR-based stop loss
+        self.volatility_threshold = volatility_threshold  # ATR threshold for volatility breakout
+        self.position_size_atr = position_size_atr  # Position size as % of ATR
+        
+        self.price_history: List[Dict[str, float]] = []  # Stores 'high', 'low', 'close'
+        self.atr_values: List[float] = []
+        self.current_atr = 0.0
+        self.position = 0.0
+        self.entry_price = 0.0
+        self.atr_stop_loss = 0.0
+        self.atr_take_profit = 0.0
+        
+        # Signal tracking
+        self.signal_count = 0
+        self.signals_by_type = {
+            'atr_breakout_buy': 0,
+            'atr_breakout_sell': 0,
+            'atr_stop_loss': 0,
+            'atr_take_profit': 0,
+            'volatility_expansion': 0,
+            'volatility_contraction': 0,
+            'atr_position_size': 0,
+            'stop_loss': 0,
+            'take_profit': 0
+        }
+        self.no_signal_count = 0
+        
+    def add_price(self, price: float, timestamp: datetime) -> None:
+        """Add a new price point to the history."""
+        # For ATR, we need OHLC data, but we'll use price as close and estimate high/low
+        if len(self.price_history) == 0:
+            # First price point
+            self.price_history.append({
+                'high': price * 1.001,  # Estimate 0.1% high
+                'low': price * 0.999,   # Estimate 0.1% low
+                'close': price
+            })
+        else:
+            # Use previous close as open, estimate high/low based on price movement
+            prev_close = self.price_history[-1]['close']
+            price_change = abs(price - prev_close) / prev_close
+            
+            if price > prev_close:
+                high = max(price, prev_close * 1.001)
+                low = min(prev_close * 0.999, price * 0.999)
+            else:
+                high = max(prev_close * 1.001, price * 1.001)
+                low = min(price, prev_close * 0.999)
+            
+            self.price_history.append({
+                'high': high,
+                'low': low,
+                'close': price
+            })
+        
+        # Calculate ATR
+        self._calculate_atr()
+    
+    def _calculate_atr(self) -> None:
+        """Calculate Average True Range."""
+        if len(self.price_history) < 2:
+            return
+        
+        true_ranges = []
+        
+        for i in range(1, len(self.price_history)):
+            current = self.price_history[i]
+            previous = self.price_history[i-1]
+            
+            # True Range = max(high - low, |high - prev_close|, |low - prev_close|)
+            tr1 = current['high'] - current['low']
+            tr2 = abs(current['high'] - previous['close'])
+            tr3 = abs(current['low'] - previous['close'])
+            
+            true_range = max(tr1, tr2, tr3)
+            true_ranges.append(true_range)
+        
+        if len(true_ranges) >= self.period:
+            # Calculate ATR as simple moving average of true ranges
+            recent_trs = true_ranges[-self.period:]
+            self.current_atr = sum(recent_trs) / len(recent_trs)
+            self.atr_values.append(self.current_atr)
+        elif len(true_ranges) > 0:
+            # Use available true ranges for partial ATR
+            self.current_atr = sum(true_ranges) / len(true_ranges)
+            self.atr_values.append(self.current_atr)
+    
+    def _calculate_position_size(self, current_price: float) -> float:
+        """Calculate position size based on ATR."""
+        if self.current_atr == 0:
+            return 0.0
+        
+        # Position size = (account_balance * position_size_atr) / (current_price * atr_multiplier * current_atr)
+        # This ensures position size is inversely proportional to volatility
+        account_balance = self.config.max_position_size
+        position_value = account_balance * self.position_size_atr
+        atr_value = self.current_atr * self.atr_multiplier
+        
+        if atr_value > 0:
+            return position_value / (current_price * atr_value)
+        return 0.0
+    
+    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+        """Generate trading signal based on ATR analysis."""
+        if len(self.price_history) < self.period + 1:
+            self.no_signal_count += 1
+            return None
+        
+        signals = []
+        
+        # Check for volatility breakout
+        if self._check_volatility_breakout(current_price):
+            breakout_signal = self._create_breakout_signal(current_price, timestamp)
+            if breakout_signal:
+                signals.append(breakout_signal)
+        
+        # Check for ATR-based stop loss
+        if self.position > 0 and self._check_atr_stop_loss(current_price):
+            stop_signal = self._create_atr_stop_signal(current_price, timestamp)
+            if stop_signal:
+                signals.append(stop_signal)
+        
+        # Check for ATR-based take profit
+        if self.position > 0 and self._check_atr_take_profit(current_price):
+            profit_signal = self._create_atr_take_profit_signal(current_price, timestamp)
+            if profit_signal:
+                signals.append(profit_signal)
+        
+        # Return the first signal
+        if signals:
+            signal = signals[0]
+            self.signal_count += 1
+            
+            # Track signal type
+            if 'ATR Breakout' in signal.reason:
+                if signal.action == 'buy':
+                    self.signals_by_type['atr_breakout_buy'] += 1
+                else:
+                    self.signals_by_type['atr_breakout_sell'] += 1
+            elif 'ATR Stop Loss' in signal.reason:
+                self.signals_by_type['atr_stop_loss'] += 1
+            elif 'ATR Take Profit' in signal.reason:
+                self.signals_by_type['atr_take_profit'] += 1
+            elif 'Volatility Expansion' in signal.reason:
+                self.signals_by_type['volatility_expansion'] += 1
+            elif 'Volatility Contraction' in signal.reason:
+                self.signals_by_type['volatility_contraction'] += 1
+            elif 'ATR Position Size' in signal.reason:
+                self.signals_by_type['atr_position_size'] += 1
+            elif 'Stop loss' in signal.reason:
+                self.signals_by_type['stop_loss'] += 1
+            elif 'Take profit' in signal.reason:
+                self.signals_by_type['take_profit'] += 1
+                
+            return signal
+        
+        self.no_signal_count += 1
+        return None
+    
+    def _check_volatility_breakout(self, current_price: float) -> bool:
+        """Check for volatility breakout based on ATR."""
+        if len(self.atr_values) < 2:
+            return False
+        
+        # Check if current price movement exceeds ATR threshold
+        prev_close = self.price_history[-2]['close']
+        price_change = abs(current_price - prev_close)
+        
+        # Breakout if price change exceeds ATR * volatility_threshold
+        return price_change > (self.current_atr * self.volatility_threshold)
+    
+    def _check_atr_stop_loss(self, current_price: float) -> bool:
+        """Check if ATR-based stop loss should trigger."""
+        if self.position <= 0 or self.atr_stop_loss == 0:
+            return False
+        
+        if self.position > 0:  # Long position
+            return current_price <= self.atr_stop_loss
+        else:  # Short position
+            return current_price >= self.atr_stop_loss
+    
+    def _check_atr_take_profit(self, current_price: float) -> bool:
+        """Check if ATR-based take profit should trigger."""
+        if self.position <= 0 or self.atr_take_profit == 0:
+            return False
+        
+        if self.position > 0:  # Long position
+            return current_price >= self.atr_take_profit
+        else:  # Short position
+            return current_price <= self.atr_take_profit
+    
+    def _create_breakout_signal(self, current_price: float, timestamp: datetime) -> TradeSignal:
+        """Create volatility breakout signal."""
+        prev_close = self.price_history[-2]['close']
+        price_change = current_price - prev_close
+        
+        # Determine direction based on price movement
+        if price_change > 0:
+            action = 'buy'
+            reason = f"ATR Breakout: Volatility expansion upward (ATR: {self.current_atr:.4f})"
+        else:
+            action = 'sell'
+            reason = f"ATR Breakout: Volatility expansion downward (ATR: {self.current_atr:.4f})"
+        
+        # Calculate position size based on ATR
+        quantity = self._calculate_position_size(current_price)
+        
+        return TradeSignal(
+            action=action,
+            price=current_price,
+            quantity=quantity,
+            timestamp=timestamp,
+            reason=reason
+        )
+    
+    def _create_atr_stop_signal(self, current_price: float, timestamp: datetime) -> TradeSignal:
+        """Create ATR-based stop loss signal."""
+        return TradeSignal(
+            action='sell',
+            price=current_price,
+            quantity=abs(self.position),
+            timestamp=timestamp,
+            reason=f"ATR Stop Loss: Price {current_price:.2f} hit ATR stop at {self.atr_stop_loss:.2f}"
+        )
+    
+    def _create_atr_take_profit_signal(self, current_price: float, timestamp: datetime) -> TradeSignal:
+        """Create ATR-based take profit signal."""
+        return TradeSignal(
+            action='sell',
+            price=current_price,
+            quantity=abs(self.position),
+            timestamp=timestamp,
+            reason=f"ATR Take Profit: Price {current_price:.2f} hit ATR target at {self.atr_take_profit:.2f}"
+        )
+    
+    def update_position(self, signal: TradeSignal) -> None:
+        """Update position based on trade signal."""
+        if signal.action == 'buy':
+            self.position += signal.quantity
+            if self.position > 0:
+                self.entry_price = signal.price
+                # Set ATR-based stop loss and take profit
+                self.atr_stop_loss = signal.price - (self.current_atr * self.atr_multiplier)
+                self.atr_take_profit = signal.price + (self.current_atr * self.atr_multiplier * 2)
+                
+                logger.info(f"ATR Strategy: Bought {signal.quantity:.6f} at ${signal.price:.2f}, "
+                          f"ATR Stop: ${self.atr_stop_loss:.2f}, ATR Target: ${self.atr_take_profit:.2f}")
+        elif signal.action == 'sell':
+            self.position = 0.0
+            self.entry_price = 0.0
+            self.atr_stop_loss = 0.0
+            self.atr_take_profit = 0.0
+            
+            logger.info(f"ATR Strategy: Sold position at ${signal.price:.2f}")
+    
+    def get_signal_stats(self) -> dict:
+        """Get signal statistics."""
+        return {
+            'total_signals': self.signal_count,
+            'signals_by_type': self.signals_by_type.copy(),
+            'current_atr': self.current_atr,
+            'atr_period': self.period,
+            'atr_multiplier': self.atr_multiplier,
+            'volatility_threshold': self.volatility_threshold,
+            'no_signal_count': self.no_signal_count,
+            'signal_rate': self.signal_count / max(len(self.price_history), 1) * 100
+        }
+    
+    def get_position_info(self) -> Dict[str, Any]:
+        """Get current position information."""
+        return {
+            "position": self.position,
+            "entry_price": self.entry_price,
+            "atr_stop_loss": self.atr_stop_loss,
+            "atr_take_profit": self.atr_take_profit,
+            "current_atr": self.current_atr,
+            "unrealized_pnl": (self.position * (self.entry_price - self.entry_price)) if self.position > 0 else 0.0
+        }
+    
+    def get_atr_summary(self) -> Dict[str, Any]:
+        """Get ATR analysis summary."""
+        if not self.atr_values:
+            return {
+                'current_atr': 0.0,
+                'average_atr': 0.0,
+                'max_atr': 0.0,
+                'min_atr': 0.0,
+                'atr_trend': 'neutral'
+            }
+        
+        avg_atr = sum(self.atr_values) / len(self.atr_values)
+        max_atr = max(self.atr_values)
+        min_atr = min(self.atr_values)
+        
+        # Determine ATR trend
+        if len(self.atr_values) >= 5:
+            recent_avg = sum(self.atr_values[-5:]) / 5
+            older_avg = sum(self.atr_values[-10:-5]) / 5 if len(self.atr_values) >= 10 else avg_atr
+            if recent_avg > older_avg * 1.1:
+                trend = 'increasing'
+            elif recent_avg < older_avg * 0.9:
+                trend = 'decreasing'
+            else:
+                trend = 'stable'
+        else:
+            trend = 'neutral'
+        
+        return {
+            'current_atr': self.current_atr,
+            'average_atr': avg_atr,
+            'max_atr': max_atr,
+            'min_atr': min_atr,
+            'atr_trend': trend,
+            'volatility_level': 'high' if self.current_atr > avg_atr * 1.2 else 'low' if self.current_atr < avg_atr * 0.8 else 'normal'
+        }

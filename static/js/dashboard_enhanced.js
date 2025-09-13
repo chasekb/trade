@@ -1120,6 +1120,13 @@ class EnhancedTradingDashboard {
                 overbought: parseInt(document.getElementById('stoch-overbought').value),
                 oversold: parseInt(document.getElementById('stoch-oversold').value)
             };
+        } else if (strategyType === 'atr') {
+            strategyParams = {
+                period: parseInt(document.getElementById('atr-period').value),
+                atr_multiplier: parseFloat(document.getElementById('atr-multiplier').value),
+                volatility_threshold: parseFloat(document.getElementById('atr-volatility-threshold').value),
+                position_size_atr: parseFloat(document.getElementById('atr-position-size').value) / 100
+            };
         } else if (strategyType === 'bollinger') {
             strategyParams = {
                 period: parseInt(document.getElementById('bb-period').value),
@@ -1454,6 +1461,35 @@ class EnhancedTradingDashboard {
                             <div class="flex justify-between">
                                 <span class="text-gray-600">End of Period Exit:</span>
                                 <span class="font-medium">${signalsByType.end_of_period_exit || 0}</span>
+                            </div>
+                            <!-- ATR Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">ATR Breakout Buy:</span>
+                                <span class="font-medium">${signalsByType.atr_breakout_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">ATR Breakout Sell:</span>
+                                <span class="font-medium">${signalsByType.atr_breakout_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">ATR Stop Loss:</span>
+                                <span class="font-medium">${signalsByType.atr_stop_loss || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">ATR Take Profit:</span>
+                                <span class="font-medium">${signalsByType.atr_take_profit || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Volatility Expansion:</span>
+                                <span class="font-medium">${signalsByType.volatility_expansion || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Volatility Contraction:</span>
+                                <span class="font-medium">${signalsByType.volatility_contraction || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">ATR Position Size:</span>
+                                <span class="font-medium">${signalsByType.atr_position_size || 0}</span>
                             </div>
                             <!-- Common Signals -->
                             <div class="flex justify-between">

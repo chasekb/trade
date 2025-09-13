@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, Any
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
-from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy
+from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy, ATRStrategy
 from .database import BacktestDatabase
 import math
 from .websocket_client import WebSocketClient
@@ -580,6 +580,8 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = DCAStrategy
         elif request.strategy_type == "buy_hold":
             strategy_class = BuyAndHoldStrategy
+        elif request.strategy_type == "atr":
+            strategy_class = ATRStrategy
         
         # Use strategy_params if provided, otherwise fall back to legacy parameters
         if request.strategy_params:
@@ -620,6 +622,13 @@ async def run_backtest(request: BacktestRequest):
                 strategy_params = {}  # DCA doesn't need strategy-specific params
             elif request.strategy_type == "buy_hold":
                 strategy_params = {}  # Buy and Hold doesn't need strategy-specific params
+            elif request.strategy_type == "atr":
+                strategy_params = {
+                    'period': 14,
+                    'atr_multiplier': 2.0,
+                    'volatility_threshold': 1.5,
+                    'position_size_atr': 0.02
+                }
             else:
                 strategy_params = {
                     'short_window': request.short_window,

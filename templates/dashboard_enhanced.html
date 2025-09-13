@@ -210,6 +210,7 @@
                                 <option value="stochastic">Stochastic Oscillator</option>
                                 <option value="dca">Dollar Cost Averaging (DCA)</option>
                                 <option value="buy_hold">Buy and Hold</option>
+                                <option value="atr">Average True Range (ATR)</option>
                             </select>
                         </div>
                         <div>
@@ -349,33 +350,61 @@
                             </div>
                         </div>
 
-                        <!-- Stochastic Parameters -->
-                        <div id="stochastic-params" class="strategy-param-group hidden">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">%K Period</label>
-                                <input type="number" id="stoch-k-period" value="14" min="2" max="50" 
-                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
-                                       placeholder="%K period">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">%D Period</label>
-                                <input type="number" id="stoch-d-period" value="3" min="2" max="20" 
-                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
-                                       placeholder="%D period">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Overbought Level</label>
-                                <input type="number" id="stoch-overbought" value="80" min="50" max="95" 
-                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
-                                       placeholder="Overbought threshold">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Oversold Level</label>
-                                <input type="number" id="stoch-oversold" value="20" min="5" max="50" 
-                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
-                                       placeholder="Oversold threshold">
-                            </div>
-                        </div>
+                <!-- Stochastic Parameters -->
+                <div id="stochastic-params" class="strategy-param-group hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">%K Period</label>
+                        <input type="number" id="stoch-k-period" value="14" min="2" max="50"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="%K period">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">%D Period</label>
+                        <input type="number" id="stoch-d-period" value="3" min="2" max="20"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="%D period">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Overbought Level</label>
+                        <input type="number" id="stoch-overbought" value="80" min="50" max="95"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Overbought threshold">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Oversold Level</label>
+                        <input type="number" id="stoch-oversold" value="20" min="5" max="50"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Oversold threshold">
+                    </div>
+                </div>
+
+                <!-- ATR Parameters -->
+                <div id="atr-params" class="strategy-param-group hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">ATR Period</label>
+                        <input type="number" id="atr-period" value="14" min="5" max="50"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="ATR calculation period">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">ATR Multiplier</label>
+                        <input type="number" id="atr-multiplier" value="2.0" min="0.5" max="5.0" step="0.1"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="ATR multiplier for stop loss">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Volatility Threshold</label>
+                        <input type="number" id="atr-volatility-threshold" value="1.5" min="0.5" max="3.0" step="0.1"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Volatility breakout threshold">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Position Size ATR (%)</label>
+                        <input type="number" id="atr-position-size" value="2.0" min="0.1" max="10.0" step="0.1"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Position size as % of ATR">
+                    </div>
+                </div>
 
                         <!-- Bollinger Bands Parameters -->
                         <div id="bollinger-params" class="strategy-param-group hidden">
