@@ -64,49 +64,8 @@ class SimpleMovingAverageStrategy:
         
         if short_sma is None or long_sma is None:
             return None
-            
-        # Check for crossover
-        if len(self.price_history) >= 2:
-            prev_short_sma = self.calculate_sma(self.short_window)
-            prev_long_sma = self.calculate_sma(self.long_window)
-            
-            # Get previous values
-            if len(self.price_history) > self.short_window:
-                prev_prices = [p['price'] for p in self.price_history[-(self.short_window + 1):-1]]
-                prev_short_sma = sum(prev_prices) / len(prev_prices)
-            
-            if len(self.price_history) > self.long_window:
-                prev_prices = [p['price'] for p in self.price_history[-(self.long_window + 1):-1]]
-                prev_long_sma = sum(prev_prices) / len(prev_prices)
-            
-            # Golden cross (short SMA crosses above long SMA) - Buy signal
-            if (prev_short_sma <= prev_long_sma and 
-                short_sma > long_sma and 
-                self.position == 0):
-                
-                quantity = self.config.max_position_size / current_price
-                return TradeSignal(
-                    action='buy',
-                    price=current_price,
-                    quantity=quantity,
-                    timestamp=timestamp,
-                    reason=f"Golden cross: SMA{self.short_window} crossed above SMA{self.long_window}"
-                )
-            
-            # Death cross (short SMA crosses below long SMA) - Sell signal
-            elif (prev_short_sma >= prev_long_sma and 
-                  short_sma < long_sma and 
-                  self.position > 0):
-                
-                return TradeSignal(
-                    action='sell',
-                    price=current_price,
-                    quantity=self.position,
-                    timestamp=timestamp,
-                    reason=f"Death cross: SMA{self.short_window} crossed below SMA{self.long_window}"
-                )
         
-        # Check stop loss
+        # Check stop loss first (highest priority)
         if self.position > 0:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
             if loss_percentage <= -self.config.stop_loss_percentage:
@@ -118,7 +77,7 @@ class SimpleMovingAverageStrategy:
                     reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
                 )
         
-        # Check take profit
+        # Check take profit second
         if self.position > 0:
             profit_percentage = (current_price - self.entry_price) / self.entry_price
             if profit_percentage >= self.config.take_profit_percentage:
@@ -129,6 +88,44 @@ class SimpleMovingAverageStrategy:
                     timestamp=timestamp,
                     reason=f"Take profit triggered: {profit_percentage:.2%} profit"
                 )
+            
+        # Check for crossover
+        if len(self.price_history) >= self.long_window + 1:
+            # Get previous values (exclude the current price)
+            prev_short_prices = [p['price'] for p in self.price_history[-(self.short_window + 1):-1]]
+            prev_long_prices = [p['price'] for p in self.price_history[-(self.long_window + 1):-1]]
+            
+            prev_short_sma = sum(prev_short_prices) / len(prev_short_prices) if len(prev_short_prices) >= self.short_window else None
+            prev_long_sma = sum(prev_long_prices) / len(prev_long_prices) if len(prev_long_prices) >= self.long_window else None
+            
+            # Only check for crossovers if we have valid previous SMAs
+            if prev_short_sma is not None and prev_long_sma is not None:
+                # Golden cross (short SMA crosses above long SMA) - Buy signal
+                if (prev_short_sma <= prev_long_sma and 
+                    short_sma > long_sma and 
+                    self.position == 0):
+                    
+                    quantity = self.config.max_position_size / current_price
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=quantity,
+                        timestamp=timestamp,
+                        reason=f"Golden cross: SMA{self.short_window} crossed above SMA{self.long_window}"
+                    )
+                
+                # Death cross (short SMA crosses below long SMA) - Sell signal
+                elif (prev_short_sma >= prev_long_sma and 
+                      short_sma < long_sma and 
+                      self.position > 0):
+                    
+                    return TradeSignal(
+                        action='sell',
+                        price=current_price,
+                        quantity=self.position,
+                        timestamp=timestamp,
+                        reason=f"Death cross: SMA{self.short_window} crossed below SMA{self.long_window}"
+                    )
         
         return None
     
