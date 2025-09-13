@@ -280,11 +280,10 @@ class EnhancedTradingDashboard {
             const volume = parseFloat(data.ticker.volume_24h || 0);
             document.getElementById('volume-24h').textContent = volume.toLocaleString();
             
-            // Add to price data for charts
+            // Add to price data for real-time updates
             this.priceData.push({
                 time: new Date(),
-                price: price,
-                volume: volume
+                price: price
             });
             
             // Keep only last 100 data points
@@ -292,7 +291,7 @@ class EnhancedTradingDashboard {
                 this.priceData = this.priceData.slice(-100);
             }
             
-            this.updateCharts();
+            // Volume chart removed - no longer needed
         }
         
         // Update last update time
@@ -331,25 +330,8 @@ class EnhancedTradingDashboard {
     }
 
     updateCharts() {
-        if (this.priceData.length === 0) return;
-        
-        // Volume chart (keep existing)
-        const volumeTrace = {
-            x: this.priceData.map(d => d.time),
-            y: this.priceData.map(d => d.volume),
-            type: 'bar',
-            name: 'Volume',
-            marker: { color: '#10B981' }
-        };
-        
-        const volumeLayout = {
-            title: 'Real-time Volume',
-            xaxis: { title: 'Time' },
-            yaxis: { title: 'Volume' },
-            margin: { t: 30, r: 30, b: 30, l: 30 }
-        };
-        
-        Plotly.newPlot('volume-chart', [volumeTrace], volumeLayout, {responsive: true});
+        // Volume chart removed - only candlestick chart remains
+        // This method is kept for compatibility but no longer creates charts
     }
     
     updateCandlestickChart() {
@@ -491,7 +473,7 @@ class EnhancedTradingDashboard {
             
             if (Array.isArray(data) && data.length > 0) {
                 this.historicalData = data;
-                this.updateCharts();
+                // Volume chart removed - no longer needed
             }
         } catch (error) {
             console.error('Failed to load historical data:', error);
