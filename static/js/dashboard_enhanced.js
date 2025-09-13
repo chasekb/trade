@@ -15,6 +15,8 @@ class EnhancedTradingDashboard {
         this.currentSymbol = 'BTC-USD'; // Default symbol
         this.currentYAxisRange = null; // Store current y-axis range
         this.currentLayout = null; // Store current layout
+        this.percentageTimeframe = '24h'; // Default percentage timeframe
+        this.historicalPrices = {}; // Store historical prices for percentage calculation
         
         this.init();
     }
@@ -124,6 +126,12 @@ class EnhancedTradingDashboard {
         });
         document.getElementById('tab-settings').addEventListener('click', () => {
             this.switchTab('settings');
+        });
+        
+        // Percentage timeframe selector
+        document.getElementById('percentage-timeframe').addEventListener('change', (e) => {
+            this.percentageTimeframe = e.target.value;
+            this.updatePercentageChange();
         });
         
         // Clear results button
@@ -316,13 +324,22 @@ class EnhancedTradingDashboard {
         // Update price data
         if (data.ticker) {
             const price = parseFloat(data.ticker.price || 0);
-            const change = parseFloat(data.ticker.price_change_24h || 0);
             
             document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
             
-            const changeElement = document.getElementById('price-change');
-            changeElement.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-            changeElement.className = `text-sm ${change >= 0 ? 'text-green-500' : 'text-red-500'}`;
+            // Store current price for percentage calculation
+            this.historicalPrices[new Date().toISOString()] = price;
+            
+            // Clean up old historical prices (keep only last 1000 entries)
+            const priceEntries = Object.entries(this.historicalPrices);
+            if (priceEntries.length > 1000) {
+                const sortedEntries = priceEntries.sort((a, b) => new Date(a[0]) - new Date(b[0]));
+                const toKeep = sortedEntries.slice(-1000);
+                this.historicalPrices = Object.fromEntries(toKeep);
+            }
+            
+            // Update percentage change
+            this.updatePercentageChange();
             
             // Update volume
             const volume = parseFloat(data.ticker.volume_24h || 0);
@@ -345,6 +362,90 @@ class EnhancedTradingDashboard {
         
         // Update last update time
         document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+    }
+    
+    updatePercentageChange() {
+        const currentPrice = parseFloat(document.getElementById('current-price').textContent.replace('$', ''));
+        if (!currentPrice || currentPrice === 0) return;
+        
+        const now = new Date();
+        let targetTime;
+        
+        // Calculate target time based on selected timeframe
+        switch (this.percentageTimeframe) {
+            case '1h':
+                targetTime = new Date(now.getTime() - 60 * 60 * 1000);
+                break;
+            case '24h':
+                targetTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                break;
+            case '7d':
+                targetTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                break;
+            case '30d':
+                targetTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                break;
+            case '365d':
+                targetTime = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+                break;
+            default:
+                targetTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        }
+        
+        // Find the closest historical price to the target time
+        let historicalPrice = null;
+        let closestTime = null;
+        let minTimeDiff = Infinity;
+        
+        for (const [timeStr, price] of Object.entries(this.historicalPrices)) {
+            const time = new Date(timeStr);
+            const timeDiff = Math.abs(time.getTime() - targetTime.getTime());
+            
+            if (timeDiff < minTimeDiff) {
+                minTimeDiff = timeDiff;
+                historicalPrice = price;
+                closestTime = time;
+            }
+        }
+        
+        // If no historical price found, try to get from candles data
+        if (!historicalPrice && this.candlesData.length > 0) {
+            const targetTimeMs = targetTime.getTime();
+            let closestCandle = null;
+            let minCandleDiff = Infinity;
+            
+            for (const candle of this.candlesData) {
+                const candleTime = new Date(candle.timestamp).getTime();
+                const timeDiff = Math.abs(candleTime - targetTimeMs);
+                
+                if (timeDiff < minCandleDiff) {
+                    minCandleDiff = timeDiff;
+                    closestCandle = candle;
+                }
+            }
+            
+            if (closestCandle) {
+                historicalPrice = parseFloat(closestCandle.close);
+            }
+        }
+        
+        // Calculate percentage change
+        let percentageChange = 0;
+        if (historicalPrice && historicalPrice > 0) {
+            percentageChange = ((currentPrice - historicalPrice) / historicalPrice) * 100;
+        }
+        
+        // Update the display
+        const changeElement = document.getElementById('price-change');
+        changeElement.textContent = `${percentageChange >= 0 ? '+' : ''}${percentageChange.toFixed(2)}%`;
+        changeElement.className = `text-sm ${percentageChange >= 0 ? 'text-green-500' : 'text-red-500'}`;
+        
+        console.log(`Percentage change for ${this.percentageTimeframe}:`, {
+            currentPrice,
+            historicalPrice,
+            percentageChange,
+            timeframe: this.percentageTimeframe
+        });
     }
 
     addToDataFeed(data) {
@@ -646,6 +747,9 @@ class EnhancedTradingDashboard {
                 // Fill in any gaps with real-time data
                 this.fillDataGaps();
                 
+                // Update percentage change with historical data
+                this.updatePercentageChange();
+                
                 this.updateCandlestickChart(true);
             } else {
                 console.warn('No candles data received');
@@ -900,10 +1004,11 @@ class EnhancedTradingDashboard {
             // Update WebSocket subscriptions (if connected)
             await this.updateWebSocketSubscriptions();
             
-            // Clear existing chart data, y-axis range, and layout
+            // Clear existing chart data, y-axis range, layout, and historical prices
             this.candlesData = [];
             this.currentYAxisRange = null;
             this.currentLayout = null;
+            this.historicalPrices = {};
             
             // Reload chart data with rescaling
             await this.loadCandlesData();

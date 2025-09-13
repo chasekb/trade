@@ -96,8 +96,15 @@
                     </div>
                     <i class="fas fa-dollar-sign text-green-500 text-2xl"></i>
                 </div>
-                <div class="mt-2">
+                <div class="mt-2 flex items-center space-x-2">
                     <span class="text-sm" id="price-change">+0.00%</span>
+                    <select id="percentage-timeframe" class="text-xs border border-gray-300 rounded px-2 py-1">
+                        <option value="1h">1h</option>
+                        <option value="24h" selected>1d</option>
+                        <option value="7d">1w</option>
+                        <option value="30d">1m</option>
+                        <option value="365d">1y</option>
+                    </select>
                 </div>
             </div>
 
