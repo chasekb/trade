@@ -1044,10 +1044,17 @@ class EnhancedTradingDashboard {
         
         // Get strategy-specific parameters
         let strategyParams = {};
-        if (strategyType === 'sma' || strategyType === 'ema') {
+        if (strategyType === 'sma') {
             strategyParams = {
                 short_window: parseInt(document.getElementById('short-window').value),
                 long_window: parseInt(document.getElementById('long-window').value)
+            };
+        } else if (strategyType === 'ema') {
+            const alphaValue = document.getElementById('ema-alpha').value;
+            strategyParams = {
+                short_ema: parseInt(document.getElementById('ema-short').value),
+                long_ema: parseInt(document.getElementById('ema-long').value),
+                alpha: alphaValue ? parseFloat(alphaValue) : null
             };
         } else if (strategyType === 'rsi') {
             strategyParams = {
