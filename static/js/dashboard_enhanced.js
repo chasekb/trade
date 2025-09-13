@@ -1948,10 +1948,10 @@ class EnhancedTradingDashboard {
     }
 
     startDataRefresh() {
-        // Refresh data summary every 5 seconds
+        // Refresh data summary every 10 seconds
         setInterval(() => {
             this.loadDataSummary();
-        }, 5000);
+        }, 10000);
         
         // Refresh subscriptions every 60 seconds
         setInterval(() => {
