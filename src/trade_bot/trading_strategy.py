@@ -98,6 +98,9 @@ class SimpleMovingAverageStrategy:
             prev_short_sma = sum(prev_short_prices) / len(prev_short_prices) if len(prev_short_prices) >= self.short_window else None
             prev_long_sma = sum(prev_long_prices) / len(prev_long_prices) if len(prev_long_prices) >= self.long_window else None
             
+            # Log SMA values for debugging
+            logger.debug(f"SMA values: short={short_sma:.2f}, long={long_sma:.2f}, prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, position={self.position}")
+            
             # Only check for crossovers if we have valid previous SMAs
             if prev_short_sma is not None and prev_long_sma is not None:
                 # Golden cross (short SMA crosses above long SMA) - Buy signal
@@ -127,6 +130,68 @@ class SimpleMovingAverageStrategy:
                         quantity=self.position,
                         timestamp=timestamp,
                         reason=f"Death cross: SMA{self.short_window} crossed below SMA{self.long_window}"
+                    )
+                
+                # Additional signals for more trading opportunities
+                # Buy when short SMA is significantly above long SMA (momentum)
+                elif (short_sma > long_sma * 1.02 and  # 2% above
+                      self.position == 0 and
+                      len(self.price_history) > self.long_window * 2):  # Wait for some history
+                    
+                    quantity = self.config.max_position_size / current_price
+                    logger.debug(f"Momentum buy: short={short_sma:.2f}, long={long_sma:.2f}, ratio={short_sma/long_sma:.4f}")
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=quantity,
+                        timestamp=timestamp,
+                        reason=f"Momentum buy: SMA{self.short_window} is {((short_sma/long_sma-1)*100):.1f}% above SMA{self.long_window}"
+                    )
+                
+                # Sell when short SMA is significantly below long SMA (momentum)
+                elif (short_sma < long_sma * 0.98 and  # 2% below
+                      self.position > 0):
+                    
+                    logger.debug(f"Momentum sell: short={short_sma:.2f}, long={long_sma:.2f}, ratio={short_sma/long_sma:.4f}")
+                    return TradeSignal(
+                        action='sell',
+                        price=current_price,
+                        quantity=self.position,
+                        timestamp=timestamp,
+                        reason=f"Momentum sell: SMA{self.short_window} is {((short_sma/long_sma-1)*100):.1f}% below SMA{self.long_window}"
+                    )
+                
+                # Additional trend-following signals
+                # Buy when price is above both SMAs and we're not in position
+                elif (current_price > short_sma and 
+                      current_price > long_sma and 
+                      short_sma > long_sma and
+                      self.position == 0 and
+                      len(self.price_history) > self.long_window * 2):
+                    
+                    quantity = self.config.max_position_size / current_price
+                    logger.debug(f"Trend buy: price={current_price:.2f}, short={short_sma:.2f}, long={long_sma:.2f}")
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=quantity,
+                        timestamp=timestamp,
+                        reason=f"Trend buy: Price above both SMAs (price: ${current_price:.2f})"
+                    )
+                
+                # Sell when price is below both SMAs and we're in position
+                elif (current_price < short_sma and 
+                      current_price < long_sma and 
+                      short_sma < long_sma and
+                      self.position > 0):
+                    
+                    logger.debug(f"Trend sell: price={current_price:.2f}, short={short_sma:.2f}, long={long_sma:.2f}")
+                    return TradeSignal(
+                        action='sell',
+                        price=current_price,
+                        quantity=self.position,
+                        timestamp=timestamp,
+                        reason=f"Trend sell: Price below both SMAs (price: ${current_price:.2f})"
                     )
         
         return None
