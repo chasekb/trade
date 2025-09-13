@@ -224,6 +224,7 @@ class WebSocketManager:
             # Subscribe to data channels
             await self.websocket_client.subscribe_to_ticker(config.product_id)
             await self.websocket_client.subscribe_to_level2(config.product_id)
+            await self.websocket_client.subscribe_to_candles(config.product_id)
             
             await self.websocket_client.listen()
         except Exception as e:

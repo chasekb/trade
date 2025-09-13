@@ -19,9 +19,13 @@ class EnhancedTradingDashboard {
     init() {
         this.connectWebSocket();
         this.setupEventListeners();
-        this.loadInitialData();
-        this.startDataRefresh();
         this.loadSubscriptions();
+        
+        // Load data after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            this.loadInitialData();
+            this.startDataRefresh();
+        }, 100);
     }
 
     connectWebSocket() {
@@ -349,9 +353,16 @@ class EnhancedTradingDashboard {
     }
     
     updateCandlestickChart() {
+        console.log('updateCandlestickChart called with data length:', this.candlesData.length);
+        
+        const chartDiv = document.getElementById('price-chart');
+        if (!chartDiv) {
+            console.error('Chart div not found!');
+            return;
+        }
+        
         if (this.candlesData.length === 0) {
             // Show loading message
-            const chartDiv = document.getElementById('price-chart');
             chartDiv.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Loading candlestick data...</div>';
             return;
         }
@@ -363,6 +374,15 @@ class EnhancedTradingDashboard {
         const lows = this.candlesData.map(candle => parseFloat(candle.low));
         const closes = this.candlesData.map(candle => parseFloat(candle.close));
         const volumes = this.candlesData.map(candle => parseFloat(candle.volume));
+        
+        console.log('Processed data:', {
+            times: times.slice(0, 3),
+            opens: opens.slice(0, 3),
+            highs: highs.slice(0, 3),
+            lows: lows.slice(0, 3),
+            closes: closes.slice(0, 3),
+            volumes: volumes.slice(0, 3)
+        });
         
         // Create candlestick trace
         const candlestickTrace = {
@@ -442,13 +462,17 @@ class EnhancedTradingDashboard {
     
     async loadCandlesData() {
         try {
+            console.log(`Loading candles data for period: ${this.currentCandlePeriod} (${this.getCandlePeriodLabel()})`);
             const response = await fetch(`/api/candles?granularity=${this.currentCandlePeriod}&days=7`);
             const data = await response.json();
             
+            console.log('Candles API response:', data);
+            
             if (Array.isArray(data) && data.length > 0) {
                 this.candlesData = data;
-                this.updateCandlestickChart();
                 console.log(`Loaded ${data.length} candles for period ${this.getCandlePeriodLabel()}`);
+                console.log('First candle:', data[0]);
+                this.updateCandlestickChart();
             } else {
                 console.warn('No candles data received');
                 // Show empty chart
