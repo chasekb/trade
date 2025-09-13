@@ -90,6 +90,9 @@ class SimpleMovingAverageStrategy:
                 )
             
         # Check for crossover
+        prev_short_sma = None
+        prev_long_sma = None
+        
         if len(self.price_history) >= self.long_window + 1:
             # Get previous values (exclude the current price)
             prev_short_prices = [p['price'] for p in self.price_history[-(self.short_window + 1):-1]]
@@ -98,12 +101,12 @@ class SimpleMovingAverageStrategy:
             prev_short_sma = sum(prev_short_prices) / len(prev_short_prices) if len(prev_short_prices) >= self.short_window else None
             prev_long_sma = sum(prev_long_prices) / len(prev_long_prices) if len(prev_long_prices) >= self.long_window else None
             
-        # Log SMA values for debugging
-        logger.debug(f"SMA values: short={short_sma:.2f}, long={long_sma:.2f}, prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, position={self.position}, price_history_length={len(self.price_history)}")
-        
-        # Log when we have enough data for strategy
-        if len(self.price_history) == self.long_window + 1:
-            logger.info(f"Strategy now has enough data for full calculations: {len(self.price_history)} points")
+            # Log SMA values for debugging
+            logger.debug(f"SMA values: short={short_sma:.2f}, long={long_sma:.2f}, prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, position={self.position}, price_history_length={len(self.price_history)}")
+            
+            # Log when we have enough data for strategy
+            if len(self.price_history) == self.long_window + 1:
+                logger.info(f"Strategy now has enough data for full calculations: {len(self.price_history)} points")
         
         # Only check for crossovers if we have valid previous SMAs
         if prev_short_sma is not None and prev_long_sma is not None:
