@@ -186,6 +186,16 @@ class EnhancedTradingDashboard {
         document.getElementById('enable-dca').addEventListener('change', (e) => {
             this.toggleDCAOptions(e.target.checked);
         });
+
+        // Buy and Hold toggle handler
+        document.getElementById('enable-buy-hold').addEventListener('change', (e) => {
+            this.toggleBuyHoldOptions(e.target.checked);
+        });
+
+        // Buy and Hold exit condition handler
+        document.getElementById('buy-hold-exit-condition').addEventListener('change', (e) => {
+            this.toggleBuyHoldProfitTarget(e.target.value);
+        });
     }
 
     async subscribeToChannel() {
@@ -1140,7 +1150,10 @@ class EnhancedTradingDashboard {
                     dca_amount: parseFloat(document.getElementById('dca-amount').value),
                     dca_frequency: parseInt(document.getElementById('dca-frequency').value),
                     dca_max_investments: parseInt(document.getElementById('dca-max-investments').value),
-                    dca_start_delay: parseInt(document.getElementById('dca-start-delay').value)
+                    dca_start_delay: parseInt(document.getElementById('dca-start-delay').value),
+                    enable_buy_hold: document.getElementById('enable-buy-hold').checked,
+                    buy_hold_exit_condition: document.getElementById('buy-hold-exit-condition').value,
+                    buy_hold_profit_target: parseFloat(document.getElementById('buy-hold-profit-target').value)
                 })
             });
             
@@ -1424,6 +1437,23 @@ class EnhancedTradingDashboard {
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Strategy Sell:</span>
                                 <span class="font-medium">${signalsByType.strategy_sell || 0}</span>
+                            </div>
+                            <!-- Buy and Hold Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Buy and Hold Buy:</span>
+                                <span class="font-medium">${signalsByType.buy_and_hold_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Buy and Hold Sell:</span>
+                                <span class="font-medium">${signalsByType.buy_and_hold_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Profit Target Exit:</span>
+                                <span class="font-medium">${signalsByType.profit_target_exit || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">End of Period Exit:</span>
+                                <span class="font-medium">${signalsByType.end_of_period_exit || 0}</span>
                             </div>
                             <!-- Common Signals -->
                             <div class="flex justify-between">
@@ -1719,6 +1749,27 @@ class EnhancedTradingDashboard {
             dcaOptions.classList.remove('hidden');
         } else {
             dcaOptions.classList.add('hidden');
+        }
+    }
+
+    toggleBuyHoldOptions(enabled) {
+        const buyHoldOptions = document.getElementById('buy-hold-options');
+        if (enabled) {
+            buyHoldOptions.classList.remove('hidden');
+        } else {
+            buyHoldOptions.classList.add('hidden');
+        }
+    }
+
+    toggleBuyHoldProfitTarget(exitCondition) {
+        const profitTargetInput = document.getElementById('buy-hold-profit-target');
+        if (exitCondition === 'profit_target') {
+            profitTargetInput.disabled = false;
+            profitTargetInput.required = true;
+        } else {
+            profitTargetInput.disabled = true;
+            profitTargetInput.required = false;
+            profitTargetInput.value = 0;
         }
     }
 

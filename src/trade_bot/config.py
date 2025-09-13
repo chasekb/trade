@@ -31,6 +31,11 @@ class TradingConfig:
     dca_max_investments: int = 52  # Maximum number of DCA investments (1 year if weekly)
     dca_start_delay: int = 0  # Days to wait before starting DCA
     
+    # Buy and Hold settings
+    enable_buy_hold: bool = False  # If True, hold positions indefinitely instead of using stop/loss
+    buy_hold_exit_condition: str = "never"  # Options: "never", "end_of_period", "profit_target"
+    buy_hold_profit_target: float = 0.0  # Profit target for buy and hold (0 = no target)
+    
     # Output settings
     output_dir: str = "outputs"
     log_level: str = "INFO"
@@ -52,6 +57,9 @@ class TradingConfig:
             dca_frequency=int(os.getenv("DCA_FREQUENCY", "7")),
             dca_max_investments=int(os.getenv("DCA_MAX_INVESTMENTS", "52")),
             dca_start_delay=int(os.getenv("DCA_START_DELAY", "0")),
+            enable_buy_hold=os.getenv("ENABLE_BUY_HOLD", "false").lower() == "true",
+            buy_hold_exit_condition=os.getenv("BUY_HOLD_EXIT_CONDITION", "never"),
+            buy_hold_profit_target=float(os.getenv("BUY_HOLD_PROFIT_TARGET", "0.0")),
             output_dir=os.getenv("OUTPUT_DIR", "outputs"),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )
@@ -78,3 +86,7 @@ class TradingConfig:
             raise ValueError("DCA_MAX_INVESTMENTS must be positive")
         if self.dca_start_delay < 0:
             raise ValueError("DCA_START_DELAY must be non-negative")
+        if self.buy_hold_exit_condition not in ["never", "end_of_period", "profit_target"]:
+            raise ValueError("BUY_HOLD_EXIT_CONDITION must be 'never', 'end_of_period', or 'profit_target'")
+        if self.buy_hold_profit_target < 0:
+            raise ValueError("BUY_HOLD_PROFIT_TARGET must be non-negative")

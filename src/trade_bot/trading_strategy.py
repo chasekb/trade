@@ -1849,3 +1849,201 @@ class DCAStrategy:
             'average_price': avg_price,
             'investments': self.dca_investments
         }
+
+
+class BuyAndHoldStrategy:
+    """Buy and Hold strategy that holds positions indefinitely instead of using stop/loss."""
+    
+    def __init__(self, config: TradingConfig, base_strategy=None):
+        self.config = config
+        self.base_strategy = base_strategy  # Optional underlying strategy
+        self.position = 0.0
+        self.entry_price = 0.0
+        self.total_invested = 0.0
+        self.buy_signals = []  # Track all buy signals
+        self.sell_signals = []  # Track any sell signals
+        
+        # Signal tracking
+        self.signal_count = 0
+        self.signals_by_type = {
+            'buy_and_hold_buy': 0,
+            'buy_and_hold_sell': 0,
+            'strategy_buy': 0,
+            'strategy_sell': 0,
+            'profit_target_exit': 0,
+            'end_of_period_exit': 0
+        }
+        self.no_signal_count = 0
+        
+    def add_price(self, price: float, timestamp: datetime) -> None:
+        """Add a new price point to the history."""
+        if self.base_strategy:
+            self.base_strategy.add_price(price, timestamp)
+    
+    def should_exit_position(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> bool:
+        """Check if position should be exited based on buy and hold rules."""
+        if not self.config.enable_buy_hold:
+            return False
+            
+        if self.position <= 0:
+            return False
+            
+        # Check exit conditions
+        if self.config.buy_hold_exit_condition == "end_of_period" and is_end_of_period:
+            return True
+        elif self.config.buy_hold_exit_condition == "profit_target" and self.config.buy_hold_profit_target > 0:
+            profit_pct = ((current_price - self.entry_price) / self.entry_price) * 100
+            if profit_pct >= self.config.buy_hold_profit_target:
+                return True
+                
+        return False
+    
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
+        """Generate trading signal based on buy and hold and optional base strategy."""
+        signals = []
+        
+        # Check for buy and hold exit
+        if self.should_exit_position(current_price, timestamp, is_end_of_period):
+            exit_signal = self._create_exit_signal(current_price, timestamp, is_end_of_period)
+            if exit_signal:
+                signals.append(exit_signal)
+        
+        # Check base strategy if available
+        if self.base_strategy:
+            base_signal = self.base_strategy.generate_signal(current_price, timestamp)
+            if base_signal:
+                # Only process buy signals in buy and hold mode
+                if base_signal.action == 'buy':
+                    # Modify signal to indicate it's from base strategy
+                    base_signal.reason = f"Strategy Buy: {base_signal.reason}"
+                    signals.append(base_signal)
+                # Ignore sell signals from base strategy in buy and hold mode
+                elif base_signal.action == 'sell':
+                    logger.debug(f"Ignoring sell signal in buy and hold mode: {base_signal.reason}")
+        
+        # Return the first signal
+        if signals:
+            signal = signals[0]
+            self.signal_count += 1
+            
+            # Track signal type
+            if 'Buy and Hold' in signal.reason:
+                if signal.action == 'buy':
+                    self.signals_by_type['buy_and_hold_buy'] += 1
+                else:
+                    self.signals_by_type['buy_and_hold_sell'] += 1
+            elif 'Strategy Buy' in signal.reason:
+                self.signals_by_type['strategy_buy'] += 1
+            elif 'Strategy Sell' in signal.reason:
+                self.signals_by_type['strategy_sell'] += 1
+            elif 'Profit Target' in signal.reason:
+                self.signals_by_type['profit_target_exit'] += 1
+            elif 'End of Period' in signal.reason:
+                self.signals_by_type['end_of_period_exit'] += 1
+                
+            return signal
+        
+        self.no_signal_count += 1
+        return None
+    
+    def _create_exit_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool) -> TradeSignal:
+        """Create a buy and hold exit signal."""
+        if is_end_of_period:
+            reason = f"Buy and Hold: End of Period Exit at ${current_price:.2f}"
+        else:
+            profit_pct = ((current_price - self.entry_price) / self.entry_price) * 100
+            reason = f"Buy and Hold: Profit Target Exit at ${current_price:.2f} ({profit_pct:.1f}% profit)"
+        
+        logger.info(f"Buy and Hold Exit: {reason}")
+        
+        return TradeSignal(
+            action='sell',
+            price=current_price,
+            quantity=self.position,
+            timestamp=timestamp,
+            reason=reason
+        )
+    
+    def update_position(self, signal: TradeSignal) -> None:
+        """Update position based on trade signal."""
+        if signal.action == 'buy':
+            # Accumulate position
+            if self.position == 0:
+                self.entry_price = signal.price
+            else:
+                # Calculate weighted average entry price
+                total_value = (self.position * self.entry_price) + (signal.quantity * signal.price)
+                self.position += signal.quantity
+                self.entry_price = total_value / self.position
+            
+            self.total_invested += signal.quantity * signal.price
+            self.buy_signals.append({
+                'timestamp': signal.timestamp,
+                'price': signal.price,
+                'quantity': signal.quantity,
+                'reason': signal.reason
+            })
+            
+            logger.info(f"Buy and Hold: Bought {signal.quantity:.6f} at ${signal.price:.2f}, Total Position: {self.position:.6f}")
+            
+        elif signal.action == 'sell':
+            # Exit entire position
+            self.sell_signals.append({
+                'timestamp': signal.timestamp,
+                'price': signal.price,
+                'quantity': self.position,
+                'reason': signal.reason
+            })
+            
+            logger.info(f"Buy and Hold: Sold {self.position:.6f} at ${signal.price:.2f}")
+            self.position = 0.0
+            self.entry_price = 0.0
+    
+    def get_signal_stats(self) -> dict:
+        """Get signal statistics."""
+        base_stats = {}
+        if self.base_strategy:
+            base_stats = self.base_strategy.get_signal_stats()
+        
+        return {
+            'total_signals': self.signal_count,
+            'signals_by_type': self.signals_by_type.copy(),
+            'buy_signals': len(self.buy_signals),
+            'sell_signals': len(self.sell_signals),
+            'total_invested': self.total_invested,
+            'no_signal_count': self.no_signal_count,
+            'signal_rate': self.signal_count / max(len(self.buy_signals), 1) * 100,
+            'base_strategy_stats': base_stats
+        }
+    
+    def get_position_info(self) -> Dict[str, Any]:
+        """Get current position information."""
+        if self.base_strategy:
+            base_info = self.base_strategy.get_position_info()
+            # Merge with buy and hold info
+            return {
+                'position': self.position,
+                'entry_price': self.entry_price,
+                'total_invested': self.total_invested,
+                'unrealized_pnl': 0.0,  # Would need current price to calculate
+                'base_strategy_info': base_info
+            }
+        else:
+            return {
+                'position': self.position,
+                'entry_price': self.entry_price,
+                'total_invested': self.total_invested,
+                'unrealized_pnl': 0.0  # Would need current price to calculate
+            }
+    
+    def get_buy_hold_summary(self) -> Dict[str, Any]:
+        """Get buy and hold investment summary."""
+        return {
+            'total_buy_signals': len(self.buy_signals),
+            'total_sell_signals': len(self.sell_signals),
+            'total_invested': self.total_invested,
+            'current_position': self.position,
+            'average_entry_price': self.entry_price,
+            'buy_signals': self.buy_signals,
+            'sell_signals': self.sell_signals
+        }

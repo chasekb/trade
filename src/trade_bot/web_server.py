@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, Any
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
-from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy
+from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy
 from .database import BacktestDatabase
 import math
 from .websocket_client import WebSocketClient
@@ -169,6 +169,10 @@ class BacktestRequest(BaseModel):
     dca_frequency: int = 7
     dca_max_investments: int = 52
     dca_start_delay: int = 0
+    # Buy and Hold parameters
+    enable_buy_hold: bool = False
+    buy_hold_exit_condition: str = "never"
+    buy_hold_profit_target: float = 0.0
     # Legacy parameters for backward compatibility
     short_window: int = 5
     long_window: int = 20
@@ -574,6 +578,8 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = StochasticStrategy
         elif request.strategy_type == "dca":
             strategy_class = DCAStrategy
+        elif request.strategy_type == "buy_hold":
+            strategy_class = BuyAndHoldStrategy
         
         # Use strategy_params if provided, otherwise fall back to legacy parameters
         if request.strategy_params:
@@ -612,6 +618,8 @@ async def run_backtest(request: BacktestRequest):
                 }
             elif request.strategy_type == "dca":
                 strategy_params = {}  # DCA doesn't need strategy-specific params
+            elif request.strategy_type == "buy_hold":
+                strategy_params = {}  # Buy and Hold doesn't need strategy-specific params
             else:
                 strategy_params = {
                     'short_window': request.short_window,
@@ -655,7 +663,10 @@ async def run_backtest(request: BacktestRequest):
             'dca_amount': request.dca_amount,
             'dca_frequency': request.dca_frequency,
             'dca_max_investments': request.dca_max_investments,
-            'dca_start_delay': request.dca_start_delay
+            'dca_start_delay': request.dca_start_delay,
+            'enable_buy_hold': request.enable_buy_hold,
+            'buy_hold_exit_condition': request.buy_hold_exit_condition,
+            'buy_hold_profit_target': request.buy_hold_profit_target
         }
         
         results_data = {
