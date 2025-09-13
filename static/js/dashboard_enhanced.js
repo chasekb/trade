@@ -1261,6 +1261,31 @@ class EnhancedTradingDashboard {
                                 <span class="text-gray-600">Bollinger Squeeze:</span>
                                 <span class="font-medium">${signalsByType.squeeze || 0}</span>
                             </div>
+                            <!-- RSI Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Oversold Buy:</span>
+                                <span class="font-medium">${signalsByType.oversold_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Overbought Sell:</span>
+                                <span class="font-medium">${signalsByType.overbought_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">RSI Cross Oversold:</span>
+                                <span class="font-medium">${signalsByType.rsi_cross_oversold || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">RSI Cross Overbought:</span>
+                                <span class="font-medium">${signalsByType.rsi_cross_overbought || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">RSI Divergence Buy:</span>
+                                <span class="font-medium">${signalsByType.rsi_divergence_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">RSI Divergence Sell:</span>
+                                <span class="font-medium">${signalsByType.rsi_divergence_sell || 0}</span>
+                            </div>
                             <!-- Common Signals -->
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Stop Loss:</span>

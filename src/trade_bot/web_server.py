@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
-from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy
+from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy
 import math
 from .websocket_client import WebSocketClient
 from .data_handler import DataHandler
@@ -533,8 +533,7 @@ async def run_backtest(request: BacktestRequest):
             # For now, use SMA as EMA is not implemented
             strategy_class = SimpleMovingAverageStrategy
         elif request.strategy_type == "rsi":
-            # For now, use SMA as RSI is not implemented
-            strategy_class = SimpleMovingAverageStrategy
+            strategy_class = RSIStrategy
         elif request.strategy_type == "bollinger":
             strategy_class = BollingerBandsStrategy
         
@@ -547,6 +546,12 @@ async def run_backtest(request: BacktestRequest):
                 strategy_params = {
                     'period': 20,
                     'std_dev': 2.0
+                }
+            elif request.strategy_type == "rsi":
+                strategy_params = {
+                    'period': 14,
+                    'oversold': 30,
+                    'overbought': 70
                 }
             else:
                 strategy_params = {
