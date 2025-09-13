@@ -1810,7 +1810,8 @@ class DCAStrategy:
             'dca_count': self.dca_count,
             'no_signal_count': self.no_signal_count,
             'signal_rate': self.signal_count / max(len(self.dca_investments), 1) * 100,
-            'base_strategy_stats': base_stats
+            'base_strategy_stats': base_stats,
+            'price_history_length': len(self.dca_investments)  # DCA doesn't use price_history
         }
     
     def get_position_info(self) -> Dict[str, Any]:
@@ -2013,7 +2014,8 @@ class BuyAndHoldStrategy:
             'total_invested': self.total_invested,
             'no_signal_count': self.no_signal_count,
             'signal_rate': self.signal_count / max(len(self.buy_signals), 1) * 100,
-            'base_strategy_stats': base_stats
+            'base_strategy_stats': base_stats,
+            'price_history_length': len(self.buy_signals)  # Buy and hold uses buy_signals instead of price_history
         }
     
     def get_position_info(self) -> Dict[str, Any]:
@@ -2321,7 +2323,8 @@ class ATRStrategy:
             'atr_multiplier': self.atr_multiplier,
             'volatility_threshold': self.volatility_threshold,
             'no_signal_count': self.no_signal_count,
-            'signal_rate': self.signal_count / max(len(self.price_history), 1) * 100
+            'signal_rate': self.signal_count / max(len(self.price_history), 1) * 100,
+            'price_history_length': len(self.price_history)
         }
     
     def get_position_info(self) -> Dict[str, Any]:
