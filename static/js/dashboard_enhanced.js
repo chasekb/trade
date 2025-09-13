@@ -1219,6 +1219,7 @@ class EnhancedTradingDashboard {
                     <div class="mt-4">
                         <h5 class="font-medium text-gray-700 mb-2">Signal Breakdown by Type:</h5>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                            <!-- SMA Strategy Signals -->
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Golden Cross:</span>
                                 <span class="font-medium">${signalsByType.golden_cross || 0}</span>
@@ -1243,6 +1244,24 @@ class EnhancedTradingDashboard {
                                 <span class="text-gray-600">Trend Sell:</span>
                                 <span class="font-medium">${signalsByType.trend_sell || 0}</span>
                             </div>
+                            <!-- Bollinger Bands Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Upper Band Touch:</span>
+                                <span class="font-medium">${signalsByType.upper_band_touch || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Lower Band Touch:</span>
+                                <span class="font-medium">${signalsByType.lower_band_touch || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Middle Band Cross:</span>
+                                <span class="font-medium">${signalsByType.middle_band_cross || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Bollinger Squeeze:</span>
+                                <span class="font-medium">${signalsByType.squeeze || 0}</span>
+                            </div>
+                            <!-- Common Signals -->
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Stop Loss:</span>
                                 <span class="font-medium">${signalsByType.stop_loss || 0}</span>
