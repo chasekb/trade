@@ -44,21 +44,24 @@ class BacktestResult:
 class Backtester:
     """Backtesting engine for trading strategies."""
     
-    def __init__(self, config: TradingConfig, strategy_class, strategy_params: Dict[str, Any] = None):
+    def __init__(self, config: TradingConfig, strategy_class, strategy_params: Dict[str, Any] = None, portfolio_percentage: float = 100.0, initial_capital: float = None):
         """Initialize the backtester.
         
         Args:
             config: Trading configuration
             strategy_class: Strategy class to test
             strategy_params: Parameters for the strategy
+            portfolio_percentage: Percentage of portfolio to use per trade (1-100%)
+            initial_capital: Initial capital for backtesting (overrides config.max_position_size)
         """
         self.config = config
         self.strategy_class = strategy_class
         self.strategy_params = strategy_params or {}
+        self.portfolio_percentage = max(1.0, min(100.0, portfolio_percentage))  # Clamp between 1-100%
         self.logger = logging.getLogger(__name__)
         
         # Backtest state
-        self.balance = config.max_position_size
+        self.balance = initial_capital if initial_capital is not None else config.max_position_size
         self.initial_balance = self.balance
         self.position = 0.0
         self.entry_price = 0.0
@@ -86,8 +89,8 @@ class Backtester:
             True if trade was executed, False otherwise
         """
         if signal.action == 'buy' and self.position == 0:
-            # Calculate quantity based on available balance
-            available_balance = self.balance * 0.95  # Leave 5% buffer
+            # Calculate quantity based on available balance and portfolio percentage
+            available_balance = self.balance * (self.portfolio_percentage / 100.0)
             quantity = available_balance / current_price
             
             if quantity > 0.001:  # Minimum quantity threshold

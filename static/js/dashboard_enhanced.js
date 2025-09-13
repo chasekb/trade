@@ -138,6 +138,7 @@ class EnhancedTradingDashboard {
         
         // Real-time data toggle
         document.getElementById('realtime-toggle').addEventListener('change', (e) => {
+            this.updateToggleVisualState(e.target.checked);
             this.toggleRealtimeData(e.target.checked);
         });
         
@@ -601,12 +602,31 @@ class EnhancedTradingDashboard {
                 this.showNotification(`Failed to toggle real-time data: ${result.error}`, 'error');
                 // Revert the toggle state
                 document.getElementById('realtime-toggle').checked = !enabled;
+                this.updateToggleVisualState(!enabled);
             }
         } catch (error) {
             console.error('Error toggling real-time data:', error);
             this.showNotification('Failed to toggle real-time data', 'error');
             // Revert the toggle state
             document.getElementById('realtime-toggle').checked = !enabled;
+            this.updateToggleVisualState(!enabled);
+        }
+    }
+
+    updateToggleVisualState(checked) {
+        const toggleSwitch = document.getElementById('toggle-switch');
+        const toggleKnob = document.getElementById('toggle-knob');
+        
+        if (checked) {
+            toggleSwitch.classList.remove('bg-gray-200');
+            toggleSwitch.classList.add('bg-blue-600');
+            toggleKnob.classList.remove('translate-x-0');
+            toggleKnob.classList.add('translate-x-5');
+        } else {
+            toggleSwitch.classList.remove('bg-blue-600');
+            toggleSwitch.classList.add('bg-gray-200');
+            toggleKnob.classList.remove('translate-x-5');
+            toggleKnob.classList.add('translate-x-0');
         }
     }
 
@@ -620,6 +640,7 @@ class EnhancedTradingDashboard {
             const statusElement = document.getElementById('realtime-status');
             
             toggle.checked = status.enabled;
+            this.updateToggleVisualState(status.enabled);
             
             if (status.enabled && status.websocket_connected) {
                 statusElement.textContent = 'Connected';
@@ -1086,6 +1107,7 @@ class EnhancedTradingDashboard {
         const stopLoss = parseFloat(document.getElementById('stop-loss').value);
         const takeProfit = parseFloat(document.getElementById('take-profit').value);
         const initialCapital = parseFloat(document.getElementById('initial-capital').value);
+        const portfolioPercentage = parseFloat(document.getElementById('portfolio-percentage').value);
         
         // Get strategy-specific parameters
         let strategyParams = {};
@@ -1152,6 +1174,7 @@ class EnhancedTradingDashboard {
                     stop_loss: stopLoss,
                     take_profit: takeProfit,
                     initial_capital: initialCapital,
+                    portfolio_percentage: portfolioPercentage,
                     strategy_params: strategyParams,
                     enable_dca: document.getElementById('enable-dca').checked,
                     dca_amount: parseFloat(document.getElementById('dca-amount').value),

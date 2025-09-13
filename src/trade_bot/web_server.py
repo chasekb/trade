@@ -162,6 +162,7 @@ class BacktestRequest(BaseModel):
     stop_loss: float = 5.0
     take_profit: float = 10.0
     initial_capital: float = 10000.0
+    portfolio_percentage: float = 100.0  # Percentage of portfolio to use per trade (1-100%)
     strategy_params: dict = {}
     # DCA parameters
     enable_dca: bool = False
@@ -648,14 +649,18 @@ async def run_backtest(request: BacktestRequest):
             backtester = Backtester(
                 config=config,
                 strategy_class=lambda config, **kwargs: wrapped_strategy,
-                strategy_params={}
+                strategy_params={},
+                portfolio_percentage=request.portfolio_percentage,
+                initial_capital=request.initial_capital
             )
         else:
             # Create backtester normally
             backtester = Backtester(
                 config=config,
                 strategy_class=strategy_class,
-                strategy_params=strategy_params
+                strategy_params=strategy_params,
+                portfolio_percentage=request.portfolio_percentage,
+                initial_capital=request.initial_capital
             )
         
         # Run backtest
