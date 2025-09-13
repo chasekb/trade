@@ -14,11 +14,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
 from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy
+from .database import BacktestDatabase
 import math
 from .websocket_client import WebSocketClient
 from .data_handler import DataHandler
@@ -118,6 +120,9 @@ app = FastAPI(title="Trading Dashboard", version="1.0.0")
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Initialize database
+backtest_db = BacktestDatabase()
+
 # Global variables for data storage
 real_time_data: Dict[str, Dict] = {}
 historical_data_cache: Dict[str, List[Dict]] = {}
@@ -159,6 +164,26 @@ class BacktestRequest(BaseModel):
     # Legacy parameters for backward compatibility
     short_window: int = 5
     long_window: int = 20
+
+class BacktestHistoryItem(BaseModel):
+    id: int
+    timestamp: str
+    symbol: str
+    strategy_type: str
+    strategy_params: Dict[str, Any]
+    backtest_params: Dict[str, Any]
+    results: Dict[str, Any]
+    created_at: str
+
+class BacktestHistoryResponse(BaseModel):
+    success: bool
+    backtests: List[BacktestHistoryItem]
+    total_count: int
+    stats: Dict[str, Any]
+
+class BacktestStatsResponse(BaseModel):
+    success: bool
+    stats: Dict[str, Any]
 
 
 class WebSocketManager:
@@ -590,6 +615,7 @@ async def run_backtest(request: BacktestRequest):
         equity_data = clean_for_json(backtester.get_equity_curve_df().to_dict('records'))
         result_data = clean_for_json(result.__dict__)  # Convert dataclass to dict
         
+        # Store in memory cache
         backtest_results[backtest_key] = {
             'result': result_data,
             'trades_df': trades_data,
@@ -597,12 +623,36 @@ async def run_backtest(request: BacktestRequest):
             'timestamp': datetime.now().isoformat()
         }
         
+        # Save to database
+        backtest_params = {
+            'days': request.days,
+            'granularity': request.granularity,
+            'stop_loss': request.stop_loss,
+            'take_profit': request.take_profit,
+            'initial_capital': request.initial_capital
+        }
+        
+        results_data = {
+            'result': result_data,
+            'trades': trades_data,
+            'equity_curve': equity_data
+        }
+        
+        backtest_id = backtest_db.save_backtest(
+            symbol=product_id,
+            strategy_type=request.strategy_type,
+            strategy_params=strategy_params,
+            backtest_params=backtest_params,
+            results=results_data
+        )
+        
         return {
             'success': True,
             'result': result_data,
             'trades': trades_data,
             'equity_curve': equity_data,
-            'backtest_key': backtest_key
+            'backtest_key': backtest_key,
+            'backtest_id': backtest_id
         }
         
     except Exception as e:
@@ -616,6 +666,75 @@ async def run_backtest(request: BacktestRequest):
 async def get_backtest_results():
     """Get all backtest results."""
     return backtest_results
+
+@app.get("/api/backtest-history", response_model=BacktestHistoryResponse)
+async def get_backtest_history(
+    limit: int = 50,
+    offset: int = 0,
+    symbol: Optional[str] = None,
+    strategy_type: Optional[str] = None
+):
+    """Get backtest history with optional filtering."""
+    try:
+        backtests = backtest_db.get_backtest_history(
+            limit=limit,
+            offset=offset,
+            symbol=symbol,
+            strategy_type=strategy_type
+        )
+        
+        stats = backtest_db.get_backtest_stats()
+        
+        return BacktestHistoryResponse(
+            success=True,
+            backtests=backtests,
+            total_count=stats['total_backtests'],
+            stats=stats
+        )
+    except Exception as e:
+        logger.error(f"Failed to get backtest history: {e}")
+        return BacktestHistoryResponse(
+            success=False,
+            backtests=[],
+            total_count=0,
+            stats={}
+        )
+
+@app.get("/api/backtest/{backtest_id}", response_model=BacktestHistoryItem)
+async def get_backtest(backtest_id: int):
+    """Get a specific backtest by ID."""
+    try:
+        backtest = backtest_db.get_backtest(backtest_id)
+        if backtest:
+            return backtest
+        else:
+            raise HTTPException(status_code=404, detail="Backtest not found")
+    except Exception as e:
+        logger.error(f"Failed to get backtest {backtest_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/backtest-stats", response_model=BacktestStatsResponse)
+async def get_backtest_stats():
+    """Get backtest statistics."""
+    try:
+        stats = backtest_db.get_backtest_stats()
+        return BacktestStatsResponse(success=True, stats=stats)
+    except Exception as e:
+        logger.error(f"Failed to get backtest stats: {e}")
+        return BacktestStatsResponse(success=False, stats={})
+
+@app.delete("/api/backtest/{backtest_id}")
+async def delete_backtest(backtest_id: int):
+    """Delete a backtest by ID."""
+    try:
+        success = backtest_db.delete_backtest(backtest_id)
+        if success:
+            return {"success": True, "message": f"Backtest {backtest_id} deleted"}
+        else:
+            raise HTTPException(status_code=404, detail="Backtest not found")
+    except Exception as e:
+        logger.error(f"Failed to delete backtest {backtest_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/trading-metrics")

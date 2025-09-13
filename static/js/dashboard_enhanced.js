@@ -20,6 +20,11 @@ class EnhancedTradingDashboard {
         this.apiChange24h = null; // Store API's 24h change as fallback
         this.isSwitchingSymbol = false; // Flag to prevent real-time updates during symbol switch
         
+        // Backtest history properties
+        this.historyLimit = 20;
+        this.currentHistoryOffset = 0;
+        this.totalHistoryCount = 0;
+        
         this.init();
     }
 
@@ -150,6 +155,31 @@ class EnhancedTradingDashboard {
         // Strategy type change handler
         document.getElementById('strategy-type').addEventListener('change', (e) => {
             this.updateStrategyParameters();
+        });
+
+        // Backtest history handlers
+        document.getElementById('refresh-history').addEventListener('click', () => {
+            this.loadBacktestHistory();
+        });
+
+        document.getElementById('clear-history').addEventListener('click', () => {
+            this.clearOldBacktests();
+        });
+
+        document.getElementById('history-symbol-filter').addEventListener('change', () => {
+            this.loadBacktestHistory();
+        });
+
+        document.getElementById('history-strategy-filter').addEventListener('change', () => {
+            this.loadBacktestHistory();
+        });
+
+        document.getElementById('history-prev').addEventListener('click', () => {
+            this.loadBacktestHistory(this.currentHistoryOffset - this.historyLimit);
+        });
+
+        document.getElementById('history-next').addEventListener('click', () => {
+            this.loadBacktestHistory(this.currentHistoryOffset + this.historyLimit);
         });
     }
 
@@ -1580,6 +1610,8 @@ class EnhancedTradingDashboard {
             this.loadInitialData();
         } else if (tabName === 'data') {
             this.loadDataFeed();
+        } else if (tabName === 'backtesting') {
+            this.loadBacktestHistory();
         }
     }
 
@@ -1761,6 +1793,180 @@ class EnhancedTradingDashboard {
         setInterval(() => {
             this.loadSubscriptions();
         }, 60000);
+    }
+
+    // Backtest History Methods
+    async loadBacktestHistory(offset = 0) {
+        try {
+            const symbolFilter = document.getElementById('history-symbol-filter').value;
+            const strategyFilter = document.getElementById('history-strategy-filter').value;
+            
+            const params = new URLSearchParams({
+                limit: this.historyLimit,
+                offset: offset
+            });
+            
+            if (symbolFilter) params.append('symbol', symbolFilter);
+            if (strategyFilter) params.append('strategy_type', strategyFilter);
+            
+            const response = await fetch(`/api/backtest-history?${params}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                this.currentHistoryOffset = offset;
+                this.totalHistoryCount = data.total_count;
+                this.displayBacktestHistory(data.backtests);
+                this.displayHistoryStats(data.stats);
+                this.updateHistoryPagination();
+            } else {
+                console.error('Failed to load backtest history:', data);
+            }
+        } catch (error) {
+            console.error('Error loading backtest history:', error);
+        }
+    }
+
+    displayBacktestHistory(backtests) {
+        const tbody = document.getElementById('history-table-body');
+        tbody.innerHTML = '';
+        
+        if (backtests.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                        No backtests found
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        backtests.forEach(backtest => {
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-50';
+            
+            const totalReturn = backtest.results.result?.total_return || 0;
+            const tradesCount = backtest.results.result?.total_trades || 0;
+            const timestamp = new Date(backtest.timestamp).toLocaleString();
+            
+            // Format strategy parameters
+            const params = Object.entries(backtest.strategy_params)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join(', ');
+            
+            row.innerHTML = `
+                <td class="px-4 py-3 text-sm text-gray-900">${backtest.id}</td>
+                <td class="px-4 py-3 text-sm text-gray-900">${timestamp}</td>
+                <td class="px-4 py-3 text-sm text-gray-900">${backtest.symbol}</td>
+                <td class="px-4 py-3 text-sm text-gray-900">${backtest.strategy_type.toUpperCase()}</td>
+                <td class="px-4 py-3 text-sm text-gray-500" title="${params}">${params.length > 30 ? params.substring(0, 30) + '...' : params}</td>
+                <td class="px-4 py-3 text-sm ${totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}">${totalReturn.toFixed(2)}%</td>
+                <td class="px-4 py-3 text-sm text-gray-900">${tradesCount}</td>
+                <td class="px-4 py-3 text-sm text-gray-900">
+                    <button onclick="dashboard.viewBacktest(${backtest.id})" class="text-blue-600 hover:text-blue-800 mr-2">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button onclick="dashboard.deleteBacktest(${backtest.id})" class="text-red-600 hover:text-red-800">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+    }
+
+    displayHistoryStats(stats) {
+        const statsContainer = document.getElementById('history-stats');
+        
+        statsContainer.innerHTML = `
+            <div class="bg-blue-50 p-4 rounded-lg">
+                <div class="text-2xl font-bold text-blue-600">${stats.total_backtests}</div>
+                <div class="text-sm text-blue-800">Total Backtests</div>
+            </div>
+            <div class="bg-green-50 p-4 rounded-lg">
+                <div class="text-2xl font-bold text-green-600">${stats.recent_backtests}</div>
+                <div class="text-sm text-green-800">Last 7 Days</div>
+            </div>
+            <div class="bg-purple-50 p-4 rounded-lg">
+                <div class="text-2xl font-bold text-purple-600">${Object.keys(stats.strategy_counts).length}</div>
+                <div class="text-sm text-purple-800">Strategies Used</div>
+            </div>
+            <div class="bg-orange-50 p-4 rounded-lg">
+                <div class="text-2xl font-bold text-orange-600">${Object.keys(stats.symbol_counts).length}</div>
+                <div class="text-sm text-orange-800">Symbols Tested</div>
+            </div>
+        `;
+    }
+
+    updateHistoryPagination() {
+        const showing = Math.min(this.currentHistoryOffset + this.historyLimit, this.totalHistoryCount);
+        const total = this.totalHistoryCount;
+        
+        document.getElementById('history-showing').textContent = showing;
+        document.getElementById('history-total').textContent = total;
+        
+        const prevBtn = document.getElementById('history-prev');
+        const nextBtn = document.getElementById('history-next');
+        
+        prevBtn.disabled = this.currentHistoryOffset === 0;
+        nextBtn.disabled = this.currentHistoryOffset + this.historyLimit >= total;
+    }
+
+    async viewBacktest(backtestId) {
+        try {
+            const response = await fetch(`/api/backtest/${backtestId}`);
+            const backtest = await response.json();
+            
+            if (backtest) {
+                // Display the backtest results in the main results area
+                this.displayBacktestResults(backtest.results);
+                
+                // Scroll to results
+                document.getElementById('backtest-results').scrollIntoView({ behavior: 'smooth' });
+            }
+        } catch (error) {
+            console.error('Error viewing backtest:', error);
+            alert('Failed to load backtest details');
+        }
+    }
+
+    async deleteBacktest(backtestId) {
+        if (!confirm('Are you sure you want to delete this backtest?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/backtest/${backtestId}`, {
+                method: 'DELETE'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Reload history
+                this.loadBacktestHistory(this.currentHistoryOffset);
+            } else {
+                alert('Failed to delete backtest');
+            }
+        } catch (error) {
+            console.error('Error deleting backtest:', error);
+            alert('Failed to delete backtest');
+        }
+    }
+
+    async clearOldBacktests() {
+        if (!confirm('Are you sure you want to clear backtests older than 30 days?')) {
+            return;
+        }
+        
+        try {
+            // This would need a new API endpoint for clearing old backtests
+            // For now, just show a message
+            alert('Clear old backtests feature not yet implemented');
+        } catch (error) {
+            console.error('Error clearing old backtests:', error);
+        }
     }
 }
 

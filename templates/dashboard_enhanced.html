@@ -404,6 +404,85 @@
                     <!-- Backtest results will be displayed here -->
                 </div>
             </div>
+
+            <!-- Backtest History Section -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-history mr-2"></i>Backtest History
+                </h2>
+                <p class="text-gray-600 mb-6">View and manage your previous backtest runs.</p>
+                
+                <!-- History Controls -->
+                <div class="mb-6 flex flex-wrap gap-4 items-center">
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm font-medium text-gray-700">Filter by Symbol:</label>
+                        <select id="history-symbol-filter" class="border border-gray-300 rounded-md px-3 py-1 text-sm">
+                            <option value="">All Symbols</option>
+                            <option value="BTC-USD">BTC-USD</option>
+                            <option value="ETH-USD">ETH-USD</option>
+                            <option value="ADA-USD">ADA-USD</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm font-medium text-gray-700">Filter by Strategy:</label>
+                        <select id="history-strategy-filter" class="border border-gray-300 rounded-md px-3 py-1 text-sm">
+                            <option value="">All Strategies</option>
+                            <option value="sma">SMA</option>
+                            <option value="ema">EMA</option>
+                            <option value="rsi">RSI</option>
+                            <option value="bollinger">Bollinger Bands</option>
+                            <option value="macd">MACD</option>
+                        </select>
+                    </div>
+                    <button id="refresh-history" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                    <button id="clear-history" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm">
+                        <i class="fas fa-trash mr-2"></i>Clear Old
+                    </button>
+                </div>
+
+                <!-- History Stats -->
+                <div id="history-stats" class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <!-- Stats will be loaded here -->
+                </div>
+
+                <!-- History Table -->
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white border border-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Strategy</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parameters</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trades</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- History rows will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div id="history-pagination" class="mt-6 flex justify-between items-center">
+                    <div class="text-sm text-gray-700">
+                        Showing <span id="history-showing">0</span> of <span id="history-total">0</span> backtests
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="history-prev" class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50" disabled>
+                            <i class="fas fa-chevron-left mr-1"></i>Previous
+                        </button>
+                        <button id="history-next" class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50" disabled>
+                            Next<i class="fas fa-chevron-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Data Feed Tab -->
