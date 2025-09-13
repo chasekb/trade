@@ -28,6 +28,19 @@
         .data-card {
             background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
         }
+        .tab-content {
+            display: block;
+        }
+        .tab-content.hidden {
+            display: none;
+        }
+        .tab-button.active {
+            border-bottom-color: white !important;
+            color: white !important;
+        }
+        .tab-button {
+            transition: all 0.2s ease-in-out;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -46,11 +59,31 @@
                     <span class="text-white text-sm" id="last-update">Never</span>
                 </div>
             </div>
+            
+            <!-- Tab Navigation -->
+            <div class="border-t border-white border-opacity-20">
+                <div class="flex space-x-8">
+                    <button id="tab-dashboard" class="tab-button active py-4 px-1 border-b-2 border-white text-white font-medium text-sm">
+                        <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                    </button>
+                    <button id="tab-backtesting" class="tab-button py-4 px-1 border-b-2 border-transparent text-white text-opacity-80 hover:text-white hover:text-opacity-100 font-medium text-sm">
+                        <i class="fas fa-calculator mr-2"></i>Backtesting
+                    </button>
+                    <button id="tab-data" class="tab-button py-4 px-1 border-b-2 border-transparent text-white text-opacity-80 hover:text-white hover:text-opacity-100 font-medium text-sm">
+                        <i class="fas fa-database mr-2"></i>Data Feed
+                    </button>
+                    <button id="tab-settings" class="tab-button py-4 px-1 border-b-2 border-transparent text-white text-opacity-80 hover:text-white hover:text-opacity-100 font-medium text-sm">
+                        <i class="fas fa-cog mr-2"></i>Settings
+                    </button>
+                </div>
+            </div>
         </div>
     </nav>
 
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Dashboard Tab -->
+        <div id="content-dashboard" class="tab-content">
         <!-- Subscription Management -->
         <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
             <h2 class="text-xl font-bold text-gray-800 mb-4">
@@ -184,48 +217,119 @@
 
         </div>
 
-        <!-- Backtesting Section -->
-        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">
-                <i class="fas fa-calculator mr-2"></i>Backtesting
-            </h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Days</label>
-                    <select id="backtest-days" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                        <option value="3">3 Days</option>
-                        <option value="7" selected>7 Days</option>
-                        <option value="14">14 Days</option>
-                        <option value="30">30 Days</option>
-                    </select>
+
+        </div>
+
+        <!-- Backtesting Tab -->
+        <div id="content-backtesting" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-calculator mr-2"></i>Strategy Backtesting
+                </h2>
+                <p class="text-gray-600 mb-6">Test your trading strategies against historical data to evaluate performance and risk metrics.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Trading Period</label>
+                        <select id="backtest-days" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            <option value="3">3 Days</option>
+                            <option value="7" selected>7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30">30 Days</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Short Window</label>
+                        <input type="number" id="short-window" value="5" min="1" max="50" 
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Short moving average period">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Long Window</label>
+                        <input type="number" id="long-window" value="20" min="1" max="100" 
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Long moving average period">
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Short Window</label>
-                    <input type="number" id="short-window" value="5" min="1" max="50" 
-                           class="w-full border border-gray-300 rounded-md px-3 py-2">
+                
+                <div class="flex items-center space-x-4 mb-6">
+                    <button id="run-backtest" 
+                            class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-md font-medium">
+                        <i class="fas fa-play mr-2"></i>Run Backtest
+                    </button>
+                    <button id="clear-results" 
+                            class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-md font-medium">
+                        <i class="fas fa-trash mr-2"></i>Clear Results
+                    </button>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Long Window</label>
-                    <input type="number" id="long-window" value="20" min="1" max="100" 
-                           class="w-full border border-gray-300 rounded-md px-3 py-2">
+                
+                <div id="backtest-results" class="hidden">
+                    <!-- Backtest results will be displayed here -->
                 </div>
-            </div>
-            <button id="run-backtest" 
-                    class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md">
-                <i class="fas fa-play mr-2"></i>Run Backtest
-            </button>
-            <div id="backtest-results" class="mt-4 hidden">
-                <!-- Backtest results will be displayed here -->
             </div>
         </div>
 
-        <!-- Real-time Data Feed -->
-        <div class="bg-white rounded-lg shadow-lg p-6">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">
-                <i class="fas fa-stream mr-2"></i>Real-time Data Feed
-            </h2>
-            <div class="bg-gray-100 rounded-md p-4 h-64 overflow-y-auto" id="data-feed">
-                <p class="text-gray-500 text-center">Waiting for data...</p>
+        <!-- Data Feed Tab -->
+        <div id="content-data" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-stream mr-2"></i>Real-time Data Feed
+                </h2>
+                <p class="text-gray-600 mb-4">Live market data stream from Coinbase Advanced Trading API.</p>
+                <div class="bg-gray-100 rounded-md p-4 h-64 overflow-y-auto" id="data-feed">
+                    <p class="text-gray-500 text-center">Waiting for data...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="content-settings" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-cog mr-2"></i>Settings
+                </h2>
+                <p class="text-gray-600 mb-6">Configure your trading dashboard and API settings.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">API Configuration</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Product ID</label>
+                                <input type="text" value="BTC-USD" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2" readonly>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Trading Fee</label>
+                                <input type="text" value="0.5%" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Display Settings</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Chart Period</label>
+                                <select class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                    <option value="3600" selected>1 Hour</option>
+                                    <option value="900">15 Minutes</option>
+                                    <option value="300">5 Minutes</option>
+                                    <option value="60">1 Minute</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Data Refresh Rate</label>
+                                <select class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                    <option value="1000" selected>1 Second</option>
+                                    <option value="5000">5 Seconds</option>
+                                    <option value="10000">10 Seconds</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

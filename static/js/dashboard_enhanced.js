@@ -89,6 +89,25 @@ class EnhancedTradingDashboard {
         document.getElementById('refresh-candles').addEventListener('click', () => {
             this.loadCandlesData();
         });
+        
+        // Tab switching
+        document.getElementById('tab-dashboard').addEventListener('click', () => {
+            this.switchTab('dashboard');
+        });
+        document.getElementById('tab-backtesting').addEventListener('click', () => {
+            this.switchTab('backtesting');
+        });
+        document.getElementById('tab-data').addEventListener('click', () => {
+            this.switchTab('data');
+        });
+        document.getElementById('tab-settings').addEventListener('click', () => {
+            this.switchTab('settings');
+        });
+        
+        // Clear results button
+        document.getElementById('clear-results').addEventListener('click', () => {
+            this.clearBacktestResults();
+        });
     }
 
     async subscribeToChannel() {
@@ -710,6 +729,53 @@ class EnhancedTradingDashboard {
         `;
         
         resultsContainer.innerHTML = html;
+    }
+
+    switchTab(tabName) {
+        // Hide all tab contents
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+        
+        // Remove active class from all tab buttons
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.classList.remove('active');
+            button.classList.add('border-transparent', 'text-white', 'text-opacity-80');
+            button.classList.remove('border-white', 'text-white');
+        });
+        
+        // Show selected tab content
+        const contentId = `content-${tabName}`;
+        const contentElement = document.getElementById(contentId);
+        if (contentElement) {
+            contentElement.classList.remove('hidden');
+        }
+        
+        // Activate selected tab button
+        const buttonId = `tab-${tabName}`;
+        const buttonElement = document.getElementById(buttonId);
+        if (buttonElement) {
+            buttonElement.classList.add('active', 'border-white', 'text-white');
+            buttonElement.classList.remove('border-transparent', 'text-white', 'text-opacity-80');
+        }
+        
+        // Load data for specific tabs if needed
+        if (tabName === 'dashboard') {
+            this.loadInitialData();
+        } else if (tabName === 'data') {
+            this.loadDataFeed();
+        }
+    }
+
+    clearBacktestResults() {
+        const resultsContainer = document.getElementById('backtest-results');
+        resultsContainer.classList.add('hidden');
+        resultsContainer.innerHTML = '';
+    }
+
+    loadDataFeed() {
+        // This method can be used to load data feed specific content
+        console.log('Loading data feed...');
     }
 
     updateConnectionStatus(connected) {
