@@ -3,12 +3,13 @@
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -25,6 +26,90 @@ from .data_handler import DataHandler
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class RateLimiter:
+    """Rate limiter for REST API calls per Coinbase documentation."""
+    
+    def __init__(self, max_requests_per_hour: int = 10000):
+        """
+        Initialize rate limiter.
+        
+        Args:
+            max_requests_per_hour: Maximum requests per hour (default: 10,000 per Coinbase docs)
+        """
+        self.max_requests_per_hour = max_requests_per_hour
+        self.requests: List[float] = []
+        self.lock = asyncio.Lock()
+    
+    async def is_allowed(self) -> bool:
+        """
+        Check if a request is allowed under rate limiting.
+        
+        Returns:
+            True if request is allowed, False otherwise
+        """
+        async with self.lock:
+            current_time = time.time()
+            hour_ago = current_time - 3600  # 1 hour in seconds
+            
+            # Remove requests older than 1 hour
+            self.requests = [req_time for req_time in self.requests if req_time > hour_ago]
+            
+            # Check if we're under the limit
+            if len(self.requests) < self.max_requests_per_hour:
+                self.requests.append(current_time)
+                return True
+            
+            return False
+    
+    async def get_remaining_requests(self) -> int:
+        """Get the number of remaining requests in the current hour."""
+        async with self.lock:
+            current_time = time.time()
+            hour_ago = current_time - 3600
+            
+            # Remove requests older than 1 hour
+            self.requests = [req_time for req_time in self.requests if req_time > hour_ago]
+            
+            return max(0, self.max_requests_per_hour - len(self.requests))
+    
+    async def get_reset_time(self) -> float:
+        """Get the time when the rate limit resets (in seconds from now)."""
+        if not self.requests:
+            return 0.0
+        
+        # Find the oldest request still in the window
+        current_time = time.time()
+        hour_ago = current_time - 3600
+        valid_requests = [req_time for req_time in self.requests if req_time > hour_ago]
+        
+        if not valid_requests:
+            return 0.0
+        
+        oldest_request = min(valid_requests)
+        return oldest_request + 3600 - current_time
+
+
+# Global rate limiter instance
+rate_limiter = RateLimiter()
+
+
+async def check_rate_limit():
+    """Check if the request is within rate limits."""
+    if not await rate_limiter.is_allowed():
+        remaining = await rate_limiter.get_remaining_requests()
+        reset_time = await rate_limiter.get_reset_time()
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "rate_limit_exceeded",
+                "message": "Too many requests",
+                "remaining_requests": remaining,
+                "reset_in_seconds": reset_time
+            }
+        )
+
 
 # Initialize FastAPI app
 app = FastAPI(title="Trading Dashboard", version="1.0.0")
@@ -273,6 +358,7 @@ async def get_dashboard(request: Request):
 @app.get("/api/real-time-data")
 async def get_real_time_data():
     """Get current real-time data."""
+    await check_rate_limit()
     return real_time_data.get(config.product_id, {})
 
 
@@ -283,6 +369,8 @@ async def get_historical_data(
     granularity: int = 3600
 ):
     """Get historical data for a product."""
+    await check_rate_limit()
+    
     if not product_id:
         product_id = config.product_id
     
@@ -417,9 +505,25 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/api/subscriptions")
 async def get_subscriptions():
     """Get current WebSocket subscription information."""
+    await check_rate_limit()
+    
     if manager.websocket_client:
         return await manager.websocket_client.get_subscription_info()
     return {"error": "WebSocket client not initialized"}
+
+@app.get("/api/rate-limit")
+async def get_rate_limit_status():
+    """Get current rate limit status."""
+    remaining_requests = await rate_limiter.get_remaining_requests()
+    reset_time = await rate_limiter.get_reset_time()
+    
+    return {
+        "limit_per_hour": 10000,
+        "remaining_requests": remaining_requests,
+        "reset_in_seconds": reset_time,
+        "reset_in_minutes": round(reset_time / 60, 2) if reset_time > 0 else 0,
+        "compliance": "Coinbase App API Rate Limiting - 10,000 requests per hour per API key"
+    }
 
 @app.post("/api/subscribe")
 async def subscribe_to_channel(request: SubscriptionRequest):
@@ -468,6 +572,9 @@ async def get_available_channels():
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
+    await check_rate_limit()
+    
+    remaining_requests = await rate_limiter.get_remaining_requests()
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
@@ -475,7 +582,11 @@ async def health_check():
         "cached_data_points": len(historical_data_cache),
         "backtest_results": len(backtest_results),
         "websocket_connected": manager.websocket_client is not None and manager.websocket_client.running,
-        "data_handler_initialized": manager.data_handler is not None
+        "data_handler_initialized": manager.data_handler is not None,
+        "rate_limit": {
+            "remaining_requests": remaining_requests,
+            "limit_per_hour": 10000
+        }
     }
 
 

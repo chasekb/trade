@@ -50,8 +50,10 @@ class WebSocketClient:
         
         # Rate limiting per Coinbase documentation:
         # - WebSocket connections: 750 per second per IP address
-        # - Unauthenticated messages: 8 per second per IP address
-        self.max_messages_per_second = 8  # Conservative limit for unauthenticated messages
+        # - WebSocket messages: No specific limit mentioned in docs, using conservative approach
+        # - REST API: 10,000 requests per hour per API key (handled separately in web_server.py)
+        # Reference: https://docs.cdp.coinbase.com/coinbase-app/api-architecture/rate-limiting
+        self.max_messages_per_second = 20  # Conservative limit for WebSocket messages
         self.message_timestamps: List[float] = []
         self.last_message_time = 0.0
         
