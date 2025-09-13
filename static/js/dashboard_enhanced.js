@@ -18,6 +18,7 @@ class EnhancedTradingDashboard {
         this.percentageTimeframe = '24h'; // Default percentage timeframe
         this.historicalPrices = {}; // Store historical prices for percentage calculation
         this.apiChange24h = null; // Store API's 24h change as fallback
+        this.isSwitchingSymbol = false; // Flag to prevent real-time updates during symbol switch
         
         this.init();
     }
@@ -295,8 +296,15 @@ class EnhancedTradingDashboard {
     }
 
     handleWebSocketMessage(data) {
+        console.log('WebSocket message received:', {
+            product_id: data.product_id,
+            currentSymbol: this.currentSymbol,
+            type: data.type
+        });
+        
         // Check if the message is for the current symbol
         if (data.product_id && data.product_id !== this.currentSymbol) {
+            console.log('Ignoring message for different symbol:', data.product_id);
             return; // Ignore messages for other symbols
         }
         
@@ -322,10 +330,23 @@ class EnhancedTradingDashboard {
     }
 
     updateRealTimeData(data) {
+        // Skip real-time updates if we're switching symbols
+        if (this.isSwitchingSymbol) {
+            console.log('Skipping real-time update during symbol switch');
+            return;
+        }
+        
         // Update price data
         if (data.ticker) {
             const price = parseFloat(data.ticker.price || 0);
             const apiChange24h = parseFloat(data.ticker.price_change_24h || 0);
+            
+            console.log('Updating real-time data:', {
+                currentSymbol: this.currentSymbol,
+                price,
+                volume: data.ticker.volume_24h,
+                change24h: apiChange24h
+            });
             
             document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
             
@@ -1102,12 +1123,21 @@ class EnhancedTradingDashboard {
     async switchSymbol() {
         console.log(`Switching to symbol: ${this.currentSymbol}`);
         
+        // Set flag to prevent real-time updates during switch
+        this.isSwitchingSymbol = true;
+        
         // Clear existing data
         this.candlesData = [];
         this.priceData = [];
         
         // Show loading notification
         this.showNotification(`Switching to ${this.currentSymbol}...`, 'info');
+        
+        console.log('Current state before switch:', {
+            currentSymbol: this.currentSymbol,
+            priceDataLength: this.priceData.length,
+            candlesDataLength: this.candlesData.length
+        });
         
         try {
             // Update WebSocket subscriptions (if connected)
@@ -1135,6 +1165,10 @@ class EnhancedTradingDashboard {
         } catch (error) {
             console.error('Error switching symbol:', error);
             this.showNotification(`Error switching to ${this.currentSymbol}: ${error.message}`, 'error');
+        } finally {
+            // Clear the switching flag
+            this.isSwitchingSymbol = false;
+            console.log('Symbol switch completed, real-time updates re-enabled');
         }
     }
 
