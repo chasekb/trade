@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, Any
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
-from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy
+from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy
 from .database import BacktestDatabase
 import math
 from .websocket_client import WebSocketClient
@@ -163,6 +163,12 @@ class BacktestRequest(BaseModel):
     take_profit: float = 10.0
     initial_capital: float = 10000.0
     strategy_params: dict = {}
+    # DCA parameters
+    enable_dca: bool = False
+    dca_amount: float = 100.0
+    dca_frequency: int = 7
+    dca_max_investments: int = 52
+    dca_start_delay: int = 0
     # Legacy parameters for backward compatibility
     short_window: int = 5
     long_window: int = 20
@@ -566,6 +572,8 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = MACDStrategy
         elif request.strategy_type == "stochastic":
             strategy_class = StochasticStrategy
+        elif request.strategy_type == "dca":
+            strategy_class = DCAStrategy
         
         # Use strategy_params if provided, otherwise fall back to legacy parameters
         if request.strategy_params:
@@ -602,6 +610,8 @@ async def run_backtest(request: BacktestRequest):
                     'overbought': 80,
                     'oversold': 20
                 }
+            elif request.strategy_type == "dca":
+                strategy_params = {}  # DCA doesn't need strategy-specific params
             else:
                 strategy_params = {
                     'short_window': request.short_window,
@@ -640,7 +650,12 @@ async def run_backtest(request: BacktestRequest):
             'granularity': request.granularity,
             'stop_loss': request.stop_loss,
             'take_profit': request.take_profit,
-            'initial_capital': request.initial_capital
+            'initial_capital': request.initial_capital,
+            'enable_dca': request.enable_dca,
+            'dca_amount': request.dca_amount,
+            'dca_frequency': request.dca_frequency,
+            'dca_max_investments': request.dca_max_investments,
+            'dca_start_delay': request.dca_start_delay
         }
         
         results_data = {

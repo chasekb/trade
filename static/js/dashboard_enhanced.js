@@ -181,6 +181,11 @@ class EnhancedTradingDashboard {
         document.getElementById('history-next').addEventListener('click', () => {
             this.loadBacktestHistory(this.currentHistoryOffset + this.historyLimit);
         });
+
+        // DCA toggle handler
+        document.getElementById('enable-dca').addEventListener('change', (e) => {
+            this.toggleDCAOptions(e.target.checked);
+        });
     }
 
     async subscribeToChannel() {
@@ -1130,7 +1135,12 @@ class EnhancedTradingDashboard {
                     stop_loss: stopLoss,
                     take_profit: takeProfit,
                     initial_capital: initialCapital,
-                    strategy_params: strategyParams
+                    strategy_params: strategyParams,
+                    enable_dca: document.getElementById('enable-dca').checked,
+                    dca_amount: parseFloat(document.getElementById('dca-amount').value),
+                    dca_frequency: parseInt(document.getElementById('dca-frequency').value),
+                    dca_max_investments: parseInt(document.getElementById('dca-max-investments').value),
+                    dca_start_delay: parseInt(document.getElementById('dca-start-delay').value)
                 })
             });
             
@@ -1397,6 +1407,23 @@ class EnhancedTradingDashboard {
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Stochastic Divergence Sell:</span>
                                 <span class="font-medium">${signalsByType.stochastic_divergence_sell || 0}</span>
+                            </div>
+                            <!-- DCA Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">DCA Buy:</span>
+                                <span class="font-medium">${signalsByType.dca_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">DCA Sell:</span>
+                                <span class="font-medium">${signalsByType.dca_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Strategy Buy:</span>
+                                <span class="font-medium">${signalsByType.strategy_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Strategy Sell:</span>
+                                <span class="font-medium">${signalsByType.strategy_sell || 0}</span>
                             </div>
                             <!-- Common Signals -->
                             <div class="flex justify-between">
@@ -1684,6 +1711,15 @@ class EnhancedTradingDashboard {
         }
         
         console.log(`Switched to ${strategyType} strategy parameters`);
+    }
+
+    toggleDCAOptions(enabled) {
+        const dcaOptions = document.getElementById('dca-options');
+        if (enabled) {
+            dcaOptions.classList.remove('hidden');
+        } else {
+            dcaOptions.classList.add('hidden');
+        }
     }
 
     async switchSymbol() {

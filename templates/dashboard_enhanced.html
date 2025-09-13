@@ -208,6 +208,7 @@
                                 <option value="bollinger">Bollinger Bands</option>
                                 <option value="macd">MACD Strategy</option>
                                 <option value="stochastic">Stochastic Oscillator</option>
+                                <option value="dca">Dollar Cost Averaging (DCA)</option>
                             </select>
                         </div>
                         <div>
@@ -414,6 +415,45 @@
                             <input type="number" id="initial-capital" value="10000" min="100" max="1000000" step="100" 
                                    class="w-full border border-gray-300 rounded-md px-3 py-2"
                                    placeholder="Starting capital">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dollar Cost Averaging (DCA) Options -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Dollar Cost Averaging (DCA)</h3>
+                    <div class="bg-blue-50 p-4 rounded-lg mb-4">
+                        <div class="flex items-center mb-2">
+                            <input type="checkbox" id="enable-dca" class="mr-2">
+                            <label for="enable-dca" class="text-sm font-medium text-gray-700">Enable DCA Strategy</label>
+                        </div>
+                        <p class="text-sm text-gray-600">DCA makes regular fixed investments regardless of price, reducing volatility impact.</p>
+                    </div>
+                    
+                    <div id="dca-options" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 hidden">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">DCA Amount ($)</label>
+                            <input type="number" id="dca-amount" value="100" min="10" step="10" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="Fixed investment amount">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Frequency (Days)</label>
+                            <input type="number" id="dca-frequency" value="7" min="1" max="365" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="Days between investments">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Max Investments</label>
+                            <input type="number" id="dca-max-investments" value="52" min="1" max="1000" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="Maximum number of investments">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Start Delay (Days)</label>
+                            <input type="number" id="dca-start-delay" value="0" min="0" max="365" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="Days to wait before starting">
                         </div>
                     </div>
                 </div>

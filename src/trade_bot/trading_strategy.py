@@ -1669,3 +1669,183 @@ class StochasticStrategy:
             "entry_price": self.entry_price,
             "unrealized_pnl": (self.position * self.entry_price) if self.position > 0 else 0.0
         }
+
+
+class DCAStrategy:
+    """Dollar Cost Averaging strategy that makes regular fixed investments."""
+    
+    def __init__(self, config: TradingConfig, base_strategy=None):
+        self.config = config
+        self.base_strategy = base_strategy  # Optional underlying strategy
+        self.dca_investments = []  # Track DCA investments
+        self.last_dca_date = None
+        self.dca_count = 0
+        self.total_dca_amount = 0.0
+        
+        # Signal tracking
+        self.signal_count = 0
+        self.signals_by_type = {
+            'dca_buy': 0,
+            'dca_sell': 0,
+            'strategy_buy': 0,
+            'strategy_sell': 0,
+            'stop_loss': 0,
+            'take_profit': 0
+        }
+        self.no_signal_count = 0
+        
+    def add_price(self, price: float, timestamp: datetime) -> None:
+        """Add a new price point to the history."""
+        if self.base_strategy:
+            self.base_strategy.add_price(price, timestamp)
+    
+    def should_dca_invest(self, current_date: datetime) -> bool:
+        """Check if it's time for a DCA investment."""
+        if not self.config.enable_dca:
+            return False
+            
+        if self.dca_count >= self.config.dca_max_investments:
+            return False
+            
+        if self.last_dca_date is None:
+            # First DCA investment after start delay
+            return True
+            
+        # Check if enough time has passed since last DCA
+        days_since_last = (current_date - self.last_dca_date).days
+        return days_since_last >= self.config.dca_frequency
+    
+    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+        """Generate trading signal based on DCA and optional base strategy."""
+        signals = []
+        
+        # Check for DCA investment
+        if self.should_dca_invest(timestamp):
+            dca_signal = self._create_dca_signal(current_price, timestamp)
+            if dca_signal:
+                signals.append(dca_signal)
+        
+        # Check base strategy if available
+        if self.base_strategy:
+            base_signal = self.base_strategy.generate_signal(current_price, timestamp)
+            if base_signal:
+                # Modify signal to indicate it's from base strategy
+                base_signal.reason = f"Strategy: {base_signal.reason}"
+                signals.append(base_signal)
+        
+        # Return the first signal (DCA takes priority)
+        if signals:
+            signal = signals[0]
+            self.signal_count += 1
+            
+            # Track signal type
+            if 'DCA' in signal.reason:
+                self.signals_by_type['dca_buy'] += 1
+            elif 'Strategy' in signal.reason:
+                if signal.action == 'buy':
+                    self.signals_by_type['strategy_buy'] += 1
+                else:
+                    self.signals_by_type['strategy_sell'] += 1
+            elif 'Stop loss' in signal.reason:
+                self.signals_by_type['stop_loss'] += 1
+            elif 'Take profit' in signal.reason:
+                self.signals_by_type['take_profit'] += 1
+                
+            return signal
+        
+        self.no_signal_count += 1
+        return None
+    
+    def _create_dca_signal(self, current_price: float, timestamp: datetime) -> TradeSignal:
+        """Create a DCA buy signal."""
+        # Calculate quantity based on fixed DCA amount
+        quantity = self.config.dca_amount / current_price
+        
+        # Record DCA investment
+        self.dca_investments.append({
+            'date': timestamp,
+            'price': current_price,
+            'amount': self.config.dca_amount,
+            'quantity': quantity
+        })
+        
+        self.last_dca_date = timestamp
+        self.dca_count += 1
+        self.total_dca_amount += self.config.dca_amount
+        
+        logger.info(f"DCA Investment #{self.dca_count}: ${self.config.dca_amount} at ${current_price:.2f} = {quantity:.6f} units")
+        
+        return TradeSignal(
+            action='buy',
+            price=current_price,
+            quantity=quantity,
+            timestamp=timestamp,
+            reason=f"DCA Investment #{self.dca_count}: ${self.config.dca_amount} at ${current_price:.2f}"
+        )
+    
+    def update_position(self, signal: TradeSignal) -> None:
+        """Update position based on trade signal."""
+        if self.base_strategy:
+            self.base_strategy.update_position(signal)
+        else:
+            # Simple position tracking for DCA-only mode
+            if signal.action == 'buy':
+                # In DCA mode, we accumulate position
+                pass  # Position is tracked in dca_investments
+            elif signal.action == 'sell':
+                # In DCA mode, we might want to sell all
+                pass
+    
+    def get_signal_stats(self) -> dict:
+        """Get signal statistics."""
+        base_stats = {}
+        if self.base_strategy:
+            base_stats = self.base_strategy.get_signal_stats()
+        
+        return {
+            'total_signals': self.signal_count,
+            'signals_by_type': self.signals_by_type.copy(),
+            'dca_investments': len(self.dca_investments),
+            'total_dca_amount': self.total_dca_amount,
+            'dca_count': self.dca_count,
+            'no_signal_count': self.no_signal_count,
+            'signal_rate': self.signal_count / max(len(self.dca_investments), 1) * 100,
+            'base_strategy_stats': base_stats
+        }
+    
+    def get_position_info(self) -> Dict[str, Any]:
+        """Get current position information."""
+        if self.base_strategy:
+            return self.base_strategy.get_position_info()
+        else:
+            # Calculate position from DCA investments
+            total_quantity = sum(inv['quantity'] for inv in self.dca_investments)
+            avg_price = self.total_dca_amount / total_quantity if total_quantity > 0 else 0
+            
+            return {
+                'position': total_quantity,
+                'entry_price': avg_price,
+                'unrealized_pnl': 0.0  # Would need current price to calculate
+            }
+    
+    def get_dca_summary(self) -> Dict[str, Any]:
+        """Get DCA investment summary."""
+        if not self.dca_investments:
+            return {
+                'total_investments': 0,
+                'total_amount': 0.0,
+                'total_quantity': 0.0,
+                'average_price': 0.0,
+                'investments': []
+            }
+        
+        total_quantity = sum(inv['quantity'] for inv in self.dca_investments)
+        avg_price = self.total_dca_amount / total_quantity if total_quantity > 0 else 0
+        
+        return {
+            'total_investments': len(self.dca_investments),
+            'total_amount': self.total_dca_amount,
+            'total_quantity': total_quantity,
+            'average_price': avg_price,
+            'investments': self.dca_investments
+        }
