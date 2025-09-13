@@ -857,6 +857,70 @@ class EnhancedTradingDashboard {
             console.error('Failed to load historical data:', error);
         }
     }
+    
+    async loadCurrentPriceData() {
+        try {
+            console.log(`Loading current price data for ${this.currentSymbol}`);
+            
+            // Try to get real-time data first
+            const realTimeResponse = await fetch(`/api/real-time-data?product_id=${this.currentSymbol}`);
+            const realTimeData = await realTimeResponse.json();
+            
+            if (realTimeData && !realTimeData.error && realTimeData.ticker) {
+                // Use real-time data if available
+                const price = parseFloat(realTimeData.ticker.price || 0);
+                const volume = parseFloat(realTimeData.ticker.volume_24h || 0);
+                const change24h = parseFloat(realTimeData.ticker.price_change_24h || 0);
+                
+                document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
+                document.getElementById('volume-24h').textContent = volume.toLocaleString();
+                
+                // Store the API change for percentage calculation
+                this.apiChange24h = change24h;
+                
+                console.log(`Updated price data from real-time for ${this.currentSymbol}:`, {
+                    price,
+                    volume,
+                    change24h
+                });
+            } else {
+                // Fallback: get latest data from historical data API
+                console.log(`No real-time data for ${this.currentSymbol}, using historical data fallback`);
+                const historicalResponse = await fetch(`/api/historical-data?product_id=${this.currentSymbol}&days=1`);
+                const historicalData = await historicalResponse.json();
+                
+                if (Array.isArray(historicalData) && historicalData.length > 0) {
+                    // Get the most recent data point
+                    const latestData = historicalData[historicalData.length - 1];
+                    const price = parseFloat(latestData.price || 0);
+                    const volume = parseFloat(latestData.volume || 0);
+                    
+                    document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
+                    document.getElementById('volume-24h').textContent = volume.toLocaleString();
+                    
+                    console.log(`Updated price data from historical for ${this.currentSymbol}:`, {
+                        price,
+                        volume
+                    });
+                } else {
+                    console.warn('No data available for', this.currentSymbol);
+                    // Set default values
+                    document.getElementById('current-price').textContent = '$0.00';
+                    document.getElementById('volume-24h').textContent = '0';
+                }
+            }
+            
+            // Update percentage change
+            this.updatePercentageChange();
+            
+        } catch (error) {
+            console.error('Failed to load current price data:', error);
+            // Set default values on error
+            document.getElementById('current-price').textContent = '$0.00';
+            document.getElementById('volume-24h').textContent = '0';
+            document.getElementById('price-change').textContent = '+0.00%';
+        }
+    }
 
     async runBacktest() {
         const days = document.getElementById('backtest-days').value;
@@ -1054,6 +1118,9 @@ class EnhancedTradingDashboard {
             this.currentYAxisRange = null;
             this.currentLayout = null;
             this.historicalPrices = {};
+            
+            // Load current price and volume data for the new symbol
+            await this.loadCurrentPriceData();
             
             // Reload chart data with rescaling
             await this.loadCandlesData();

@@ -357,10 +357,14 @@ async def get_dashboard(request: Request):
 
 
 @app.get("/api/real-time-data")
-async def get_real_time_data():
+async def get_real_time_data(product_id: str = None):
     """Get current real-time data."""
     await check_rate_limit()
-    return real_time_data.get(config.product_id, {})
+    
+    if not product_id:
+        product_id = config.product_id
+    
+    return real_time_data.get(product_id, {})
 
 
 @app.get("/api/historical-data")
