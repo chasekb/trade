@@ -609,36 +609,101 @@ class EnhancedTradingDashboard {
             if (result.success) {
                 this.displayBacktestResults(result);
             } else {
-                resultsContainer.innerHTML = `<div class="text-red-500">Error: ${result.error}</div>`;
+                resultsContainer.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div class="flex items-center">
+                            <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+                            <h3 class="text-lg font-semibold text-red-800">Backtest Error</h3>
+                        </div>
+                        <p class="text-red-600 mt-2">${result.error}</p>
+                        ${result.details ? `<details class="mt-2"><summary class="text-sm text-gray-600 cursor-pointer">Technical Details</summary><pre class="text-xs text-gray-500 mt-1 overflow-auto">${result.details}</pre></details>` : ''}
+                    </div>
+                `;
             }
         } catch (error) {
             console.error('Backtest error:', error);
-            resultsContainer.innerHTML = '<div class="text-red-500">Failed to run backtest</div>';
+            resultsContainer.innerHTML = `
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+                        <h3 class="text-lg font-semibold text-red-800">Backtest Failed</h3>
+                    </div>
+                    <p class="text-red-600 mt-2">Failed to run backtest: ${error.message}</p>
+                    <p class="text-sm text-gray-500 mt-1">Please check the server logs for more details.</p>
+                </div>
+            `;
         }
     }
 
     displayBacktestResults(result) {
         const resultsContainer = document.getElementById('backtest-results');
         
+        const totalReturn = (result.result.total_return * 100).toFixed(2);
+        const winRate = (result.result.win_rate * 100).toFixed(1);
+        const totalTrades = result.result.total_trades;
+        const sharpeRatio = result.result.sharpe_ratio?.toFixed(2) || 'N/A';
+        const maxDrawdown = (result.result.max_drawdown * 100).toFixed(2);
+        const profitFactor = result.result.profit_factor?.toFixed(2) || 'N/A';
+        const netProfit = result.result.net_profit?.toFixed(2) || 'N/A';
+        const finalBalance = result.result.final_balance?.toFixed(2) || 'N/A';
+        
         const html = `
-            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                <h3 class="text-lg font-semibold text-green-800 mb-2">Backtest Results</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-green-600">${(result.result.total_return * 100).toFixed(2)}%</div>
+            <div class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-chart-line mr-2"></i>Backtest Results
+                    </h3>
+                    <span class="text-sm text-gray-500">${result.backtest_key}</span>
+                </div>
+                
+                <!-- Key Metrics -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-2xl font-bold ${totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}">${totalReturn}%</div>
                         <div class="text-sm text-gray-600">Total Return</div>
                     </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-blue-600">${(result.result.win_rate * 100).toFixed(1)}%</div>
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-2xl font-bold text-blue-600">${winRate}%</div>
                         <div class="text-sm text-gray-600">Win Rate</div>
                     </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-purple-600">${result.result.total_trades}</div>
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-2xl font-bold text-purple-600">${totalTrades}</div>
                         <div class="text-sm text-gray-600">Total Trades</div>
                     </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-orange-600">${result.result.sharpe_ratio?.toFixed(2) || 'N/A'}</div>
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-2xl font-bold text-orange-600">${sharpeRatio}</div>
                         <div class="text-sm text-gray-600">Sharpe Ratio</div>
+                    </div>
+                </div>
+                
+                <!-- Additional Metrics -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-lg font-semibold text-red-600">${maxDrawdown}%</div>
+                        <div class="text-sm text-gray-600">Max Drawdown</div>
+                    </div>
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-lg font-semibold text-indigo-600">${profitFactor}</div>
+                        <div class="text-sm text-gray-600">Profit Factor</div>
+                    </div>
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-lg font-semibold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}">$${netProfit}</div>
+                        <div class="text-sm text-gray-600">Net Profit</div>
+                    </div>
+                    <div class="text-center bg-white rounded-lg p-3 shadow-sm">
+                        <div class="text-lg font-semibold text-gray-600">$${finalBalance}</div>
+                        <div class="text-sm text-gray-600">Final Balance</div>
+                    </div>
+                </div>
+                
+                <!-- Performance Summary -->
+                <div class="bg-white rounded-lg p-4 shadow-sm">
+                    <h4 class="font-semibold text-gray-800 mb-2">Performance Summary</h4>
+                    <div class="text-sm text-gray-600">
+                        <p><strong>Period:</strong> ${result.result.start_date} to ${result.result.end_date}</p>
+                        <p><strong>Initial Balance:</strong> $${result.result.initial_balance?.toFixed(2) || 'N/A'}</p>
+                        <p><strong>Winning Trades:</strong> ${result.result.winning_trades} | <strong>Losing Trades:</strong> ${result.result.losing_trades}</p>
+                        <p><strong>Average Win:</strong> $${result.result.avg_win?.toFixed(2) || 'N/A'} | <strong>Average Loss:</strong> $${result.result.avg_loss?.toFixed(2) || 'N/A'}</p>
                     </div>
                 </div>
             </div>

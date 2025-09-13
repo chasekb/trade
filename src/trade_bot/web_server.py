@@ -454,6 +454,8 @@ async def get_candles_data(
 @app.post("/api/run-backtest")
 async def run_backtest(request: BacktestRequest):
     """Run a backtest and return results."""
+    await check_rate_limit()
+    
     product_id = request.product_id or config.product_id
     
     try:
@@ -471,6 +473,19 @@ async def run_backtest(request: BacktestRequest):
         if not historical_data:
             return {"error": "No historical data available"}
         
+        # Convert candles data to backtester format
+        backtest_data = []
+        for candle in historical_data:
+            backtest_data.append({
+                'timestamp': candle['timestamp'],
+                'price': candle['close'],  # Use close price for backtesting
+                'open': candle['open'],
+                'high': candle['high'],
+                'low': candle['low'],
+                'close': candle['close'],
+                'volume': candle['volume']
+            })
+        
         # Create backtester
         backtester = Backtester(
             config=config,
@@ -482,7 +497,7 @@ async def run_backtest(request: BacktestRequest):
         )
         
         # Run backtest
-        result = await backtester.run_backtest(historical_data)
+        result = await backtester.run_backtest(backtest_data)
         
         # Store results
         backtest_key = f"{product_id}_{request.days}_{request.short_window}_{request.long_window}"
@@ -490,7 +505,7 @@ async def run_backtest(request: BacktestRequest):
         # Clean data for JSON serialization
         trades_data = clean_for_json(backtester.get_trades_df().to_dict('records'))
         equity_data = clean_for_json(backtester.get_equity_curve_df().to_dict('records'))
-        result_data = clean_for_json(result)
+        result_data = clean_for_json(result.__dict__)  # Convert dataclass to dict
         
         backtest_results[backtest_key] = {
             'result': result_data,
@@ -503,12 +518,15 @@ async def run_backtest(request: BacktestRequest):
             'success': True,
             'result': result_data,
             'trades': trades_data,
-            'equity_curve': equity_data
+            'equity_curve': equity_data,
+            'backtest_key': backtest_key
         }
         
     except Exception as e:
         logger.error(f"Backtest error: {e}")
-        return {"error": str(e)}
+        import traceback
+        logger.error(f"Backtest traceback: {traceback.format_exc()}")
+        return {"error": str(e), "details": traceback.format_exc()}
 
 
 @app.get("/api/backtest-results")
