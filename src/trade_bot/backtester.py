@@ -193,8 +193,18 @@ class Backtester:
         if current_drawdown > self.max_drawdown:
             self.max_drawdown = current_drawdown
     
-    def _calculate_metrics(self, signal_stats: dict = None) -> BacktestResult:
+    def _calculate_metrics(self, signal_stats: dict = None, final_price: float = None) -> BacktestResult:
         """Calculate backtest performance metrics."""
+        # Calculate final balance including market value of held positions
+        final_balance = self.balance
+        if self.position > 0 and final_price is not None:
+            # Add market value of held position to cash balance
+            market_value = self.position * final_price
+            final_balance += market_value
+            self.logger.info(f"Final balance calculation: Cash=${self.balance:.2f} + Position Value=${market_value:.2f} (${self.position:.6f} @ ${final_price:.2f}) = ${final_balance:.2f}")
+        else:
+            self.logger.info(f"Final balance: ${final_balance:.2f} (no held positions)")
+        
         if not self.trades:
             return BacktestResult(
                 total_trades=0, winning_trades=0, losing_trades=0, win_rate=0.0,
@@ -202,7 +212,7 @@ class Backtester:
                 avg_win=0.0, avg_loss=0.0, largest_win=0.0, largest_loss=0.0,
                 total_fees=self.fees_paid, net_profit=0.0,
                 start_date=datetime.now(), end_date=datetime.now(),
-                initial_balance=self.initial_balance, final_balance=self.balance,
+                initial_balance=self.initial_balance, final_balance=final_balance,
                 total_signals=signal_stats.get('total_signals', 0) if signal_stats else 0,
                 signals_by_type=signal_stats.get('signals_by_type', {}) if signal_stats else {},
                 signal_rate=signal_stats.get('signal_rate', 0.0) if signal_stats else 0.0,
@@ -220,7 +230,7 @@ class Backtester:
                 avg_win=0.0, avg_loss=0.0, largest_win=0.0, largest_loss=0.0,
                 total_fees=self.fees_paid, net_profit=0.0,
                 start_date=datetime.now(), end_date=datetime.now(),
-                initial_balance=self.initial_balance, final_balance=self.balance,
+                initial_balance=self.initial_balance, final_balance=final_balance,
                 total_signals=signal_stats.get('total_signals', 0) if signal_stats else 0,
                 signals_by_type=signal_stats.get('signals_by_type', {}) if signal_stats else {},
                 signal_rate=signal_stats.get('signal_rate', 0.0) if signal_stats else 0.0,
@@ -236,9 +246,9 @@ class Backtester:
         losing_trade_count = len(losing_trades)
         win_rate = winning_trade_count / total_trades if total_trades > 0 else 0.0
         
-        # Calculate returns
-        total_return = (self.balance - self.initial_balance) / self.initial_balance
-        net_profit = self.balance - self.initial_balance
+        # Calculate returns using final balance (including market value of held positions)
+        total_return = (final_balance - self.initial_balance) / self.initial_balance
+        net_profit = final_balance - self.initial_balance
         
         # Calculate average win/loss
         avg_win = np.mean(winning_trades) if winning_trades else 0.0
@@ -281,7 +291,7 @@ class Backtester:
             start_date=start_date,
             end_date=end_date,
             initial_balance=self.initial_balance,
-            final_balance=self.balance,
+            final_balance=final_balance,
             total_signals=signal_stats.get('total_signals', 0) if signal_stats else 0,
             signals_by_type=signal_stats.get('signals_by_type', {}) if signal_stats else {},
             signal_rate=signal_stats.get('signal_rate', 0.0) if signal_stats else 0.0,
@@ -363,8 +373,11 @@ class Backtester:
         # Get signal statistics from strategy
         signal_stats = strategy.get_signal_stats()
         
+        # Get final price for calculating market value of held positions
+        final_price = float(historical_data[-1]['price']) if historical_data else None
+        
         # Calculate final metrics
-        result = self._calculate_metrics(signal_stats)
+        result = self._calculate_metrics(signal_stats, final_price)
         
         self.logger.info(f"Backtest completed: {signal_count} signals generated, {result.total_trades} trades executed, {result.win_rate:.1%} win rate, {result.total_return:.1%} return")
         self.logger.info(f"Signal breakdown: {signal_stats['signals_by_type']}")
