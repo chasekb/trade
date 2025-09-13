@@ -392,6 +392,32 @@ async def get_historical_data(
     
     return historical_data_cache[cache_key]
 
+@app.get("/api/symbols")
+async def get_available_symbols():
+    """Get list of available trading symbols."""
+    await check_rate_limit()
+    
+    # Common cryptocurrency symbols available on Coinbase
+    symbols = [
+        {"symbol": "BTC-USD", "name": "Bitcoin", "base": "BTC", "quote": "USD"},
+        {"symbol": "ETH-USD", "name": "Ethereum", "base": "ETH", "quote": "USD"},
+        {"symbol": "ADA-USD", "name": "Cardano", "base": "ADA", "quote": "USD"},
+        {"symbol": "SOL-USD", "name": "Solana", "base": "SOL", "quote": "USD"},
+        {"symbol": "DOT-USD", "name": "Polkadot", "base": "DOT", "quote": "USD"},
+        {"symbol": "MATIC-USD", "name": "Polygon", "base": "MATIC", "quote": "USD"},
+        {"symbol": "AVAX-USD", "name": "Avalanche", "base": "AVAX", "quote": "USD"},
+        {"symbol": "LINK-USD", "name": "Chainlink", "base": "LINK", "quote": "USD"},
+        {"symbol": "UNI-USD", "name": "Uniswap", "base": "UNI", "quote": "USD"},
+        {"symbol": "LTC-USD", "name": "Litecoin", "base": "LTC", "quote": "USD"},
+        {"symbol": "BCH-USD", "name": "Bitcoin Cash", "base": "BCH", "quote": "USD"},
+        {"symbol": "XRP-USD", "name": "Ripple", "base": "XRP", "quote": "USD"},
+        {"symbol": "ATOM-USD", "name": "Cosmos", "base": "ATOM", "quote": "USD"},
+        {"symbol": "ALGO-USD", "name": "Algorand", "base": "ALGO", "quote": "USD"},
+        {"symbol": "FIL-USD", "name": "Filecoin", "base": "FIL", "quote": "USD"},
+    ]
+    
+    return {"symbols": symbols}
+
 @app.get("/api/candles")
 async def get_candles_data(
     product_id: str = None,

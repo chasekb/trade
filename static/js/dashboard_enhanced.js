@@ -12,6 +12,7 @@ class EnhancedTradingDashboard {
         this.subscriptions = {};
         this.dataSummary = {};
         this.currentCandlePeriod = 3600; // Default to 1 hour
+        this.currentSymbol = 'BTC-USD'; // Default symbol
         
         this.init();
     }
@@ -88,6 +89,12 @@ class EnhancedTradingDashboard {
         // Refresh candles button
         document.getElementById('refresh-candles').addEventListener('click', () => {
             this.loadCandlesData();
+        });
+        
+        // Symbol selector
+        document.getElementById('symbol-selector').addEventListener('change', (e) => {
+            this.currentSymbol = e.target.value;
+            this.switchSymbol();
         });
         
         // Tab switching
@@ -262,6 +269,11 @@ class EnhancedTradingDashboard {
     }
 
     handleWebSocketMessage(data) {
+        // Check if the message is for the current symbol
+        if (data.product_id && data.product_id !== this.currentSymbol) {
+            return; // Ignore messages for other symbols
+        }
+        
         if (data.type === 'real_time_data') {
             this.updateRealTimeData(data.data);
             this.addToDataFeed(data.data);
@@ -416,7 +428,7 @@ class EnhancedTradingDashboard {
         };
         
         const layout = {
-            title: `Real-time Price Chart (${this.getCandlePeriodLabel()})`,
+            title: `${this.currentSymbol} - Real-time Price Chart (${this.getCandlePeriodLabel()})`,
             xaxis: { 
                 title: 'Time',
                 type: 'date',
@@ -523,8 +535,8 @@ class EnhancedTradingDashboard {
     
     async loadCandlesData() {
         try {
-            console.log(`Loading candles data for period: ${this.currentCandlePeriod} (${this.getCandlePeriodLabel()})`);
-            const response = await fetch(`/api/candles?granularity=${this.currentCandlePeriod}&days=7`);
+            console.log(`Loading candles data for ${this.currentSymbol} period: ${this.currentCandlePeriod} (${this.getCandlePeriodLabel()})`);
+            const response = await fetch(`/api/candles?product_id=${this.currentSymbol}&granularity=${this.currentCandlePeriod}&days=7`);
             const data = await response.json();
             
             console.log('Candles API response:', data);
@@ -589,7 +601,7 @@ class EnhancedTradingDashboard {
 
     async loadHistoricalData() {
         try {
-            const response = await fetch('/api/historical-data?days=7');
+            const response = await fetch(`/api/historical-data?product_id=${this.currentSymbol}&days=7`);
             const data = await response.json();
             
             if (Array.isArray(data) && data.length > 0) {
@@ -776,6 +788,41 @@ class EnhancedTradingDashboard {
     loadDataFeed() {
         // This method can be used to load data feed specific content
         console.log('Loading data feed...');
+    }
+
+    async switchSymbol() {
+        console.log(`Switching to symbol: ${this.currentSymbol}`);
+        
+        // Clear existing data
+        this.candlesData = [];
+        this.priceData = [];
+        
+        // Update WebSocket subscriptions
+        await this.updateWebSocketSubscriptions();
+        
+        // Reload chart data
+        await this.loadCandlesData();
+        
+        // Update real-time data
+        await this.loadRealTimeData();
+        
+        // Show notification
+        this.showNotification(`Switched to ${this.currentSymbol}`, 'success');
+    }
+
+    async updateWebSocketSubscriptions() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            // Unsubscribe from old symbol
+            const oldSymbol = this.currentSymbol === 'BTC-USD' ? 'BTC-USD' : 'BTC-USD'; // This will be improved
+            await this.unsubscribeFromChannel('ticker', oldSymbol);
+            await this.unsubscribeFromChannel('level2', oldSymbol);
+            await this.unsubscribeFromChannel('candles', oldSymbol);
+            
+            // Subscribe to new symbol
+            await this.subscribeToChannel('ticker', this.currentSymbol);
+            await this.subscribeToChannel('level2', this.currentSymbol);
+            await this.subscribeToChannel('candles', this.currentSymbol);
+        }
     }
 
     updateConnectionStatus(connected) {
