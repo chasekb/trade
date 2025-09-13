@@ -381,8 +381,8 @@ class EnhancedTradingDashboard {
         // This method is kept for compatibility but no longer creates charts
     }
     
-    updateCandlestickChart() {
-        console.log('updateCandlestickChart called with data length:', this.candlesData.length);
+    updateCandlestickChart(forceRescale = false) {
+        console.log('updateCandlestickChart called with data length:', this.candlesData.length, 'forceRescale:', forceRescale);
         
         const chartDiv = document.getElementById('price-chart');
         if (!chartDiv) {
@@ -442,6 +442,22 @@ class EnhancedTradingDashboard {
             }
         };
         
+        // Calculate price range for proper scaling
+        const allPrices = [...opens, ...highs, ...lows, ...closes].filter(price => !isNaN(price) && isFinite(price));
+        
+        let minPrice, maxPrice, padding;
+        if (allPrices.length > 0) {
+            minPrice = Math.min(...allPrices);
+            maxPrice = Math.max(...allPrices);
+            const priceRange = maxPrice - minPrice;
+            padding = priceRange * 0.05; // 5% padding
+        } else {
+            // Fallback for empty data
+            minPrice = 0;
+            maxPrice = 100;
+            padding = 10;
+        }
+        
         const layout = {
             title: `${this.currentSymbol} - Real-time Price Chart (${this.getCandlePeriodLabel()})`,
             xaxis: { 
@@ -451,12 +467,15 @@ class EnhancedTradingDashboard {
             },
             yaxis: { 
                 title: 'Price (USD)',
-                domain: [0.3, 1]
+                domain: [0.3, 1],
+                range: [minPrice - padding, maxPrice + padding],
+                autorange: true
             },
             yaxis2: {
                 title: 'Volume',
                 domain: [0, 0.3],
-                side: 'right'
+                side: 'right',
+                autorange: true
             },
             showlegend: true,
             margin: { t: 40, r: 40, b: 40, l: 40 },
@@ -464,11 +483,21 @@ class EnhancedTradingDashboard {
             paper_bgcolor: 'rgba(0,0,0,0)'
         };
         
-        Plotly.newPlot('price-chart', [candlestickTrace, volumeTrace], layout, {
-            responsive: true,
-            displayModeBar: true,
-            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
-        });
+        if (forceRescale) {
+            // Use react to update the chart with new scaling
+            Plotly.react('price-chart', [candlestickTrace, volumeTrace], layout, {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+            });
+        } else {
+            // Use newPlot for initial chart creation
+            Plotly.newPlot('price-chart', [candlestickTrace, volumeTrace], layout, {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+            });
+        }
     }
     
     getCandlePeriodLabel() {
@@ -538,8 +567,8 @@ class EnhancedTradingDashboard {
             }
         }
         
-        // Update the chart
-        this.updateCandlestickChart();
+        // Update the chart with auto-scaling
+        this.updateCandlestickChart(true);
     }
 
     async loadInitialData() {
@@ -565,7 +594,7 @@ class EnhancedTradingDashboard {
                 // Fill in any gaps with real-time data
                 this.fillDataGaps();
                 
-                this.updateCandlestickChart();
+                this.updateCandlestickChart(true);
             } else {
                 console.warn('No candles data received');
                 // Show empty chart
@@ -819,8 +848,10 @@ class EnhancedTradingDashboard {
             // Update WebSocket subscriptions (if connected)
             await this.updateWebSocketSubscriptions();
             
-            // Reload chart data
+            // Reload chart data with rescaling
             await this.loadCandlesData();
+            // Force chart rescale for new symbol
+            this.updateCandlestickChart(true);
             
             // Update historical data
             await this.loadHistoricalData();
