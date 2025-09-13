@@ -291,7 +291,8 @@ class EnhancedTradingDashboard {
                 this.priceData = this.priceData.slice(-100);
             }
             
-            // Volume chart removed - no longer needed
+            // Update candlestick chart with real-time data
+            this.updateCandlestickChartWithRealtimeData(price);
         }
         
         // Update last update time
@@ -396,7 +397,7 @@ class EnhancedTradingDashboard {
         };
         
         const layout = {
-            title: `Price Chart (${this.getCandlePeriodLabel()})`,
+            title: `Real-time Price Chart (${this.getCandlePeriodLabel()})`,
             xaxis: { 
                 title: 'Time',
                 type: 'date',
@@ -434,6 +435,49 @@ class EnhancedTradingDashboard {
             86400: '1d'
         };
         return periodMap[this.currentCandlePeriod] || '1h';
+    }
+    
+    updateCandlestickChartWithRealtimeData(price) {
+        if (this.candlesData.length === 0) return;
+        
+        const now = new Date();
+        const currentTime = now.getTime();
+        const periodMs = this.currentCandlePeriod * 1000;
+        
+        // Find the current candle period
+        const currentPeriodStart = new Date(Math.floor(currentTime / periodMs) * periodMs);
+        
+        // Check if we need to create a new candle or update the current one
+        const lastCandle = this.candlesData[this.candlesData.length - 1];
+        const lastCandleTime = new Date(lastCandle.timestamp);
+        
+        if (lastCandleTime.getTime() === currentPeriodStart.getTime()) {
+            // Update the current candle
+            lastCandle.close = price;
+            lastCandle.high = Math.max(lastCandle.high, price);
+            lastCandle.low = Math.min(lastCandle.low, price);
+        } else {
+            // Create a new candle
+            const newCandle = {
+                timestamp: currentPeriodStart.toISOString(),
+                open: price,
+                high: price,
+                low: price,
+                close: price,
+                volume: 0, // We don't have real-time volume data
+                price: price
+            };
+            
+            this.candlesData.push(newCandle);
+            
+            // Keep only last 200 candles
+            if (this.candlesData.length > 200) {
+                this.candlesData = this.candlesData.slice(-200);
+            }
+        }
+        
+        // Update the chart
+        this.updateCandlestickChart();
     }
 
     async loadInitialData() {
