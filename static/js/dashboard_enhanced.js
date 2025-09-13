@@ -1651,6 +1651,7 @@ class EnhancedTradingDashboard {
         } else if (tabName === 'data') {
             this.loadDataFeed();
         } else if (tabName === 'backtesting') {
+            this.loadBacktestFilters();
             this.loadBacktestHistory();
         }
     }
@@ -1836,6 +1837,50 @@ class EnhancedTradingDashboard {
     }
 
     // Backtest History Methods
+    async loadBacktestFilters() {
+        try {
+            const response = await fetch('/api/backtest-filters');
+            const data = await response.json();
+            
+            if (data.success) {
+                this.populateSymbolFilter(data.symbols);
+                this.populateStrategyFilter(data.strategies);
+            } else {
+                console.error('Failed to load backtest filters:', data);
+            }
+        } catch (error) {
+            console.error('Error loading backtest filters:', error);
+        }
+    }
+
+    populateSymbolFilter(symbols) {
+        const symbolFilter = document.getElementById('history-symbol-filter');
+        // Clear existing options except "All Symbols"
+        symbolFilter.innerHTML = '<option value="">All Symbols</option>';
+        
+        // Add symbols from database
+        symbols.forEach(symbol => {
+            const option = document.createElement('option');
+            option.value = symbol;
+            option.textContent = symbol;
+            symbolFilter.appendChild(option);
+        });
+    }
+
+    populateStrategyFilter(strategies) {
+        const strategyFilter = document.getElementById('history-strategy-filter');
+        // Clear existing options except "All Strategies"
+        strategyFilter.innerHTML = '<option value="">All Strategies</option>';
+        
+        // Add strategies from database
+        strategies.forEach(strategy => {
+            const option = document.createElement('option');
+            option.value = strategy;
+            option.textContent = strategy.toUpperCase();
+            strategyFilter.appendChild(option);
+        });
+    }
+
     async loadBacktestHistory(offset = 0) {
         try {
             const symbolFilter = document.getElementById('history-symbol-filter').value;

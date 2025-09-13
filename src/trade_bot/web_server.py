@@ -747,6 +747,29 @@ async def delete_backtest(backtest_id: int):
         logger.error(f"Failed to delete backtest {backtest_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/backtest-filters")
+async def get_backtest_filters():
+    """Get available symbols and strategies for filtering."""
+    try:
+        stats = backtest_db.get_backtest_stats()
+        
+        # Get unique symbols and strategies from the database
+        symbols = list(stats.get('symbol_counts', {}).keys())
+        strategies = list(stats.get('strategy_counts', {}).keys())
+        
+        return {
+            "success": True,
+            "symbols": sorted(symbols),
+            "strategies": sorted(strategies)
+        }
+    except Exception as e:
+        logger.error(f"Failed to get backtest filters: {e}")
+        return {
+            "success": False,
+            "symbols": [],
+            "strategies": []
+        }
+
 
 @app.get("/api/trading-metrics")
 async def get_trading_metrics():
