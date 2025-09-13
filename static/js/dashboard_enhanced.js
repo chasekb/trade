@@ -14,6 +14,7 @@ class EnhancedTradingDashboard {
         this.currentCandlePeriod = 3600; // Default to 1 hour
         this.currentSymbol = 'BTC-USD'; // Default symbol
         this.currentYAxisRange = null; // Store current y-axis range
+        this.currentLayout = null; // Store current layout
         
         this.init();
     }
@@ -506,8 +507,9 @@ class EnhancedTradingDashboard {
         });
         
         if (forceRescale) {
-            // Store the y-axis range for this symbol
+            // Store the y-axis range and layout for this symbol
             this.currentYAxisRange = [minPrice - padding, maxPrice + padding];
+            this.currentLayout = layout;
             console.log(`Storing y-axis range for ${this.currentSymbol}:`, this.currentYAxisRange);
             
             // Clear the chart completely and recreate it to ensure proper scaling
@@ -520,12 +522,19 @@ class EnhancedTradingDashboard {
         } else {
             // Check if chart already exists
             const chartDiv = document.getElementById('price-chart');
-            if (chartDiv && chartDiv.data && this.currentYAxisRange) {
-                // Chart exists, use react to update data but preserve y-axis range
+            if (chartDiv && chartDiv.data && this.currentLayout) {
+                // Chart exists, use react to update data but preserve layout
                 const preservedLayout = {
+                    ...this.currentLayout,
                     'yaxis.range': this.currentYAxisRange,
-                    'yaxis.autorange': false
+                    'yaxis.autorange': false,
+                    'yaxis2.autorange': true
                 };
+                
+                console.log('Using preserved layout for real-time update:', {
+                    yaxis: { title: preservedLayout.yaxis?.title, domain: preservedLayout.yaxis?.domain },
+                    yaxis2: { title: preservedLayout.yaxis2?.title, domain: preservedLayout.yaxis2?.domain }
+                });
                 
                 Plotly.react('price-chart', [candlestickTrace, volumeTrace], preservedLayout, {
                     responsive: true,
@@ -891,9 +900,10 @@ class EnhancedTradingDashboard {
             // Update WebSocket subscriptions (if connected)
             await this.updateWebSocketSubscriptions();
             
-            // Clear existing chart data and y-axis range
+            // Clear existing chart data, y-axis range, and layout
             this.candlesData = [];
             this.currentYAxisRange = null;
+            this.currentLayout = null;
             
             // Reload chart data with rescaling
             await this.loadCandlesData();
