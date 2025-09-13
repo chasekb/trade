@@ -30,15 +30,22 @@ class EnhancedTradingDashboard {
     }
 
     connectWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            return;
+        }
         
-        this.ws = new WebSocket(wsUrl);
+        try {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
             console.log('WebSocket connected');
             this.isConnected = true;
             this.updateConnectionStatus(true);
+            // Load subscriptions after connection
+            this.loadSubscriptions();
         };
         
         this.ws.onmessage = (event) => {
@@ -59,6 +66,12 @@ class EnhancedTradingDashboard {
             this.isConnected = false;
             this.updateConnectionStatus(false);
         };
+        
+        } catch (error) {
+            console.error('Failed to create WebSocket connection:', error);
+            this.isConnected = false;
+            this.updateConnectionStatus(false);
+        }
     }
 
     setupEventListeners() {
@@ -183,15 +196,17 @@ class EnhancedTradingDashboard {
             if (data.error) {
                 document.getElementById('subscription-list').innerHTML = 
                     `<span class="text-red-500">${data.error}</span>`;
-                return;
+                return {};
             }
             
             this.subscriptions = data.channels || {};
             this.updateSubscriptionDisplay();
+            return this.subscriptions;
         } catch (error) {
             console.error('Failed to load subscriptions:', error);
             document.getElementById('subscription-list').innerHTML = 
                 '<span class="text-red-500">Failed to load subscriptions</span>';
+            return {};
         }
     }
 
@@ -797,31 +812,62 @@ class EnhancedTradingDashboard {
         this.candlesData = [];
         this.priceData = [];
         
-        // Update WebSocket subscriptions
-        await this.updateWebSocketSubscriptions();
+        // Show loading notification
+        this.showNotification(`Switching to ${this.currentSymbol}...`, 'info');
         
-        // Reload chart data
-        await this.loadCandlesData();
-        
-        // Update real-time data
-        await this.loadRealTimeData();
-        
-        // Show notification
-        this.showNotification(`Switched to ${this.currentSymbol}`, 'success');
+        try {
+            // Update WebSocket subscriptions (if connected)
+            await this.updateWebSocketSubscriptions();
+            
+            // Reload chart data
+            await this.loadCandlesData();
+            
+            // Update historical data
+            await this.loadHistoricalData();
+            
+            // Show success notification
+            this.showNotification(`Successfully switched to ${this.currentSymbol}`, 'success');
+        } catch (error) {
+            console.error('Error switching symbol:', error);
+            this.showNotification(`Error switching to ${this.currentSymbol}: ${error.message}`, 'error');
+        }
     }
 
     async updateWebSocketSubscriptions() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            // Unsubscribe from old symbol
-            const oldSymbol = this.currentSymbol === 'BTC-USD' ? 'BTC-USD' : 'BTC-USD'; // This will be improved
-            await this.unsubscribeFromChannel('ticker', oldSymbol);
-            await this.unsubscribeFromChannel('level2', oldSymbol);
-            await this.unsubscribeFromChannel('candles', oldSymbol);
+        // Check if WebSocket is connected
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            console.log('WebSocket not connected, skipping subscription updates');
+            return;
+        }
+        
+        try {
+            // Get current subscriptions to unsubscribe from
+            const subscriptions = await this.loadSubscriptions();
+            console.log('Current subscriptions:', subscriptions);
+            
+            // Unsubscribe from all current channels for any symbol
+            const channels = ['ticker', 'level2', 'candles', 'matches', 'status', 'market_trades'];
+            for (const channel of channels) {
+                if (subscriptions[channel] && subscriptions[channel].length > 0) {
+                    for (const productId of subscriptions[channel]) {
+                        await this.unsubscribeFromChannel(channel, productId);
+                    }
+                }
+            }
+            
+            // Wait a moment for unsubscriptions to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Subscribe to new symbol
             await this.subscribeToChannel('ticker', this.currentSymbol);
             await this.subscribeToChannel('level2', this.currentSymbol);
             await this.subscribeToChannel('candles', this.currentSymbol);
+            
+            console.log(`Successfully switched to ${this.currentSymbol}`);
+        } catch (error) {
+            console.error('Error updating WebSocket subscriptions:', error);
+            // If WebSocket operations fail, just reload the data without WebSocket updates
+            console.log('Falling back to data-only mode for symbol switch');
         }
     }
 
