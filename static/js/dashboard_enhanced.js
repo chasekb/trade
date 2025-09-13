@@ -1125,6 +1125,8 @@ class EnhancedTradingDashboard {
     loadDataFeed() {
         // This method can be used to load data feed specific content
         console.log('Loading data feed...');
+        // Load data summary when switching to data tab
+        this.loadDataSummary();
     }
 
     async switchSymbol() {
