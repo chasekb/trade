@@ -106,6 +106,7 @@ class SimpleMovingAverageStrategy:
                     self.position == 0):
                     
                     quantity = self.config.max_position_size / current_price
+                    logger.debug(f"Golden cross detected: prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, short={short_sma:.2f}, long={long_sma:.2f}, position={self.position}")
                     return TradeSignal(
                         action='buy',
                         price=current_price,
@@ -119,6 +120,7 @@ class SimpleMovingAverageStrategy:
                       short_sma < long_sma and 
                       self.position > 0):
                     
+                    logger.debug(f"Death cross detected: prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, short={short_sma:.2f}, long={long_sma:.2f}, position={self.position}")
                     return TradeSignal(
                         action='sell',
                         price=current_price,
@@ -139,6 +141,8 @@ class SimpleMovingAverageStrategy:
             self.position = 0.0
             self.entry_price = 0.0
             logger.info(f"Position closed: {signal.quantity:.6f} at {signal.price}")
+        
+        logger.debug(f"Strategy position updated: {self.position}, entry_price: {self.entry_price}")
     
     def get_position_info(self) -> Dict[str, Any]:
         """Get current position information."""

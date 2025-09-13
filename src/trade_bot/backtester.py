@@ -280,7 +280,13 @@ class Backtester:
             
             # Execute trade if signal exists
             if signal:
-                self._execute_trade(signal, price, timestamp)
+                self.logger.debug(f"Signal generated: {signal.action} at ${price:.2f}, reason: {signal.reason}")
+                if self._execute_trade(signal, price, timestamp):
+                    # Update strategy position to keep it in sync
+                    strategy.update_position(signal)
+                    self.logger.debug(f"Trade executed: {signal.action}, new position: {strategy.position}")
+                else:
+                    self.logger.debug(f"Trade not executed: {signal.action} at ${price:.2f}")
             
             # Update equity curve
             self._update_equity_curve(price, timestamp)

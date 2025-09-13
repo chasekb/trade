@@ -1099,7 +1099,7 @@ class EnhancedTradingDashboard {
                 </div>
                 
                 <!-- Performance Summary -->
-                <div class="bg-white rounded-lg p-4 shadow-sm">
+                <div class="bg-white rounded-lg p-4 shadow-sm mb-6">
                     <h4 class="font-semibold text-gray-800 mb-2">Performance Summary</h4>
                     <div class="text-sm text-gray-600">
                         <p><strong>Period:</strong> ${result.result.start_date} to ${result.result.end_date}</p>
@@ -1108,10 +1108,209 @@ class EnhancedTradingDashboard {
                         <p><strong>Average Win:</strong> $${result.result.avg_win?.toFixed(2) || 'N/A'} | <strong>Average Loss:</strong> $${result.result.avg_loss?.toFixed(2) || 'N/A'}</p>
                     </div>
                 </div>
+                
+                <!-- Trades Table -->
+                <div class="bg-white rounded-lg p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-semibold text-gray-800">
+                            <i class="fas fa-list mr-2"></i>Trade History (${result.trades ? result.trades.length : 0} trades)
+                        </h4>
+                        <div class="flex space-x-2">
+                            <button id="export-trades" class="text-green-600 hover:text-green-800 text-sm font-medium">
+                                <i class="fas fa-download mr-1"></i>Export CSV
+                            </button>
+                            <button id="toggle-trades" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                <i class="fas fa-eye mr-1"></i>Show Details
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="trades-table-container" class="hidden">
+                        ${this.generateTradesTable(result.trades || [])}
+                    </div>
+                    
+                    <div id="trades-summary" class="text-sm text-gray-600">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <p><strong>Total Trades:</strong> ${result.trades ? result.trades.length : 0}</p>
+                                <p><strong>Winning Trades:</strong> ${result.trades ? result.trades.filter(t => t.pnl > 0).length : 0}</p>
+                                <p><strong>Losing Trades:</strong> ${result.trades ? result.trades.filter(t => t.pnl < 0).length : 0}</p>
+                            </div>
+                            <div>
+                                <p><strong>Largest Win:</strong> $${result.trades ? Math.max(...result.trades.map(t => t.pnl || 0)).toFixed(2) : '0.00'}</p>
+                                <p><strong>Largest Loss:</strong> $${result.trades ? Math.min(...result.trades.map(t => t.pnl || 0)).toFixed(2) : '0.00'}</p>
+                                <p><strong>Avg Win:</strong> $${result.trades ? (result.trades.filter(t => t.pnl > 0).reduce((sum, t) => sum + (t.pnl || 0), 0) / Math.max(result.trades.filter(t => t.pnl > 0).length, 1)).toFixed(2) : '0.00'}</p>
+                            </div>
+                            <div>
+                                <p><strong>Avg Loss:</strong> $${result.trades ? (result.trades.filter(t => t.pnl < 0).reduce((sum, t) => sum + (t.pnl || 0), 0) / Math.max(result.trades.filter(t => t.pnl < 0).length, 1)).toFixed(2) : '0.00'}</p>
+                                <p><strong>Total P&L:</strong> $${result.trades ? result.trades.reduce((sum, t) => sum + (t.pnl || 0), 0).toFixed(2) : '0.00'}</p>
+                                <p><strong>Win Rate:</strong> ${result.trades ? ((result.trades.filter(t => t.pnl > 0).length / Math.max(result.trades.length, 1)) * 100).toFixed(1) : '0.0'}%</p>
+                            </div>
+                            <div>
+                                <p><strong>Avg Trade:</strong> $${result.trades ? (result.trades.reduce((sum, t) => sum + (t.pnl || 0), 0) / Math.max(result.trades.length, 1)).toFixed(2) : '0.00'}</p>
+                                <p><strong>Best Streak:</strong> ${this.calculateBestStreak(result.trades || [])}</p>
+                                <p><strong>Worst Streak:</strong> ${this.calculateWorstStreak(result.trades || [])}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
         
         resultsContainer.innerHTML = html;
+        
+        // Add event listener for toggle trades button
+        const toggleButton = document.getElementById('toggle-trades');
+        if (toggleButton) {
+            toggleButton.addEventListener('click', () => {
+                const tableContainer = document.getElementById('trades-table-container');
+                const icon = toggleButton.querySelector('i');
+                
+                if (tableContainer.classList.contains('hidden')) {
+                    tableContainer.classList.remove('hidden');
+                    icon.className = 'fas fa-eye-slash mr-1';
+                    toggleButton.innerHTML = '<i class="fas fa-eye-slash mr-1"></i>Hide Details';
+                } else {
+                    tableContainer.classList.add('hidden');
+                    icon.className = 'fas fa-eye mr-1';
+                    toggleButton.innerHTML = '<i class="fas fa-eye mr-1"></i>Show Details';
+                }
+            });
+        }
+
+        // Add event listener for export trades button
+        const exportButton = document.getElementById('export-trades');
+        if (exportButton) {
+            exportButton.addEventListener('click', () => {
+                this.exportTradesToCSV(result.trades || []);
+            });
+        }
+    }
+
+    generateTradesTable(trades) {
+        if (!trades || trades.length === 0) {
+            return '<p class="text-gray-500 text-center py-4">No trades executed during this backtest period.</p>';
+        }
+
+        const tableRows = trades.map((trade, index) => {
+            const entryTime = new Date(trade.entry_time).toLocaleString();
+            const exitTime = trade.exit_time ? new Date(trade.exit_time).toLocaleString() : 'N/A';
+            const pnl = parseFloat(trade.pnl || 0);
+            const pnlClass = pnl > 0 ? 'text-green-600' : pnl < 0 ? 'text-red-600' : 'text-gray-600';
+            const pnlIcon = pnl > 0 ? 'fas fa-arrow-up' : pnl < 0 ? 'fas fa-arrow-down' : 'fas fa-minus';
+            
+            return `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="px-4 py-3 text-sm text-gray-600">${index + 1}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${trade.side || 'N/A'}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">$${parseFloat(trade.entry_price || 0).toFixed(2)}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${trade.quantity || 'N/A'}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">$${parseFloat(trade.exit_price || 0).toFixed(2)}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${entryTime}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${exitTime}</td>
+                    <td class="px-4 py-3 text-sm font-medium ${pnlClass}">
+                        <i class="${pnlIcon} mr-1"></i>$${pnl.toFixed(2)}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${trade.signal || 'N/A'}</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Side</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Price</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exit Price</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Time</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exit Time</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P&L</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Signal</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    exportTradesToCSV(trades) {
+        if (!trades || trades.length === 0) {
+            this.showNotification('No trades to export', 'warning');
+            return;
+        }
+
+        // Create CSV content
+        const headers = ['Trade #', 'Side', 'Entry Price', 'Quantity', 'Exit Price', 'Entry Time', 'Exit Time', 'P&L', 'Signal'];
+        const csvContent = [
+            headers.join(','),
+            ...trades.map((trade, index) => [
+                index + 1,
+                trade.side || 'N/A',
+                trade.entry_price || 0,
+                trade.quantity || 'N/A',
+                trade.exit_price || 0,
+                trade.entry_time || 'N/A',
+                trade.exit_time || 'N/A',
+                trade.pnl || 0,
+                trade.signal || 'N/A'
+            ].join(','))
+        ].join('\n');
+
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backtest_trades_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        this.showNotification('Trades exported successfully', 'success');
+    }
+
+    calculateBestStreak(trades) {
+        if (!trades || trades.length === 0) return 0;
+        
+        let currentStreak = 0;
+        let bestStreak = 0;
+        
+        for (const trade of trades) {
+            if (trade.pnl > 0) {
+                currentStreak++;
+                bestStreak = Math.max(bestStreak, currentStreak);
+            } else {
+                currentStreak = 0;
+            }
+        }
+        
+        return bestStreak;
+    }
+
+    calculateWorstStreak(trades) {
+        if (!trades || trades.length === 0) return 0;
+        
+        let currentStreak = 0;
+        let worstStreak = 0;
+        
+        for (const trade of trades) {
+            if (trade.pnl < 0) {
+                currentStreak++;
+                worstStreak = Math.min(worstStreak, -currentStreak);
+            } else {
+                currentStreak = 0;
+            }
+        }
+        
+        return Math.abs(worstStreak);
     }
 
     switchTab(tabName) {
