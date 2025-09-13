@@ -1062,6 +1062,12 @@ class EnhancedTradingDashboard {
                 oversold: parseInt(document.getElementById('rsi-oversold').value),
                 overbought: parseInt(document.getElementById('rsi-overbought').value)
             };
+        } else if (strategyType === 'macd') {
+            strategyParams = {
+                fast_ema: parseInt(document.getElementById('macd-fast').value),
+                slow_ema: parseInt(document.getElementById('macd-slow').value),
+                signal_ema: parseInt(document.getElementById('macd-signal').value)
+            };
         } else if (strategyType === 'bollinger') {
             strategyParams = {
                 period: parseInt(document.getElementById('bb-period').value),
@@ -1292,6 +1298,35 @@ class EnhancedTradingDashboard {
                             <div class="flex justify-between">
                                 <span class="text-gray-600">RSI Divergence Sell:</span>
                                 <span class="font-medium">${signalsByType.rsi_divergence_sell || 0}</span>
+                            </div>
+                            <!-- MACD Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">MACD Cross Above:</span>
+                                <span class="font-medium">${signalsByType.macd_cross_above || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">MACD Cross Below:</span>
+                                <span class="font-medium">${signalsByType.macd_cross_below || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Histogram Positive:</span>
+                                <span class="font-medium">${signalsByType.histogram_positive || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Histogram Negative:</span>
+                                <span class="font-medium">${signalsByType.histogram_negative || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Histogram Cross Zero:</span>
+                                <span class="font-medium">${signalsByType.histogram_cross_zero || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">MACD Divergence Buy:</span>
+                                <span class="font-medium">${signalsByType.macd_divergence_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">MACD Divergence Sell:</span>
+                                <span class="font-medium">${signalsByType.macd_divergence_sell || 0}</span>
                             </div>
                             <!-- Common Signals -->
                             <div class="flex justify-between">

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
-from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy
+from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy
 import math
 from .websocket_client import WebSocketClient
 from .data_handler import DataHandler
@@ -535,6 +535,8 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = RSIStrategy
         elif request.strategy_type == "bollinger":
             strategy_class = BollingerBandsStrategy
+        elif request.strategy_type == "macd":
+            strategy_class = MACDStrategy
         
         # Use strategy_params if provided, otherwise fall back to legacy parameters
         if request.strategy_params:
@@ -557,6 +559,12 @@ async def run_backtest(request: BacktestRequest):
                     'short_ema': 12,
                     'long_ema': 26,
                     'alpha': None  # Will be calculated automatically
+                }
+            elif request.strategy_type == "macd":
+                strategy_params = {
+                    'fast_ema': 12,
+                    'slow_ema': 26,
+                    'signal_ema': 9
                 }
             else:
                 strategy_params = {

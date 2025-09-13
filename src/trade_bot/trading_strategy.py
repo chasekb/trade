@@ -1015,3 +1015,338 @@ class EMAStrategy:
             'entry_price': self.entry_price,
             'unrealized_pnl': (self.position * self.entry_price) if self.position > 0 else 0.0
         }
+
+
+class MACDStrategy:
+    """MACD (Moving Average Convergence Divergence) trading strategy."""
+    
+    def __init__(self, config: TradingConfig, fast_ema: int = 12, slow_ema: int = 26, signal_ema: int = 9):
+        self.config = config
+        self.fast_ema = fast_ema
+        self.slow_ema = slow_ema
+        self.signal_ema = signal_ema
+        self.price_history: list = []
+        self.position = 0.0  # Current position size
+        self.entry_price = 0.0
+        
+        # MACD values
+        self.macd_line = None
+        self.signal_line = None
+        self.histogram = None
+        self.prev_macd_line = None
+        self.prev_signal_line = None
+        self.prev_histogram = None
+        
+        # Signal tracking
+        self.signal_count = 0
+        self.signals_by_type = {
+            'macd_cross_above': 0,
+            'macd_cross_below': 0,
+            'histogram_positive': 0,
+            'histogram_negative': 0,
+            'histogram_cross_zero': 0,
+            'macd_divergence_buy': 0,
+            'macd_divergence_sell': 0,
+            'stop_loss': 0,
+            'take_profit': 0
+        }
+        self.no_signal_count = 0  # Count when we have enough data but no signal
+        
+    def add_price(self, price: float, timestamp: datetime) -> None:
+        """Add a new price point to the history."""
+        self.price_history.append({
+            'price': price,
+            'timestamp': timestamp
+        })
+        
+        # Keep only recent data to avoid memory issues
+        if len(self.price_history) > self.slow_ema * 3:
+            self.price_history = self.price_history[-self.slow_ema * 2:]
+    
+    def calculate_ema(self, prices: List[float], period: int) -> float:
+        """Calculate EMA for given prices and period."""
+        if not prices or len(prices) < period:
+            return None
+        
+        # Alpha is the smoothing factor: 2 / (period + 1)
+        alpha = 2.0 / (period + 1)
+        
+        # Start with the first price
+        ema = prices[0]
+        
+        # Apply EMA formula: EMA = alpha * price + (1 - alpha) * previous_EMA
+        for price in prices[1:]:
+            ema = alpha * price + (1 - alpha) * ema
+        
+        return ema
+    
+    def calculate_macd(self, prices: List[float]) -> tuple:
+        """Calculate MACD for given prices."""
+        if len(prices) < self.slow_ema:
+            return None, None, None
+        
+        # Calculate fast and slow EMAs
+        fast_ema = self.calculate_ema(prices, self.fast_ema)
+        slow_ema = self.calculate_ema(prices, self.slow_ema)
+        
+        if fast_ema is None or slow_ema is None:
+            return None, None, None
+        
+        # MACD line = Fast EMA - Slow EMA
+        macd_line = fast_ema - slow_ema
+        
+        # For signal line, we need to calculate EMA of MACD line
+        # We'll use a simplified approach with recent MACD values
+        if len(prices) >= self.slow_ema + self.signal_ema - 1:
+            # Calculate MACD values for signal line
+            macd_values = []
+            for i in range(self.slow_ema, len(prices) + 1):
+                if i >= self.slow_ema:
+                    fast_prices = prices[i-self.fast_ema:i]
+                    slow_prices = prices[i-self.slow_ema:i]
+                    if len(fast_prices) >= self.fast_ema and len(slow_prices) >= self.slow_ema:
+                        fast_val = self.calculate_ema(fast_prices, self.fast_ema)
+                        slow_val = self.calculate_ema(slow_prices, self.slow_ema)
+                        if fast_val is not None and slow_val is not None:
+                            macd_values.append(fast_val - slow_val)
+            
+            if len(macd_values) >= self.signal_ema:
+                signal_line = self.calculate_ema(macd_values, self.signal_ema)
+            else:
+                signal_line = None
+        else:
+            signal_line = None
+        
+        # Histogram = MACD line - Signal line
+        histogram = macd_line - signal_line if signal_line is not None else None
+        
+        return macd_line, signal_line, histogram
+    
+    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
+        """Generate trading signal based on MACD."""
+        if len(self.price_history) < self.slow_ema + self.signal_ema - 1:
+            return None
+        
+        # Check stop loss first (highest priority)
+        if self.position > 0:
+            loss_percentage = (current_price - self.entry_price) / self.entry_price
+            if loss_percentage <= -self.config.stop_loss_percentage:
+                self.signal_count += 1
+                self.signals_by_type['stop_loss'] += 1
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
+                )
+        
+        # Check take profit second
+        if self.position > 0:
+            profit_percentage = (current_price - self.entry_price) / self.entry_price
+            if profit_percentage >= self.config.take_profit_percentage:
+                self.signal_count += 1
+                self.signals_by_type['take_profit'] += 1
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Take profit triggered: {profit_percentage:.2%} profit"
+                )
+        
+        # Calculate current MACD
+        recent_prices = [p['price'] for p in self.price_history[-self.slow_ema:]]
+        self.macd_line, self.signal_line, self.histogram = self.calculate_macd(recent_prices)
+        
+        if self.macd_line is None or self.signal_line is None:
+            return None
+        
+        # Calculate previous MACD for comparison
+        self.prev_macd_line = None
+        self.prev_signal_line = None
+        self.prev_histogram = None
+        
+        if len(self.price_history) >= self.slow_ema + self.signal_ema:
+            prev_prices = [p['price'] for p in self.price_history[-(self.slow_ema + 1):-1]]
+            self.prev_macd_line, self.prev_signal_line, self.prev_histogram = self.calculate_macd(prev_prices)
+        
+        # Log MACD values for debugging
+        prev_macd_str = f"{self.prev_macd_line:.4f}" if self.prev_macd_line is not None else 'N/A'
+        prev_signal_str = f"{self.prev_signal_line:.4f}" if self.prev_signal_line is not None else 'N/A'
+        prev_hist_str = f"{self.prev_histogram:.4f}" if self.prev_histogram is not None else 'N/A'
+        logger.debug(f"MACD: macd={self.macd_line:.4f}, signal={self.signal_line:.4f}, histogram={self.histogram:.4f}, prev_macd={prev_macd_str}, prev_signal={prev_signal_str}, prev_hist={prev_hist_str}, position={self.position}")
+        
+        # Log when we have enough data for strategy
+        if len(self.price_history) == self.slow_ema + self.signal_ema:
+            logger.info(f"MACD strategy now has enough data for full calculations: {len(self.price_history)} points")
+        
+        # Signal conditions
+        if self.prev_macd_line is not None and self.prev_signal_line is not None:
+            # MACD line crosses above signal line
+            if (self.macd_line > self.signal_line and 
+                self.prev_macd_line <= self.prev_signal_line and
+                self.position == 0):
+                
+                self.signal_count += 1
+                self.signals_by_type['macd_cross_above'] += 1
+                quantity = self.config.max_position_size / current_price
+                logger.debug(f"MACD cross above: macd={self.macd_line:.4f}, signal={self.signal_line:.4f}")
+                return TradeSignal(
+                    action='buy',
+                    price=current_price,
+                    quantity=quantity,
+                    timestamp=timestamp,
+                    reason=f"MACD cross above: MACD {self.macd_line:.4f} > Signal {self.signal_line:.4f}"
+                )
+            
+            # MACD line crosses below signal line
+            elif (self.macd_line < self.signal_line and 
+                  self.prev_macd_line >= self.prev_signal_line and
+                  self.position > 0):
+                
+                self.signal_count += 1
+                self.signals_by_type['macd_cross_below'] += 1
+                logger.debug(f"MACD cross below: macd={self.macd_line:.4f}, signal={self.signal_line:.4f}")
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"MACD cross below: MACD {self.macd_line:.4f} < Signal {self.signal_line:.4f}"
+                )
+            
+            # Histogram signals
+            elif (self.histogram is not None and self.prev_histogram is not None):
+                # Histogram crosses above zero (positive momentum)
+                if (self.histogram > 0 and 
+                    self.prev_histogram <= 0 and
+                    self.position == 0):
+                    
+                    self.signal_count += 1
+                    self.signals_by_type['histogram_cross_zero'] += 1
+                    quantity = self.config.max_position_size / current_price
+                    logger.debug(f"Histogram cross zero: hist={self.histogram:.4f}, prev_hist={self.prev_histogram:.4f}")
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=quantity,
+                        timestamp=timestamp,
+                        reason=f"Histogram cross zero: Histogram {self.histogram:.4f} > 0"
+                    )
+                
+                # Histogram crosses below zero (negative momentum)
+                elif (self.histogram < 0 and 
+                      self.prev_histogram >= 0 and
+                      self.position > 0):
+                    
+                    self.signal_count += 1
+                    self.signals_by_type['histogram_cross_zero'] += 1
+                    logger.debug(f"Histogram cross zero: hist={self.histogram:.4f}, prev_hist={self.prev_histogram:.4f}")
+                    return TradeSignal(
+                        action='sell',
+                        price=current_price,
+                        quantity=self.position,
+                        timestamp=timestamp,
+                        reason=f"Histogram cross zero: Histogram {self.histogram:.4f} < 0"
+                    )
+                
+                # Strong positive histogram (momentum)
+                elif (self.histogram > 0.001 and  # Strong positive histogram
+                      self.position == 0):
+                    
+                    self.signal_count += 1
+                    self.signals_by_type['histogram_positive'] += 1
+                    quantity = self.config.max_position_size / current_price
+                    logger.debug(f"Histogram positive: hist={self.histogram:.4f}")
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=quantity,
+                        timestamp=timestamp,
+                        reason=f"Histogram positive: Strong momentum {self.histogram:.4f}"
+                    )
+                
+                # Strong negative histogram (momentum)
+                elif (self.histogram < -0.001 and  # Strong negative histogram
+                      self.position > 0):
+                    
+                    self.signal_count += 1
+                    self.signals_by_type['histogram_negative'] += 1
+                    logger.debug(f"Histogram negative: hist={self.histogram:.4f}")
+                    return TradeSignal(
+                        action='sell',
+                        price=current_price,
+                        quantity=self.position,
+                        timestamp=timestamp,
+                        reason=f"Histogram negative: Strong negative momentum {self.histogram:.4f}"
+                    )
+            
+            # MACD divergence signals (simplified)
+            # Buy when MACD is positive and price is near recent low
+            elif (self.macd_line > 0 and 
+                  self.position == 0 and
+                  current_price <= min([p['price'] for p in self.price_history[-5:]])):  # Price near recent low
+                
+                self.signal_count += 1
+                self.signals_by_type['macd_divergence_buy'] += 1
+                quantity = self.config.max_position_size / current_price
+                logger.debug(f"MACD divergence buy: macd={self.macd_line:.4f}, price={current_price:.2f}")
+                return TradeSignal(
+                    action='buy',
+                    price=current_price,
+                    quantity=quantity,
+                    timestamp=timestamp,
+                    reason=f"MACD divergence buy: MACD {self.macd_line:.4f} positive, price near recent low"
+                )
+            
+            # Sell when MACD is negative and price is near recent high
+            elif (self.macd_line < 0 and 
+                  self.position > 0 and
+                  current_price >= max([p['price'] for p in self.price_history[-5:]])):  # Price near recent high
+                
+                self.signal_count += 1
+                self.signals_by_type['macd_divergence_sell'] += 1
+                logger.debug(f"MACD divergence sell: macd={self.macd_line:.4f}, price={current_price:.2f}")
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"MACD divergence sell: MACD {self.macd_line:.4f} negative, price near recent high"
+                )
+        
+        # Count when we have enough data but no signal is generated
+        if len(self.price_history) >= self.slow_ema + self.signal_ema:
+            self.no_signal_count += 1
+            
+        return None
+    
+    def update_position(self, signal: TradeSignal) -> None:
+        """Update position based on trade signal."""
+        if signal.action == 'buy':
+            self.position = signal.quantity
+            self.entry_price = signal.price
+            logger.info(f"Position opened: {signal.quantity:.6f} at {signal.price}")
+        elif signal.action == 'sell':
+            self.position = 0.0
+            self.entry_price = 0.0
+            logger.info(f"Position closed: {signal.quantity:.6f} at {signal.price}")
+    
+    def get_signal_stats(self) -> dict:
+        """Get signal statistics."""
+        return {
+            'total_signals': self.signal_count,
+            'signals_by_type': self.signals_by_type.copy(),
+            'price_history_length': len(self.price_history),
+            'no_signal_count': self.no_signal_count,
+            'signal_rate': self.signal_count / max(len(self.price_history), 1) * 100
+        }
+    
+    def get_position_info(self) -> Dict[str, Any]:
+        """Get current position information."""
+        return {
+            'position': self.position,
+            'entry_price': self.entry_price,
+            'unrealized_pnl': (self.position * self.entry_price) if self.position > 0 else 0.0
+        }
