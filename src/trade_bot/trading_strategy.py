@@ -120,7 +120,9 @@ class SimpleMovingAverageStrategy:
             prev_long_sma = sum(prev_long_prices) / len(prev_long_prices) if len(prev_long_prices) >= self.long_window else None
             
             # Log SMA values for debugging
-            logger.debug(f"SMA values: short={short_sma:.2f}, long={long_sma:.2f}, prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, position={self.position}, price_history_length={len(self.price_history)}")
+            prev_short_str = f"{prev_short_sma:.2f}" if prev_short_sma is not None else 'N/A'
+            prev_long_str = f"{prev_long_sma:.2f}" if prev_long_sma is not None else 'N/A'
+            logger.debug(f"SMA values: short={short_sma:.2f}, long={long_sma:.2f}, prev_short={prev_short_str}, prev_long={prev_long_str}, position={self.position}, price_history_length={len(self.price_history)}")
             
             # Log when we have enough data for strategy
             if len(self.price_history) == self.long_window + 1:
@@ -136,7 +138,9 @@ class SimpleMovingAverageStrategy:
                 self.signal_count += 1
                 self.signals_by_type['golden_cross'] += 1
                 quantity = self.config.max_position_size / current_price
-                logger.debug(f"Golden cross detected: prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, short={short_sma:.2f}, long={long_sma:.2f}, position={self.position}")
+                prev_short_str = f"{prev_short_sma:.2f}" if prev_short_sma is not None else 'N/A'
+                prev_long_str = f"{prev_long_sma:.2f}" if prev_long_sma is not None else 'N/A'
+                logger.debug(f"Golden cross detected: prev_short={prev_short_str}, prev_long={prev_long_str}, short={short_sma:.2f}, long={long_sma:.2f}, position={self.position}")
                 return TradeSignal(
                     action='buy',
                     price=current_price,
@@ -152,7 +156,9 @@ class SimpleMovingAverageStrategy:
                 
                 self.signal_count += 1
                 self.signals_by_type['death_cross'] += 1
-                logger.debug(f"Death cross detected: prev_short={prev_short_sma:.2f}, prev_long={prev_long_sma:.2f}, short={short_sma:.2f}, long={long_sma:.2f}, position={self.position}")
+                prev_short_str = f"{prev_short_sma:.2f}" if prev_short_sma is not None else 'N/A'
+                prev_long_str = f"{prev_long_sma:.2f}" if prev_long_sma is not None else 'N/A'
+                logger.debug(f"Death cross detected: prev_short={prev_short_str}, prev_long={prev_long_str}, short={short_sma:.2f}, long={long_sma:.2f}, position={self.position}")
                 return TradeSignal(
                     action='sell',
                     price=current_price,
@@ -611,7 +617,8 @@ class RSIStrategy:
             prev_rsi = self.calculate_rsi(prev_prices)
         
         # Log RSI values for debugging
-        logger.debug(f"RSI: current={current_rsi:.2f}, prev={prev_rsi:.2f if prev_rsi else 'N/A'}, price={current_price:.2f}, position={self.position}")
+        prev_rsi_str = f"{prev_rsi:.2f}" if prev_rsi is not None else 'N/A'
+        logger.debug(f"RSI: current={current_rsi:.2f}, prev={prev_rsi_str}, price={current_price:.2f}, position={self.position}")
         
         # Log when we have enough data for strategy
         if len(self.price_history) == self.period + 1:
