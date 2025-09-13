@@ -423,6 +423,7 @@ class EnhancedTradingDashboard {
             close: closes,
             type: 'candlestick',
             name: 'Price',
+            yaxis: 'y', // Explicitly use the first y-axis for price
             increasing: { line: { color: '#10B981' } },
             decreasing: { line: { color: '#EF4444' } }
         };
@@ -433,7 +434,7 @@ class EnhancedTradingDashboard {
             y: volumes,
             type: 'bar',
             name: 'Volume',
-            yaxis: 'y2',
+            yaxis: 'y2', // Use the second y-axis for volume
             marker: {
                 color: 'rgba(59, 130, 246, 0.3)',
                 line: {
@@ -442,6 +443,11 @@ class EnhancedTradingDashboard {
                 }
             }
         };
+        
+        console.log('Trace configuration:', {
+            candlestickTrace: { yaxis: candlestickTrace.yaxis, type: candlestickTrace.type },
+            volumeTrace: { yaxis: volumeTrace.yaxis, type: volumeTrace.type }
+        });
         
         // Calculate price range for proper scaling
         const allPrices = [...opens, ...highs, ...lows, ...closes].filter(price => !isNaN(price) && isFinite(price));
@@ -493,6 +499,11 @@ class EnhancedTradingDashboard {
             plot_bgcolor: 'rgba(0,0,0,0)',
             paper_bgcolor: 'rgba(0,0,0,0)'
         };
+        
+        console.log('Layout configuration:', {
+            yaxis: { title: layout.yaxis.title, domain: layout.yaxis.domain },
+            yaxis2: { title: layout.yaxis2.title, domain: layout.yaxis2.domain }
+        });
         
         if (forceRescale) {
             // Store the y-axis range for this symbol
