@@ -148,8 +148,15 @@ class SubscriptionRequest(BaseModel):
     product_id: str = None
 
 class BacktestRequest(BaseModel):
+    strategy_type: str = "sma"
     product_id: str = None
     days: int = 7
+    granularity: int = 3600
+    stop_loss: float = 5.0
+    take_profit: float = 10.0
+    initial_capital: float = 10000.0
+    strategy_params: dict = {}
+    # Legacy parameters for backward compatibility
     short_window: int = 5
     long_window: int = 20
 
@@ -497,7 +504,7 @@ async def run_backtest(request: BacktestRequest):
         historical_data = await data_provider.get_historical_candles(
             start_time=start_time,
             end_time=end_time,
-            granularity=3600
+            granularity=request.granularity
         )
         
         if not historical_data:
@@ -516,21 +523,36 @@ async def run_backtest(request: BacktestRequest):
                 'volume': candle['volume']
             })
         
+        # Select strategy class based on strategy_type
+        strategy_class = SimpleMovingAverageStrategy  # Default
+        if request.strategy_type == "ema":
+            # For now, use SMA as EMA is not implemented
+            strategy_class = SimpleMovingAverageStrategy
+        elif request.strategy_type == "rsi":
+            # For now, use SMA as RSI is not implemented
+            strategy_class = SimpleMovingAverageStrategy
+        elif request.strategy_type == "bollinger":
+            # For now, use SMA as Bollinger Bands is not implemented
+            strategy_class = SimpleMovingAverageStrategy
+        
+        # Use strategy_params if provided, otherwise fall back to legacy parameters
+        strategy_params = request.strategy_params if request.strategy_params else {
+            'short_window': request.short_window,
+            'long_window': request.long_window
+        }
+        
         # Create backtester
         backtester = Backtester(
             config=config,
-            strategy_class=SimpleMovingAverageStrategy,
-            strategy_params={
-                'short_window': request.short_window,
-                'long_window': request.long_window
-            }
+            strategy_class=strategy_class,
+            strategy_params=strategy_params
         )
         
         # Run backtest
         result = await backtester.run_backtest(backtest_data)
         
         # Store results
-        backtest_key = f"{product_id}_{request.days}_{request.short_window}_{request.long_window}"
+        backtest_key = f"{product_id}_{request.strategy_type}_{request.days}_{request.granularity}_{hash(str(strategy_params))}"
         
         # Clean data for JSON serialization
         trades_data = clean_for_json(backtester.get_trades_df().to_dict('records'))

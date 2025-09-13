@@ -195,27 +195,152 @@
                 </h2>
                 <p class="text-gray-600 mb-6">Test your trading strategies against historical data to evaluate performance and risk metrics.</p>
                 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Trading Period</label>
-                        <select id="backtest-days" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                            <option value="3">3 Days</option>
-                            <option value="7" selected>7 Days</option>
-                            <option value="14">14 Days</option>
-                            <option value="30">30 Days</option>
-                        </select>
+                <!-- Strategy Selection -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Strategy Configuration</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
+                            <select id="strategy-type" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="sma" selected>Simple Moving Average (SMA)</option>
+                                <option value="ema">Exponential Moving Average (EMA)</option>
+                                <option value="rsi">RSI Strategy</option>
+                                <option value="bollinger">Bollinger Bands</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Symbol</label>
+                            <select id="backtest-symbol" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="BTC-USD" selected>BTC-USD</option>
+                                <option value="ETH-USD">ETH-USD</option>
+                                <option value="ADA-USD">ADA-USD</option>
+                                <option value="SOL-USD">SOL-USD</option>
+                                <option value="DOT-USD">DOT-USD</option>
+                                <option value="MATIC-USD">MATIC-USD</option>
+                                <option value="AVAX-USD">AVAX-USD</option>
+                                <option value="LINK-USD">LINK-USD</option>
+                                <option value="UNI-USD">UNI-USD</option>
+                                <option value="LTC-USD">LTC-USD</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Short Window</label>
-                        <input type="number" id="short-window" value="5" min="1" max="50" 
-                               class="w-full border border-gray-300 rounded-md px-3 py-2"
-                               placeholder="Short moving average period">
+                </div>
+
+                <!-- Time Horizon -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Historical Time Horizon</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Period</label>
+                            <select id="backtest-days" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="1">1 Day</option>
+                                <option value="3">3 Days</option>
+                                <option value="7" selected>1 Week</option>
+                                <option value="14">2 Weeks</option>
+                                <option value="30">1 Month</option>
+                                <option value="60">2 Months</option>
+                                <option value="90">3 Months</option>
+                                <option value="180">6 Months</option>
+                                <option value="365">1 Year</option>
+                                <option value="730">2 Years</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Granularity</label>
+                            <select id="backtest-granularity" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="60">1 Minute</option>
+                                <option value="300">5 Minutes</option>
+                                <option value="900">15 Minutes</option>
+                                <option value="3600" selected>1 Hour</option>
+                                <option value="21600">6 Hours</option>
+                                <option value="86400">1 Day</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Long Window</label>
-                        <input type="number" id="long-window" value="20" min="1" max="100" 
-                               class="w-full border border-gray-300 rounded-md px-3 py-2"
-                               placeholder="Long moving average period">
+                </div>
+
+                <!-- Strategy Parameters -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Strategy Parameters</h3>
+                    <div id="strategy-params" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <!-- SMA Parameters -->
+                        <div id="sma-params" class="strategy-param-group">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Short Window</label>
+                                <input type="number" id="short-window" value="5" min="1" max="200" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="Short MA period">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Long Window</label>
+                                <input type="number" id="long-window" value="20" min="1" max="500" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="Long MA period">
+                            </div>
+                        </div>
+
+                        <!-- RSI Parameters -->
+                        <div id="rsi-params" class="strategy-param-group hidden">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">RSI Period</label>
+                                <input type="number" id="rsi-period" value="14" min="2" max="100" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="RSI period">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Oversold Level</label>
+                                <input type="number" id="rsi-oversold" value="30" min="1" max="50" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="Oversold threshold">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Overbought Level</label>
+                                <input type="number" id="rsi-overbought" value="70" min="50" max="99" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="Overbought threshold">
+                            </div>
+                        </div>
+
+                        <!-- Bollinger Bands Parameters -->
+                        <div id="bollinger-params" class="strategy-param-group hidden">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Period</label>
+                                <input type="number" id="bb-period" value="20" min="2" max="200" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="BB period">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Standard Deviations</label>
+                                <input type="number" id="bb-std" value="2" min="1" max="5" step="0.1" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                       placeholder="Standard deviations">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Risk Management -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Risk Management</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Stop Loss (%)</label>
+                            <input type="number" id="stop-loss" value="5" min="0" max="50" step="0.1" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="Stop loss percentage">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Take Profit (%)</label>
+                            <input type="number" id="take-profit" value="10" min="0" max="200" step="0.1" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="Take profit percentage">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Initial Capital ($)</label>
+                            <input type="number" id="initial-capital" value="10000" min="100" max="1000000" step="100" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="Starting capital">
+                        </div>
                     </div>
                 </div>
                 

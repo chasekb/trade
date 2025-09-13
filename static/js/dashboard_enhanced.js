@@ -140,6 +140,11 @@ class EnhancedTradingDashboard {
         document.getElementById('clear-results').addEventListener('click', () => {
             this.clearBacktestResults();
         });
+
+        // Strategy type change handler
+        document.getElementById('strategy-type').addEventListener('change', (e) => {
+            this.updateStrategyParameters();
+        });
     }
 
     async subscribeToChannel() {
@@ -951,9 +956,33 @@ class EnhancedTradingDashboard {
     }
 
     async runBacktest() {
+        const strategyType = document.getElementById('strategy-type').value;
+        const symbol = document.getElementById('backtest-symbol').value;
         const days = document.getElementById('backtest-days').value;
-        const shortWindow = parseInt(document.getElementById('short-window').value);
-        const longWindow = parseInt(document.getElementById('long-window').value);
+        const granularity = document.getElementById('backtest-granularity').value;
+        const stopLoss = parseFloat(document.getElementById('stop-loss').value);
+        const takeProfit = parseFloat(document.getElementById('take-profit').value);
+        const initialCapital = parseFloat(document.getElementById('initial-capital').value);
+        
+        // Get strategy-specific parameters
+        let strategyParams = {};
+        if (strategyType === 'sma' || strategyType === 'ema') {
+            strategyParams = {
+                short_window: parseInt(document.getElementById('short-window').value),
+                long_window: parseInt(document.getElementById('long-window').value)
+            };
+        } else if (strategyType === 'rsi') {
+            strategyParams = {
+                period: parseInt(document.getElementById('rsi-period').value),
+                oversold: parseInt(document.getElementById('rsi-oversold').value),
+                overbought: parseInt(document.getElementById('rsi-overbought').value)
+            };
+        } else if (strategyType === 'bollinger') {
+            strategyParams = {
+                period: parseInt(document.getElementById('bb-period').value),
+                std_dev: parseFloat(document.getElementById('bb-std').value)
+            };
+        }
         
         const resultsContainer = document.getElementById('backtest-results');
         resultsContainer.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Running backtest...</div>';
@@ -966,9 +995,14 @@ class EnhancedTradingDashboard {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
+                    strategy_type: strategyType,
+                    product_id: symbol,
                     days: parseInt(days),
-                    short_window: shortWindow,
-                    long_window: longWindow
+                    granularity: parseInt(granularity),
+                    stop_loss: stopLoss,
+                    take_profit: takeProfit,
+                    initial_capital: initialCapital,
+                    strategy_params: strategyParams
                 })
             });
             
@@ -1127,6 +1161,23 @@ class EnhancedTradingDashboard {
         console.log('Loading data feed...');
         // Load data summary when switching to data tab
         this.loadDataSummary();
+    }
+
+    updateStrategyParameters() {
+        const strategyType = document.getElementById('strategy-type').value;
+        
+        // Hide all parameter groups
+        document.querySelectorAll('.strategy-param-group').forEach(group => {
+            group.classList.add('hidden');
+        });
+        
+        // Show the selected strategy parameters
+        const paramGroup = document.getElementById(`${strategyType}-params`);
+        if (paramGroup) {
+            paramGroup.classList.remove('hidden');
+        }
+        
+        console.log(`Switched to ${strategyType} strategy parameters`);
     }
 
     async switchSymbol() {
