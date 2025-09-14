@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refresh Sequence Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+        .success { background-color: #d4edda; border-color: #28a745; }
+        .warning { background-color: #fff3cd; border-color: #ffc107; }
+        .error { background-color: #f8d7da; border-color: #dc3545; }
+        .info { background-color: #d1ecf1; border-color: #17a2b8; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .data-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .data-card h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .data-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #212529;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Refresh Sequence Test</h1>
+        <p>This test verifies that current price and 24h volume match the current symbol's data across multiple refreshes.</p>
+        
+        <div class="data-grid">
+            <div class="data-card">
+                <h4>Current Symbol</h4>
+                <div class="data-value" id="current-symbol">BTC-USD</div>
+            </div>
+            <div class="data-card">
+                <h4>Current Price</h4>
+                <div class="data-value" id="current-price">$0.00</div>
+            </div>
+            <div class="data-card">
+                <h4>24h Volume</h4>
+                <div class="data-value" id="volume-24h">0</div>
+            </div>
+            <div class="data-card">
+                <h4>Data Source</h4>
+                <div class="data-value" id="data-source">Unknown</div>
+            </div>
+            <div class="data-card">
+                <h4>Last Update</h4>
+                <div class="data-value" id="last-update">Never</div>
+            </div>
+            <div class="data-card">
+                <h4>Test Status</h4>
+                <div class="data-value" id="test-status">Ready</div>
+            </div>
+        </div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        
+        <button onclick="startRefreshSequence()">Start Refresh Sequence</button>
+        <button onclick="stopRefreshSequence()" id="stop-btn" disabled>Stop Sequence</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="test-results"></div>
+        
+        <div class="log" id="test-log"></div>
+    </div>
+
+    <script>
+        class RefreshSequenceTester {
+            constructor() {
+                this.symbols = ['BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 'DOT-USD'];
+                this.currentSymbolIndex = 0;
+                this.isRunning = false;
+                this.testResults = [];
+                this.logContainer = document.getElementById('test-log');
+                this.resultsContainer = document.getElementById('test-results');
+                this.progressFill = document.getElementById('progress-fill');
+            }
+
+            log(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.className = `test-result ${type}`;
+                logEntry.innerHTML = `[${timestamp}] ${message}`;
+                this.logContainer.appendChild(logEntry);
+                this.logContainer.scrollTop = this.logContainer.scrollHeight;
+                console.log(`[${timestamp}] ${message}`);
+            }
+
+            updateProgress(completed, total) {
+                const percentage = (completed / total) * 100;
+                this.progressFill.style.width = `${percentage}%`;
+            }
+
+            updateDisplay(symbol, price, volume, source) {
+                document.getElementById('current-symbol').textContent = symbol;
+                document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
+                document.getElementById('volume-24h').textContent = volume.toLocaleString();
+                document.getElementById('data-source').textContent = source;
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            }
+
+            async loadCurrentPriceData(symbol) {
+                try {
+                    this.log(`🔄 Loading price data for ${symbol}`, 'info');
+                    
+                    // Try real-time data first
+                    const realTimeResponse = await fetch(`/api/real-time-data?product_id=${symbol}`);
+                    const realTimeData = await realTimeResponse.json();
+                    
+                    if (realTimeData && !realTimeData.error && realTimeData.ticker) {
+                        const price = parseFloat(realTimeData.ticker.price || 0);
+                        const volume = parseFloat(realTimeData.ticker.volume_24h || 0);
+                        
+                        this.log(`✅ Real-time data for ${symbol}: Price=$${price.toFixed(2)}, Volume=${volume.toLocaleString()}`, 'success');
+                        
+                        return {
+                            source: 'real-time',
+                            symbol: symbol,
+                            price: price,
+                            volume: volume,
+                            success: true
+                        };
+                    } else {
+                        // Fallback to historical data
+                        this.log(`🔄 No real-time data for ${symbol}, using historical fallback`, 'warning');
+                        
+                        const historicalResponse = await fetch(`/api/historical-data?product_id=${symbol}&days=1`);
+                        const historicalData = await historicalResponse.json();
+                        
+                        if (Array.isArray(historicalData) && historicalData.length > 0) {
+                            const latestData = historicalData[historicalData.length - 1];
+                            const price = parseFloat(latestData.price || 0);
+                            const volume = parseFloat(latestData.volume || 0);
+                            
+                            this.log(`✅ Historical data for ${symbol}: Price=$${price.toFixed(2)}, Volume=${volume.toLocaleString()}`, 'success');
+                            
+                            return {
+                                source: 'historical',
+                                symbol: symbol,
+                                price: price,
+                                volume: volume,
+                                success: true
+                            };
+                        } else {
+                            this.log(`❌ No data available for ${symbol}`, 'error');
+                            return {
+                                source: 'none',
+                                symbol: symbol,
+                                price: 0,
+                                volume: 0,
+                                success: false
+                            };
+                        }
+                    }
+                } catch (error) {
+                    this.log(`❌ Error loading data for ${symbol}: ${error.message}`, 'error');
+                    return {
+                        source: 'error',
+                        symbol: symbol,
+                        price: 0,
+                        volume: 0,
+                        success: false,
+                        error: error.message
+                    };
+                }
+            }
+
+            verifyDataIntegrity(data, expectedSymbol) {
+                const verification = {
+                    isValid: true,
+                    errors: [],
+                    warnings: []
+                };
+                
+                // Check symbol match
+                if (data.symbol !== expectedSymbol) {
+                    verification.isValid = false;
+                    verification.errors.push(`Symbol mismatch: expected ${expectedSymbol}, got ${data.symbol}`);
+                }
+                
+                // Check price validity
+                if (data.price <= 0) {
+                    verification.isValid = false;
+                    verification.errors.push(`Invalid price: ${data.price}`);
+                }
+                
+                // Check volume validity
+                if (data.volume < 0) {
+                    verification.isValid = false;
+                    verification.errors.push(`Invalid volume: ${data.volume}`);
+                }
+                
+                // Check success status
+                if (!data.success) {
+                    verification.isValid = false;
+                    verification.errors.push(`Data loading failed: ${data.error || 'Unknown error'}`);
+                }
+                
+                return verification;
+            }
+
+            displayTestResult(result) {
+                const resultDiv = document.createElement('div');
+                resultDiv.className = `test-result ${result.verification.isValid ? 'success' : 'error'}`;
+                
+                let html = `
+                    <strong>${result.symbol}</strong> - ${result.status} (${result.data.source})
+                    <br>Price: $${result.data.price.toFixed(2)} | Volume: ${result.data.volume.toLocaleString()}
+                    <br>Time: ${result.timestamp}
+                `;
+                
+                if (result.verification.errors.length > 0) {
+                    html += `<br><strong>Errors:</strong> ${result.verification.errors.join(', ')}`;
+                }
+                
+                if (result.verification.warnings.length > 0) {
+                    html += `<br><strong>Warnings:</strong> ${result.verification.warnings.join(', ')}`;
+                }
+                
+                resultDiv.innerHTML = html;
+                this.resultsContainer.appendChild(resultDiv);
+            }
+
+            async runRefreshSequence() {
+                if (this.isRunning) {
+                    this.log('⚠️ Refresh sequence already running', 'warning');
+                    return;
+                }
+                
+                this.isRunning = true;
+                this.currentSymbolIndex = 0;
+                this.testResults = [];
+                this.resultsContainer.innerHTML = '';
+                this.logContainer.innerHTML = '';
+                
+                document.getElementById('test-status').textContent = 'Running';
+                document.getElementById('stop-btn').disabled = false;
+                
+                this.log('🚀 Starting refresh sequence test', 'info');
+                
+                try {
+                    for (let i = 0; i < this.symbols.length && this.isRunning; i++) {
+                        const symbol = this.symbols[i];
+                        this.currentSymbolIndex = i;
+                        
+                        this.log(`🔄 Testing symbol ${i + 1}/${this.symbols.length}: ${symbol}`, 'info');
+                        
+                        // Load data
+                        const data = await this.loadCurrentPriceData(symbol);
+                        
+                        // Update display
+                        this.updateDisplay(symbol, data.price, data.volume, data.source);
+                        
+                        // Verify data integrity
+                        const verification = this.verifyDataIntegrity(data, symbol);
+                        
+                        // Create test result
+                        const result = {
+                            symbol: symbol,
+                            timestamp: new Date().toISOString(),
+                            data: data,
+                            verification: verification,
+                            status: verification.isValid ? 'PASS' : 'FAIL'
+                        };
+                        
+                        this.testResults.push(result);
+                        this.displayTestResult(result);
+                        
+                        // Update progress
+                        this.updateProgress(i + 1, this.symbols.length);
+                        
+                        // Wait between tests
+                        if (i < this.symbols.length - 1 && this.isRunning) {
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                        }
+                    }
+                    
+                    if (this.isRunning) {
+                        this.generateTestReport();
+                        this.log('✅ Refresh sequence completed successfully', 'success');
+                        document.getElementById('test-status').textContent = 'Completed';
+                    } else {
+                        this.log('⏹️ Refresh sequence stopped by user', 'warning');
+                        document.getElementById('test-status').textContent = 'Stopped';
+                    }
+                    
+                } catch (error) {
+                    this.log(`❌ Refresh sequence failed: ${error.message}`, 'error');
+                    document.getElementById('test-status').textContent = 'Failed';
+                } finally {
+                    this.isRunning = false;
+                    document.getElementById('stop-btn').disabled = true;
+                }
+            }
+
+            stopRefreshSequence() {
+                if (this.isRunning) {
+                    this.isRunning = false;
+                    this.log('⏹️ Stopping refresh sequence...', 'warning');
+                    document.getElementById('test-status').textContent = 'Stopping...';
+                }
+            }
+
+            generateTestReport() {
+                const totalTests = this.testResults.length;
+                const passedTests = this.testResults.filter(r => r.status === 'PASS').length;
+                const failedTests = totalTests - passedTests;
+                const successRate = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
+                
+                const reportDiv = document.createElement('div');
+                reportDiv.className = 'test-result info';
+                reportDiv.innerHTML = `
+                    <h4>📋 Test Report</h4>
+                    <p><strong>Total Tests:</strong> ${totalTests}</p>
+                    <p><strong>Passed:</strong> ${passedTests}</p>
+                    <p><strong>Failed:</strong> ${failedTests}</p>
+                    <p><strong>Success Rate:</strong> ${successRate.toFixed(2)}%</p>
+                `;
+                
+                this.resultsContainer.appendChild(reportDiv);
+                this.log(`📊 Test Report: ${passedTests}/${totalTests} passed (${successRate.toFixed(2)}%)`, 'info');
+            }
+
+            clearResults() {
+                this.testResults = [];
+                this.resultsContainer.innerHTML = '';
+                this.logContainer.innerHTML = '';
+                this.progressFill.style.width = '0%';
+                document.getElementById('test-status').textContent = 'Ready';
+                this.log('🧹 Results cleared', 'info');
+            }
+        }
+
+        // Initialize tester
+        const tester = new RefreshSequenceTester();
+        
+        // Make functions available globally
+        window.startRefreshSequence = () => tester.runRefreshSequence();
+        window.stopRefreshSequence = () => tester.stopRefreshSequence();
+        window.clearResults = () => tester.clearResults();
+        
+        // Auto-run initial test
+        tester.log('🔧 Refresh Sequence Tester loaded and ready', 'info');
+        tester.log('Click "Start Refresh Sequence" to begin testing', 'info');
+    </script>
+</body>
+</html>

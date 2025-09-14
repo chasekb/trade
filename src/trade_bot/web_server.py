@@ -161,6 +161,8 @@ class BacktestRequest(BaseModel):
     granularity: int = 3600
     stop_loss: float = 5.0
     take_profit: float = 10.0
+    enable_stop_loss: bool = True
+    enable_take_profit: bool = True
     initial_capital: float = 10000.0
     portfolio_percentage: float = 100.0  # Percentage of portfolio to use per trade (1-100%)
     strategy_params: dict = {}
@@ -177,6 +179,26 @@ class BacktestRequest(BaseModel):
     # Legacy parameters for backward compatibility
     short_window: int = 5
     long_window: int = 20
+    # Additional legacy parameters for different strategies
+    bb_period: int = 20
+    bb_std_dev: float = 2.0
+    rsi_period: int = 14
+    rsi_oversold: int = 30
+    rsi_overbought: int = 70
+    ema_short: int = 12
+    ema_long: int = 26
+    ema_alpha: float = None
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    stoch_k_period: int = 14
+    stoch_d_period: int = 3
+    stoch_overbought: int = 80
+    stoch_oversold: int = 20
+    atr_period: int = 14
+    atr_multiplier: float = 2.0
+    atr_volatility_threshold: float = 1.5
+    atr_position_size: float = 2.0
 
 class BacktestHistoryItem(BaseModel):
     id: int
@@ -582,51 +604,57 @@ async def run_backtest(request: BacktestRequest):
         elif request.strategy_type == "atr":
             strategy_class = ATRStrategy
         
-        # Use strategy_params if provided, otherwise fall back to legacy parameters
-        if request.strategy_params:
+        # Use strategy_params if provided and not empty, otherwise fall back to legacy parameters
+        if request.strategy_params and len(request.strategy_params) > 0:
             strategy_params = request.strategy_params
         else:
             # Default parameters based on strategy type
-            if request.strategy_type == "bollinger":
+            if request.strategy_type == "sma":
                 strategy_params = {
-                    'period': 20,
-                    'std_dev': 2.0
-                }
-            elif request.strategy_type == "rsi":
-                strategy_params = {
-                    'period': 14,
-                    'oversold': 30,
-                    'overbought': 70
+                    'short_window': request.short_window,
+                    'long_window': request.long_window
                 }
             elif request.strategy_type == "ema":
                 strategy_params = {
-                    'short_ema': 12,
-                    'long_ema': 26,
-                    'alpha': None  # Will be calculated automatically
+                    'short_ema': request.ema_short,
+                    'long_ema': request.ema_long,
+                    'alpha': request.ema_alpha
+                }
+            elif request.strategy_type == "bollinger":
+                strategy_params = {
+                    'period': request.bb_period,
+                    'std_dev': request.bb_std_dev
+                }
+            elif request.strategy_type == "rsi":
+                strategy_params = {
+                    'period': request.rsi_period,
+                    'oversold': request.rsi_oversold,
+                    'overbought': request.rsi_overbought
                 }
             elif request.strategy_type == "macd":
                 strategy_params = {
-                    'fast_ema': 12,
-                    'slow_ema': 26,
-                    'signal_ema': 9
+                    'fast_ema': request.macd_fast,
+                    'slow_ema': request.macd_slow,
+                    'signal_ema': request.macd_signal
                 }
             elif request.strategy_type == "stochastic":
                 strategy_params = {
-                    'k_period': 14,
-                    'd_period': 3,
-                    'overbought': 80,
-                    'oversold': 20
+                    'k_period': request.stoch_k_period,
+                    'd_period': request.stoch_d_period,
+                    'overbought': request.stoch_overbought,
+                    'oversold': request.stoch_oversold
                 }
             elif request.strategy_type == "dca":
                 strategy_params = {}  # DCA doesn't need strategy-specific params
             elif request.strategy_type == "atr":
                 strategy_params = {
-                    'period': 14,
-                    'atr_multiplier': 2.0,
-                    'volatility_threshold': 1.5,
-                    'position_size_atr': 0.02
+                    'period': request.atr_period,
+                    'atr_multiplier': request.atr_multiplier,
+                    'volatility_threshold': request.atr_volatility_threshold,
+                    'position_size_atr': request.atr_position_size / 100  # Convert percentage to decimal
                 }
             else:
+                # Fallback for unknown strategies
                 strategy_params = {
                     'short_window': request.short_window,
                     'long_window': request.long_window
@@ -639,10 +667,33 @@ async def run_backtest(request: BacktestRequest):
             config.buy_hold_exit_condition = request.buy_hold_exit_condition
             config.buy_hold_profit_target = request.buy_hold_profit_target
             
-            # Create base strategy first
-            base_strategy = strategy_class(config, **strategy_params)
+            # Create base strategy first with a config that doesn't have buy and hold enabled
+            # This ensures the base strategy generates signals normally
+            base_config = TradingConfig(
+                api_key=config.api_key,
+                api_secret=config.api_secret,
+                passphrase=config.passphrase,
+                product_id=config.product_id,
+                websocket_url=config.websocket_url,
+                max_position_size=config.max_position_size,
+                stop_loss_percentage=config.stop_loss_percentage,
+                take_profit_percentage=config.take_profit_percentage,
+                trading_fee_percentage=config.trading_fee_percentage,
+                enable_dca=config.enable_dca,
+                dca_amount=config.dca_amount,
+                dca_frequency=config.dca_frequency,
+                dca_max_investments=config.dca_max_investments,
+                dca_start_delay=config.dca_start_delay,
+                enable_buy_hold=False,  # Base strategy should not have buy and hold enabled
+                buy_hold_exit_condition="never",
+                buy_hold_profit_target=0.0,
+                output_dir=config.output_dir,
+                log_level=config.log_level
+            )
             
-            # Wrap with buy and hold strategy
+            base_strategy = strategy_class(base_config, **strategy_params)
+            
+            # Wrap with buy and hold strategy using the original config
             wrapped_strategy = BuyAndHoldStrategy(config, base_strategy)
             
             # Create backtester with wrapped strategy
@@ -651,7 +702,9 @@ async def run_backtest(request: BacktestRequest):
                 strategy_class=lambda config, **kwargs: wrapped_strategy,
                 strategy_params={},
                 portfolio_percentage=request.portfolio_percentage,
-                initial_capital=request.initial_capital
+                initial_capital=request.initial_capital,
+                enable_stop_loss=request.enable_stop_loss,
+                enable_take_profit=request.enable_take_profit
             )
         else:
             # Create backtester normally
@@ -660,7 +713,9 @@ async def run_backtest(request: BacktestRequest):
                 strategy_class=strategy_class,
                 strategy_params=strategy_params,
                 portfolio_percentage=request.portfolio_percentage,
-                initial_capital=request.initial_capital
+                initial_capital=request.initial_capital,
+                enable_stop_loss=request.enable_stop_loss,
+                enable_take_profit=request.enable_take_profit
             )
         
         # Run backtest

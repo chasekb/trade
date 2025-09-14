@@ -19,6 +19,8 @@ class EnhancedTradingDashboard {
         this.historicalPrices = {}; // Store historical prices for percentage calculation
         this.apiChange24h = null; // Store API's 24h change as fallback
         this.isSwitchingSymbol = false; // Flag to prevent real-time updates during symbol switch
+        this.websocketSubscriptionsUpdated = false; // Flag to track when WebSocket subscriptions are updated
+        this.hasRealTimeData = false; // Track if we have real-time data for current symbol
         
         // Backtest history properties
         this.historyLimit = 20;
@@ -197,6 +199,15 @@ class EnhancedTradingDashboard {
         document.getElementById('buy-hold-exit-condition').addEventListener('change', (e) => {
             this.toggleBuyHoldProfitTarget(e.target.value);
         });
+        
+        // Risk management toggles
+        document.getElementById('enable-stop-loss').addEventListener('change', (e) => {
+            this.toggleStopLossOptions(e.target.checked);
+        });
+        
+        document.getElementById('enable-take-profit').addEventListener('change', (e) => {
+            this.toggleTakeProfitOptions(e.target.checked);
+        });
     }
 
     async subscribeToChannel() {
@@ -357,19 +368,26 @@ class EnhancedTradingDashboard {
             product_id: data.product_id,
             currentSymbol: this.currentSymbol,
             type: data.type,
-            isSwitchingSymbol: this.isSwitchingSymbol
+            isSwitchingSymbol: this.isSwitchingSymbol,
+            websocketSubscriptionsUpdated: this.websocketSubscriptionsUpdated,
+            hasTickerData: !!(data.data && data.data.ticker)
         });
-        
-        // Skip all WebSocket messages if we're switching symbols
-        if (this.isSwitchingSymbol) {
-            console.log('Skipping WebSocket message during symbol switch');
-            return;
-        }
         
         // Check if the message is for the current symbol
         if (data.product_id && data.product_id !== this.currentSymbol) {
-            console.log('Ignoring message for different symbol:', data.product_id);
+            console.log('Ignoring message for different symbol:', data.product_id, 'current:', this.currentSymbol);
             return; // Ignore messages for other symbols
+        }
+        
+        // If no product_id is specified, assume it's for the current symbol
+        if (!data.product_id) {
+            console.log('WebSocket message without product_id, assuming current symbol:', this.currentSymbol);
+        }
+        
+        // Skip WebSocket messages if we're switching symbols and subscriptions haven't been updated yet
+        if (this.isSwitchingSymbol && !this.websocketSubscriptionsUpdated) {
+            console.log('Skipping WebSocket message during symbol switch (subscriptions not updated yet)');
+            return;
         }
         
         if (data.type === 'real_time_data') {
@@ -394,12 +412,6 @@ class EnhancedTradingDashboard {
     }
 
     updateRealTimeData(data) {
-        // Skip real-time updates if we're switching symbols
-        if (this.isSwitchingSymbol) {
-            console.log('Skipping real-time update during symbol switch');
-            return;
-        }
-        
         // Update price data
         if (data.ticker) {
             const price = parseFloat(data.ticker.price || 0);
@@ -409,10 +421,15 @@ class EnhancedTradingDashboard {
                 currentSymbol: this.currentSymbol,
                 price,
                 volume: data.ticker.volume_24h,
-                change24h: apiChange24h
+                change24h: apiChange24h,
+                isSwitchingSymbol: this.isSwitchingSymbol,
+                websocketSubscriptionsUpdated: this.websocketSubscriptionsUpdated
             });
             
             document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
+            
+            // Mark that we have real-time data for this symbol
+            this.hasRealTimeData = true;
             
             // Store current price for percentage calculation
             this.historicalPrices[new Date().toISOString()] = price;
@@ -1037,7 +1054,22 @@ class EnhancedTradingDashboard {
     
     async loadCurrentPriceData() {
         try {
-            console.log(`Loading current price data for ${this.currentSymbol}`);
+            console.log(`Loading current price data for ${this.currentSymbol}`, {
+                hasRealTimeData: this.hasRealTimeData,
+                isSwitchingSymbol: this.isSwitchingSymbol
+            });
+            
+            // If we already have real-time data and we're not switching symbols, don't override it
+            // But always load data during symbol switches to ensure we have something to display
+            if (this.hasRealTimeData && !this.isSwitchingSymbol) {
+                console.log('Already have real-time data, skipping loadCurrentPriceData');
+                return;
+            }
+            
+            // Force load data if we're switching symbols or if we don't have real-time data
+            if (this.isSwitchingSymbol || !this.hasRealTimeData) {
+                console.log('Force loading data - switching symbols or no real-time data');
+            }
             
             // Try to get real-time data first
             const realTimeResponse = await fetch(`/api/real-time-data?product_id=${this.currentSymbol}`);
@@ -1051,6 +1083,12 @@ class EnhancedTradingDashboard {
                 
                 document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
                 document.getElementById('volume-24h').textContent = volume.toLocaleString();
+                
+                console.log('Updated display with real-time data:', {
+                    price: `$${price.toFixed(2)}`,
+                    volume: volume.toLocaleString(),
+                    source: 'real-time'
+                });
                 
                 // Store the API change for percentage calculation
                 this.apiChange24h = change24h;
@@ -1075,6 +1113,12 @@ class EnhancedTradingDashboard {
                     document.getElementById('current-price').textContent = `$${price.toFixed(2)}`;
                     document.getElementById('volume-24h').textContent = volume.toLocaleString();
                     
+                    console.log('Updated display with historical data:', {
+                        price: `$${price.toFixed(2)}`,
+                        volume: volume.toLocaleString(),
+                        source: 'historical'
+                    });
+                    
                     console.log(`Updated price data from historical for ${this.currentSymbol}:`, {
                         price,
                         volume
@@ -1089,6 +1133,13 @@ class EnhancedTradingDashboard {
             
             // Update percentage change
             this.updatePercentageChange();
+            
+            // Force update the display to ensure it's showing the correct values
+            console.log('Final display values after loadCurrentPriceData:', {
+                currentPrice: document.getElementById('current-price').textContent,
+                volume: document.getElementById('volume-24h').textContent,
+                symbol: this.currentSymbol
+            });
             
         } catch (error) {
             console.error('Failed to load current price data:', error);
@@ -1106,6 +1157,8 @@ class EnhancedTradingDashboard {
         const granularity = document.getElementById('backtest-granularity').value;
         const stopLoss = parseFloat(document.getElementById('stop-loss').value);
         const takeProfit = parseFloat(document.getElementById('take-profit').value);
+        const enableStopLoss = document.getElementById('enable-stop-loss').checked;
+        const enableTakeProfit = document.getElementById('enable-take-profit').checked;
         const initialCapital = parseFloat(document.getElementById('initial-capital').value);
         const portfolioPercentage = parseFloat(document.getElementById('portfolio-percentage').value);
         
@@ -1160,6 +1213,13 @@ class EnhancedTradingDashboard {
         resultsContainer.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Running backtest...</div>';
         resultsContainer.classList.remove('hidden');
         
+        // Refresh backtest history at the beginning of each new backtest
+        try {
+            this.loadBacktestHistory(0);
+        } catch (error) {
+            console.warn('Failed to refresh history at start of backtest:', error);
+        }
+        
         try {
             const response = await fetch('/api/run-backtest', {
                 method: 'POST',
@@ -1173,6 +1233,8 @@ class EnhancedTradingDashboard {
                     granularity: parseInt(granularity),
                     stop_loss: stopLoss,
                     take_profit: takeProfit,
+                    enable_stop_loss: enableStopLoss,
+                    enable_take_profit: enableTakeProfit,
                     initial_capital: initialCapital,
                     portfolio_percentage: portfolioPercentage,
                     strategy_params: strategyParams,
@@ -1191,6 +1253,12 @@ class EnhancedTradingDashboard {
             
             if (result.success) {
                 this.displayBacktestResults(result);
+                // Refresh history after successful backtest
+                try {
+                    this.loadBacktestHistory(0);
+                } catch (error) {
+                    console.warn('Failed to refresh history after backtest:', error);
+                }
             } else {
                 resultsContainer.innerHTML = `
                     <div class="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -1831,12 +1899,36 @@ class EnhancedTradingDashboard {
             profitTargetInput.value = 0;
         }
     }
+    
+    toggleStopLossOptions(enabled) {
+        const stopLossGroup = document.getElementById('stop-loss-group');
+        if (enabled) {
+            stopLossGroup.classList.remove('opacity-50');
+            stopLossGroup.querySelector('input').disabled = false;
+        } else {
+            stopLossGroup.classList.add('opacity-50');
+            stopLossGroup.querySelector('input').disabled = true;
+        }
+    }
+    
+    toggleTakeProfitOptions(enabled) {
+        const takeProfitGroup = document.getElementById('take-profit-group');
+        if (enabled) {
+            takeProfitGroup.classList.remove('opacity-50');
+            takeProfitGroup.querySelector('input').disabled = false;
+        } else {
+            takeProfitGroup.classList.add('opacity-50');
+            takeProfitGroup.querySelector('input').disabled = true;
+        }
+    }
 
     async switchSymbol() {
         console.log(`Switching to symbol: ${this.currentSymbol}`);
         
         // Set flag to prevent real-time updates during switch
         this.isSwitchingSymbol = true;
+        this.websocketSubscriptionsUpdated = false;
+        this.hasRealTimeData = false; // Reset real-time data flag for new symbol
         
         // Clear existing data
         this.candlesData = [];
@@ -1864,6 +1956,17 @@ class EnhancedTradingDashboard {
             // Load current price and volume data for the new symbol
             await this.loadCurrentPriceData();
             
+            // Force load data again after a short delay to ensure we have something
+            // Only if we don't have real-time data yet
+            setTimeout(async () => {
+                if (!this.hasRealTimeData) {
+                    console.log('Force loading data after symbol switch (no real-time data yet)...');
+                    await this.loadCurrentPriceData();
+                } else {
+                    console.log('Skipping force load - real-time data already available');
+                }
+            }, 1000);
+            
             // Reload chart data with rescaling
             await this.loadCandlesData();
             // Force chart rescale for new symbol
@@ -1876,15 +1979,85 @@ class EnhancedTradingDashboard {
             console.log('Waiting for WebSocket subscriptions to stabilize...');
             await new Promise(resolve => setTimeout(resolve, 2000));
             
+            // Clear the switching flag BEFORE showing success notification
+            // This allows WebSocket updates to start processing for the new symbol
+            this.isSwitchingSymbol = false;
+            this.websocketSubscriptionsUpdated = true; // Ensure this is set
+            console.log('Symbol switch completed, real-time updates re-enabled');
+            
+            // Don't immediately load API data here - let the WebSocket data come through first
+            // The timeouts below will handle loading API data if needed
+            
+            // Set multiple timeouts to ensure data is loaded
+            // Only load if we don't have real-time data to prevent overriding
+            setTimeout(() => {
+                console.log('Checking data status after 2 seconds...', {
+                    hasRealTimeData: this.hasRealTimeData,
+                    currentPrice: document.getElementById('current-price').textContent,
+                    volume: document.getElementById('volume-24h').textContent
+                });
+                if (!this.hasRealTimeData) {
+                    console.log('No real-time data received after 2 seconds, loading from API...');
+                    this.loadCurrentPriceData();
+                } else {
+                    console.log('Real-time data available, skipping API load');
+                }
+            }, 2000); // Check after 2 seconds
+            
+            setTimeout(() => {
+                console.log('Checking data status after 5 seconds...', {
+                    hasRealTimeData: this.hasRealTimeData,
+                    currentPrice: document.getElementById('current-price').textContent,
+                    volume: document.getElementById('volume-24h').textContent
+                });
+                if (!this.hasRealTimeData) {
+                    console.log('No real-time data received after 5 seconds, loading from API...');
+                    this.loadCurrentPriceData();
+                } else {
+                    console.log('Real-time data available, skipping API load');
+                }
+            }, 5000); // Check after 5 seconds
+            
+            setTimeout(() => {
+                console.log('Checking data status after 10 seconds...', {
+                    hasRealTimeData: this.hasRealTimeData,
+                    currentPrice: document.getElementById('current-price').textContent,
+                    volume: document.getElementById('volume-24h').textContent
+                });
+                if (!this.hasRealTimeData) {
+                    console.log('No real-time data received after 10 seconds, loading from API...');
+                    this.loadCurrentPriceData();
+                } else {
+                    console.log('Real-time data available, skipping API load');
+                }
+            }, 10000); // Check after 10 seconds
+            
             // Show success notification
             this.showNotification(`Successfully switched to ${this.currentSymbol}`, 'success');
+            
+            // Final check to ensure data is displayed
+            setTimeout(() => {
+                const currentPrice = document.getElementById('current-price').textContent;
+                const volume = document.getElementById('volume-24h').textContent;
+                console.log('Final data check:', {
+                    currentPrice,
+                    volume,
+                    hasRealTimeData: this.hasRealTimeData
+                });
+                
+                // If we still don't have proper data AND we don't have real-time data, force load it
+                if ((currentPrice === '$0.00' || volume === '0') && !this.hasRealTimeData) {
+                    console.log('Data still showing default values and no real-time data, forcing reload...');
+                    this.loadCurrentPriceData();
+                } else if (this.hasRealTimeData) {
+                    console.log('Real-time data available, skipping final reload');
+                }
+            }, 3000);
         } catch (error) {
             console.error('Error switching symbol:', error);
             this.showNotification(`Error switching to ${this.currentSymbol}: ${error.message}`, 'error');
-        } finally {
-            // Clear the switching flag
+            // Make sure to clear the flag even on error
             this.isSwitchingSymbol = false;
-            console.log('Symbol switch completed, real-time updates re-enabled');
         }
     }
 
@@ -1930,10 +2103,14 @@ class EnhancedTradingDashboard {
             console.log('Final subscriptions:', finalSubscriptions);
             
             console.log(`Successfully switched to ${this.currentSymbol}`);
+            // Mark that WebSocket subscriptions have been updated
+            this.websocketSubscriptionsUpdated = true;
         } catch (error) {
             console.error('Error updating WebSocket subscriptions:', error);
             // If WebSocket operations fail, just reload the data without WebSocket updates
             console.log('Falling back to data-only mode for symbol switch');
+            // Still mark as updated to allow data processing
+            this.websocketSubscriptionsUpdated = true;
         }
     }
 
@@ -2064,7 +2241,7 @@ class EnhancedTradingDashboard {
         if (backtests.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                    <td colspan="11" class="px-4 py-8 text-center text-gray-500">
                         No backtests found
                     </td>
                 </tr>
@@ -2076,14 +2253,27 @@ class EnhancedTradingDashboard {
             const row = document.createElement('tr');
             row.className = 'hover:bg-gray-50';
             
-            const totalReturn = backtest.results.result?.total_return || 0;
-            const tradesCount = backtest.results.result?.total_trades || 0;
+            // Safely access the results data
+            const results = backtest.results || {};
+            const result = results.result || {};
+            
+            const totalReturn = (result.total_return || 0) * 100; // Convert to percentage
+            const tradesCount = result.total_trades || 0;
+            const winRate = (result.win_rate || 0) * 100; // Convert to percentage
+            const netProfit = result.net_profit || 0;
+            const finalBalance = result.final_balance || 0;
             const timestamp = new Date(backtest.timestamp).toLocaleString();
             
             // Format strategy parameters
-            const params = Object.entries(backtest.strategy_params)
+            const params = Object.entries(backtest.strategy_params || {})
                 .map(([key, value]) => `${key}: ${value}`)
                 .join(', ');
+            
+            // Format backtest parameters for display
+            const backtestParams = backtest.backtest_params || {};
+            const capital = backtestParams.initial_capital || 'N/A';
+            const stopLoss = backtestParams.stop_loss || 'N/A';
+            const takeProfit = backtestParams.take_profit || 'N/A';
             
             row.innerHTML = `
                 <td class="px-4 py-3 text-sm text-gray-900">${backtest.id}</td>
@@ -2093,11 +2283,14 @@ class EnhancedTradingDashboard {
                 <td class="px-4 py-3 text-sm text-gray-500" title="${params}">${params.length > 30 ? params.substring(0, 30) + '...' : params}</td>
                 <td class="px-4 py-3 text-sm ${totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}">${totalReturn.toFixed(2)}%</td>
                 <td class="px-4 py-3 text-sm text-gray-900">${tradesCount}</td>
+                <td class="px-4 py-3 text-sm text-gray-900">${winRate.toFixed(1)}%</td>
+                <td class="px-4 py-3 text-sm ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}">$${netProfit.toFixed(2)}</td>
+                <td class="px-4 py-3 text-sm text-gray-900">$${finalBalance.toFixed(2)}</td>
                 <td class="px-4 py-3 text-sm text-gray-900">
-                    <button onclick="dashboard.viewBacktest(${backtest.id})" class="text-blue-600 hover:text-blue-800 mr-2">
+                    <button onclick="dashboard.viewBacktest(${backtest.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="View Details">
                         <i class="fas fa-eye"></i>
                     </button>
-                    <button onclick="dashboard.deleteBacktest(${backtest.id})" class="text-red-600 hover:text-red-800">
+                    <button onclick="dashboard.deleteBacktest(${backtest.id})" class="text-red-600 hover:text-red-800" title="Delete">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -2110,22 +2303,42 @@ class EnhancedTradingDashboard {
     displayHistoryStats(stats) {
         const statsContainer = document.getElementById('history-stats');
         
+        // Calculate additional statistics
+        const totalBacktests = stats.total_backtests || 0;
+        const recentBacktests = stats.recent_backtests || 0;
+        const strategyCount = Object.keys(stats.strategy_counts || {}).length;
+        const symbolCount = Object.keys(stats.symbol_counts || {}).length;
+        
+        // Get most used strategy
+        const mostUsedStrategy = Object.entries(stats.strategy_counts || {})
+            .sort(([,a], [,b]) => b - a)[0];
+        const mostUsedStrategyName = mostUsedStrategy ? mostUsedStrategy[0].toUpperCase() : 'N/A';
+        const mostUsedStrategyCount = mostUsedStrategy ? mostUsedStrategy[1] : 0;
+        
+        // Get most tested symbol
+        const mostTestedSymbol = Object.entries(stats.symbol_counts || {})
+            .sort(([,a], [,b]) => b - a)[0];
+        const mostTestedSymbolName = mostTestedSymbol ? mostTestedSymbol[0] : 'N/A';
+        const mostTestedSymbolCount = mostTestedSymbol ? mostTestedSymbol[1] : 0;
+        
         statsContainer.innerHTML = `
             <div class="bg-blue-50 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-blue-600">${stats.total_backtests}</div>
+                <div class="text-2xl font-bold text-blue-600">${totalBacktests}</div>
                 <div class="text-sm text-blue-800">Total Backtests</div>
             </div>
             <div class="bg-green-50 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-green-600">${stats.recent_backtests}</div>
+                <div class="text-2xl font-bold text-green-600">${recentBacktests}</div>
                 <div class="text-sm text-green-800">Last 7 Days</div>
             </div>
             <div class="bg-purple-50 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-purple-600">${Object.keys(stats.strategy_counts).length}</div>
+                <div class="text-2xl font-bold text-purple-600">${strategyCount}</div>
                 <div class="text-sm text-purple-800">Strategies Used</div>
+                <div class="text-xs text-purple-600 mt-1">Most: ${mostUsedStrategyName} (${mostUsedStrategyCount})</div>
             </div>
             <div class="bg-orange-50 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-orange-600">${Object.keys(stats.symbol_counts).length}</div>
+                <div class="text-2xl font-bold text-orange-600">${symbolCount}</div>
                 <div class="text-sm text-orange-800">Symbols Tested</div>
+                <div class="text-xs text-orange-600 mt-1">Most: ${mostTestedSymbolName} (${mostTestedSymbolCount})</div>
             </div>
         `;
     }
@@ -2147,18 +2360,36 @@ class EnhancedTradingDashboard {
     async viewBacktest(backtestId) {
         try {
             const response = await fetch(`/api/backtest/${backtestId}`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             const backtest = await response.json();
             
-            if (backtest) {
+            if (backtest && backtest.results) {
+                // Transform the data structure to match what displayBacktestResults expects
+                const resultData = {
+                    success: true,
+                    result: backtest.results.result,
+                    trades: backtest.results.trades,
+                    equity_curve: backtest.results.equity_curve,
+                    backtest_key: `History #${backtest.id}`,
+                    backtest_id: backtest.id
+                };
+                
                 // Display the backtest results in the main results area
-                this.displayBacktestResults(backtest.results);
+                this.displayBacktestResults(resultData);
                 
                 // Scroll to results
                 document.getElementById('backtest-results').scrollIntoView({ behavior: 'smooth' });
+            } else {
+                console.error('Invalid backtest data structure:', backtest);
+                alert('Failed to load backtest details - invalid data structure');
             }
         } catch (error) {
             console.error('Error viewing backtest:', error);
-            alert('Failed to load backtest details');
+            alert('Failed to load backtest details: ' + error.message);
         }
     }
 

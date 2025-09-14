@@ -25,10 +25,12 @@ class TradeSignal:
 class SimpleMovingAverageStrategy:
     """Simple moving average crossover strategy."""
     
-    def __init__(self, config: TradingConfig, short_window: int = 10, long_window: int = 30):
+    def __init__(self, config: TradingConfig, short_window: int = 10, long_window: int = 30, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         self.config = config
         self.short_window = short_window
         self.long_window = long_window
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         self.price_history: list = []
         self.position = 0.0  # Current position size
         self.entry_price = 0.0
@@ -79,8 +81,8 @@ class SimpleMovingAverageStrategy:
         if short_sma is None or long_sma is None:
             return None
         
-        # Check stop loss first (highest priority)
-        if self.position > 0:
+        # Check stop loss first (highest priority) - only if enabled
+        if self.position > 0 and self.enable_stop_loss:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
             if loss_percentage <= -self.config.stop_loss_percentage:
                 self.signal_count += 1
@@ -93,8 +95,8 @@ class SimpleMovingAverageStrategy:
                     reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
                 )
         
-        # Check take profit second
-        if self.position > 0:
+        # Check take profit second - only if enabled
+        if self.position > 0 and self.enable_take_profit:
             profit_percentage = (current_price - self.entry_price) / self.entry_price
             if profit_percentage >= self.config.take_profit_percentage:
                 self.signal_count += 1
@@ -276,10 +278,12 @@ class SimpleMovingAverageStrategy:
 class BollingerBandsStrategy:
     """Bollinger Bands trading strategy."""
     
-    def __init__(self, config: TradingConfig, period: int = 20, std_dev: float = 2.0):
+    def __init__(self, config: TradingConfig, period: int = 20, std_dev: float = 2.0, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         self.config = config
         self.period = period
         self.std_dev = std_dev
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         self.price_history: list = []
         self.position = 0.0  # Current position size
         self.entry_price = 0.0
@@ -330,8 +334,8 @@ class BollingerBandsStrategy:
         if len(self.price_history) < self.period:
             return None
         
-        # Check stop loss first (highest priority)
-        if self.position > 0:
+        # Check stop loss first (highest priority) - only if enabled
+        if self.position > 0 and self.enable_stop_loss:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
             if loss_percentage <= -self.config.stop_loss_percentage:
                 self.signal_count += 1
@@ -344,8 +348,8 @@ class BollingerBandsStrategy:
                     reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
                 )
         
-        # Check take profit second
-        if self.position > 0:
+        # Check take profit second - only if enabled
+        if self.position > 0 and self.enable_take_profit:
             profit_percentage = (current_price - self.entry_price) / self.entry_price
             if profit_percentage >= self.config.take_profit_percentage:
                 self.signal_count += 1
@@ -507,11 +511,13 @@ class BollingerBandsStrategy:
 class RSIStrategy:
     """RSI (Relative Strength Index) trading strategy."""
     
-    def __init__(self, config: TradingConfig, period: int = 14, oversold: int = 30, overbought: int = 70):
+    def __init__(self, config: TradingConfig, period: int = 14, oversold: int = 30, overbought: int = 70, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         self.config = config
         self.period = period
         self.oversold = oversold
         self.overbought = overbought
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         self.price_history: list = []
         self.position = 0.0  # Current position size
         self.entry_price = 0.0
@@ -575,8 +581,8 @@ class RSIStrategy:
         if len(self.price_history) < self.period + 1:
             return None
         
-        # Check stop loss first (highest priority)
-        if self.position > 0:
+        # Check stop loss first (highest priority) - only if enabled
+        if self.position > 0 and self.enable_stop_loss:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
             if loss_percentage <= -self.config.stop_loss_percentage:
                 self.signal_count += 1
@@ -589,8 +595,8 @@ class RSIStrategy:
                     reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
                 )
         
-        # Check take profit second
-        if self.position > 0:
+        # Check take profit second - only if enabled
+        if self.position > 0 and self.enable_take_profit:
             profit_percentage = (current_price - self.entry_price) / self.entry_price
             if profit_percentage >= self.config.take_profit_percentage:
                 self.signal_count += 1
@@ -762,10 +768,12 @@ class RSIStrategy:
 class EMAStrategy:
     """EMA (Exponential Moving Average) trading strategy."""
     
-    def __init__(self, config: TradingConfig, short_ema: int = 12, long_ema: int = 26, alpha: float = None):
+    def __init__(self, config: TradingConfig, short_ema: int = 12, long_ema: int = 26, alpha: float = None, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         self.config = config
         self.short_ema = short_ema
         self.long_ema = long_ema
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         # Alpha is the smoothing factor: 2 / (period + 1)
         # If not provided, calculate from short_ema period
         self.alpha_short = alpha if alpha is not None else 2.0 / (short_ema + 1)
@@ -824,8 +832,8 @@ class EMAStrategy:
         if len(self.price_history) < self.long_ema:
             return None
         
-        # Check stop loss first (highest priority)
-        if self.position > 0:
+        # Check stop loss first (highest priority) - only if enabled
+        if self.position > 0 and self.enable_stop_loss:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
             if loss_percentage <= -self.config.stop_loss_percentage:
                 self.signal_count += 1
@@ -838,8 +846,8 @@ class EMAStrategy:
                     reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
                 )
         
-        # Check take profit second
-        if self.position > 0:
+        # Check take profit second - only if enabled
+        if self.position > 0 and self.enable_take_profit:
             profit_percentage = (current_price - self.entry_price) / self.entry_price
             if profit_percentage >= self.config.take_profit_percentage:
                 self.signal_count += 1
@@ -1020,11 +1028,13 @@ class EMAStrategy:
 class MACDStrategy:
     """MACD (Moving Average Convergence Divergence) trading strategy."""
     
-    def __init__(self, config: TradingConfig, fast_ema: int = 12, slow_ema: int = 26, signal_ema: int = 9):
+    def __init__(self, config: TradingConfig, fast_ema: int = 12, slow_ema: int = 26, signal_ema: int = 9, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         self.config = config
         self.fast_ema = fast_ema
         self.slow_ema = slow_ema
         self.signal_ema = signal_ema
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         self.price_history: list = []
         self.position = 0.0  # Current position size
         self.entry_price = 0.0
@@ -1127,8 +1137,8 @@ class MACDStrategy:
         if len(self.price_history) < self.slow_ema + self.signal_ema - 1:
             return None
         
-        # Check stop loss first (highest priority)
-        if self.position > 0:
+        # Check stop loss first (highest priority) - only if enabled
+        if self.position > 0 and self.enable_stop_loss:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
             if loss_percentage <= -self.config.stop_loss_percentage:
                 self.signal_count += 1
@@ -1141,8 +1151,8 @@ class MACDStrategy:
                     reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
                 )
         
-        # Check take profit second
-        if self.position > 0:
+        # Check take profit second - only if enabled
+        if self.position > 0 and self.enable_take_profit:
             profit_percentage = (current_price - self.entry_price) / self.entry_price
             if profit_percentage >= self.config.take_profit_percentage:
                 self.signal_count += 1
@@ -1355,12 +1365,14 @@ class MACDStrategy:
 class StochasticStrategy:
     """Stochastic Oscillator trading strategy."""
     
-    def __init__(self, config: TradingConfig, k_period: int = 14, d_period: int = 3, overbought: int = 80, oversold: int = 20):
+    def __init__(self, config: TradingConfig, k_period: int = 14, d_period: int = 3, overbought: int = 80, oversold: int = 20, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         self.config = config
         self.k_period = k_period
         self.d_period = d_period
         self.overbought = overbought
         self.oversold = oversold
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         self.price_history: list = []
         self.position = 0.0  # Current position size
         self.entry_price = 0.0
@@ -1903,24 +1915,28 @@ class BuyAndHoldStrategy:
         """Generate trading signal based on buy and hold and optional base strategy."""
         signals = []
         
-        # Check for buy and hold exit
-        if self.should_exit_position(current_price, timestamp, is_end_of_period):
-            exit_signal = self._create_exit_signal(current_price, timestamp, is_end_of_period)
-            if exit_signal:
-                signals.append(exit_signal)
-        
-        # Check base strategy if available
-        if self.base_strategy:
-            base_signal = self.base_strategy.generate_signal(current_price, timestamp)
+        # Check base strategy if available - pass through the exact same parameters
+        # But skip base strategy calls when is_end_of_period=True in pure buy and hold mode
+        # to prevent stop loss/take profit signals at the end of backtest
+        if self.base_strategy and not (is_end_of_period and self.config.buy_hold_exit_condition == "never"):
+            base_signal = self.base_strategy.generate_signal(current_price, timestamp, is_end_of_period)
             if base_signal:
-                # Only process buy signals in buy and hold mode
+                # In buy and hold mode, we only want to process buy signals from the base strategy
+                # and ignore any sell signals (including stop loss, take profit, etc.)
                 if base_signal.action == 'buy':
-                    # Modify signal to indicate it's from base strategy
-                    base_signal.reason = f"Strategy Buy: {base_signal.reason}"
+                    # Don't modify the signal - pass it through exactly as generated
                     signals.append(base_signal)
-                # Ignore sell signals from base strategy in buy and hold mode
+                # Ignore all sell signals from base strategy in buy and hold mode
                 elif base_signal.action == 'sell':
                     logger.debug(f"Ignoring sell signal in buy and hold mode: {base_signal.reason}")
+        
+        # Only check for buy and hold exits if we have exit conditions configured
+        # (i.e., not in pure buy and hold mode with "never" exit condition)
+        if self.config.enable_buy_hold and self.config.buy_hold_exit_condition != "never":
+            if self.should_exit_position(current_price, timestamp, is_end_of_period):
+                exit_signal = self._create_exit_signal(current_price, timestamp, is_end_of_period)
+                if exit_signal:
+                    signals.append(exit_signal)
         
         # Return the first signal
         if signals:
@@ -1933,14 +1949,16 @@ class BuyAndHoldStrategy:
                     self.signals_by_type['buy_and_hold_buy'] += 1
                 else:
                     self.signals_by_type['buy_and_hold_sell'] += 1
-            elif 'Strategy Buy' in signal.reason:
-                self.signals_by_type['strategy_buy'] += 1
-            elif 'Strategy Sell' in signal.reason:
-                self.signals_by_type['strategy_sell'] += 1
             elif 'Profit Target' in signal.reason:
                 self.signals_by_type['profit_target_exit'] += 1
             elif 'End of Period' in signal.reason:
                 self.signals_by_type['end_of_period_exit'] += 1
+            else:
+                # This is a signal from the base strategy
+                if signal.action == 'buy':
+                    self.signals_by_type['strategy_buy'] += 1
+                else:
+                    self.signals_by_type['strategy_sell'] += 1
                 
             return signal
         
@@ -2006,6 +2024,9 @@ class BuyAndHoldStrategy:
         if self.base_strategy:
             base_stats = self.base_strategy.get_signal_stats()
         
+        # Use the base strategy's price_history_length if available, otherwise use buy_signals
+        price_history_length = base_stats.get('price_history_length', len(self.buy_signals))
+        
         return {
             'total_signals': self.signal_count,
             'signals_by_type': self.signals_by_type.copy(),
@@ -2013,9 +2034,9 @@ class BuyAndHoldStrategy:
             'sell_signals': len(self.sell_signals),
             'total_invested': self.total_invested,
             'no_signal_count': self.no_signal_count,
-            'signal_rate': self.signal_count / max(len(self.buy_signals), 1) * 100,
+            'signal_rate': self.signal_count / max(price_history_length, 1) * 100,
             'base_strategy_stats': base_stats,
-            'price_history_length': len(self.buy_signals)  # Buy and hold uses buy_signals instead of price_history
+            'price_history_length': price_history_length
         }
     
     def get_position_info(self) -> Dict[str, Any]:
@@ -2055,12 +2076,14 @@ class ATRStrategy:
     """Average True Range (ATR) trading strategy based on volatility."""
     
     def __init__(self, config: TradingConfig, period: int = 14, atr_multiplier: float = 2.0, 
-                 volatility_threshold: float = 1.5, position_size_atr: float = 0.02):
+                 volatility_threshold: float = 1.5, position_size_atr: float = 0.02, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         self.config = config
         self.period = period
         self.atr_multiplier = atr_multiplier  # Multiplier for ATR-based stop loss
         self.volatility_threshold = volatility_threshold  # ATR threshold for volatility breakout
         self.position_size_atr = position_size_atr  # Position size as % of ATR
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         
         self.price_history: List[Dict[str, float]] = []  # Stores 'high', 'low', 'close'
         self.atr_values: List[float] = []

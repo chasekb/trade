@@ -44,7 +44,7 @@ class BacktestResult:
 class Backtester:
     """Backtesting engine for trading strategies."""
     
-    def __init__(self, config: TradingConfig, strategy_class, strategy_params: Dict[str, Any] = None, portfolio_percentage: float = 100.0, initial_capital: float = None):
+    def __init__(self, config: TradingConfig, strategy_class, strategy_params: Dict[str, Any] = None, portfolio_percentage: float = 100.0, initial_capital: float = None, enable_stop_loss: bool = True, enable_take_profit: bool = True):
         """Initialize the backtester.
         
         Args:
@@ -53,11 +53,15 @@ class Backtester:
             strategy_params: Parameters for the strategy
             portfolio_percentage: Percentage of portfolio to use per trade (1-100%)
             initial_capital: Initial capital for backtesting (overrides config.max_position_size)
+            enable_stop_loss: Whether to enable stop loss functionality
+            enable_take_profit: Whether to enable take profit functionality
         """
         self.config = config
         self.strategy_class = strategy_class
         self.strategy_params = strategy_params or {}
         self.portfolio_percentage = max(1.0, min(100.0, portfolio_percentage))  # Clamp between 1-100%
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
         self.logger = logging.getLogger(__name__)
         
         # Backtest state
@@ -322,8 +326,11 @@ class Backtester:
                            datetime.fromisoformat(historical_data[0]['timestamp'].replace('Z', '+00:00')))
                 self.logger.info(f"Data frequency: {time_diff.total_seconds()} seconds between points")
         
-        # Initialize strategy
-        strategy = self.strategy_class(self.config, **self.strategy_params)
+        # Initialize strategy with enable flags
+        strategy_params = self.strategy_params.copy()
+        strategy_params['enable_stop_loss'] = self.enable_stop_loss
+        strategy_params['enable_take_profit'] = self.enable_take_profit
+        strategy = self.strategy_class(self.config, **strategy_params)
         
         # Track signals for debugging
         signal_count = 0
