@@ -70,8 +70,6 @@ class SimpleMovingAverageStrategy:
     
     def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on current market conditions."""
-        self.add_price(current_price, timestamp)
-        
         if len(self.price_history) < self.long_window:
             return None
             
@@ -2549,8 +2547,6 @@ class FibonacciRetracementStrategy:
     
     def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on Fibonacci retracement levels."""
-        self.add_price(current_price, timestamp)
-        
         if len(self.price_history) < self.lookback_period:
             return None
         
@@ -2864,8 +2860,6 @@ class OrderBookStrategy:
     
     def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on order book and trade analysis."""
-        self.add_price(current_price, timestamp)
-        
         # Check stop loss first (highest priority) - only if enabled
         if self.position > 0 and self.enable_stop_loss:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
