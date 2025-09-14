@@ -164,7 +164,7 @@ class BacktestRequest(BaseModel):
     enable_stop_loss: bool = True
     enable_take_profit: bool = True
     initial_capital: float = 10000.0
-    portfolio_percentage: float = 100.0  # Percentage of portfolio to use per trade (1-100%)
+    portfolio_percentage: float = 5.0  # Percentage of portfolio to use per trade (1-100%)
     strategy_params: dict = {}
     # DCA parameters
     enable_dca: bool = False
