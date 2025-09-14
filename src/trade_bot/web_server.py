@@ -597,6 +597,8 @@ async def run_backtest(request: BacktestRequest):
                 'volume': candle['volume']
             })
         
+        logger.info(f"Converted {len(historical_data)} candles to {len(backtest_data)} backtest data points")
+        
         # Select strategy class based on strategy_type
         strategy_class = SimpleMovingAverageStrategy  # Default
         if request.strategy_type == "ema":
@@ -617,8 +619,6 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = FibonacciRetracementStrategy
         elif request.strategy_type == "orderbook":
             strategy_class = OrderBookStrategy
-        
-        logger.info(f"Selected strategy class: {strategy_class.__name__}")
         
         # Use strategy_params if provided and not empty, otherwise fall back to legacy parameters
         if request.strategy_params and len(request.strategy_params) > 0:

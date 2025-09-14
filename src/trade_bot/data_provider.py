@@ -25,7 +25,7 @@ class CoinbaseDataProvider:
                                    start_time: datetime, 
                                    end_time: datetime, 
                                    granularity: int = 60) -> List[Dict[str, Any]]:
-        """Get historical candle data.
+        """Get historical candle data with pagination for longer periods.
         
         Args:
             start_time: Start time for data
@@ -37,7 +37,24 @@ class CoinbaseDataProvider:
         """
         self.logger.info(f"Fetching historical data for {self.product_id} from {start_time} to {end_time}")
         
-        # Convert to ISO format
+        # Calculate expected number of candles
+        time_diff = end_time - start_time
+        total_seconds = time_diff.total_seconds()
+        expected_candles = int(total_seconds / granularity)
+        
+        # Coinbase API limit is 300 candles per request
+        max_candles_per_request = 300
+        
+        if expected_candles <= max_candles_per_request:
+            # Single request is sufficient
+            return await self._fetch_candles_single(start_time, end_time, granularity)
+        else:
+            # Need to paginate
+            self.logger.info(f"Expected {expected_candles} candles, fetching in chunks of {max_candles_per_request}")
+            return await self._fetch_candles_paginated(start_time, end_time, granularity, max_candles_per_request)
+    
+    async def _fetch_candles_single(self, start_time: datetime, end_time: datetime, granularity: int) -> List[Dict[str, Any]]:
+        """Fetch candles with a single API request."""
         start_iso = start_time.isoformat()
         end_iso = end_time.isoformat()
         
@@ -53,22 +70,68 @@ class CoinbaseDataProvider:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
-                        self.logger.info(f"Retrieved {len(data)} candles")
+                        self.logger.info(f"Retrieved {len(data)} candles in single request")
                         return self._process_candle_data(data)
                     else:
                         error_text = await response.text()
                         self.logger.error(f"Failed to fetch data: {response.status} - {error_text}")
-                        
-                        # Try with a shorter time range if the request failed
-                        if response.status == 400:
-                            self.logger.info("Trying with a shorter time range...")
-                            mid_time = start_time + (end_time - start_time) / 2
-                            return await self.get_historical_candles(start_time, mid_time, granularity)
-                        
                         return []
         except Exception as e:
             self.logger.error(f"Error fetching data: {e}")
             return []
+    
+    async def _fetch_candles_paginated(self, start_time: datetime, end_time: datetime, 
+                                     granularity: int, max_candles: int) -> List[Dict[str, Any]]:
+        """Fetch candles with pagination for longer periods."""
+        all_candles = []
+        current_start = start_time
+        
+        # Calculate chunk duration based on granularity and max candles
+        chunk_seconds = granularity * max_candles
+        chunk_duration = timedelta(seconds=chunk_seconds)
+        
+        chunk_count = 0
+        while current_start < end_time:
+            chunk_count += 1
+            current_end = min(current_start + chunk_duration, end_time)
+            
+            self.logger.info(f"Fetching chunk {chunk_count}: {current_start} to {current_end}")
+            
+            chunk_candles = await self._fetch_candles_single(current_start, current_end, granularity)
+            
+            if not chunk_candles:
+                self.logger.warning(f"No data received for chunk {chunk_count}")
+                break
+            
+            all_candles.extend(chunk_candles)
+            self.logger.info(f"Chunk {chunk_count} added {len(chunk_candles)} candles (total: {len(all_candles)})")
+            
+            # Move to next chunk
+            current_start = current_end
+            
+            # Add small delay to avoid rate limiting
+            import asyncio
+            await asyncio.sleep(0.1)
+        
+        # Remove duplicates and sort by timestamp
+        unique_candles = self._deduplicate_candles(all_candles)
+        unique_candles.sort(key=lambda x: x['timestamp'])
+        
+        self.logger.info(f"Pagination complete: {len(unique_candles)} total candles from {chunk_count} chunks")
+        return unique_candles
+    
+    def _deduplicate_candles(self, candles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate candles based on timestamp."""
+        seen_timestamps = set()
+        unique_candles = []
+        
+        for candle in candles:
+            timestamp = candle['timestamp']
+            if timestamp not in seen_timestamps:
+                seen_timestamps.add(timestamp)
+                unique_candles.append(candle)
+        
+        return unique_candles
     
     def _process_candle_data(self, raw_data: List[List]) -> List[Dict[str, Any]]:
         """Process raw candle data into our format.

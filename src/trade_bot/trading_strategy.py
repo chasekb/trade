@@ -56,9 +56,9 @@ class SimpleMovingAverageStrategy:
             'timestamp': timestamp
         })
         
-        # Keep only recent history
-        if len(self.price_history) > self.long_window * 2:
-            self.price_history = self.price_history[-self.long_window * 2:]
+        # Keep only recent history (increased limit for backtesting)
+        if len(self.price_history) > self.long_window * 50:
+            self.price_history = self.price_history[-self.long_window * 50:]
     
     def calculate_sma(self, window: int) -> Optional[float]:
         """Calculate simple moving average for given window."""
@@ -308,8 +308,8 @@ class BollingerBandsStrategy:
         })
         
         # Keep only recent data to avoid memory issues
-        if len(self.price_history) > self.period * 3:
-            self.price_history = self.price_history[-self.period * 2:]
+        if len(self.price_history) > self.period * 50:
+            self.price_history = self.price_history[-self.period * 50:]
     
     def calculate_bollinger_bands(self, prices: List[float]) -> tuple:
         """Calculate Bollinger Bands for given prices."""
@@ -544,8 +544,8 @@ class RSIStrategy:
         })
         
         # Keep only recent data to avoid memory issues
-        if len(self.price_history) > self.period * 3:
-            self.price_history = self.price_history[-self.period * 2:]
+        if len(self.price_history) > self.period * 50:
+            self.price_history = self.price_history[-self.period * 50:]
     
     def calculate_rsi(self, prices: List[float]) -> Optional[float]:
         """Calculate RSI for given prices."""
@@ -809,9 +809,9 @@ class EMAStrategy:
             'timestamp': timestamp
         })
         
-        # Keep only recent data to avoid memory issues
-        if len(self.price_history) > self.long_ema * 3:
-            self.price_history = self.price_history[-self.long_ema * 2:]
+        # Keep only recent data to avoid memory issues (increased limit for backtesting)
+        if len(self.price_history) > self.long_ema * 50:
+            self.price_history = self.price_history[-self.long_ema * 50:]
     
     def calculate_ema(self, prices: List[float], alpha: float) -> float:
         """Calculate EMA for given prices and alpha."""
@@ -1070,8 +1070,8 @@ class MACDStrategy:
         })
         
         # Keep only recent data to avoid memory issues
-        if len(self.price_history) > self.slow_ema * 3:
-            self.price_history = self.price_history[-self.slow_ema * 2:]
+        if len(self.price_history) > self.slow_ema * 50:
+            self.price_history = self.price_history[-self.slow_ema * 50:]
     
     def calculate_ema(self, prices: List[float], period: int) -> float:
         """Calculate EMA for given prices and period."""
@@ -1407,8 +1407,8 @@ class StochasticStrategy:
         })
         
         # Keep only recent data to avoid memory issues
-        if len(self.price_history) > self.k_period * 3:
-            self.price_history = self.price_history[-self.k_period * 2:]
+        if len(self.price_history) > self.k_period * 50:
+            self.price_history = self.price_history[-self.k_period * 50:]
     
     def calculate_stochastic(self, prices: List[float]) -> tuple:
         """Calculate Stochastic Oscillator for given prices."""
@@ -2443,8 +2443,8 @@ class FibonacciRetracementStrategy:
         })
         
         # Keep only recent history
-        if len(self.price_history) > self.lookback_period * 2:
-            self.price_history = self.price_history[-self.lookback_period * 2:]
+        if len(self.price_history) > self.lookback_period * 50:
+            self.price_history = self.price_history[-self.lookback_period * 50:]
     
     def find_swing_points(self) -> tuple:
         """Find swing high and low points in the price history."""

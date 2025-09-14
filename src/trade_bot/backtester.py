@@ -325,6 +325,13 @@ class Backtester:
                 time_diff = (datetime.fromisoformat(historical_data[1]['timestamp'].replace('Z', '+00:00')) - 
                            datetime.fromisoformat(historical_data[0]['timestamp'].replace('Z', '+00:00')))
                 self.logger.info(f"Data frequency: {time_diff.total_seconds()} seconds between points")
+                
+                # Calculate expected vs actual data points
+                start_time = datetime.fromisoformat(historical_data[0]['timestamp'].replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(historical_data[-1]['timestamp'].replace('Z', '+00:00'))
+                total_seconds = (end_time - start_time).total_seconds()
+                expected_points = int(total_seconds / time_diff.total_seconds()) + 1
+                self.logger.info(f"Data coverage: {len(historical_data)} actual vs {expected_points} expected points")
         
         # Initialize strategy with enable flags
         strategy_params = self.strategy_params.copy()
