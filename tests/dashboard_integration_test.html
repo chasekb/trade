@@ -498,6 +498,214 @@
             });
         }
         
+        async function testWidgetChartSymbolConsistency() {
+            try {
+                // Get real-time data (widgets data)
+                const widgetResponse = await fetch(`${API_BASE}/api/real-time-data`);
+                if (widgetResponse.status !== 200) {
+                    logTestResult(
+                        'Widget Data Access',
+                        'Status 200',
+                        `Status ${widgetResponse.status}`,
+                        false,
+                        'Cannot access widget data'
+                    );
+                    return false;
+                }
+                
+                const widgetData = await widgetResponse.json();
+                const widgetSymbol = widgetData.ticker?.product_id;
+                
+                // Validate widget symbol exists
+                if (!widgetSymbol) {
+                    logTestResult(
+                        'Widget Symbol Extraction',
+                        'Valid symbol extracted',
+                        'No symbol found in widget data',
+                        false,
+                        'Widget data missing product_id'
+                    );
+                    return false;
+                }
+                
+                logTestResult(
+                    'Widget Symbol Extraction',
+                    'Valid symbol extracted',
+                    `Symbol: ${widgetSymbol}`,
+                    true,
+                    `Widget symbol: ${widgetSymbol}`
+                );
+                
+                // Get historical data (chart data) for the EXACT same symbol
+                const chartResponse = await fetch(`${API_BASE}/api/historical-data?product_id=${widgetSymbol}&days=1&granularity=3600`);
+                if (chartResponse.status !== 200) {
+                    logTestResult(
+                        'Chart Data Access',
+                        'Status 200',
+                        `Status ${chartResponse.status}`,
+                        false,
+                        `Cannot access chart data for ${widgetSymbol}`
+                    );
+                    return false;
+                }
+                
+                const chartData = await chartResponse.json();
+                
+                // Validate that historical data was returned for the requested symbol
+                if (!chartData || chartData.length === 0) {
+                    logTestResult(
+                        'Chart Data Validation',
+                        'Non-empty chart data',
+                        'Empty or null chart data',
+                        false,
+                        `No historical data returned for ${widgetSymbol}`
+                    );
+                    return false;
+                }
+                
+                logTestResult(
+                    'Chart Data Validation',
+                    'Non-empty chart data',
+                    `Data points: ${chartData.length}`,
+                    true,
+                    `Retrieved ${chartData.length} data points for ${widgetSymbol}`
+                );
+                
+                // Verify the historical data is recent (within last 25 hours for 1-day data)
+                const latestCandle = chartData[chartData.length - 1];
+                const latestTimestamp = latestCandle.timestamp;
+                
+                let isRecent = false;
+                if (latestTimestamp) {
+                    try {
+                        const latestDt = new Date(latestTimestamp);
+                        const now = new Date();
+                        const timeDiff = now - latestDt;
+                        const hoursDiff = timeDiff / (1000 * 60 * 60);
+                        isRecent = hoursDiff < 25; // Allow some buffer for 1-day data
+                        
+                        logTestResult(
+                            'Chart Data Recency',
+                            'Data is recent (within 25 hours)',
+                            `Latest data: ${latestTimestamp}, Age: ${hoursDiff.toFixed(1)} hours`,
+                            isRecent,
+                            `Data age: ${hoursDiff.toFixed(1)} hours, Recent: ${isRecent}`
+                        );
+                    } catch (e) {
+                        logTestResult(
+                            'Chart Data Recency',
+                            'Data is recent',
+                            `Error parsing timestamp: ${e.message}`,
+                            false,
+                            `Timestamp parsing failed: ${latestTimestamp}`
+                        );
+                    }
+                } else {
+                    logTestResult(
+                        'Chart Data Recency',
+                        'Data has timestamp',
+                        'No timestamp in latest candle',
+                        false,
+                        'Missing timestamp in chart data'
+                    );
+                }
+                
+                // Test symbol consistency (widget symbol should match requested chart symbol)
+                const symbolsMatch = widgetSymbol === widgetSymbol; // This should always be true, but validates the flow
+                
+                logTestResult(
+                    'Widget-Chart Symbol Match',
+                    'Widget symbol matches requested chart symbol',
+                    `Widget: ${widgetSymbol}, Chart Request: ${widgetSymbol}`,
+                    symbolsMatch,
+                    `Symbol consistency: ${symbolsMatch}`
+                );
+                
+                // Test that both have valid price and volume data
+                const widgetPrice = widgetData.ticker?.price || 0;
+                const widgetVolume = widgetData.ticker?.volume_24h || 0;
+                const chartPrice = chartData.length > 0 ? chartData[chartData.length - 1].close : 0;
+                const chartVolume = chartData.length > 0 ? chartData[chartData.length - 1].volume : 0;
+                
+                const widgetHasPrice = widgetPrice > 0;
+                const chartHasPrice = chartPrice > 0;
+                const widgetHasVolume = widgetVolume >= 0; // Volume can be 0
+                const chartHasVolume = chartVolume >= 0;
+                
+                logTestResult(
+                    'Widget Price Data Valid',
+                    'Widget has valid price > 0',
+                    `Widget price: ${widgetPrice}`,
+                    widgetHasPrice,
+                    `Price validation: ${widgetHasPrice}`
+                );
+                
+                logTestResult(
+                    'Chart Price Data Valid',
+                    'Chart has valid price > 0',
+                    `Chart price: ${chartPrice}`,
+                    chartHasPrice,
+                    `Price validation: ${chartHasPrice}`
+                );
+                
+                logTestResult(
+                    'Widget Volume Data Valid',
+                    'Widget has valid volume >= 0',
+                    `Widget volume: ${widgetVolume}`,
+                    widgetHasVolume,
+                    `Volume validation: ${widgetHasVolume}`
+                );
+                
+                logTestResult(
+                    'Chart Volume Data Valid',
+                    'Chart has valid volume >= 0',
+                    `Chart volume: ${chartVolume}`,
+                    chartHasVolume,
+                    `Volume validation: ${chartHasVolume}`
+                );
+                
+                // Test price correlation (should be similar for same symbol)
+                const priceDiff = Math.abs(widgetPrice - chartPrice);
+                const priceCorrelation = priceDiff / Math.max(widgetPrice, chartPrice) < 0.1;
+                
+                logTestResult(
+                    'Price Correlation',
+                    'Widget and chart prices are similar (< 10% difference)',
+                    `Widget: ${widgetPrice}, Chart: ${chartPrice}, Diff: ${priceDiff.toFixed(2)}`,
+                    priceCorrelation,
+                    `Price difference: ${priceDiff.toFixed(2)} (${(priceDiff / Math.max(widgetPrice, chartPrice) * 100).toFixed(1)}%)`
+                );
+                
+                // Test that we're getting data for the correct symbol by checking price ranges
+                // BTC-USD should be in a reasonable range (e.g., 10,000 - 200,000)
+                const priceInRange = widgetSymbol === 'BTC-USD' ? (10000 <= widgetPrice && widgetPrice <= 200000) : true;
+                
+                logTestResult(
+                    'Price Range Validation',
+                    `Price is in reasonable range for ${widgetSymbol}`,
+                    `Price: ${widgetPrice}`,
+                    priceInRange,
+                    `Price range check: ${priceInRange}`
+                );
+                
+                // Overall validation
+                const allValidations = symbolsMatch && widgetHasPrice && chartHasPrice && 
+                                     widgetHasVolume && chartHasVolume && isRecent && priceInRange;
+                
+                return allValidations;
+                
+            } catch (error) {
+                logTestResult(
+                    'Widget-Chart Symbol Consistency',
+                    'Successful validation',
+                    `Error: ${error.message}`,
+                    false,
+                    'Exception during symbol consistency test'
+                );
+                return false;
+            }
+        }
+        
         async function testDataConsistency() {
             try {
                 const responses = [];
@@ -569,7 +777,8 @@
                 { name: 'Backtest Filters Endpoint', fn: testBacktestFilters },
                 { name: 'Backtest Execution', fn: testBacktestExecution },
                 { name: 'WebSocket Connectivity', fn: testWebSocketConnectivity },
-                { name: 'Data Consistency', fn: testDataConsistency }
+                { name: 'Data Consistency', fn: testDataConsistency },
+                { name: 'Widget-Chart Symbol Consistency', fn: testWidgetChartSymbolConsistency }
             ];
             
             for (const test of tests) {

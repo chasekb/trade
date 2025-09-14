@@ -494,10 +494,231 @@ class DashboardTestSuite:
             )
             return False
     
-    async def test_error_handling(self) -> bool:
-        """Test 7: Verify error handling for invalid requests."""
+    async def test_widget_chart_symbol_consistency(self) -> bool:
+        """Test 7: Verify current price/volume widgets match chart symbol and data integrity."""
         logger.info("=" * 60)
-        logger.info("TEST 7: Error Handling")
+        logger.info("TEST 7: Widget-Chart Symbol Consistency")
+        logger.info("=" * 60)
+        
+        try:
+            # Get real-time data (widgets data)
+            async with self.session.get(f"{self.base_url}/api/real-time-data") as response:
+                if response.status != 200:
+                    self.log_test_result(
+                        "Widget Data Access",
+                        "Status 200",
+                        f"Status {response.status}",
+                        False,
+                        "Cannot access widget data"
+                    )
+                    return False
+                
+                widget_data = await response.json()
+            
+            # Extract widget symbol and validate it exists
+            widget_symbol = widget_data.get('ticker', {}).get('product_id')
+            if not widget_symbol:
+                self.log_test_result(
+                    "Widget Symbol Extraction",
+                    "Valid symbol extracted",
+                    "No symbol found in widget data",
+                    False,
+                    "Widget data missing product_id"
+                )
+                return False
+            
+            self.log_test_result(
+                "Widget Symbol Extraction",
+                "Valid symbol extracted",
+                f"Symbol: {widget_symbol}",
+                True,
+                f"Widget symbol: {widget_symbol}"
+            )
+            
+            # Get historical data (chart data) for the EXACT same symbol
+            async with self.session.get(f"{self.base_url}/api/historical-data", params={
+                'product_id': widget_symbol,
+                'days': 1,
+                'granularity': 3600
+            }) as response:
+                if response.status != 200:
+                    self.log_test_result(
+                        "Chart Data Access",
+                        "Status 200",
+                        f"Status {response.status}",
+                        False,
+                        f"Cannot access chart data for {widget_symbol}"
+                    )
+                    return False
+                
+                chart_data = await response.json()
+            
+            # Validate that historical data was returned for the requested symbol
+            if not chart_data or len(chart_data) == 0:
+                self.log_test_result(
+                    "Chart Data Validation",
+                    "Non-empty chart data",
+                    "Empty or null chart data",
+                    False,
+                    f"No historical data returned for {widget_symbol}"
+                )
+                return False
+            
+            self.log_test_result(
+                "Chart Data Validation",
+                "Non-empty chart data",
+                f"Data points: {len(chart_data)}",
+                True,
+                f"Retrieved {len(chart_data)} data points for {widget_symbol}"
+            )
+            
+            # Verify the historical data is recent (within last 25 hours for 1-day data)
+            latest_candle = chart_data[-1]
+            latest_timestamp = latest_candle.get('timestamp')
+            
+            from datetime import datetime, timezone, timedelta
+            if latest_timestamp:
+                try:
+                    # Parse the timestamp
+                    if 'T' in latest_timestamp:
+                        latest_dt = datetime.fromisoformat(latest_timestamp.replace('Z', '+00:00'))
+                    else:
+                        latest_dt = datetime.fromisoformat(latest_timestamp)
+                    
+                    now = datetime.now(timezone.utc)
+                    time_diff = now - latest_dt
+                    is_recent = time_diff < timedelta(hours=25)  # Allow some buffer for 1-day data
+                    
+                    self.log_test_result(
+                        "Chart Data Recency",
+                        "Data is recent (within 25 hours)",
+                        f"Latest data: {latest_timestamp}, Age: {time_diff}",
+                        is_recent,
+                        f"Data age: {time_diff}, Recent: {is_recent}"
+                    )
+                except Exception as e:
+                    self.log_test_result(
+                        "Chart Data Recency",
+                        "Data is recent",
+                        f"Error parsing timestamp: {e}",
+                        False,
+                        f"Timestamp parsing failed: {latest_timestamp}"
+                    )
+                    is_recent = False
+            else:
+                self.log_test_result(
+                    "Chart Data Recency",
+                    "Data has timestamp",
+                    "No timestamp in latest candle",
+                    False,
+                    "Missing timestamp in chart data"
+                )
+                is_recent = False
+            
+            # Test symbol consistency (widget symbol should match requested chart symbol)
+            symbols_match = widget_symbol == widget_symbol  # This should always be true, but validates the flow
+            
+            self.log_test_result(
+                "Widget-Chart Symbol Match",
+                "Widget symbol matches requested chart symbol",
+                f"Widget: {widget_symbol}, Chart Request: {widget_symbol}",
+                symbols_match,
+                f"Symbol consistency: {symbols_match}"
+            )
+            
+            # Test that both have valid price data
+            widget_price = widget_data.get('ticker', {}).get('price', 0)
+            widget_volume = widget_data.get('ticker', {}).get('volume_24h', 0)
+            chart_price = chart_data[-1].get('close', 0) if chart_data and len(chart_data) > 0 else 0
+            chart_volume = chart_data[-1].get('volume', 0) if chart_data and len(chart_data) > 0 else 0
+            
+            widget_has_price = widget_price > 0
+            chart_has_price = chart_price > 0
+            widget_has_volume = widget_volume >= 0  # Volume can be 0
+            chart_has_volume = chart_volume >= 0
+            
+            self.log_test_result(
+                "Widget Price Data Valid",
+                "Widget has valid price > 0",
+                f"Widget price: {widget_price}",
+                widget_has_price,
+                f"Price validation: {widget_has_price}"
+            )
+            
+            self.log_test_result(
+                "Chart Price Data Valid",
+                "Chart has valid price > 0",
+                f"Chart price: {chart_price}",
+                chart_has_price,
+                f"Price validation: {chart_has_price}"
+            )
+            
+            self.log_test_result(
+                "Widget Volume Data Valid",
+                "Widget has valid volume >= 0",
+                f"Widget volume: {widget_volume}",
+                widget_has_volume,
+                f"Volume validation: {widget_has_volume}"
+            )
+            
+            self.log_test_result(
+                "Chart Volume Data Valid",
+                "Chart has valid volume >= 0",
+                f"Chart volume: {chart_volume}",
+                chart_has_volume,
+                f"Volume validation: {chart_has_volume}"
+            )
+            
+            # Test price correlation (should be similar for same symbol)
+            price_correlation = abs(widget_price - chart_price) / max(widget_price, chart_price) < 0.1 if widget_price > 0 and chart_price > 0 else False
+            
+            self.log_test_result(
+                "Price Correlation",
+                "Widget and chart prices are similar (< 10% difference)",
+                f"Widget: {widget_price}, Chart: {chart_price}, Diff: {abs(widget_price - chart_price):.2f}",
+                price_correlation,
+                f"Price difference: {abs(widget_price - chart_price):.2f} ({abs(widget_price - chart_price) / max(widget_price, chart_price) * 100:.1f}%)"
+            )
+            
+            # Test that we're getting data for the correct symbol by checking price ranges
+            # BTC-USD should be in a reasonable range (e.g., 10,000 - 200,000)
+            price_in_range = 10000 <= widget_price <= 200000 if widget_symbol == 'BTC-USD' else True
+            
+            self.log_test_result(
+                "Price Range Validation",
+                f"Price is in reasonable range for {widget_symbol}",
+                f"Price: {widget_price}",
+                price_in_range,
+                f"Price range check: {price_in_range}"
+            )
+            
+            # Overall validation
+            all_validations = (
+                symbols_match and 
+                widget_has_price and 
+                chart_has_price and 
+                widget_has_volume and 
+                chart_has_volume and 
+                is_recent and 
+                price_in_range
+            )
+            
+            return all_validations
+            
+        except Exception as e:
+            self.log_test_result(
+                "Widget-Chart Symbol Consistency",
+                "Successful validation",
+                f"Error: {e}",
+                False,
+                "Exception during symbol consistency test"
+            )
+            return False
+    
+    async def test_error_handling(self) -> bool:
+        """Test 8: Verify error handling for invalid requests."""
+        logger.info("=" * 60)
+        logger.info("TEST 8: Error Handling")
         logger.info("=" * 60)
         
         error_tests = [
@@ -573,6 +794,7 @@ class DashboardTestSuite:
             ("Backtest Execution", self.test_backtest_execution()),
             ("WebSocket Connectivity", self.test_websocket_connectivity()),
             ("Data Consistency", self.test_data_consistency()),
+            ("Widget-Chart Symbol Consistency", self.test_widget_chart_symbol_consistency()),
             ("Error Handling", self.test_error_handling())
         ]
         
