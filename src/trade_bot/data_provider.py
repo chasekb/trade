@@ -157,6 +157,149 @@ class CoinbaseDataProvider:
         # Sort by timestamp
         processed_data.sort(key=lambda x: x['timestamp'])
         return processed_data
+    
+    async def get_order_book(self, level: int = 2) -> Dict[str, Any]:
+        """Get current order book data.
+        
+        Args:
+            level: Order book level (1, 2, or 3)
+            
+        Returns:
+            Order book data with bids and asks
+        """
+        self.logger.info(f"Fetching order book for {self.product_id} (level {level})")
+        
+        url = f"{self.base_url}/products/{self.product_id}/book"
+        params = {'level': level}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.logger.info(f"Retrieved order book with {len(data.get('bids', []))} bids and {len(data.get('asks', []))} asks")
+                        return self._process_order_book_data(data)
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"Failed to fetch order book: {response.status} - {error_text}")
+                        return {}
+        except Exception as e:
+            self.logger.error(f"Error fetching order book: {e}")
+            return {}
+    
+    def _process_order_book_data(self, raw_data: Dict) -> Dict[str, Any]:
+        """Process raw order book data into our format.
+        
+        Args:
+            raw_data: Raw order book data from Coinbase API
+            
+        Returns:
+            Processed order book data
+        """
+        processed_data = {
+            'bids': [],
+            'asks': [],
+            'timestamp': raw_data.get('time', datetime.now().isoformat()),
+            'product_id': self.product_id
+        }
+        
+        # Process bids (buy orders)
+        for bid in raw_data.get('bids', []):
+            if len(bid) >= 2:
+                processed_data['bids'].append({
+                    'price': float(bid[0]),
+                    'size': float(bid[1]),
+                    'order_id': bid[2] if len(bid) > 2 else None
+                })
+        
+        # Process asks (sell orders)
+        for ask in raw_data.get('asks', []):
+            if len(ask) >= 2:
+                processed_data['asks'].append({
+                    'price': float(ask[0]),
+                    'size': float(ask[1]),
+                    'order_id': ask[2] if len(ask) > 2 else None
+                })
+        
+        # Sort bids by price (highest first) and asks by price (lowest first)
+        processed_data['bids'].sort(key=lambda x: x['price'], reverse=True)
+        processed_data['asks'].sort(key=lambda x: x['price'])
+        
+        return processed_data
+    
+    async def get_recent_trades(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get recent trade data.
+        
+        Args:
+            limit: Maximum number of trades to fetch
+            
+        Returns:
+            List of recent trade data
+        """
+        self.logger.info(f"Fetching recent trades for {self.product_id} (limit: {limit})")
+        
+        url = f"{self.base_url}/products/{self.product_id}/trades"
+        params = {'limit': limit}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.logger.info(f"Retrieved {len(data)} recent trades")
+                        return self._process_trade_data(data)
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"Failed to fetch recent trades: {response.status} - {error_text}")
+                        return []
+        except Exception as e:
+            self.logger.error(f"Error fetching recent trades: {e}")
+            return []
+    
+    async def get_product_stats(self) -> Dict[str, Any]:
+        """Get product statistics.
+        
+        Returns:
+            Product statistics including 24h volume, high, low, etc.
+        """
+        self.logger.info(f"Fetching product stats for {self.product_id}")
+        
+        url = f"{self.base_url}/products/{self.product_id}/stats"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.logger.info(f"Retrieved product stats for {self.product_id}")
+                        return self._process_product_stats(data)
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"Failed to fetch product stats: {response.status} - {error_text}")
+                        return {}
+        except Exception as e:
+            self.logger.error(f"Error fetching product stats: {e}")
+            return {}
+    
+    def _process_product_stats(self, raw_data: Dict) -> Dict[str, Any]:
+        """Process raw product stats data into our format.
+        
+        Args:
+            raw_data: Raw product stats data from Coinbase API
+            
+        Returns:
+            Processed product stats data
+        """
+        return {
+            'open': float(raw_data.get('open', 0)),
+            'high': float(raw_data.get('high', 0)),
+            'low': float(raw_data.get('low', 0)),
+            'volume': float(raw_data.get('volume', 0)),
+            'last': float(raw_data.get('last', 0)),
+            'volume_30day': float(raw_data.get('volume_30day', 0)),
+            'timestamp': raw_data.get('time', datetime.now().isoformat()),
+            'product_id': self.product_id
+        }
 
 
 class MockDataProvider:

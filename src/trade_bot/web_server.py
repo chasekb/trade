@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, Any
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .backtester import Backtester
-from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy, ATRStrategy
+from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy, ATRStrategy, FibonacciRetracementStrategy, OrderBookStrategy
 from .database import BacktestDatabase
 import math
 from .websocket_client import WebSocketClient
@@ -199,6 +199,16 @@ class BacktestRequest(BaseModel):
     atr_multiplier: float = 2.0
     atr_volatility_threshold: float = 1.5
     atr_position_size: float = 2.0
+    # Fibonacci retracement parameters
+    fib_lookback_period: int = 50
+    fib_levels: List[float] = [0.236, 0.382, 0.5, 0.618, 0.786]
+    fib_confirmation_candles: int = 2
+    # Order book strategy parameters
+    order_book_level: int = 2
+    trade_history_limit: int = 100
+    bid_ask_spread_threshold: float = 0.001
+    volume_imbalance_threshold: float = 0.6
+    large_trade_threshold: float = 10000.0
 
 class BacktestHistoryItem(BaseModel):
     id: int
@@ -603,6 +613,10 @@ async def run_backtest(request: BacktestRequest):
             strategy_class = DCAStrategy
         elif request.strategy_type == "atr":
             strategy_class = ATRStrategy
+        elif request.strategy_type == "fibonacci":
+            strategy_class = FibonacciRetracementStrategy
+        elif request.strategy_type == "orderbook":
+            strategy_class = OrderBookStrategy
         
         # Use strategy_params if provided and not empty, otherwise fall back to legacy parameters
         if request.strategy_params and len(request.strategy_params) > 0:
@@ -652,6 +666,20 @@ async def run_backtest(request: BacktestRequest):
                     'atr_multiplier': request.atr_multiplier,
                     'volatility_threshold': request.atr_volatility_threshold,
                     'position_size_atr': request.atr_position_size / 100  # Convert percentage to decimal
+                }
+            elif request.strategy_type == "fibonacci":
+                strategy_params = {
+                    'lookback_period': request.fib_lookback_period,
+                    'fib_levels': request.fib_levels,
+                    'confirmation_candles': request.fib_confirmation_candles
+                }
+            elif request.strategy_type == "orderbook":
+                strategy_params = {
+                    'order_book_level': request.order_book_level,
+                    'trade_history_limit': request.trade_history_limit,
+                    'bid_ask_spread_threshold': request.bid_ask_spread_threshold,
+                    'volume_imbalance_threshold': request.volume_imbalance_threshold,
+                    'large_trade_threshold': request.large_trade_threshold
                 }
             else:
                 # Fallback for unknown strategies

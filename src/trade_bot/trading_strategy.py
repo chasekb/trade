@@ -2397,3 +2397,655 @@ class ATRStrategy:
             'atr_trend': trend,
             'volatility_level': 'high' if self.current_atr > avg_atr * 1.2 else 'low' if self.current_atr < avg_atr * 0.8 else 'normal'
         }
+
+
+class FibonacciRetracementStrategy:
+    """Fibonacci retracement strategy for identifying support and resistance levels."""
+    
+    def __init__(self, config: TradingConfig, lookback_period: int = 50, fib_levels: list = None, 
+                 confirmation_candles: int = 2, enable_stop_loss: bool = True, enable_take_profit: bool = True):
+        self.config = config
+        self.lookback_period = lookback_period
+        self.fib_levels = fib_levels or [0.236, 0.382, 0.5, 0.618, 0.786]
+        self.confirmation_candles = confirmation_candles
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
+        
+        self.price_history: list = []
+        self.high_low_history: list = []
+        self.position = 0.0
+        self.entry_price = 0.0
+        self.current_swing_high = 0.0
+        self.current_swing_low = 0.0
+        self.fib_levels_calculated = False
+        self.support_levels = []
+        self.resistance_levels = []
+        
+        # Signal tracking
+        self.signal_count = 0
+        self.signals_by_type = {
+            'fib_support_buy': 0,
+            'fib_resistance_sell': 0,
+            'swing_high_buy': 0,
+            'swing_low_sell': 0,
+            'confirmation_buy': 0,
+            'confirmation_sell': 0,
+            'stop_loss': 0,
+            'take_profit': 0
+        }
+        self.no_signal_count = 0
+        
+    def add_price(self, price: float, timestamp: datetime) -> None:
+        """Add a new price point to the history."""
+        self.price_history.append({
+            'price': price,
+            'timestamp': timestamp
+        })
+        
+        # Keep only recent history
+        if len(self.price_history) > self.lookback_period * 2:
+            self.price_history = self.price_history[-self.lookback_period * 2:]
+    
+    def find_swing_points(self) -> tuple:
+        """Find swing high and low points in the price history."""
+        if len(self.price_history) < self.lookback_period:
+            return None, None
+        
+        prices = [p['price'] for p in self.price_history[-self.lookback_period:]]
+        timestamps = [p['timestamp'] for p in self.price_history[-self.lookback_period:]]
+        
+        # Find swing high (highest point)
+        swing_high_idx = prices.index(max(prices))
+        swing_high = prices[swing_high_idx]
+        swing_high_time = timestamps[swing_high_idx]
+        
+        # Find swing low (lowest point)
+        swing_low_idx = prices.index(min(prices))
+        swing_low = prices[swing_low_idx]
+        swing_low_time = timestamps[swing_low_idx]
+        
+        # Determine if we're in an uptrend or downtrend
+        if swing_high_idx > swing_low_idx:
+            # Uptrend: swing low came first, then swing high
+            return swing_low, swing_high
+        else:
+            # Downtrend: swing high came first, then swing low
+            return swing_high, swing_low
+    
+    def calculate_fibonacci_levels(self, swing_low: float, swing_high: float) -> tuple:
+        """Calculate Fibonacci retracement levels."""
+        if swing_low is None or swing_high is None:
+            return [], []
+        
+        # Calculate the range
+        price_range = abs(swing_high - swing_low)
+        
+        # Calculate Fibonacci levels
+        if swing_high > swing_low:
+            # Uptrend: calculate retracement levels from high to low
+            support_levels = []
+            resistance_levels = []
+            
+            for level in self.fib_levels:
+                retracement_price = swing_high - (price_range * level)
+                support_levels.append(retracement_price)
+            
+            # Add the original swing points
+            support_levels.append(swing_low)
+            resistance_levels.append(swing_high)
+            
+        else:
+            # Downtrend: calculate retracement levels from low to high
+            support_levels = []
+            resistance_levels = []
+            
+            for level in self.fib_levels:
+                retracement_price = swing_low + (price_range * level)
+                resistance_levels.append(retracement_price)
+            
+            # Add the original swing points
+            support_levels.append(swing_low)
+            resistance_levels.append(swing_high)
+        
+        return sorted(support_levels), sorted(resistance_levels, reverse=True)
+    
+    def check_fibonacci_support(self, current_price: float) -> bool:
+        """Check if current price is near a Fibonacci support level."""
+        if not self.support_levels:
+            return False
+        
+        for level in self.support_levels:
+            # Check if price is within 1% of the support level
+            if abs(current_price - level) / level <= 0.01:
+                return True
+        return False
+    
+    def check_fibonacci_resistance(self, current_price: float) -> bool:
+        """Check if current price is near a Fibonacci resistance level."""
+        if not self.resistance_levels:
+            return False
+        
+        for level in self.resistance_levels:
+            # Check if price is within 1% of the resistance level
+            if abs(current_price - level) / level <= 0.01:
+                return True
+        return False
+    
+    def check_price_confirmation(self, current_price: float, signal_type: str) -> bool:
+        """Check if price action confirms the Fibonacci level."""
+        if len(self.price_history) < self.confirmation_candles:
+            return False
+        
+        recent_prices = [p['price'] for p in self.price_history[-self.confirmation_candles:]]
+        
+        if signal_type == 'buy':
+            # For buy signals, check if recent prices are showing upward momentum
+            return all(recent_prices[i] >= recent_prices[i-1] for i in range(1, len(recent_prices)))
+        elif signal_type == 'sell':
+            # For sell signals, check if recent prices are showing downward momentum
+            return all(recent_prices[i] <= recent_prices[i-1] for i in range(1, len(recent_prices)))
+        
+        return False
+    
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
+        """Generate trading signal based on Fibonacci retracement levels."""
+        self.add_price(current_price, timestamp)
+        
+        if len(self.price_history) < self.lookback_period:
+            return None
+        
+        # Find swing points and calculate Fibonacci levels
+        swing_low, swing_high = self.find_swing_points()
+        if swing_low is not None and swing_high is not None:
+            self.support_levels, self.resistance_levels = self.calculate_fibonacci_levels(swing_low, swing_high)
+            self.fib_levels_calculated = True
+        
+        if not self.fib_levels_calculated:
+            return None
+        
+        # Check stop loss first (highest priority) - only if enabled
+        if self.position > 0 and self.enable_stop_loss:
+            loss_percentage = (current_price - self.entry_price) / self.entry_price
+            if loss_percentage <= -self.config.stop_loss_percentage:
+                self.signal_count += 1
+                self.signals_by_type['stop_loss'] += 1
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
+                )
+        
+        # Check take profit second - only if enabled
+        if self.position > 0 and self.enable_take_profit:
+            profit_percentage = (current_price - self.entry_price) / self.entry_price
+            if profit_percentage >= self.config.take_profit_percentage:
+                self.signal_count += 1
+                self.signals_by_type['take_profit'] += 1
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Take profit triggered: {profit_percentage:.2%} profit"
+                )
+        
+        # Generate Fibonacci-based signals
+        if self.position == 0:  # No current position
+            # Check for buy signal at Fibonacci support
+            if self.check_fibonacci_support(current_price):
+                if self.check_price_confirmation(current_price, 'buy'):
+                    self.signal_count += 1
+                    self.signals_by_type['fib_support_buy'] += 1
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=self.config.max_position_size,
+                        timestamp=timestamp,
+                        reason=f"Fibonacci support buy: Price {current_price:.2f} near support level"
+                    )
+            
+            # Check for sell signal at Fibonacci resistance
+            elif self.check_fibonacci_resistance(current_price):
+                if self.check_price_confirmation(current_price, 'sell'):
+                    self.signal_count += 1
+                    self.signals_by_type['fib_resistance_sell'] += 1
+                    return TradeSignal(
+                        action='sell',
+                        price=current_price,
+                        quantity=self.config.max_position_size,
+                        timestamp=timestamp,
+                        reason=f"Fibonacci resistance sell: Price {current_price:.2f} near resistance level"
+                    )
+        
+        self.no_signal_count += 1
+        return None
+    
+    def update_position(self, signal: TradeSignal) -> None:
+        """Update position based on trade signal."""
+        if signal.action == 'buy':
+            self.position += signal.quantity
+            if self.position > 0:
+                self.entry_price = signal.price
+                logger.info(f"Fibonacci Strategy: Bought {signal.quantity:.6f} at ${signal.price:.2f}")
+        elif signal.action == 'sell':
+            self.position = 0.0
+            self.entry_price = 0.0
+            logger.info(f"Fibonacci Strategy: Sold position at ${signal.price:.2f}")
+    
+    def get_signal_stats(self) -> dict:
+        """Get signal statistics."""
+        return {
+            'total_signals': self.signal_count,
+            'signals_by_type': self.signals_by_type.copy(),
+            'lookback_period': self.lookback_period,
+            'fib_levels': self.fib_levels,
+            'confirmation_candles': self.confirmation_candles,
+            'no_signal_count': self.no_signal_count,
+            'signal_rate': self.signal_count / max(len(self.price_history), 1) * 100,
+            'price_history_length': len(self.price_history)
+        }
+    
+    def get_position_info(self) -> Dict[str, Any]:
+        """Get current position information."""
+        return {
+            "position": self.position,
+            "entry_price": self.entry_price,
+            "current_swing_high": self.current_swing_high,
+            "current_swing_low": self.current_swing_low,
+            "unrealized_pnl": (self.position * (self.entry_price - self.entry_price)) if self.position > 0 else 0.0
+        }
+    
+    def get_fibonacci_summary(self) -> Dict[str, Any]:
+        """Get Fibonacci analysis summary."""
+        if not self.fib_levels_calculated:
+            return {
+                'swing_high': 0.0,
+                'swing_low': 0.0,
+                'support_levels': [],
+                'resistance_levels': [],
+                'current_price_level': 'unknown'
+            }
+        
+        swing_low, swing_high = self.find_swing_points()
+        current_price = self.price_history[-1]['price'] if self.price_history else 0.0
+        
+        # Determine which level the current price is closest to
+        all_levels = self.support_levels + self.resistance_levels
+        if all_levels:
+            closest_level = min(all_levels, key=lambda x: abs(x - current_price))
+            level_type = 'support' if closest_level in self.support_levels else 'resistance'
+        else:
+            level_type = 'unknown'
+        
+        return {
+            'swing_high': swing_high or 0.0,
+            'swing_low': swing_low or 0.0,
+            'support_levels': self.support_levels,
+            'resistance_levels': self.resistance_levels,
+            'current_price_level': level_type,
+            'closest_level': closest_level if all_levels else 0.0,
+            'price_distance_from_level': abs(current_price - closest_level) if all_levels else 0.0
+        }
+
+
+class OrderBookStrategy:
+    """Order book and trade history strategy using market microstructure analysis."""
+    
+    def __init__(self, config: TradingConfig, order_book_level: int = 2, trade_history_limit: int = 100,
+                 bid_ask_spread_threshold: float = 0.001, volume_imbalance_threshold: float = 0.6,
+                 large_trade_threshold: float = 10000.0, enable_stop_loss: bool = True, enable_take_profit: bool = True):
+        self.config = config
+        self.order_book_level = order_book_level
+        self.trade_history_limit = trade_history_limit
+        self.bid_ask_spread_threshold = bid_ask_spread_threshold
+        self.volume_imbalance_threshold = volume_imbalance_threshold
+        self.large_trade_threshold = large_trade_threshold
+        self.enable_stop_loss = enable_stop_loss
+        self.enable_take_profit = enable_take_profit
+        
+        self.price_history: list = []
+        self.order_book_history: list = []
+        self.trade_history: list = []
+        self.position = 0.0
+        self.entry_price = 0.0
+        
+        # Market microstructure metrics
+        self.current_bid_ask_spread = 0.0
+        self.current_volume_imbalance = 0.0
+        self.current_mid_price = 0.0
+        self.large_trade_count = 0
+        self.buy_pressure = 0.0
+        self.sell_pressure = 0.0
+        
+        # Signal tracking
+        self.signal_count = 0
+        self.signals_by_type = {
+            'bid_ask_squeeze': 0,
+            'volume_imbalance_buy': 0,
+            'volume_imbalance_sell': 0,
+            'large_trade_buy': 0,
+            'large_trade_sell': 0,
+            'order_book_pressure_buy': 0,
+            'order_book_pressure_sell': 0,
+            'spread_expansion_buy': 0,
+            'spread_expansion_sell': 0,
+            'stop_loss': 0,
+            'take_profit': 0
+        }
+        self.no_signal_count = 0
+        
+    def add_price(self, price: float, timestamp: datetime) -> None:
+        """Add a new price point to the history."""
+        self.price_history.append({
+            'price': price,
+            'timestamp': timestamp
+        })
+        
+        # Keep only recent history
+        if len(self.price_history) > 1000:
+            self.price_history = self.price_history[-1000:]
+    
+    def add_order_book(self, order_book: dict, timestamp: datetime) -> None:
+        """Add order book data to history."""
+        self.order_book_history.append({
+            'order_book': order_book,
+            'timestamp': timestamp
+        })
+        
+        # Keep only recent history
+        if len(self.order_book_history) > 100:
+            self.order_book_history = self.order_book_history[-100:]
+    
+    def add_trades(self, trades: list, timestamp: datetime) -> None:
+        """Add trade data to history."""
+        for trade in trades:
+            self.trade_history.append({
+                'trade': trade,
+                'timestamp': timestamp
+            })
+        
+        # Keep only recent history
+        if len(self.trade_history) > 1000:
+            self.trade_history = self.trade_history[-1000:]
+    
+    def calculate_bid_ask_spread(self, order_book: dict) -> float:
+        """Calculate bid-ask spread percentage."""
+        if not order_book.get('bids') or not order_book.get('asks'):
+            return 0.0
+        
+        best_bid = order_book['bids'][0]['price']
+        best_ask = order_book['asks'][0]['price']
+        
+        if best_bid == 0 or best_ask == 0:
+            return 0.0
+        
+        spread = (best_ask - best_bid) / best_bid
+        return spread
+    
+    def calculate_volume_imbalance(self, order_book: dict, levels: int = 5) -> float:
+        """Calculate volume imbalance between bids and asks."""
+        if not order_book.get('bids') or not order_book.get('asks'):
+            return 0.0
+        
+        bid_volume = sum(order['size'] for order in order_book['bids'][:levels])
+        ask_volume = sum(order['size'] for order in order_book['asks'][:levels])
+        
+        if bid_volume + ask_volume == 0:
+            return 0.0
+        
+        imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume)
+        return imbalance
+    
+    def calculate_mid_price(self, order_book: dict) -> float:
+        """Calculate mid price from order book."""
+        if not order_book.get('bids') or not order_book.get('asks'):
+            return 0.0
+        
+        best_bid = order_book['bids'][0]['price']
+        best_ask = order_book['asks'][0]['price']
+        
+        return (best_bid + best_ask) / 2
+    
+    def analyze_trade_flow(self, trades: list) -> dict:
+        """Analyze trade flow for buy/sell pressure."""
+        if not trades:
+            return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': 0}
+        
+        buy_volume = 0.0
+        sell_volume = 0.0
+        large_trades = 0
+        
+        for trade_data in trades:
+            trade = trade_data['trade']
+            size = trade.get('size', 0)
+            side = trade.get('side', '')
+            price = trade.get('price', 0)
+            
+            trade_value = size * price
+            
+            if side == 'buy':
+                buy_volume += trade_value
+            elif side == 'sell':
+                sell_volume += trade_value
+            
+            if trade_value >= self.large_trade_threshold:
+                large_trades += 1
+        
+        total_volume = buy_volume + sell_volume
+        if total_volume == 0:
+            return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': large_trades}
+        
+        buy_pressure = buy_volume / total_volume
+        sell_pressure = sell_volume / total_volume
+        
+        return {
+            'buy_pressure': buy_pressure,
+            'sell_pressure': sell_pressure,
+            'large_trades': large_trades
+        }
+    
+    def detect_bid_ask_squeeze(self, current_spread: float, historical_spreads: list) -> bool:
+        """Detect if bid-ask spread is unusually tight."""
+        if len(historical_spreads) < 10:
+            return False
+        
+        avg_spread = sum(historical_spreads) / len(historical_spreads)
+        return current_spread < avg_spread * 0.5  # 50% below average
+    
+    def detect_spread_expansion(self, current_spread: float, historical_spreads: list) -> bool:
+        """Detect if bid-ask spread is expanding significantly."""
+        if len(historical_spreads) < 5:
+            return False
+        
+        recent_avg = sum(historical_spreads[-5:]) / 5
+        return current_spread > recent_avg * 1.5  # 50% above recent average
+    
+    def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
+        """Generate trading signal based on order book and trade analysis."""
+        self.add_price(current_price, timestamp)
+        
+        # Check stop loss first (highest priority) - only if enabled
+        if self.position > 0 and self.enable_stop_loss:
+            loss_percentage = (current_price - self.entry_price) / self.entry_price
+            if loss_percentage <= -self.config.stop_loss_percentage:
+                self.signal_count += 1
+                self.signals_by_type['stop_loss'] += 1
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Stop loss triggered: {loss_percentage:.2%} loss"
+                )
+        
+        # Check take profit second - only if enabled
+        if self.position > 0 and self.enable_take_profit:
+            profit_percentage = (current_price - self.entry_price) / self.entry_price
+            if profit_percentage >= self.config.take_profit_percentage:
+                self.signal_count += 1
+                self.signals_by_type['take_profit'] += 1
+                return TradeSignal(
+                    action='sell',
+                    price=current_price,
+                    quantity=self.position,
+                    timestamp=timestamp,
+                    reason=f"Take profit triggered: {profit_percentage:.2%} profit"
+                )
+        
+        # Generate order book-based signals
+        if self.position == 0:  # No current position
+            # Check for bid-ask squeeze (potential breakout)
+            if len(self.order_book_history) >= 10:
+                current_order_book = self.order_book_history[-1]['order_book']
+                current_spread = self.calculate_bid_ask_spread(current_order_book)
+                historical_spreads = [self.calculate_bid_ask_spread(ob['order_book']) 
+                                    for ob in self.order_book_history[-10:]]
+                
+                if self.detect_bid_ask_squeeze(current_spread, historical_spreads):
+                    self.signal_count += 1
+                    self.signals_by_type['bid_ask_squeeze'] += 1
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=self.config.max_position_size,
+                        timestamp=timestamp,
+                        reason=f"Bid-ask squeeze detected: spread {current_spread:.4f}"
+                    )
+            
+            # Check for volume imbalance
+            if len(self.order_book_history) >= 1:
+                current_order_book = self.order_book_history[-1]['order_book']
+                volume_imbalance = self.calculate_volume_imbalance(current_order_book)
+                
+                if volume_imbalance > self.volume_imbalance_threshold:
+                    self.signal_count += 1
+                    self.signals_by_type['volume_imbalance_buy'] += 1
+                    return TradeSignal(
+                        action='buy',
+                        price=current_price,
+                        quantity=self.config.max_position_size,
+                        timestamp=timestamp,
+                        reason=f"Volume imbalance buy: {volume_imbalance:.3f}"
+                    )
+                elif volume_imbalance < -self.volume_imbalance_threshold:
+                    self.signal_count += 1
+                    self.signals_by_type['volume_imbalance_sell'] += 1
+                    return TradeSignal(
+                        action='sell',
+                        price=current_price,
+                        quantity=self.config.max_position_size,
+                        timestamp=timestamp,
+                        reason=f"Volume imbalance sell: {volume_imbalance:.3f}"
+                    )
+            
+            # Check for large trades
+            if len(self.trade_history) >= 1:
+                recent_trades = [t['trade'] for t in self.trade_history[-10:]]
+                trade_analysis = self.analyze_trade_flow([{'trade': t} for t in recent_trades])
+                
+                if trade_analysis['large_trades'] > 0:
+                    if trade_analysis['buy_pressure'] > 0.6:
+                        self.signal_count += 1
+                        self.signals_by_type['large_trade_buy'] += 1
+                        return TradeSignal(
+                            action='buy',
+                            price=current_price,
+                            quantity=self.config.max_position_size,
+                            timestamp=timestamp,
+                            reason=f"Large trade buy pressure: {trade_analysis['buy_pressure']:.3f}"
+                        )
+                    elif trade_analysis['sell_pressure'] > 0.6:
+                        self.signal_count += 1
+                        self.signals_by_type['large_trade_sell'] += 1
+                        return TradeSignal(
+                            action='sell',
+                            price=current_price,
+                            quantity=self.config.max_position_size,
+                            timestamp=timestamp,
+                            reason=f"Large trade sell pressure: {trade_analysis['sell_pressure']:.3f}"
+                        )
+        
+        self.no_signal_count += 1
+        return None
+    
+    def update_position(self, signal: TradeSignal) -> None:
+        """Update position based on trade signal."""
+        if signal.action == 'buy':
+            self.position += signal.quantity
+            if self.position > 0:
+                self.entry_price = signal.price
+                logger.info(f"OrderBook Strategy: Bought {signal.quantity:.6f} at ${signal.price:.2f}")
+        elif signal.action == 'sell':
+            self.position = 0.0
+            self.entry_price = 0.0
+            logger.info(f"OrderBook Strategy: Sold position at ${signal.price:.2f}")
+    
+    def get_signal_stats(self) -> dict:
+        """Get signal statistics."""
+        return {
+            'total_signals': self.signal_count,
+            'signals_by_type': self.signals_by_type.copy(),
+            'order_book_level': self.order_book_level,
+            'trade_history_limit': self.trade_history_limit,
+            'bid_ask_spread_threshold': self.bid_ask_spread_threshold,
+            'volume_imbalance_threshold': self.volume_imbalance_threshold,
+            'large_trade_threshold': self.large_trade_threshold,
+            'no_signal_count': self.no_signal_count,
+            'signal_rate': self.signal_count / max(len(self.price_history), 1) * 100,
+            'price_history_length': len(self.price_history)
+        }
+    
+    def get_position_info(self) -> Dict[str, Any]:
+        """Get current position information."""
+        return {
+            "position": self.position,
+            "entry_price": self.entry_price,
+            "current_bid_ask_spread": self.current_bid_ask_spread,
+            "current_volume_imbalance": self.current_volume_imbalance,
+            "current_mid_price": self.current_mid_price,
+            "large_trade_count": self.large_trade_count,
+            "unrealized_pnl": (self.position * (self.entry_price - self.entry_price)) if self.position > 0 else 0.0
+        }
+    
+    def get_order_book_summary(self) -> Dict[str, Any]:
+        """Get order book analysis summary."""
+        if not self.order_book_history:
+            return {
+                'current_spread': 0.0,
+                'current_imbalance': 0.0,
+                'current_mid_price': 0.0,
+                'spread_trend': 'unknown',
+                'imbalance_trend': 'unknown',
+                'order_book_depth': 0
+            }
+        
+        current_order_book = self.order_book_history[-1]['order_book']
+        current_spread = self.calculate_bid_ask_spread(current_order_book)
+        current_imbalance = self.calculate_volume_imbalance(current_order_book)
+        current_mid_price = self.calculate_mid_price(current_order_book)
+        
+        # Calculate trends
+        if len(self.order_book_history) >= 5:
+            recent_spreads = [self.calculate_bid_ask_spread(ob['order_book']) 
+                            for ob in self.order_book_history[-5:]]
+            recent_imbalances = [self.calculate_volume_imbalance(ob['order_book']) 
+                               for ob in self.order_book_history[-5:]]
+            
+            spread_trend = 'increasing' if recent_spreads[-1] > recent_spreads[0] else 'decreasing'
+            imbalance_trend = 'increasing' if recent_imbalances[-1] > recent_imbalances[0] else 'decreasing'
+        else:
+            spread_trend = 'unknown'
+            imbalance_trend = 'unknown'
+        
+        return {
+            'current_spread': current_spread,
+            'current_imbalance': current_imbalance,
+            'current_mid_price': current_mid_price,
+            'spread_trend': spread_trend,
+            'imbalance_trend': imbalance_trend,
+            'order_book_depth': len(current_order_book.get('bids', [])) + len(current_order_book.get('asks', [])),
+            'best_bid': current_order_book['bids'][0]['price'] if current_order_book.get('bids') else 0.0,
+            'best_ask': current_order_book['asks'][0]['price'] if current_order_book.get('asks') else 0.0
+        }

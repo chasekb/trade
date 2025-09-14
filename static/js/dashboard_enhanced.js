@@ -1207,6 +1207,22 @@ class EnhancedTradingDashboard {
                 period: parseInt(document.getElementById('bb-period').value),
                 std_dev: parseFloat(document.getElementById('bb-std').value)
             };
+        } else if (strategyType === 'fibonacci') {
+            const fibLevelsString = document.getElementById('fib-levels').value;
+            const fibLevels = fibLevelsString.split(',').map(level => parseFloat(level.trim()));
+            strategyParams = {
+                lookback_period: parseInt(document.getElementById('fib-lookback-period').value),
+                fib_levels: fibLevels,
+                confirmation_candles: parseInt(document.getElementById('fib-confirmation-candles').value)
+            };
+        } else if (strategyType === 'orderbook') {
+            strategyParams = {
+                order_book_level: parseInt(document.getElementById('order-book-level').value),
+                trade_history_limit: parseInt(document.getElementById('trade-history-limit').value),
+                bid_ask_spread_threshold: parseFloat(document.getElementById('bid-ask-spread-threshold').value) / 100, // Convert percentage to decimal
+                volume_imbalance_threshold: parseFloat(document.getElementById('volume-imbalance-threshold').value),
+                large_trade_threshold: parseFloat(document.getElementById('large-trade-threshold').value)
+            };
         }
         
         const resultsContainer = document.getElementById('backtest-results');
@@ -1569,6 +1585,68 @@ class EnhancedTradingDashboard {
                             <div class="flex justify-between">
                                 <span class="text-gray-600">ATR Take Profit:</span>
                                 <span class="font-medium">${signalsByType.atr_take_profit || 0}</span>
+                            </div>
+                            <!-- Fibonacci Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Fibonacci Support Buy:</span>
+                                <span class="font-medium">${signalsByType.fib_support_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Fibonacci Resistance Sell:</span>
+                                <span class="font-medium">${signalsByType.fib_resistance_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Swing High Buy:</span>
+                                <span class="font-medium">${signalsByType.swing_high_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Swing Low Sell:</span>
+                                <span class="font-medium">${signalsByType.swing_low_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Confirmation Buy:</span>
+                                <span class="font-medium">${signalsByType.confirmation_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Confirmation Sell:</span>
+                                <span class="font-medium">${signalsByType.confirmation_sell || 0}</span>
+                            </div>
+                            <!-- Order Book Strategy Signals -->
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Bid-Ask Squeeze:</span>
+                                <span class="font-medium">${signalsByType.bid_ask_squeeze || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Volume Imbalance Buy:</span>
+                                <span class="font-medium">${signalsByType.volume_imbalance_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Volume Imbalance Sell:</span>
+                                <span class="font-medium">${signalsByType.volume_imbalance_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Large Trade Buy:</span>
+                                <span class="font-medium">${signalsByType.large_trade_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Large Trade Sell:</span>
+                                <span class="font-medium">${signalsByType.large_trade_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Order Book Pressure Buy:</span>
+                                <span class="font-medium">${signalsByType.order_book_pressure_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Order Book Pressure Sell:</span>
+                                <span class="font-medium">${signalsByType.order_book_pressure_sell || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Spread Expansion Buy:</span>
+                                <span class="font-medium">${signalsByType.spread_expansion_buy || 0}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Spread Expansion Sell:</span>
+                                <span class="font-medium">${signalsByType.spread_expansion_sell || 0}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Volatility Expansion:</span>
