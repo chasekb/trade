@@ -618,6 +618,8 @@ async def run_backtest(request: BacktestRequest):
         elif request.strategy_type == "orderbook":
             strategy_class = OrderBookStrategy
         
+        logger.info(f"Selected strategy class: {strategy_class.__name__}")
+        
         # Use strategy_params if provided and not empty, otherwise fall back to legacy parameters
         if request.strategy_params and len(request.strategy_params) > 0:
             strategy_params = request.strategy_params
