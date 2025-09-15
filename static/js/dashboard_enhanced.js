@@ -205,6 +205,11 @@ class EnhancedTradingDashboard {
             this.loadStrategyParameters(e.target.value);
         });
 
+        // Universe strategy type change
+        document.getElementById('universe-strategy-type')?.addEventListener('change', (e) => {
+            this.loadStrategyParameters(e.target.value);
+        });
+
         // Trading controls
         document.getElementById('start-trading')?.addEventListener('click', () => {
             this.startLiveTrading();
@@ -366,9 +371,23 @@ class EnhancedTradingDashboard {
             singleConfig.classList.add('hidden');
             universeConfig.classList.remove('hidden');
             this.updateUniverseSelection(this.liveTrading.universe.type);
+            
+            // Sync strategy selectors
+            const singleStrategy = document.getElementById('live-strategy-type');
+            const universeStrategy = document.getElementById('universe-strategy-type');
+            if (singleStrategy && universeStrategy) {
+                universeStrategy.value = singleStrategy.value;
+            }
         } else {
             singleConfig.classList.remove('hidden');
             universeConfig.classList.add('hidden');
+            
+            // Sync strategy selectors
+            const singleStrategy = document.getElementById('live-strategy-type');
+            const universeStrategy = document.getElementById('universe-strategy-type');
+            if (singleStrategy && universeStrategy) {
+                singleStrategy.value = universeStrategy.value;
+            }
         }
     }
 
@@ -490,7 +509,10 @@ class EnhancedTradingDashboard {
     async startLiveTrading() {
         if (this.liveTrading.isActive) return;
 
-        const strategyType = document.getElementById('live-strategy-type').value;
+        // Get strategy type based on symbol mode
+        const strategyType = this.liveTrading.symbolMode === 'universe' 
+            ? document.getElementById('universe-strategy-type').value
+            : document.getElementById('live-strategy-type').value;
         
         // Get configuration based on symbol mode
         let symbols, positionSize, maxPositions;
