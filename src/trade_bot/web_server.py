@@ -1070,6 +1070,143 @@ async def get_available_products():
         logger.error(f"Failed to fetch products: {e}")
         return {"error": str(e)}
 
+@app.post("/api/live-trading/start")
+async def start_live_trading(request: dict):
+    """Start live trading with specified strategy."""
+    await check_rate_limit()
+    
+    try:
+        # Extract trading parameters
+        symbol = request.get('symbol', 'BTC-USD')
+        strategy_type = request.get('strategy_type', 'sma')
+        mode = request.get('mode', 'simulated')  # 'simulated' or 'live'
+        strategy_params = request.get('strategy_params', {})
+        position_size = request.get('position_size', 5.0)
+        max_positions = request.get('max_positions', 3)
+        
+        # Validate parameters
+        if mode not in ['simulated', 'live']:
+            return {"error": "Invalid trading mode. Must be 'simulated' or 'live'"}
+        
+        if strategy_type not in ['sma', 'ema', 'rsi', 'bollinger', 'macd', 'stochastic', 'fibonacci', 'orderbook', 'dca', 'buyandhold']:
+            return {"error": "Invalid strategy type"}
+        
+        # In a real implementation, this would:
+        # 1. Initialize the trading strategy
+        # 2. Set up real-time data feeds
+        # 3. Start the trading loop
+        # 4. Return trading session ID
+        
+        trading_session = {
+            "session_id": f"trading_{int(time.time())}",
+            "symbol": symbol,
+            "strategy_type": strategy_type,
+            "mode": mode,
+            "status": "active",
+            "started_at": datetime.now().isoformat(),
+            "strategy_params": strategy_params,
+            "position_size": position_size,
+            "max_positions": max_positions
+        }
+        
+        return {
+            "status": "success",
+            "trading_session": trading_session,
+            "message": f"Live trading started in {mode} mode with {strategy_type} strategy"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start live trading: {e}")
+        return {"error": str(e)}
+
+@app.post("/api/live-trading/stop")
+async def stop_live_trading(request: dict):
+    """Stop live trading session."""
+    await check_rate_limit()
+    
+    try:
+        session_id = request.get('session_id')
+        
+        if not session_id:
+            return {"error": "Session ID required"}
+        
+        # In a real implementation, this would:
+        # 1. Stop the trading strategy
+        # 2. Close any open positions if needed
+        # 3. Clean up resources
+        
+        return {
+            "status": "success",
+            "message": f"Trading session {session_id} stopped"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to stop live trading: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/live-trading/positions")
+async def get_live_positions():
+    """Get current live trading positions."""
+    await check_rate_limit()
+    
+    try:
+        # In a real implementation, this would return actual positions
+        # For now, return empty list
+        return {
+            "status": "success",
+            "positions": [],
+            "total_value": 0.0,
+            "unrealized_pnl": 0.0
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get positions: {e}")
+        return {"error": str(e)}
+
+@app.post("/api/live-trading/close-position")
+async def close_live_position(request: dict):
+    """Close a specific position."""
+    await check_rate_limit()
+    
+    try:
+        position_id = request.get('position_id')
+        
+        if not position_id:
+            return {"error": "Position ID required"}
+        
+        # In a real implementation, this would:
+        # 1. Find the position
+        # 2. Execute the closing trade
+        # 3. Update the portfolio
+        
+        return {
+            "status": "success",
+            "message": f"Position {position_id} closed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to close position: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/live-trading/history")
+async def get_live_trading_history():
+    """Get live trading history."""
+    await check_rate_limit()
+    
+    try:
+        # In a real implementation, this would return actual trading history
+        # For now, return empty list
+        return {
+            "status": "success",
+            "trades": [],
+            "total_trades": 0,
+            "total_pnl": 0.0
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get trading history: {e}")
+        return {"error": str(e)}
+
 @app.get("/api/cache-stats")
 async def get_cache_stats():
     """Get cache performance statistics."""

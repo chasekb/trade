@@ -34,6 +34,7 @@ class EnhancedTradingDashboard {
         this.connectWebSocket();
         this.setupEventListeners();
         this.loadSubscriptions();
+        this.setupLiveTrading();
         
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
@@ -115,6 +116,441 @@ class EnhancedTradingDashboard {
                 input.value = 'BTC-USD';
             }
         });
+    }
+
+    setupLiveTrading() {
+        // Live trading state
+        this.liveTrading = {
+            isActive: false,
+            isPaused: false,
+            mode: 'simulated', // 'simulated' or 'live'
+            strategy: null,
+            positions: [],
+            history: [],
+            portfolio: {
+                balance: 10000,
+                totalValue: 10000,
+                openPositions: 0,
+                dailyPnL: 0
+            }
+        };
+        
+        // Setup live trading event listeners
+        this.setupLiveTradingEventListeners();
+    }
+
+    setupLiveTradingEventListeners() {
+        // Tab switching
+        document.getElementById('tab-live-trading')?.addEventListener('click', () => {
+            this.switchTab('live-trading');
+            this.loadLiveTradingProducts();
+        });
+
+        // Trading mode selection
+        document.querySelectorAll('input[name="trading-mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.liveTrading.mode = e.target.value;
+                this.updateTradingModeUI();
+            });
+        });
+
+        // Strategy type change
+        document.getElementById('live-strategy-type')?.addEventListener('change', (e) => {
+            this.loadStrategyParameters(e.target.value);
+        });
+
+        // Trading controls
+        document.getElementById('start-trading')?.addEventListener('click', () => {
+            this.startLiveTrading();
+        });
+
+        document.getElementById('stop-trading')?.addEventListener('click', () => {
+            this.stopLiveTrading();
+        });
+
+        document.getElementById('pause-trading')?.addEventListener('click', () => {
+            this.pauseLiveTrading();
+        });
+
+        document.getElementById('emergency-stop')?.addEventListener('click', () => {
+            this.emergencyStop();
+        });
+    }
+
+    loadLiveTradingProducts() {
+        // Load products for live trading symbol selector
+        const symbolSelector = document.getElementById('live-trading-symbol');
+        if (symbolSelector && symbolSelector.children.length <= 1) {
+            this.populateProductSelectors({
+                'live-trading-symbol': symbolSelector
+            });
+        }
+    }
+
+    loadStrategyParameters(strategyType) {
+        const paramsContainer = document.getElementById('live-strategy-params');
+        if (!paramsContainer) return;
+
+        // Clear existing parameters
+        paramsContainer.innerHTML = '';
+
+        const strategyParams = this.getStrategyParameters(strategyType);
+        
+        if (strategyParams.length === 0) {
+            paramsContainer.innerHTML = '<p class="text-gray-500 text-sm">No additional parameters required for this strategy.</p>';
+            return;
+        }
+
+        // Create parameter inputs
+        const paramsHTML = strategyParams.map(param => `
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${param.label}</label>
+                    <input type="${param.type}" 
+                           id="live-param-${param.name}" 
+                           value="${param.default}" 
+                           min="${param.min || ''}" 
+                           max="${param.max || ''}" 
+                           step="${param.step || ''}"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2">
+                </div>
+            </div>
+        `).join('');
+
+        paramsContainer.innerHTML = `
+            <h4 class="text-md font-semibold text-gray-700 mb-4">Strategy Parameters</h4>
+            ${paramsHTML}
+        `;
+    }
+
+    getStrategyParameters(strategyType) {
+        const parameters = {
+            'sma': [
+                { name: 'short_window', label: 'Short Window', type: 'number', default: 10, min: 2, max: 100 },
+                { name: 'long_window', label: 'Long Window', type: 'number', default: 20, min: 5, max: 200 }
+            ],
+            'ema': [
+                { name: 'short_window', label: 'Short Window', type: 'number', default: 10, min: 2, max: 100 },
+                { name: 'long_window', label: 'Long Window', type: 'number', default: 20, min: 5, max: 200 }
+            ],
+            'rsi': [
+                { name: 'window', label: 'RSI Window', type: 'number', default: 14, min: 5, max: 50 },
+                { name: 'overbought', label: 'Overbought Level', type: 'number', default: 70, min: 60, max: 90 },
+                { name: 'oversold', label: 'Oversold Level', type: 'number', default: 30, min: 10, max: 40 }
+            ],
+            'bollinger': [
+                { name: 'window', label: 'Window', type: 'number', default: 20, min: 5, max: 100 },
+                { name: 'std_dev', label: 'Standard Deviations', type: 'number', default: 2, min: 1, max: 3, step: 0.1 }
+            ],
+            'macd': [
+                { name: 'fast_window', label: 'Fast Window', type: 'number', default: 12, min: 5, max: 50 },
+                { name: 'slow_window', label: 'Slow Window', type: 'number', default: 26, min: 10, max: 100 },
+                { name: 'signal_window', label: 'Signal Window', type: 'number', default: 9, min: 5, max: 30 }
+            ],
+            'stochastic': [
+                { name: 'k_window', label: 'K Window', type: 'number', default: 14, min: 5, max: 50 },
+                { name: 'd_window', label: 'D Window', type: 'number', default: 3, min: 2, max: 10 },
+                { name: 'overbought', label: 'Overbought Level', type: 'number', default: 80, min: 70, max: 90 },
+                { name: 'oversold', label: 'Oversold Level', type: 'number', default: 20, min: 10, max: 30 }
+            ],
+            'fibonacci': [
+                { name: 'fib_lookback_period', label: 'Lookback Period', type: 'number', default: 20, min: 10, max: 100 },
+                { name: 'fib_levels', label: 'Fibonacci Levels', type: 'text', default: '0.236,0.382,0.5,0.618,0.786' },
+                { name: 'fib_confirmation_candles', label: 'Confirmation Candles', type: 'number', default: 2, min: 1, max: 5 }
+            ],
+            'orderbook': [
+                { name: 'order_book_level', label: 'Order Book Level', type: 'number', default: 5, min: 1, max: 20 },
+                { name: 'trade_history_limit', label: 'Trade History Limit', type: 'number', default: 100, min: 10, max: 1000 },
+                { name: 'bid_ask_spread_threshold', label: 'Bid-Ask Spread Threshold', type: 'number', default: 0.001, min: 0.0001, max: 0.01, step: 0.0001 },
+                { name: 'volume_imbalance_threshold', label: 'Volume Imbalance Threshold', type: 'number', default: 0.6, min: 0.1, max: 0.9, step: 0.1 },
+                { name: 'large_trade_threshold', label: 'Large Trade Threshold', type: 'number', default: 10000, min: 1000, max: 100000 }
+            ],
+            'dca': [
+                { name: 'interval_hours', label: 'Interval (Hours)', type: 'number', default: 24, min: 1, max: 168 },
+                { name: 'amount', label: 'Amount per Interval', type: 'number', default: 100, min: 10, max: 10000 }
+            ],
+            'buyandhold': [
+                { name: 'amount', label: 'Investment Amount', type: 'number', default: 1000, min: 100, max: 100000 }
+            ]
+        };
+
+        return parameters[strategyType] || [];
+    }
+
+    updateTradingModeUI() {
+        const mode = this.liveTrading.mode;
+        const startButton = document.getElementById('start-trading');
+        const warningText = document.querySelector('#live-mode + p');
+        
+        if (mode === 'live') {
+            startButton.classList.add('bg-red-600', 'hover:bg-red-700');
+            startButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+            startButton.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>Start LIVE Trading';
+            if (warningText) {
+                warningText.classList.add('text-red-600', 'font-semibold');
+            }
+        } else {
+            startButton.classList.add('bg-green-600', 'hover:bg-green-700');
+            startButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+            startButton.innerHTML = '<i class="fas fa-play mr-2"></i>Start Trading';
+            if (warningText) {
+                warningText.classList.remove('text-red-600', 'font-semibold');
+            }
+        }
+    }
+
+    async startLiveTrading() {
+        if (this.liveTrading.isActive) return;
+
+        const symbol = document.getElementById('live-trading-symbol').value;
+        const strategyType = document.getElementById('live-strategy-type').value;
+        const positionSize = parseFloat(document.getElementById('live-position-size').value);
+        const maxPositions = parseInt(document.getElementById('live-max-positions').value);
+
+        // Get strategy parameters
+        const strategyParams = this.getStrategyParameters(strategyType);
+        const params = {};
+        strategyParams.forEach(param => {
+            const element = document.getElementById(`live-param-${param.name}`);
+            if (element) {
+                let value = element.value;
+                if (param.type === 'number') {
+                    value = parseFloat(value);
+                } else if (param.name === 'fib_levels') {
+                    value = value.split(',').map(v => parseFloat(v.trim()));
+                }
+                params[param.name] = value;
+            }
+        });
+
+        try {
+            // Call backend API to start live trading
+            const response = await fetch('/api/live-trading/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    symbol: symbol,
+                    strategy_type: strategyType,
+                    mode: this.liveTrading.mode,
+                    strategy_params: params,
+                    position_size: positionSize,
+                    max_positions: maxPositions
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                // Initialize strategy
+                this.liveTrading.strategy = {
+                    type: strategyType,
+                    symbol: symbol,
+                    params: params,
+                    positionSize: positionSize,
+                    maxPositions: maxPositions,
+                    sessionId: data.trading_session.session_id
+                };
+
+                this.liveTrading.isActive = true;
+                this.liveTrading.isPaused = false;
+
+                this.updateTradingControls();
+                this.updateTradingStatus('active');
+                this.logTradingEvent(`Started ${this.liveTrading.mode} trading with ${strategyType} strategy on ${symbol}`);
+
+                // Start strategy monitoring
+                this.startStrategyMonitoring();
+            } else {
+                this.logTradingEvent(`Failed to start trading: ${data.error}`);
+            }
+        } catch (error) {
+            this.logTradingEvent(`Error starting trading: ${error.message}`);
+        }
+    }
+
+    async stopLiveTrading() {
+        if (!this.liveTrading.isActive) return;
+
+        try {
+            // Call backend API to stop live trading
+            if (this.liveTrading.strategy && this.liveTrading.strategy.sessionId) {
+                const response = await fetch('/api/live-trading/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        session_id: this.liveTrading.strategy.sessionId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    this.logTradingEvent('Trading stopped successfully');
+                } else {
+                    this.logTradingEvent(`Error stopping trading: ${data.error}`);
+                }
+            }
+        } catch (error) {
+            this.logTradingEvent(`Error stopping trading: ${error.message}`);
+        }
+
+        this.liveTrading.isActive = false;
+        this.liveTrading.isPaused = false;
+
+        this.updateTradingControls();
+        this.updateTradingStatus('stopped');
+        this.logTradingEvent('Trading stopped');
+    }
+
+    pauseLiveTrading() {
+        if (!this.liveTrading.isActive) return;
+
+        this.liveTrading.isPaused = !this.liveTrading.isPaused;
+        this.updateTradingControls();
+        this.updateTradingStatus(this.liveTrading.isPaused ? 'paused' : 'active');
+        this.logTradingEvent(this.liveTrading.isPaused ? 'Trading paused' : 'Trading resumed');
+    }
+
+    emergencyStop() {
+        this.liveTrading.isActive = false;
+        this.liveTrading.isPaused = false;
+        
+        // Close all positions if in live mode
+        if (this.liveTrading.mode === 'live') {
+            this.closeAllPositions();
+        }
+
+        this.updateTradingControls();
+        this.updateTradingStatus('emergency_stop');
+        this.logTradingEvent('EMERGENCY STOP - All trading halted');
+    }
+
+    updateTradingControls() {
+        const startBtn = document.getElementById('start-trading');
+        const stopBtn = document.getElementById('stop-trading');
+        const pauseBtn = document.getElementById('pause-trading');
+
+        if (this.liveTrading.isActive) {
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            pauseBtn.disabled = false;
+            pauseBtn.innerHTML = this.liveTrading.isPaused ? 
+                '<i class="fas fa-play mr-2"></i>Resume Trading' : 
+                '<i class="fas fa-pause mr-2"></i>Pause Trading';
+        } else {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            pauseBtn.disabled = true;
+            pauseBtn.innerHTML = '<i class="fas fa-pause mr-2"></i>Pause Trading';
+        }
+    }
+
+    updateTradingStatus(status) {
+        const indicator = document.getElementById('trading-status-indicator');
+        const text = document.getElementById('trading-status-text');
+        const lastUpdate = document.getElementById('last-trading-update');
+
+        const statusConfig = {
+            'stopped': { color: 'bg-gray-400', text: 'Stopped' },
+            'active': { color: 'bg-green-500', text: 'Active' },
+            'paused': { color: 'bg-yellow-500', text: 'Paused' },
+            'emergency_stop': { color: 'bg-red-500', text: 'Emergency Stop' }
+        };
+
+        const config = statusConfig[status] || statusConfig['stopped'];
+        
+        if (indicator) {
+            indicator.className = `w-3 h-3 ${config.color} rounded-full`;
+        }
+        if (text) {
+            text.textContent = config.text;
+        }
+        if (lastUpdate) {
+            lastUpdate.textContent = new Date().toLocaleTimeString();
+        }
+    }
+
+    logTradingEvent(message) {
+        const logContainer = document.getElementById('trading-log');
+        if (!logContainer) return;
+
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.className = 'text-green-400';
+        logEntry.innerHTML = `[${timestamp}] ${message}`;
+
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+
+        // Keep only last 100 entries
+        while (logContainer.children.length > 100) {
+            logContainer.removeChild(logContainer.firstChild);
+        }
+    }
+
+    startStrategyMonitoring() {
+        // This would integrate with the WebSocket data feed
+        // For now, we'll simulate strategy monitoring
+        if (!this.liveTrading.isActive) return;
+
+        // In a real implementation, this would:
+        // 1. Subscribe to real-time price data for the symbol
+        // 2. Run the strategy on each price update
+        // 3. Execute trades based on strategy signals
+        // 4. Update positions and portfolio
+
+        this.logTradingEvent('Strategy monitoring started - waiting for signals...');
+    }
+
+    closeAllPositions() {
+        // Close all open positions
+        this.liveTrading.positions.forEach(position => {
+            this.closePosition(position.id);
+        });
+    }
+
+    closePosition(positionId) {
+        // Close a specific position
+        const position = this.liveTrading.positions.find(p => p.id === positionId);
+        if (position) {
+            // In live mode, this would execute actual trades
+            // In simulated mode, this updates the portfolio
+            this.logTradingEvent(`Closing position: ${position.symbol} ${position.side} ${position.size}`);
+            
+            // Remove from positions
+            this.liveTrading.positions = this.liveTrading.positions.filter(p => p.id !== positionId);
+            this.updatePositionsTable();
+        }
+    }
+
+    updatePositionsTable() {
+        const tbody = document.getElementById('positions-tbody');
+        if (!tbody) return;
+
+        if (this.liveTrading.positions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No open positions</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = this.liveTrading.positions.map(position => `
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${position.symbol}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.side}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.size}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.entryPrice.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.currentPrice.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm ${position.pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${position.pnl >= 0 ? '+' : ''}$${position.pnl.toFixed(2)}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <button onclick="dashboard.closePosition('${position.id}')" 
+                            class="text-red-600 hover:text-red-900">Close</button>
+                </td>
+            </tr>
+        `).join('');
     }
 
     connectWebSocket() {
