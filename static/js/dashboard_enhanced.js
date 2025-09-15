@@ -62,11 +62,25 @@ class EnhancedTradingDashboard {
     }
 
     populateProductSelectors(categories) {
-        // Get all selectors that need product options
-        const selectors = [
-            'symbol-selector',
-            'backtest-symbol'
-        ];
+        // Handle both direct selector objects and selector IDs
+        let selectors = [];
+        
+        if (typeof categories === 'object' && !categories.major) {
+            // Called with specific selector objects
+            selectors = Object.entries(categories).map(([id, element]) => ({ id, element }));
+        } else {
+            // Called with categories data - get all selectors that need product options
+            const selectorIds = [
+                'symbol-selector',
+                'backtest-symbol',
+                'live-trading-symbol'
+            ];
+            
+            selectors = selectorIds.map(id => {
+                const element = document.getElementById(id);
+                return { id, element };
+            }).filter(item => item.element);
+        }
         
         // Create options for each category
         const categoryOptions = {
@@ -77,12 +91,11 @@ class EnhancedTradingDashboard {
             'All USD Pairs': categories.all_usd || []
         };
         
-        selectors.forEach(selectorId => {
-            const selector = document.getElementById(selectorId);
-            if (!selector) return;
+        selectors.forEach(({ id, element }) => {
+            if (!element) return;
             
             // Clear existing options
-            selector.innerHTML = '';
+            element.innerHTML = '';
             
             // Add category headers and options
             Object.entries(categoryOptions).forEach(([categoryName, products]) => {
@@ -100,12 +113,12 @@ class EnhancedTradingDashboard {
                     optgroup.appendChild(option);
                 });
                 
-                selector.appendChild(optgroup);
+                element.appendChild(optgroup);
             });
             
             // Set default selection
-            if (selectorId === 'symbol-selector' || selectorId === 'backtest-symbol') {
-                selector.value = 'BTC-USD';
+            if (['symbol-selector', 'backtest-symbol', 'live-trading-symbol'].includes(id)) {
+                element.value = 'BTC-USD';
             }
         });
         
@@ -141,9 +154,9 @@ class EnhancedTradingDashboard {
 
     setupLiveTradingEventListeners() {
         // Tab switching
-        document.getElementById('tab-live-trading')?.addEventListener('click', () => {
+        document.getElementById('tab-live-trading')?.addEventListener('click', async () => {
             this.switchTab('live-trading');
-            this.loadLiveTradingProducts();
+            await this.loadLiveTradingProducts();
         });
 
         // Trading mode selection
@@ -177,13 +190,25 @@ class EnhancedTradingDashboard {
         });
     }
 
-    loadLiveTradingProducts() {
+    async loadLiveTradingProducts() {
         // Load products for live trading symbol selector
         const symbolSelector = document.getElementById('live-trading-symbol');
         if (symbolSelector && symbolSelector.children.length <= 1) {
-            this.populateProductSelectors({
-                'live-trading-symbol': symbolSelector
-            });
+            try {
+                // Fetch products from API
+                const response = await fetch('/api/products');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Use the same product loading logic as other selectors
+                    this.populateProductSelectors(data.categories);
+                    console.log('Loaded products for live trading:', data.total_products, 'total');
+                } else {
+                    console.error('Failed to load products for live trading:', data.error);
+                }
+            } catch (error) {
+                console.error('Error loading products for live trading:', error);
+            }
         }
     }
 
