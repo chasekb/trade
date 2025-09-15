@@ -68,16 +68,20 @@ class UniverseSelector:
             fallback_signals = {}
             
             # Create fallback signals for symbols that had data (even if no signal)
-            for symbol, data in symbol_signals.items():
-                if data is not None:  # Symbol has data but no signal
-                    # Create a neutral signal with low strength
-                    fallback_signals[symbol] = {
-                        'signal': 'buy',  # Default to buy
-                        'strength': 0.1,  # Low strength
-                        'price': data.get('price', 0),
-                        'volume': data.get('volume', 0),
-                        'strategy_data': {'reason': 'fallback_signal', 'action': 'buy'}
-                    }
+            # Limit to max_positions to avoid creating too many signals
+            symbols_with_data = [symbol for symbol, data in symbol_signals.items() if data is not None]
+            symbols_to_process = symbols_with_data[:max_positions]
+            
+            for symbol in symbols_to_process:
+                data = symbol_signals[symbol]
+                # Create a neutral signal with low strength
+                fallback_signals[symbol] = {
+                    'signal': 'buy',  # Default to buy
+                    'strength': 0.1,  # Low strength
+                    'price': data.get('price', 0),
+                    'volume': data.get('volume', 0),
+                    'strategy_data': {'reason': 'fallback_signal', 'action': 'buy'}
+                }
             
             # If still no signals, create fallback for symbols that failed data fetch
             if not fallback_signals:
