@@ -1077,42 +1077,62 @@ async def start_live_trading(request: dict):
     
     try:
         # Extract trading parameters
-        symbol = request.get('symbol', 'BTC-USD')
+        symbols = request.get('symbols', [request.get('symbol', 'BTC-USD')])  # Support both single and multiple symbols
         strategy_type = request.get('strategy_type', 'sma')
         mode = request.get('mode', 'simulated')  # 'simulated' or 'live'
+        symbol_mode = request.get('symbol_mode', 'single')  # 'single' or 'universe'
         strategy_params = request.get('strategy_params', {})
         position_size = request.get('position_size', 5.0)
         max_positions = request.get('max_positions', 3)
+        universe_config = request.get('universe_config', {})
         
         # Validate parameters
         if mode not in ['simulated', 'live']:
             return {"error": "Invalid trading mode. Must be 'simulated' or 'live'"}
         
+        if symbol_mode not in ['single', 'universe']:
+            return {"error": "Invalid symbol mode. Must be 'single' or 'universe'"}
+        
         if strategy_type not in ['sma', 'ema', 'rsi', 'bollinger', 'macd', 'stochastic', 'fibonacci', 'orderbook', 'dca', 'buyandhold']:
             return {"error": "Invalid strategy type"}
         
+        # Validate symbols
+        if not symbols or len(symbols) == 0:
+            return {"error": "No symbols specified for trading"}
+        
+        if symbol_mode == 'universe' and len(symbols) > max_positions:
+            return {"error": f"Too many symbols ({len(symbols)}) for max positions ({max_positions})"}
+        
         # In a real implementation, this would:
-        # 1. Initialize the trading strategy
-        # 2. Set up real-time data feeds
-        # 3. Start the trading loop
+        # 1. Initialize the trading strategy for each symbol
+        # 2. Set up real-time data feeds for all symbols
+        # 3. Start the trading loop for the universe
         # 4. Return trading session ID
         
         trading_session = {
             "session_id": f"trading_{int(time.time())}",
-            "symbol": symbol,
+            "symbols": symbols,
+            "symbol_mode": symbol_mode,
             "strategy_type": strategy_type,
             "mode": mode,
             "status": "active",
             "started_at": datetime.now().isoformat(),
             "strategy_params": strategy_params,
             "position_size": position_size,
-            "max_positions": max_positions
+            "max_positions": max_positions,
+            "universe_config": universe_config
         }
+        
+        # Create appropriate message based on symbol mode
+        if symbol_mode == 'universe':
+            message = f"Live universe trading started in {mode} mode with {strategy_type} strategy on {len(symbols)} symbols"
+        else:
+            message = f"Live trading started in {mode} mode with {strategy_type} strategy on {symbols[0]}"
         
         return {
             "status": "success",
             "trading_session": trading_session,
-            "message": f"Live trading started in {mode} mode with {strategy_type} strategy"
+            "message": message
         }
         
     except Exception as e:

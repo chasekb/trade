@@ -762,7 +762,27 @@
                         <i class="fas fa-cogs mr-2"></i>Strategy Configuration
                     </h3>
                     
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Trading Mode Selection -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Trading Mode</label>
+                        <div class="flex space-x-6">
+                            <div class="flex items-center">
+                                <input type="radio" id="single-symbol-mode" name="trading-symbol-mode" value="single" checked class="text-blue-600 focus:ring-blue-500">
+                                <label for="single-symbol-mode" class="ml-2 text-sm font-medium text-gray-700">
+                                    <i class="fas fa-coins mr-1"></i>Single Symbol
+                                </label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="universe-mode" name="trading-symbol-mode" value="universe" class="text-purple-600 focus:ring-purple-500">
+                                <label for="universe-mode" class="ml-2 text-sm font-medium text-gray-700">
+                                    <i class="fas fa-globe mr-1"></i>Universe Trading
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Single Symbol Configuration -->
+                    <div id="single-symbol-config" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Trading Symbol</label>
                             <select id="live-trading-symbol" class="w-full border border-gray-300 rounded-md px-3 py-2">
@@ -796,6 +816,67 @@
                             <label class="block text-sm font-medium text-gray-700 mb-2">Max Positions</label>
                             <input type="number" id="live-max-positions" value="3" min="1" max="10" 
                                    class="w-full border border-gray-300 rounded-md px-3 py-2">
+                        </div>
+                    </div>
+                    
+                    <!-- Universe Trading Configuration -->
+                    <div id="universe-config" class="hidden">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Universe Type</label>
+                                <select id="universe-type" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                    <option value="major">Major Pairs (24 symbols)</option>
+                                    <option value="dex_tokens">DEX Tokens (9 symbols)</option>
+                                    <option value="meme_tokens">Meme Tokens (8 symbols)</option>
+                                    <option value="stablecoins">Stablecoins (2 symbols)</option>
+                                    <option value="custom">Custom Selection</option>
+                                    <option value="all_usd">All USD Pairs (322+ symbols)</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Max Universe Size</label>
+                                <input type="number" id="universe-max-size" value="10" min="1" max="50" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Position Size per Symbol (%)</label>
+                                <input type="number" id="universe-position-size" value="2" min="0.1" max="10" step="0.1" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Max Total Positions</label>
+                                <input type="number" id="universe-max-positions" value="20" min="1" max="100" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            </div>
+                        </div>
+                        
+                        <!-- Custom Symbol Selection -->
+                        <div id="custom-symbols-config" class="hidden">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Custom Symbol Selection</label>
+                            <div class="flex space-x-2 mb-2">
+                                <input type="text" id="custom-symbol-input" placeholder="Enter symbol (e.g., BTC-USD)" 
+                                       class="flex-1 border border-gray-300 rounded-md px-3 py-2">
+                                <button id="add-custom-symbol" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md">
+                                    <i class="fas fa-plus mr-1"></i>Add
+                                </button>
+                            </div>
+                            <div id="custom-symbols-list" class="flex flex-wrap gap-2">
+                                <!-- Custom symbols will be added here -->
+                            </div>
+                        </div>
+                        
+                        <!-- Universe Preview -->
+                        <div id="universe-preview" class="mt-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Selected Universe</label>
+                            <div id="universe-symbols" class="bg-white border border-gray-300 rounded-md p-3 max-h-32 overflow-y-auto">
+                                <div class="text-gray-500 text-sm">Select a universe type to see symbols</div>
+                            </div>
+                            <div class="mt-2 text-sm text-gray-600">
+                                <span id="universe-count">0</span> symbols selected
+                            </div>
                         </div>
                     </div>
                     

@@ -137,9 +137,18 @@ class EnhancedTradingDashboard {
             isActive: false,
             isPaused: false,
             mode: 'simulated', // 'simulated' or 'live'
+            symbolMode: 'single', // 'single' or 'universe'
             strategy: null,
             positions: [],
             history: [],
+            universe: {
+                type: 'major',
+                symbols: [],
+                customSymbols: [],
+                maxSize: 10,
+                positionSize: 2.0,
+                maxPositions: 20
+            },
             portfolio: {
                 balance: 10000,
                 totalValue: 10000,
@@ -165,6 +174,30 @@ class EnhancedTradingDashboard {
                 this.liveTrading.mode = e.target.value;
                 this.updateTradingModeUI();
             });
+        });
+
+        // Symbol trading mode selection
+        document.querySelectorAll('input[name="trading-symbol-mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.liveTrading.symbolMode = e.target.value;
+                this.updateSymbolModeUI();
+            });
+        });
+
+        // Universe type selection
+        document.getElementById('universe-type')?.addEventListener('change', (e) => {
+            this.updateUniverseSelection(e.target.value);
+        });
+
+        // Custom symbol management
+        document.getElementById('add-custom-symbol')?.addEventListener('click', () => {
+            this.addCustomSymbol();
+        });
+
+        document.getElementById('custom-symbol-input')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.addCustomSymbol();
+            }
         });
 
         // Strategy type change
@@ -324,13 +357,168 @@ class EnhancedTradingDashboard {
         }
     }
 
+    updateSymbolModeUI() {
+        const symbolMode = this.liveTrading.symbolMode;
+        const singleConfig = document.getElementById('single-symbol-config');
+        const universeConfig = document.getElementById('universe-config');
+        
+        if (symbolMode === 'universe') {
+            singleConfig.classList.add('hidden');
+            universeConfig.classList.remove('hidden');
+            this.updateUniverseSelection(this.liveTrading.universe.type);
+        } else {
+            singleConfig.classList.remove('hidden');
+            universeConfig.classList.add('hidden');
+        }
+    }
+
+    async updateUniverseSelection(universeType) {
+        this.liveTrading.universe.type = universeType;
+        
+        // Show/hide custom symbols config
+        const customConfig = document.getElementById('custom-symbols-config');
+        if (universeType === 'custom') {
+            customConfig.classList.remove('hidden');
+        } else {
+            customConfig.classList.add('hidden');
+        }
+        
+        // Load symbols based on type
+        if (universeType === 'custom') {
+            this.updateUniversePreview(this.liveTrading.universe.customSymbols);
+        } else {
+            await this.loadUniverseSymbols(universeType);
+        }
+    }
+
+    async loadUniverseSymbols(universeType) {
+        try {
+            const response = await fetch('/api/products');
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                const categories = data.categories;
+                let symbols = [];
+                
+                switch (universeType) {
+                    case 'major':
+                        symbols = categories.major || [];
+                        break;
+                    case 'dex_tokens':
+                        symbols = categories.dex_tokens || [];
+                        break;
+                    case 'meme_tokens':
+                        symbols = categories.meme_tokens || [];
+                        break;
+                    case 'stablecoins':
+                        symbols = categories.stablecoins || [];
+                        break;
+                    case 'all_usd':
+                        symbols = categories.all_usd || [];
+                        break;
+                }
+                
+                // Limit symbols based on max size
+                const maxSize = parseInt(document.getElementById('universe-max-size').value) || 10;
+                symbols = symbols.slice(0, maxSize);
+                
+                this.liveTrading.universe.symbols = symbols;
+                this.updateUniversePreview(symbols);
+            }
+        } catch (error) {
+            console.error('Error loading universe symbols:', error);
+        }
+    }
+
+    addCustomSymbol() {
+        const input = document.getElementById('custom-symbol-input');
+        const symbol = input.value.trim().toUpperCase();
+        
+        if (symbol && symbol.endsWith('-USD')) {
+            if (!this.liveTrading.universe.customSymbols.includes(symbol)) {
+                this.liveTrading.universe.customSymbols.push(symbol);
+                input.value = '';
+                this.updateUniversePreview(this.liveTrading.universe.customSymbols);
+            } else {
+                alert('Symbol already added to universe');
+            }
+        } else {
+            alert('Please enter a valid USD symbol (e.g., BTC-USD)');
+        }
+    }
+
+    removeCustomSymbol(symbol) {
+        this.liveTrading.universe.customSymbols = this.liveTrading.universe.customSymbols.filter(s => s !== symbol);
+        this.updateUniversePreview(this.liveTrading.universe.customSymbols);
+    }
+
+    updateUniversePreview(symbols) {
+        const preview = document.getElementById('universe-symbols');
+        const count = document.getElementById('universe-count');
+        
+        if (symbols.length === 0) {
+            preview.innerHTML = '<div class="text-gray-500 text-sm">No symbols selected</div>';
+            count.textContent = '0';
+        } else {
+            const symbolsHtml = symbols.map(symbol => {
+                if (this.liveTrading.universe.type === 'custom') {
+                    return `
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-2 mb-2">
+                            ${symbol}
+                            <button onclick="dashboard.removeCustomSymbol('${symbol}')" class="ml-1 text-blue-600 hover:text-blue-800">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </span>
+                    `;
+                } else {
+                    return `
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2 mb-2">
+                            ${symbol}
+                        </span>
+                    `;
+                }
+            }).join('');
+            
+            preview.innerHTML = symbolsHtml;
+            count.textContent = symbols.length;
+        }
+    }
+
     async startLiveTrading() {
         if (this.liveTrading.isActive) return;
 
-        const symbol = document.getElementById('live-trading-symbol').value;
         const strategyType = document.getElementById('live-strategy-type').value;
-        const positionSize = parseFloat(document.getElementById('live-position-size').value);
-        const maxPositions = parseInt(document.getElementById('live-max-positions').value);
+        
+        // Get configuration based on symbol mode
+        let symbols, positionSize, maxPositions;
+        
+        if (this.liveTrading.symbolMode === 'universe') {
+            // Universe trading configuration
+            const universeType = document.getElementById('universe-type').value;
+            const universeMaxSize = parseInt(document.getElementById('universe-max-size').value) || 10;
+            const universePositionSize = parseFloat(document.getElementById('universe-position-size').value) || 2.0;
+            const universeMaxPositions = parseInt(document.getElementById('universe-max-positions').value) || 20;
+            
+            if (universeType === 'custom') {
+                symbols = this.liveTrading.universe.customSymbols;
+            } else {
+                symbols = this.liveTrading.universe.symbols.slice(0, universeMaxSize);
+            }
+            
+            if (symbols.length === 0) {
+                alert('Please select symbols for universe trading');
+                return;
+            }
+            
+            positionSize = universePositionSize;
+            maxPositions = universeMaxPositions;
+        } else {
+            // Single symbol trading configuration
+            const symbol = document.getElementById('live-trading-symbol').value;
+            symbols = [symbol];
+            positionSize = parseFloat(document.getElementById('live-position-size').value);
+            maxPositions = parseInt(document.getElementById('live-max-positions').value);
+        }
 
         // Get strategy parameters
         const strategyParams = this.getStrategyParameters(strategyType);
@@ -356,12 +544,17 @@ class EnhancedTradingDashboard {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    symbol: symbol,
+                    symbols: symbols,
                     strategy_type: strategyType,
                     mode: this.liveTrading.mode,
+                    symbol_mode: this.liveTrading.symbolMode,
                     strategy_params: params,
                     position_size: positionSize,
-                    max_positions: maxPositions
+                    max_positions: maxPositions,
+                    universe_config: this.liveTrading.symbolMode === 'universe' ? {
+                        type: this.liveTrading.universe.type,
+                        max_size: parseInt(document.getElementById('universe-max-size').value) || 10
+                    } : null
                 })
             });
 
@@ -371,7 +564,8 @@ class EnhancedTradingDashboard {
                 // Initialize strategy
                 this.liveTrading.strategy = {
                     type: strategyType,
-                    symbol: symbol,
+                    symbols: symbols,
+                    symbolMode: this.liveTrading.symbolMode,
                     params: params,
                     positionSize: positionSize,
                     maxPositions: maxPositions,
@@ -383,7 +577,13 @@ class EnhancedTradingDashboard {
 
                 this.updateTradingControls();
                 this.updateTradingStatus('active');
-                this.logTradingEvent(`Started ${this.liveTrading.mode} trading with ${strategyType} strategy on ${symbol}`);
+                
+                // Log appropriate message based on symbol mode
+                if (this.liveTrading.symbolMode === 'universe') {
+                    this.logTradingEvent(`Started ${this.liveTrading.mode} universe trading with ${strategyType} strategy on ${symbols.length} symbols: ${symbols.join(', ')}`);
+                } else {
+                    this.logTradingEvent(`Started ${this.liveTrading.mode} trading with ${strategyType} strategy on ${symbols[0]}`);
+                }
 
                 // Start strategy monitoring
                 this.startStrategyMonitoring();
