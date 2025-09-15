@@ -418,9 +418,12 @@ class EnhancedTradingDashboard {
                         break;
                 }
                 
-                // Limit symbols based on max size
-                const maxSize = parseInt(document.getElementById('universe-max-size').value) || 10;
-                symbols = symbols.slice(0, maxSize);
+                // Limit symbols based on max size (if specified)
+                const maxSizeInput = document.getElementById('universe-max-size').value;
+                const maxSize = maxSizeInput ? parseInt(maxSizeInput) : null;
+                if (maxSize && maxSize > 0) {
+                    symbols = symbols.slice(0, maxSize);
+                }
                 
                 this.liveTrading.universe.symbols = symbols;
                 this.updateUniversePreview(symbols);
@@ -495,14 +498,19 @@ class EnhancedTradingDashboard {
         if (this.liveTrading.symbolMode === 'universe') {
             // Universe trading configuration
             const universeType = document.getElementById('universe-type').value;
-            const universeMaxSize = parseInt(document.getElementById('universe-max-size').value) || 10;
+            const universeMaxSizeInput = document.getElementById('universe-max-size').value;
+            const universeMaxSize = universeMaxSizeInput ? parseInt(universeMaxSizeInput) : null;
             const universePositionSize = parseFloat(document.getElementById('universe-position-size').value) || 2.0;
             const universeMaxPositions = parseInt(document.getElementById('universe-max-positions').value) || 20;
             
             if (universeType === 'custom') {
                 symbols = this.liveTrading.universe.customSymbols;
             } else {
-                symbols = this.liveTrading.universe.symbols.slice(0, universeMaxSize);
+                symbols = this.liveTrading.universe.symbols;
+                // Apply size limit only if specified and greater than 0
+                if (universeMaxSize && universeMaxSize > 0) {
+                    symbols = symbols.slice(0, universeMaxSize);
+                }
             }
             
             if (symbols.length === 0) {
@@ -553,7 +561,10 @@ class EnhancedTradingDashboard {
                     max_positions: maxPositions,
                     universe_config: this.liveTrading.symbolMode === 'universe' ? {
                         type: this.liveTrading.universe.type,
-                        max_size: parseInt(document.getElementById('universe-max-size').value) || 10
+                        max_size: (() => {
+                            const maxSizeInput = document.getElementById('universe-max-size').value;
+                            return maxSizeInput ? parseInt(maxSizeInput) : null;
+                        })()
                     } : null
                 })
             });

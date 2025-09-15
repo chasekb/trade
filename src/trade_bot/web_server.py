@@ -1100,8 +1100,8 @@ async def start_live_trading(request: dict):
         if not symbols or len(symbols) == 0:
             return {"error": "No symbols specified for trading"}
         
-        if symbol_mode == 'universe' and len(symbols) > max_positions:
-            return {"error": f"Too many symbols ({len(symbols)}) for max positions ({max_positions})"}
+        # Note: Removed symbol limit validation to allow unlimited universe trading
+        # Users can now trade on as many symbols as they want
         
         # In a real implementation, this would:
         # 1. Initialize the trading strategy for each symbol
