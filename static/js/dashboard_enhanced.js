@@ -634,6 +634,11 @@ class EnhancedTradingDashboard {
             universeMaxPositionsInput.value = '50';
         }
         
+        const universeSelectionMethodInput = document.getElementById('universe-selection-method');
+        if (universeSelectionMethodInput) {
+            universeSelectionMethodInput.value = 'signal_strength';
+        }
+        
         // Reset universe state
         this.liveTrading.universe = {
             type: 'all_usd',
@@ -773,7 +778,8 @@ class EnhancedTradingDashboard {
                         max_size: (() => {
                             const maxSizeInput = document.getElementById('universe-max-size').value;
                             return maxSizeInput ? parseInt(maxSizeInput) : null;
-                        })()
+                        })(),
+                        selection_method: document.getElementById('universe-selection-method').value
                     } : null
                 })
             });

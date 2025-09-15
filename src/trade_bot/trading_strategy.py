@@ -1862,6 +1862,23 @@ class DCAStrategy:
         }
 
 
+def get_strategy_class(strategy_type: str):
+    """Get strategy class by type name."""
+    strategy_map = {
+        'sma': SimpleMovingAverageStrategy,
+        'ema': EMAStrategy,
+        'rsi': RSIStrategy,
+        'bollinger': BollingerBandsStrategy,
+        'macd': MACDStrategy,
+        'stochastic': StochasticStrategy,
+        'fibonacci': FibonacciRetracementStrategy,
+        'orderbook': OrderBookStrategy,
+        'dca': DCAStrategy,
+        'buyandhold': BuyAndHoldStrategy
+    }
+    return strategy_map.get(strategy_type)
+
+
 class BuyAndHoldStrategy:
     """Buy and Hold strategy that holds positions indefinitely instead of using stop/loss."""
     

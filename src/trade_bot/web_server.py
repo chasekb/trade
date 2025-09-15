@@ -1103,11 +1103,60 @@ async def start_live_trading(request: dict):
         # Note: Removed symbol limit validation to allow unlimited universe trading
         # Users can now trade on as many symbols as they want
         
-        # In a real implementation, this would:
-        # 1. Initialize the trading strategy for each symbol
-        # 2. Set up real-time data feeds for all symbols
-        # 3. Start the trading loop for the universe
-        # 4. Return trading session ID
+        # For universe trading, select the best symbols to trade
+        selected_symbols = symbols
+        if symbol_mode == 'universe' and len(symbols) > max_positions:
+            try:
+                from .universe_selector import UniverseSelector
+                from .trading_strategy import get_strategy_class
+                # Import all strategy classes to ensure they're available
+                from .trading_strategy import (
+                    SimpleMovingAverageStrategy, EMAStrategy,
+                    RSIStrategy, BollingerBandsStrategy, MACDStrategy,
+                    StochasticStrategy, FibonacciRetracementStrategy,
+                    OrderBookStrategy, DCAStrategy, BuyAndHoldStrategy
+                )
+                
+                # Get strategy class
+                strategy_class = get_strategy_class(strategy_type)
+                if not strategy_class:
+                    return {"error": f"Unknown strategy type: {strategy_type}"}
+                
+                # Create data provider for universe selection
+                data_provider = CachedDataProvider(symbols[0])  # Use first symbol as base
+                
+                # Create universe selector
+                selector = UniverseSelector(
+                    data_provider=data_provider,
+                    strategy_class=strategy_class,
+                    strategy_params=strategy_params
+                )
+                
+                # Select best symbols
+                selection_method = universe_config.get('selection_method', 'signal_strength')
+                selected = await selector.select_symbols(
+                    universe_symbols=symbols,
+                    max_positions=max_positions,
+                    selection_method=selection_method
+                )
+                
+                if not selected:
+                    return {"error": "No symbols selected for trading from universe"}
+                
+                # Update symbols to only include selected ones
+                selected_symbols = [symbol for symbol, strength, data in selected]
+                
+                # Log selection results
+                summary = selector.get_universe_summary(selected)
+                logger.info(f"Universe selection: {summary['count']} symbols selected from {len(symbols)} total")
+                logger.info(f"Buy signals: {summary['buy_signals']}, Sell signals: {summary['sell_signals']}")
+                
+            except Exception as e:
+                logger.error(f"Error in universe selection: {e}")
+                return {"error": f"Failed to select symbols from universe: {str(e)}"}
+        
+        # Update symbols to selected symbols
+        symbols = selected_symbols
         
         trading_session = {
             "session_id": f"trading_{int(time.time())}",
