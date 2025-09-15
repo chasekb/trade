@@ -59,3 +59,7 @@ test_outputs/
 trading_cache.db
 backtests.db
 rules/
+# Test results
+tests/*_results.json
+tests/*_results_*.json
+tests/orderbook_*_results.json
