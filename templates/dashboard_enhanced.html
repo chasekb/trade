@@ -437,6 +437,19 @@
 
                 <!-- Order Book Analysis Parameters -->
                 <div id="orderbook-params" class="strategy-param-group hidden">
+                    <!-- Configuration Presets -->
+                    <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Configuration Preset</label>
+                        <select id="orderbook-preset" class="w-full border border-gray-300 rounded-md px-3 py-2 mb-3">
+                            <option value="custom">Custom Configuration</option>
+                            <option value="conservative">Conservative (Few High-Quality Signals)</option>
+                            <option value="moderate">Moderate (Balanced Signals)</option>
+                            <option value="aggressive" selected>Aggressive (More Signals) - Recommended</option>
+                            <option value="very-aggressive">Very Aggressive (Maximum Signals)</option>
+                        </select>
+                        <p class="text-xs text-gray-500">Select a preset to automatically configure parameters for different signal frequencies</p>
+                    </div>
+                    
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Order Book Level</label>
                         <select id="order-book-level" class="w-full border border-gray-300 rounded-md px-3 py-2">
@@ -465,9 +478,29 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Large Trade Threshold ($)</label>
-                        <input type="number" id="large-trade-threshold" value="10000" min="1000" max="100000" step="1000"
+                        <input type="number" id="large-trade-threshold" value="2000" min="1000" max="100000" step="1000"
                                class="w-full border border-gray-300 rounded-md px-3 py-2"
                                placeholder="Minimum trade value to consider large">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Data Analysis Mode</label>
+                        <select id="data-analysis-mode" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            <option value="recent">Recent Data Only</option>
+                            <option value="all" selected>All Data</option>
+                            <option value="sampled">Sampled Data</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Recent Data Limit</label>
+                        <input type="number" id="recent-data-limit" value="200" min="10" max="1000" step="10"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Number of recent data points to analyze">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Sampling Ratio</label>
+                        <input type="number" id="sampling-ratio" value="0.1" min="0.01" max="1.0" step="0.01"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2"
+                               placeholder="Ratio of data to sample (0.1 = 10%)">
                     </div>
                 </div>
 

@@ -27,6 +27,50 @@ class EnhancedTradingDashboard {
         this.currentHistoryOffset = 0;
         this.totalHistoryCount = 0;
         
+        // Order Book strategy presets
+        this.orderBookPresets = {
+            'conservative': {
+                order_book_level: 2,
+                trade_history_limit: 100,
+                bid_ask_spread_threshold: 0.1,
+                volume_imbalance_threshold: 0.6,
+                large_trade_threshold: 10000,
+                data_analysis_mode: 'recent',
+                recent_data_limit: 50,
+                sampling_ratio: 0.1
+            },
+            'moderate': {
+                order_book_level: 2,
+                trade_history_limit: 500,
+                bid_ask_spread_threshold: 0.2,
+                volume_imbalance_threshold: 0.4,
+                large_trade_threshold: 5000,
+                data_analysis_mode: 'recent',
+                recent_data_limit: 100,
+                sampling_ratio: 0.1
+            },
+            'aggressive': {
+                order_book_level: 2,
+                trade_history_limit: 1000,
+                bid_ask_spread_threshold: 0.5,
+                volume_imbalance_threshold: 0.3,
+                large_trade_threshold: 2000,
+                data_analysis_mode: 'all',
+                recent_data_limit: 200,
+                sampling_ratio: 0.1
+            },
+            'very-aggressive': {
+                order_book_level: 2,
+                trade_history_limit: 1000,
+                bid_ask_spread_threshold: 1.0,
+                volume_imbalance_threshold: 0.2,
+                large_trade_threshold: 1000,
+                data_analysis_mode: 'all',
+                recent_data_limit: 500,
+                sampling_ratio: 0.1
+            }
+        };
+        
         this.init();
         
         // Reset inputs to defaults on page load
@@ -214,6 +258,11 @@ class EnhancedTradingDashboard {
         document.getElementById('universe-strategy-type')?.addEventListener('change', (e) => {
             this.loadStrategyParameters(e.target.value);
         });
+        
+        // Order Book preset selection handler
+        document.getElementById('orderbook-preset')?.addEventListener('change', (e) => {
+            this.applyOrderBookPreset(e.target.value);
+        });
 
         // Trading controls
         document.getElementById('start-trading')?.addEventListener('click', () => {
@@ -327,11 +376,14 @@ class EnhancedTradingDashboard {
                 { name: 'fib_confirmation_candles', label: 'Confirmation Candles', type: 'number', default: 2, min: 1, max: 5 }
             ],
             'orderbook': [
-                { name: 'order_book_level', label: 'Order Book Level', type: 'number', default: 5, min: 1, max: 20 },
-                { name: 'trade_history_limit', label: 'Trade History Limit', type: 'number', default: 100, min: 10, max: 1000 },
-                { name: 'bid_ask_spread_threshold', label: 'Bid-Ask Spread Threshold', type: 'number', default: 0.001, min: 0.0001, max: 0.01, step: 0.0001 },
-                { name: 'volume_imbalance_threshold', label: 'Volume Imbalance Threshold', type: 'number', default: 0.6, min: 0.1, max: 0.9, step: 0.1 },
-                { name: 'large_trade_threshold', label: 'Large Trade Threshold', type: 'number', default: 10000, min: 1000, max: 100000 }
+                { name: 'order_book_level', label: 'Order Book Level', type: 'number', default: 2, min: 1, max: 3 },
+                { name: 'trade_history_limit', label: 'Trade History Limit', type: 'number', default: 1000, min: 10, max: 1000 },
+                { name: 'bid_ask_spread_threshold', label: 'Bid-Ask Spread Threshold (%)', type: 'number', default: 0.5, min: 0.01, max: 1.0, step: 0.01 },
+                { name: 'volume_imbalance_threshold', label: 'Volume Imbalance Threshold', type: 'number', default: 0.3, min: 0.1, max: 0.9, step: 0.1 },
+                { name: 'large_trade_threshold', label: 'Large Trade Threshold ($)', type: 'number', default: 2000, min: 1000, max: 100000 },
+                { name: 'data_analysis_mode', label: 'Data Analysis Mode', type: 'select', default: 'all', options: ['recent', 'all', 'sampled'] },
+                { name: 'recent_data_limit', label: 'Recent Data Limit', type: 'number', default: 200, min: 10, max: 1000 },
+                { name: 'sampling_ratio', label: 'Sampling Ratio', type: 'number', default: 0.1, min: 0.01, max: 1.0, step: 0.01 }
             ],
             'dca': [
                 { name: 'interval_hours', label: 'Interval (Hours)', type: 'number', default: 24, min: 1, max: 168 },
@@ -696,6 +748,45 @@ class EnhancedTradingDashboard {
         // Update trading controls
         this.updateTradingControls();
         this.updateTradingStatus('inactive');
+    }
+    
+    applyOrderBookPreset(presetName) {
+        if (presetName === 'custom') {
+            return; // Don't change anything for custom
+        }
+        
+        const preset = this.orderBookPresets[presetName];
+        if (!preset) {
+            console.warn(`Unknown preset: ${presetName}`);
+            return;
+        }
+        
+        // Apply preset values to form inputs
+        const orderBookLevel = document.getElementById('order-book-level');
+        if (orderBookLevel) orderBookLevel.value = preset.order_book_level;
+        
+        const tradeHistoryLimit = document.getElementById('trade-history-limit');
+        if (tradeHistoryLimit) tradeHistoryLimit.value = preset.trade_history_limit;
+        
+        const bidAskSpreadThreshold = document.getElementById('bid-ask-spread-threshold');
+        if (bidAskSpreadThreshold) bidAskSpreadThreshold.value = preset.bid_ask_spread_threshold;
+        
+        const volumeImbalanceThreshold = document.getElementById('volume-imbalance-threshold');
+        if (volumeImbalanceThreshold) volumeImbalanceThreshold.value = preset.volume_imbalance_threshold;
+        
+        const largeTradeThreshold = document.getElementById('large-trade-threshold');
+        if (largeTradeThreshold) largeTradeThreshold.value = preset.large_trade_threshold;
+        
+        const dataAnalysisMode = document.getElementById('data-analysis-mode');
+        if (dataAnalysisMode) dataAnalysisMode.value = preset.data_analysis_mode;
+        
+        const recentDataLimit = document.getElementById('recent-data-limit');
+        if (recentDataLimit) recentDataLimit.value = preset.recent_data_limit;
+        
+        const samplingRatio = document.getElementById('sampling-ratio');
+        if (samplingRatio) samplingRatio.value = preset.sampling_ratio;
+        
+        console.log(`Applied Order Book preset: ${presetName}`, preset);
     }
 
     async startLiveTrading() {
@@ -2183,7 +2274,10 @@ class EnhancedTradingDashboard {
                 trade_history_limit: parseInt(document.getElementById('trade-history-limit').value),
                 bid_ask_spread_threshold: parseFloat(document.getElementById('bid-ask-spread-threshold').value) / 100, // Convert percentage to decimal
                 volume_imbalance_threshold: parseFloat(document.getElementById('volume-imbalance-threshold').value),
-                large_trade_threshold: parseFloat(document.getElementById('large-trade-threshold').value)
+                large_trade_threshold: parseFloat(document.getElementById('large-trade-threshold').value),
+                data_analysis_mode: document.getElementById('data-analysis-mode').value,
+                recent_data_limit: parseInt(document.getElementById('recent-data-limit').value),
+                sampling_ratio: parseFloat(document.getElementById('sampling-ratio').value)
             };
         }
         
