@@ -1126,7 +1126,7 @@ async def start_live_trading(request: dict):
                     return {"error": f"Unknown strategy type: {strategy_type}"}
                 
                 # Create data provider for universe selection
-                data_provider = CachedDataProvider(symbols[0])  # Use first symbol as base
+                data_provider = CachedDataProvider(config, "trading_cache.db")
                 
                 # Create universe selector
                 selector = UniverseSelector(

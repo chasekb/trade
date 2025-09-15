@@ -50,6 +50,17 @@ class UniverseSelector:
         
         logger.info(f"Found {len(valid_signals)} symbols with valid signals")
         
+        # Debug: Log some details about the signals
+        for symbol, data in list(valid_signals.items())[:5]:  # Log first 5
+            logger.info(f"Symbol {symbol}: signal={data.get('signal')}, strength={data.get('strength'):.3f}, reason={data.get('strategy_data', {}).get('reason', 'N/A')}")
+        
+        # Debug: Log some failed symbols
+        failed_symbols = {symbol: data for symbol, data in symbol_signals.items() 
+                         if data is None or data.get('signal') == 'hold'}
+        logger.info(f"Found {len(failed_symbols)} symbols with no valid signals")
+        for symbol in list(failed_symbols.keys())[:5]:  # Log first 5
+            logger.info(f"Failed symbol {symbol}: {failed_symbols[symbol]}")
+        
         if not valid_signals:
             logger.warning("No symbols with valid signals found")
             return []
@@ -71,8 +82,8 @@ class UniverseSelector:
         """Get trading signals for all symbols in the universe."""
         signals = {}
         
-        # Process symbols in batches to avoid overwhelming the API
-        batch_size = 10
+        # Process symbols in smaller batches to avoid overwhelming the API
+        batch_size = 3  # Reduced batch size
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
@@ -87,20 +98,20 @@ class UniverseSelector:
                 else:
                     signals[symbol] = result
             
-            # Small delay between batches to respect rate limits
-            await asyncio.sleep(0.1)
+            # Longer delay between batches to respect rate limits
+            await asyncio.sleep(1.0)  # Increased delay
         
         return signals
     
     async def _get_signal_for_symbol(self, symbol: str) -> Optional[Dict]:
         """Get trading signal for a single symbol."""
         try:
-            # Get recent price data
+            # Get recent price data (shorter period to avoid rate limits)
             end_time = datetime.now()
-            start_time = end_time - timedelta(days=30)  # Get 30 days of data
+            start_time = end_time - timedelta(days=7)  # Get 7 days of data
             
             candles = await self.data_provider.get_historical_candles(
-                symbol, start_time, end_time, granularity=3600  # 1-hour candles
+                start_time=start_time, end_time=end_time, granularity=3600  # 1-hour candles
             )
             
             if not candles or len(candles) < 20:  # Need minimum data
@@ -109,7 +120,7 @@ class UniverseSelector:
             
             # Initialize strategy for this symbol
             strategy = self.strategy_class(
-                symbol=symbol,
+                self.data_provider.config,  # Pass the config
                 **self.strategy_params
             )
             
@@ -119,6 +130,25 @@ class UniverseSelector:
                     price=float(candle['close']),
                     timestamp=candle['time']
                 )
+            
+            # For Order Book strategy, we need to provide order book and trade data
+            if hasattr(strategy, 'add_order_book') and hasattr(strategy, 'add_trades'):
+                try:
+                    # Get current order book data
+                    order_book = await self.data_provider.get_order_book(level=2)
+                    if order_book:
+                        strategy.add_order_book(order_book, candles[-1]['time'])
+                    
+                    # Get recent trades
+                    trades = await self.data_provider.get_recent_trades(limit=100)
+                    if trades:
+                        strategy.add_trades(trades, candles[-1]['time'])
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to get order book/trade data for {symbol}: {e}")
+                    # For Order Book strategy, we need this data, so return None
+                    if strategy.__class__.__name__ == 'OrderBookStrategy':
+                        return None
             
             # Get current signal
             signal_data = strategy.generate_signal(
@@ -175,6 +205,24 @@ class UniverseSelector:
                         strength = max(0, (signal_line - macd) / abs(signal_line) if signal_line != 0 else 0)
                     else:
                         strength = max(0, (macd - signal_line) / abs(signal_line) if signal_line != 0 else 0)
+                
+                elif strategy.__class__.__name__ == 'OrderBookStrategy':
+                    # Order Book strategy strength based on signal type
+                    signal_type = signal_data.get('reason', '')
+                    if 'bid_ask_squeeze' in signal_type:
+                        strength = 0.9  # High strength for squeeze signals
+                    elif 'volume_imbalance' in signal_type:
+                        # Extract imbalance value from reason
+                        try:
+                            imbalance_str = signal_type.split(': ')[-1] if ': ' in signal_type else '0'
+                            imbalance = abs(float(imbalance_str))
+                            strength = min(0.8, imbalance * 2)  # Scale imbalance to strength
+                        except:
+                            strength = 0.6
+                    elif 'large_trade' in signal_type:
+                        strength = 0.7  # Medium-high strength for large trades
+                    else:
+                        strength = 0.5  # Default strength
                 
                 else:
                     # Default strength calculation
