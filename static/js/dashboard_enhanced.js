@@ -2994,8 +2994,12 @@ class EnhancedTradingDashboard {
                 // Display the backtest results in the main results area
                 this.displayBacktestResults(resultData);
                 
+                // Make sure the results container is visible
+                const resultsContainer = document.getElementById('backtest-results');
+                resultsContainer.classList.remove('hidden');
+                
                 // Scroll to results
-                document.getElementById('backtest-results').scrollIntoView({ behavior: 'smooth' });
+                resultsContainer.scrollIntoView({ behavior: 'smooth' });
             } else {
                 console.error('Invalid backtest data structure:', backtest);
                 alert('Failed to load backtest details - invalid data structure');
