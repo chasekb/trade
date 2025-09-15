@@ -57,3 +57,4 @@ test_outputs/
 .env.production
 .env.staging*.db
 trading_cache.db
+backtests.db
