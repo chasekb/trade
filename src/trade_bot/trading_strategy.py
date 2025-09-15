@@ -2708,7 +2708,8 @@ class OrderBookStrategy:
     
     def __init__(self, config: TradingConfig, order_book_level: int = 2, trade_history_limit: int = 100,
                  bid_ask_spread_threshold: float = 0.001, volume_imbalance_threshold: float = 0.6,
-                 large_trade_threshold: float = 10000.0, enable_stop_loss: bool = True, enable_take_profit: bool = True):
+                 large_trade_threshold: float = 10000.0, enable_stop_loss: bool = True, enable_take_profit: bool = True,
+                 data_analysis_mode: str = 'recent', recent_data_limit: int = 50, sampling_ratio: float = 0.1):
         self.config = config
         self.order_book_level = order_book_level
         self.trade_history_limit = trade_history_limit
@@ -2717,6 +2718,11 @@ class OrderBookStrategy:
         self.large_trade_threshold = large_trade_threshold
         self.enable_stop_loss = enable_stop_loss
         self.enable_take_profit = enable_take_profit
+        
+        # Data analysis configuration
+        self.data_analysis_mode = data_analysis_mode  # 'all', 'recent', 'sampled'
+        self.recent_data_limit = recent_data_limit
+        self.sampling_ratio = sampling_ratio
         
         self.price_history: list = []
         self.order_book_history: list = []
@@ -2748,6 +2754,22 @@ class OrderBookStrategy:
             'take_profit': 0
         }
         self.no_signal_count = 0
+        
+        # Caching for frequently calculated metrics
+        self._cached_metrics = {}
+        self._cache_timestamp = None
+        self._cache_ttl = 1.0  # Cache TTL in seconds
+        
+        # Incremental update tracking
+        self._last_calculated_trade_count = 0
+        self._last_calculated_order_book_count = 0
+        
+        # Polars optimizer for high-performance calculations
+        try:
+            from .polars_optimizer import PolarsOptimizer
+            self.polars_optimizer = PolarsOptimizer(use_gpu=True)
+        except ImportError:
+            self.polars_optimizer = None
         
     def add_price(self, price: float, timestamp: datetime) -> None:
         """Add a new price point to the history."""
@@ -2822,42 +2844,9 @@ class OrderBookStrategy:
         return (best_bid + best_ask) / 2
     
     def analyze_trade_flow(self, trades: list) -> dict:
-        """Analyze trade flow for buy/sell pressure."""
-        if not trades:
-            return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': 0}
-        
-        buy_volume = 0.0
-        sell_volume = 0.0
-        large_trades = 0
-        
-        for trade_data in trades:
-            trade = trade_data['trade']
-            size = float(trade.get('size', 0))
-            side = trade.get('side', '')
-            price = float(trade.get('price', 0))
-            
-            trade_value = size * price
-            
-            if side == 'buy':
-                buy_volume += trade_value
-            elif side == 'sell':
-                sell_volume += trade_value
-            
-            if trade_value >= self.large_trade_threshold:
-                large_trades += 1
-        
-        total_volume = buy_volume + sell_volume
-        if total_volume == 0:
-            return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': large_trades}
-        
-        buy_pressure = buy_volume / total_volume
-        sell_pressure = sell_volume / total_volume
-        
-        return {
-            'buy_pressure': buy_pressure,
-            'sell_pressure': sell_pressure,
-            'large_trades': large_trades
-        }
+        """Analyze trade flow for buy/sell pressure using optimized methods."""
+        # Use the optimized version
+        return self._analyze_trade_flow_optimized(trades)
     
     def detect_bid_ask_squeeze(self, current_spread: float, historical_spreads: list) -> bool:
         """Detect if bid-ask spread is unusually tight."""
@@ -2907,12 +2896,17 @@ class OrderBookStrategy:
         
         # Generate order book-based signals
         if self.position == 0:  # No current position
-            # Check for bid-ask squeeze (potential breakout)
+            # Check for bid-ask squeeze (potential breakout) using cached metrics
             if len(self.order_book_history) >= 10:
                 current_order_book = self.order_book_history[-1]['order_book']
-                current_spread = self.calculate_bid_ask_spread(current_order_book)
-                historical_spreads = [self.calculate_bid_ask_spread(ob['order_book']) 
-                                    for ob in self.order_book_history[-10:]]
+                metrics = self._calculate_metrics_cached(current_order_book)
+                current_spread = metrics['spread']
+                
+                # Get historical spreads using cached metrics
+                historical_spreads = []
+                for ob_data in self.order_book_history[-10:]:
+                    ob_metrics = self._calculate_metrics_cached(ob_data['order_book'])
+                    historical_spreads.append(ob_metrics['spread'])
                 
                 if self.detect_bid_ask_squeeze(current_spread, historical_spreads):
                     self.signal_count += 1
@@ -2925,10 +2919,11 @@ class OrderBookStrategy:
                         reason=f"Bid-ask squeeze detected: spread {current_spread:.4f}"
                     )
             
-            # Check for volume imbalance
+            # Check for volume imbalance using cached metrics
             if len(self.order_book_history) >= 1:
                 current_order_book = self.order_book_history[-1]['order_book']
-                volume_imbalance = self.calculate_volume_imbalance(current_order_book)
+                metrics = self._calculate_metrics_cached(current_order_book)
+                volume_imbalance = metrics['imbalance']
                 
                 if volume_imbalance > self.volume_imbalance_threshold:
                     self.signal_count += 1
@@ -2951,10 +2946,11 @@ class OrderBookStrategy:
                         reason=f"Volume imbalance sell: {volume_imbalance:.3f}"
                     )
             
-            # Check for large trades
+            # Check for large trades using optimized analysis
             if len(self.trade_history) >= 1:
-                recent_trades = [t['trade'] for t in self.trade_history[-10:]]
-                trade_analysis = self.analyze_trade_flow([{'trade': t} for t in recent_trades])
+                # Get trades based on analysis mode
+                analysis_trades = self._get_analysis_data('trades')
+                trade_analysis = self._incremental_trade_analysis()
                 
                 if trade_analysis['large_trades'] > 0:
                     if trade_analysis['buy_pressure'] > 0.6:
@@ -3060,3 +3056,202 @@ class OrderBookStrategy:
             'best_bid': current_order_book['bids'][0]['price'] if current_order_book.get('bids') else 0.0,
             'best_ask': current_order_book['asks'][0]['price'] if current_order_book.get('asks') else 0.0
         }
+    
+    def _is_cache_valid(self) -> bool:
+        """Check if cached metrics are still valid."""
+        if self._cache_timestamp is None:
+            return False
+        
+        from datetime import datetime
+        current_time = datetime.now().timestamp()
+        return (current_time - self._cache_timestamp) < self._cache_ttl
+    
+    def _get_cached_metric(self, metric_name: str, order_book: dict = None) -> any:
+        """Get cached metric or calculate if not available."""
+        if not self._is_cache_valid() or metric_name not in self._cached_metrics:
+            return None
+        
+        # For order book dependent metrics, check if order book matches
+        if order_book and metric_name in ['spread', 'imbalance', 'mid_price']:
+            cache_key = f"{metric_name}_{id(order_book)}"
+            if cache_key not in self._cached_metrics:
+                return None
+        
+        return self._cached_metrics.get(metric_name)
+    
+    def _cache_metric(self, metric_name: str, value: any, order_book: dict = None):
+        """Cache a calculated metric."""
+        from datetime import datetime
+        self._cache_timestamp = datetime.now().timestamp()
+        
+        if order_book and metric_name in ['spread', 'imbalance', 'mid_price']:
+            cache_key = f"{metric_name}_{id(order_book)}"
+            self._cached_metrics[cache_key] = value
+        else:
+            self._cached_metrics[metric_name] = value
+    
+    def _get_analysis_data(self, data_type: str) -> list:
+        """Get data for analysis based on configured mode."""
+        if data_type == 'trades':
+            data = self.trade_history
+        elif data_type == 'order_books':
+            data = self.order_book_history
+        else:
+            return []
+        
+        if self.data_analysis_mode == 'all':
+            return data
+        elif self.data_analysis_mode == 'recent':
+            return data[-self.recent_data_limit:] if data else []
+        elif self.data_analysis_mode == 'sampled':
+            if not data:
+                return []
+            sample_size = max(1, int(len(data) * self.sampling_ratio))
+            import random
+            return random.sample(data, min(sample_size, len(data)))
+        else:
+            return data
+    
+    def _calculate_metrics_cached(self, order_book: dict) -> dict:
+        """Calculate and cache order book metrics."""
+        # Check cache first
+        cached_spread = self._get_cached_metric('spread', order_book)
+        cached_imbalance = self._get_cached_metric('imbalance', order_book)
+        cached_mid_price = self._get_cached_metric('mid_price', order_book)
+        
+        if cached_spread is not None and cached_imbalance is not None and cached_mid_price is not None:
+            return {
+                'spread': cached_spread,
+                'imbalance': cached_imbalance,
+                'mid_price': cached_mid_price
+            }
+        
+        # Calculate metrics
+        spread = self.calculate_bid_ask_spread(order_book)
+        imbalance = self.calculate_volume_imbalance(order_book)
+        mid_price = self.calculate_mid_price(order_book)
+        
+        # Cache results
+        self._cache_metric('spread', spread, order_book)
+        self._cache_metric('imbalance', imbalance, order_book)
+        self._cache_metric('mid_price', mid_price, order_book)
+        
+        return {
+            'spread': spread,
+            'imbalance': imbalance,
+            'mid_price': mid_price
+        }
+    
+    def _analyze_trade_flow_optimized(self, trades: list) -> dict:
+        """Optimized trade flow analysis using Polars, numpy, or Python fallback."""
+        if not trades:
+            return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': 0}
+        
+        # Try Polars first (highest performance)
+        if self.polars_optimizer and self.polars_optimizer.polars_available:
+            try:
+                return self.polars_optimizer.analyze_trade_flow_polars(trades)
+            except Exception as e:
+                logger.warning(f"Polars analysis failed, falling back to numpy: {e}")
+        
+        # Try numpy (good performance)
+        try:
+            import numpy as np
+            
+            # Convert to numpy arrays for bulk calculations
+            sizes = np.array([float(trade['trade'].get('size', 0)) for trade in trades])
+            prices = np.array([float(trade['trade'].get('price', 0)) for trade in trades])
+            sides = np.array([trade['trade'].get('side', '') for trade in trades])
+            
+            # Calculate trade values
+            trade_values = sizes * prices
+            
+            # Calculate buy/sell volumes using vectorized operations
+            buy_mask = sides == 'buy'
+            sell_mask = sides == 'sell'
+            
+            buy_volume = np.sum(trade_values[buy_mask])
+            sell_volume = np.sum(trade_values[sell_mask])
+            large_trades = np.sum(trade_values >= self.large_trade_threshold)
+            
+        except ImportError:
+            # Fallback to regular Python implementation
+            buy_volume = 0.0
+            sell_volume = 0.0
+            large_trades = 0
+            
+            for trade_data in trades:
+                trade = trade_data['trade']
+                size = float(trade.get('size', 0))
+                side = trade.get('side', '')
+                price = float(trade.get('price', 0))
+                
+                trade_value = size * price
+                
+                if side == 'buy':
+                    buy_volume += trade_value
+                elif side == 'sell':
+                    sell_volume += trade_value
+                
+                if trade_value >= self.large_trade_threshold:
+                    large_trades += 1
+        
+        total_volume = buy_volume + sell_volume
+        if total_volume == 0:
+            return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': large_trades}
+        
+        buy_pressure = buy_volume / total_volume
+        sell_pressure = sell_volume / total_volume
+        
+        return {
+            'buy_pressure': buy_pressure,
+            'sell_pressure': sell_pressure,
+            'large_trades': large_trades
+        }
+    
+    def _incremental_trade_analysis(self) -> dict:
+        """Perform incremental trade analysis instead of full recalculation."""
+        current_trade_count = len(self.trade_history)
+        
+        # If no new trades, return cached result
+        if current_trade_count == self._last_calculated_trade_count:
+            return getattr(self, '_cached_trade_analysis', {
+                'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': 0
+            })
+        
+        # Get only new trades for analysis
+        new_trades = self.trade_history[self._last_calculated_trade_count:]
+        
+        if not new_trades:
+            return getattr(self, '_cached_trade_analysis', {
+                'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': 0
+            })
+        
+        # Analyze new trades
+        new_analysis = self._analyze_trade_flow_optimized(new_trades)
+        
+        # Update cached analysis incrementally
+        if hasattr(self, '_cached_trade_analysis'):
+            old_analysis = self._cached_trade_analysis
+            old_total_trades = self._last_calculated_trade_count
+            
+            # Weighted average update
+            total_trades = current_trade_count
+            new_weight = len(new_trades) / total_trades
+            old_weight = old_total_trades / total_trades
+            
+            updated_analysis = {
+                'buy_pressure': (old_analysis['buy_pressure'] * old_weight + 
+                               new_analysis['buy_pressure'] * new_weight),
+                'sell_pressure': (old_analysis['sell_pressure'] * old_weight + 
+                                new_analysis['sell_pressure'] * new_weight),
+                'large_trades': old_analysis['large_trades'] + new_analysis['large_trades']
+            }
+        else:
+            updated_analysis = new_analysis
+        
+        # Cache the result
+        self._cached_trade_analysis = updated_analysis
+        self._last_calculated_trade_count = current_trade_count
+        
+        return updated_analysis

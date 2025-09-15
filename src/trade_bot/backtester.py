@@ -439,8 +439,8 @@ class Backtester:
                         adjusted_order_book = self._adjust_order_book_to_price(order_book, price)
                         strategy.add_order_book(adjusted_order_book, timestamp)
                     
-                    # Get recent trades from Coinbase API
-                    trades = await self.data_provider.get_recent_trades(limit=100)
+                    # Get recent trades from Coinbase API (optimized limit)
+                    trades = await self.data_provider.get_recent_trades(limit=1000)
                     if trades:
                         # Adjust trade prices to match historical price
                         adjusted_trades = self._adjust_trades_to_price(trades, price)

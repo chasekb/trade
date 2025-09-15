@@ -208,10 +208,13 @@ class BacktestRequest(BaseModel):
     fib_confirmation_candles: int = 2
     # Order book strategy parameters
     order_book_level: int = 2
-    trade_history_limit: int = 100
+    trade_history_limit: int = 1000  # Increased from 100
     bid_ask_spread_threshold: float = 0.001
     volume_imbalance_threshold: float = 0.6
     large_trade_threshold: float = 10000.0
+    data_analysis_mode: str = 'recent'  # 'all', 'recent', 'sampled'
+    recent_data_limit: int = 50
+    sampling_ratio: float = 0.1
 
 class BacktestHistoryItem(BaseModel):
     id: int
