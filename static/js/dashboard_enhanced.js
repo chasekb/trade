@@ -28,6 +28,10 @@ class EnhancedTradingDashboard {
         this.totalHistoryCount = 0;
         
         this.init();
+        
+        // Reset inputs to defaults on page load
+        this.resetBacktestingInputs();
+        this.resetLiveTradingInputs();
     }
 
     init() {
@@ -165,6 +169,7 @@ class EnhancedTradingDashboard {
         // Tab switching
         document.getElementById('tab-live-trading')?.addEventListener('click', async () => {
             this.switchTab('live-trading');
+            this.resetLiveTradingInputs();
             await this.loadLiveTradingProducts();
         });
 
@@ -504,6 +509,188 @@ class EnhancedTradingDashboard {
             preview.innerHTML = symbolsHtml;
             count.textContent = symbols.length;
         }
+    }
+
+    resetBacktestingInputs() {
+        // Reset backtesting form inputs to defaults
+        console.log('Resetting backtesting inputs to defaults');
+        
+        // Strategy type
+        const strategySelect = document.getElementById('strategy-type');
+        if (strategySelect) {
+            strategySelect.value = 'sma';
+        }
+        
+        // Symbol
+        const symbolSelect = document.getElementById('backtest-symbol');
+        if (symbolSelect) {
+            symbolSelect.value = 'BTC-USD';
+        }
+        
+        // Time period
+        const daysSelect = document.getElementById('backtest-days');
+        if (daysSelect) {
+            daysSelect.value = '30';
+        }
+        
+        // Granularity
+        const granularitySelect = document.getElementById('backtest-granularity');
+        if (granularitySelect) {
+            granularitySelect.value = '1h';
+        }
+        
+        // Portfolio percentage
+        const portfolioInput = document.getElementById('portfolio-percentage');
+        if (portfolioInput) {
+            portfolioInput.value = '5';
+        }
+        
+        // Reset strategy-specific parameters
+        this.loadStrategyParameters('sma');
+        
+        // Clear any previous results
+        const resultsContainer = document.getElementById('backtest-results');
+        if (resultsContainer) {
+            resultsContainer.classList.add('hidden');
+        }
+        
+        // Clear backtest history display
+        const historyContainer = document.getElementById('backtest-history');
+        if (historyContainer) {
+            historyContainer.innerHTML = '<div class="text-gray-500 text-center py-8">No backtests yet. Run a backtest to see results here.</div>';
+        }
+    }
+
+    resetLiveTradingInputs() {
+        // Reset live trading form inputs to defaults
+        console.log('Resetting live trading inputs to defaults');
+        
+        // Trading mode
+        const simulatedMode = document.getElementById('simulated-mode');
+        if (simulatedMode) {
+            simulatedMode.checked = true;
+        }
+        const liveMode = document.getElementById('live-mode');
+        if (liveMode) {
+            liveMode.checked = false;
+        }
+        this.liveTrading.mode = 'simulated';
+        
+        // Symbol mode
+        const singleSymbolMode = document.getElementById('single-symbol-mode');
+        if (singleSymbolMode) {
+            singleSymbolMode.checked = true;
+        }
+        const universeMode = document.getElementById('universe-mode');
+        if (universeMode) {
+            universeMode.checked = false;
+        }
+        this.liveTrading.symbolMode = 'single';
+        
+        // Single symbol configuration
+        const symbolSelect = document.getElementById('live-trading-symbol');
+        if (symbolSelect) {
+            symbolSelect.value = 'BTC-USD';
+        }
+        
+        const singleStrategySelect = document.getElementById('live-strategy-type');
+        if (singleStrategySelect) {
+            singleStrategySelect.value = 'sma';
+        }
+        
+        const positionSizeInput = document.getElementById('live-position-size');
+        if (positionSizeInput) {
+            positionSizeInput.value = '5';
+        }
+        
+        const maxPositionsInput = document.getElementById('live-max-positions');
+        if (maxPositionsInput) {
+            maxPositionsInput.value = '3';
+        }
+        
+        // Universe configuration
+        const universeTypeSelect = document.getElementById('universe-type');
+        if (universeTypeSelect) {
+            universeTypeSelect.value = 'all_usd';
+        }
+        
+        const universeStrategySelect = document.getElementById('universe-strategy-type');
+        if (universeStrategySelect) {
+            universeStrategySelect.value = 'sma';
+        }
+        
+        const universeMaxSizeInput = document.getElementById('universe-max-size');
+        if (universeMaxSizeInput) {
+            universeMaxSizeInput.value = '';
+        }
+        
+        const universePositionSizeInput = document.getElementById('universe-position-size');
+        if (universePositionSizeInput) {
+            universePositionSizeInput.value = '1';
+        }
+        
+        const universeMaxPositionsInput = document.getElementById('universe-max-positions');
+        if (universeMaxPositionsInput) {
+            universeMaxPositionsInput.value = '50';
+        }
+        
+        // Reset universe state
+        this.liveTrading.universe = {
+            type: 'all_usd',
+            symbols: [],
+            customSymbols: [],
+            maxSize: 50,
+            positionSize: 1.0,
+            maxPositions: 50
+        };
+        
+        // Reset custom symbols
+        const customSymbolsList = document.getElementById('custom-symbols-list');
+        if (customSymbolsList) {
+            customSymbolsList.innerHTML = '';
+        }
+        
+        const customSymbolInput = document.getElementById('custom-symbol-input');
+        if (customSymbolInput) {
+            customSymbolInput.value = '';
+        }
+        
+        // Reset universe preview
+        this.updateUniversePreview([]);
+        
+        // Update UI to reflect single symbol mode
+        this.updateSymbolModeUI();
+        
+        // Reset strategy parameters
+        this.loadStrategyParameters('sma');
+        
+        // Clear trading log
+        const tradingLog = document.getElementById('trading-log');
+        if (tradingLog) {
+            tradingLog.innerHTML = '<div class="text-gray-500 text-sm">Trading log will appear here...</div>';
+        }
+        
+        // Clear positions table
+        const positionsTable = document.getElementById('positions-table-body');
+        if (positionsTable) {
+            positionsTable.innerHTML = '<tr><td colspan="6" class="text-center text-gray-500 py-4">No open positions</td></tr>';
+        }
+        
+        // Clear trading history
+        const historyTable = document.getElementById('trading-history-table-body');
+        if (historyTable) {
+            historyTable.innerHTML = '<tr><td colspan="7" class="text-center text-gray-500 py-4">No trading history</td></tr>';
+        }
+        
+        // Reset trading state
+        this.liveTrading.isActive = false;
+        this.liveTrading.isPaused = false;
+        this.liveTrading.positions = [];
+        this.liveTrading.history = [];
+        
+        // Update trading controls
+        this.updateTradingControls();
+        this.updateTradingStatus('inactive');
     }
 
     async startLiveTrading() {
@@ -898,6 +1085,7 @@ class EnhancedTradingDashboard {
         });
         document.getElementById('tab-backtesting').addEventListener('click', () => {
             this.switchTab('backtesting');
+            this.resetBacktestingInputs();
         });
         document.getElementById('tab-data').addEventListener('click', () => {
             this.switchTab('data');
