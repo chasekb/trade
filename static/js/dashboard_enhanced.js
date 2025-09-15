@@ -142,12 +142,12 @@ class EnhancedTradingDashboard {
             positions: [],
             history: [],
             universe: {
-                type: 'major',
+                type: 'all_usd',
                 symbols: [],
                 customSymbols: [],
-                maxSize: 10,
-                positionSize: 2.0,
-                maxPositions: 20
+                maxSize: 50,
+                positionSize: 1.0,
+                maxPositions: 50
             },
             portfolio: {
                 balance: 10000,
