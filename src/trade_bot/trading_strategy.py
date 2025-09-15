@@ -2815,9 +2815,9 @@ class OrderBookStrategy:
         
         for trade_data in trades:
             trade = trade_data['trade']
-            size = trade.get('size', 0)
+            size = float(trade.get('size', 0))
             side = trade.get('side', '')
-            price = trade.get('price', 0)
+            price = float(trade.get('price', 0))
             
             trade_value = size * price
             

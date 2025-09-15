@@ -18,6 +18,7 @@ from typing import Optional, List, Dict, Any
 
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
+from .cached_data_provider import CachedDataProvider
 from .backtester import Backtester
 from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy, ATRStrategy, FibonacciRetracementStrategy, OrderBookStrategy
 from .database import BacktestDatabase
@@ -463,7 +464,7 @@ async def get_historical_data(
     cache_key = f"{product_id}_{days}_{granularity}"
     
     if cache_key not in historical_data_cache:
-        data_provider = CoinbaseDataProvider(product_id)
+        data_provider = CachedDataProvider(product_id)
         end_time = datetime.now()
         start_time = end_time - timedelta(days=days)
         
@@ -518,7 +519,7 @@ async def get_candles_data(
     cache_key = f"candles_{product_id}_{days}_{granularity}"
     
     if cache_key not in historical_data_cache:
-        data_provider = CoinbaseDataProvider(product_id)
+        data_provider = CachedDataProvider(product_id)
         end_time = datetime.now()
         
         # For recent data, try smaller chunks to avoid rate limits
@@ -571,7 +572,7 @@ async def run_backtest(request: BacktestRequest):
     
     try:
         # Get historical data
-        data_provider = CoinbaseDataProvider(product_id)
+        data_provider = CachedDataProvider(product_id)
         end_time = datetime.now()
         start_time = end_time - timedelta(days=request.days)
         
@@ -734,7 +735,8 @@ async def run_backtest(request: BacktestRequest):
                 portfolio_percentage=request.portfolio_percentage,
                 initial_capital=request.initial_capital,
                 enable_stop_loss=request.enable_stop_loss,
-                enable_take_profit=request.enable_take_profit
+                enable_take_profit=request.enable_take_profit,
+                data_provider=data_provider
             )
         else:
             # Create backtester normally
@@ -745,7 +747,8 @@ async def run_backtest(request: BacktestRequest):
                 portfolio_percentage=request.portfolio_percentage,
                 initial_capital=request.initial_capital,
                 enable_stop_loss=request.enable_stop_loss,
-                enable_take_profit=request.enable_take_profit
+                enable_take_profit=request.enable_take_profit,
+                data_provider=data_provider
             )
         
         # Run backtest
@@ -1036,6 +1039,22 @@ async def unsubscribe_from_channel(request: SubscriptionRequest):
         await manager.websocket_client.unsubscribe_from_channel(request.channel, [product_id])
         return {"success": True, "channel": request.channel, "product_id": product_id}
     except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/cache-stats")
+async def get_cache_stats():
+    """Get cache performance statistics."""
+    try:
+        # Create a temporary data provider to get cache stats
+        temp_provider = CachedDataProvider(config)
+        stats = temp_provider.get_cache_stats()
+        return {
+            "status": "success",
+            "cache_stats": stats,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}")
         return {"error": str(e)}
 
 @app.get("/api/data-summary")

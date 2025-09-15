@@ -55,4 +55,4 @@ test_outputs/
 # API Keys (never commit these)
 .env.local
 .env.production
-.env.staging
+.env.staging*.db

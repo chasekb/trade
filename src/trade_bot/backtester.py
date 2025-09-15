@@ -44,7 +44,7 @@ class BacktestResult:
 class Backtester:
     """Backtesting engine for trading strategies."""
     
-    def __init__(self, config: TradingConfig, strategy_class, strategy_params: Dict[str, Any] = None, portfolio_percentage: float = 100.0, initial_capital: float = None, enable_stop_loss: bool = True, enable_take_profit: bool = True):
+    def __init__(self, config: TradingConfig, strategy_class, strategy_params: Dict[str, Any] = None, portfolio_percentage: float = 100.0, initial_capital: float = None, enable_stop_loss: bool = True, enable_take_profit: bool = True, data_provider=None):
         """Initialize the backtester.
         
         Args:
@@ -60,6 +60,7 @@ class Backtester:
         self.strategy_class = strategy_class
         self.strategy_params = strategy_params or {}
         self.portfolio_percentage = max(1.0, min(100.0, portfolio_percentage))  # Clamp between 1-100%
+        self.data_provider = data_provider
         self.enable_stop_loss = enable_stop_loss
         self.enable_take_profit = enable_take_profit
         self.logger = logging.getLogger(__name__)
@@ -199,6 +200,83 @@ class Backtester:
         current_drawdown = (self.peak_balance - current_value) / self.peak_balance
         if current_drawdown > self.max_drawdown:
             self.max_drawdown = current_drawdown
+    
+    def _adjust_order_book_to_price(self, order_book: Dict[str, Any], target_price: float) -> Dict[str, Any]:
+        """Adjust order book prices to match the target historical price."""
+        if not order_book or not order_book.get('bids') or not order_book.get('asks'):
+            return order_book
+        
+        # Calculate the current mid-price from the order book
+        best_bid = float(order_book['bids'][0]['price'])
+        best_ask = float(order_book['asks'][0]['price'])
+        current_mid = (best_bid + best_ask) / 2
+        
+        # Calculate the adjustment factor
+        if current_mid == 0:
+            return order_book
+        
+        adjustment_factor = target_price / current_mid
+        
+        # Create adjusted order book
+        adjusted_order_book = {
+            'bids': [],
+            'asks': [],
+            'timestamp': order_book.get('timestamp'),
+            'product_id': order_book.get('product_id')
+        }
+        
+        # Adjust bids
+        for bid in order_book['bids']:
+            adjusted_price = float(bid['price']) * adjustment_factor
+            adjusted_order_book['bids'].append({
+                'price': round(adjusted_price, 2),
+                'size': bid['size']
+            })
+        
+        # Adjust asks
+        for ask in order_book['asks']:
+            adjusted_price = float(ask['price']) * adjustment_factor
+            adjusted_order_book['asks'].append({
+                'price': round(adjusted_price, 2),
+                'size': ask['size']
+            })
+        
+        return adjusted_order_book
+    
+    def _adjust_trades_to_price(self, trades: List[Dict[str, Any]], target_price: float) -> List[Dict[str, Any]]:
+        """Adjust trade prices to match the target historical price."""
+        if not trades:
+            return trades
+        
+        # Calculate the current average price from trades
+        total_value = 0
+        total_size = 0
+        for trade in trades:
+            price = float(trade.get('price', 0))
+            size = float(trade.get('size', 0))
+            total_value += price * size
+            total_size += size
+        
+        if total_size == 0:
+            return trades
+        
+        current_avg_price = total_value / total_size
+        
+        # Calculate the adjustment factor
+        if current_avg_price == 0:
+            return trades
+        
+        adjustment_factor = target_price / current_avg_price
+        
+        # Create adjusted trades
+        adjusted_trades = []
+        for trade in trades:
+            adjusted_price = float(trade.get('price', 0)) * adjustment_factor
+            adjusted_trade = trade.copy()
+            adjusted_trade['price'] = str(round(adjusted_price, 2))
+            adjusted_trades.append(adjusted_trade)
+        
+        return adjusted_trades
     
     def _calculate_metrics(self, signal_stats: dict = None, final_price: float = None) -> BacktestResult:
         """Calculate backtest performance metrics."""
@@ -349,6 +427,26 @@ class Backtester:
             
             # Add price to strategy
             strategy.add_price(price, timestamp)
+            
+            # For OrderBookStrategy, we need to provide order book and trade data
+            if hasattr(strategy, 'add_order_book') and hasattr(strategy, 'add_trades'):
+                try:
+                    # Get current order book data from Coinbase API for all historical points
+                    # This uses current market data for backtesting (not ideal but functional)
+                    order_book = await self.data_provider.get_order_book(level=2)
+                    if order_book:
+                        # Adjust order book prices to match historical price
+                        adjusted_order_book = self._adjust_order_book_to_price(order_book, price)
+                        strategy.add_order_book(adjusted_order_book, timestamp)
+                    
+                    # Get recent trades from Coinbase API
+                    trades = await self.data_provider.get_recent_trades(limit=100)
+                    if trades:
+                        # Adjust trade prices to match historical price
+                        adjusted_trades = self._adjust_trades_to_price(trades, price)
+                        strategy.add_trades(adjusted_trades, timestamp)
+                except Exception as e:
+                    self.logger.warning(f"Failed to add order book/trade data: {e}")
             
             # Generate signal
             is_end_of_period = (i == len(historical_data) - 1)
