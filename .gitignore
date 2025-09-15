@@ -56,3 +56,4 @@ test_outputs/
 .env.local
 .env.production
 .env.staging*.db
+trading_cache.db
