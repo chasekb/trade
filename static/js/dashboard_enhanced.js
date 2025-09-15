@@ -37,10 +37,84 @@ class EnhancedTradingDashboard {
         
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
+            this.loadAvailableProducts();
             this.loadInitialData();
             this.startDataRefresh();
             this.loadRealtimeStatus();
         }, 100);
+    }
+
+    async loadAvailableProducts() {
+        try {
+            const response = await fetch('/api/products');
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                this.populateProductSelectors(data.categories);
+                console.log('Loaded products:', data.total_products, 'total');
+            } else {
+                console.error('Failed to load products:', data.error);
+            }
+        } catch (error) {
+            console.error('Error loading products:', error);
+        }
+    }
+
+    populateProductSelectors(categories) {
+        // Get all selectors that need product options
+        const selectors = [
+            'symbol-selector',
+            'backtest-symbol'
+        ];
+        
+        // Create options for each category
+        const categoryOptions = {
+            'Major Pairs': categories.major || [],
+            'DEX Tokens': categories.dex_tokens || [],
+            'Meme Tokens': categories.meme_tokens || [],
+            'Stablecoins': categories.stablecoins || [],
+            'All USD Pairs': categories.all_usd || []
+        };
+        
+        selectors.forEach(selectorId => {
+            const selector = document.getElementById(selectorId);
+            if (!selector) return;
+            
+            // Clear existing options
+            selector.innerHTML = '';
+            
+            // Add category headers and options
+            Object.entries(categoryOptions).forEach(([categoryName, products]) => {
+                if (products.length === 0) return;
+                
+                // Add category header
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = categoryName;
+                
+                // Add products to this category
+                products.forEach(product => {
+                    const option = document.createElement('option');
+                    option.value = product;
+                    option.textContent = product;
+                    optgroup.appendChild(option);
+                });
+                
+                selector.appendChild(optgroup);
+            });
+            
+            // Set default selection
+            if (selectorId === 'symbol-selector' || selectorId === 'backtest-symbol') {
+                selector.value = 'BTC-USD';
+            }
+        });
+        
+        // Update product ID inputs
+        const productInputs = document.querySelectorAll('input[value="BTC-USD"]');
+        productInputs.forEach(input => {
+            if (input.id !== 'product-id') {
+                input.value = 'BTC-USD';
+            }
+        });
     }
 
     connectWebSocket() {

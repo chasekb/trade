@@ -19,6 +19,7 @@ from typing import Optional, List, Dict, Any
 from .config import TradingConfig
 from .data_provider import CoinbaseDataProvider
 from .cached_data_provider import CachedDataProvider
+from .product_fetcher import ProductFetcher
 from .backtester import Backtester
 from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy, ATRStrategy, FibonacciRetracementStrategy, OrderBookStrategy
 from .database import BacktestDatabase
@@ -132,6 +133,7 @@ websocket_clients: List[WebSocket] = []
 
 # Configuration
 config = TradingConfig.from_env()
+product_fetcher = ProductFetcher()
 
 
 def clean_for_json(data):
@@ -1039,6 +1041,33 @@ async def unsubscribe_from_channel(request: SubscriptionRequest):
         await manager.websocket_client.unsubscribe_from_channel(request.channel, [product_id])
         return {"success": True, "channel": request.channel, "product_id": product_id}
     except Exception as e:
+        return {"error": str(e)    }
+
+@app.get("/api/products")
+async def get_available_products():
+    """Get all available trading products from Coinbase."""
+    await check_rate_limit()
+    
+    try:
+        # Fetch products if not cached or cache is old
+        if not product_fetcher.products_cache or not product_fetcher.last_updated:
+            await product_fetcher.fetch_all_products()
+        
+        categories = product_fetcher.get_products_by_category()
+        
+        return {
+            "status": "success",
+            "last_updated": product_fetcher.last_updated.isoformat() if product_fetcher.last_updated else None,
+            "total_products": len(product_fetcher.products_cache),
+            "categories": categories,
+            "recommended": {
+                "major_pairs": categories['major'][:10],  # Top 10 major pairs
+                "popular_dex": categories['dex_tokens'][:5],  # Top 5 DEX tokens
+                "meme_tokens": categories['meme_tokens'][:5]  # Top 5 meme tokens
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch products: {e}")
         return {"error": str(e)}
 
 @app.get("/api/cache-stats")
