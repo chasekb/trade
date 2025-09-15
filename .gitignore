@@ -58,3 +58,4 @@ test_outputs/
 .env.staging*.db
 trading_cache.db
 backtests.db
+rules/
