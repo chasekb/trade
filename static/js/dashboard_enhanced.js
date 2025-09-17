@@ -304,6 +304,7 @@ class EnhancedTradingDashboard {
         
         // Auto-refresh order book signals every 30 seconds when on live trading tab
         this.orderBookRefreshInterval = null;
+        this.portfolioUpdateInterval = null;
     }
 
     async loadLiveTradingProducts() {
@@ -399,6 +400,22 @@ class EnhancedTradingDashboard {
             
             this.updateOrderBookSignalsTable(data.signals);
             this.updateOrderBookStatistics(data);
+            
+            // Log signal processing if trading is active
+            if (this.liveTrading.isActive && data.signals && data.signals.length > 0) {
+                const activeSignals = data.signals.filter(s => s.signal_generated === true);
+                if (activeSignals.length > 0) {
+                    this.logTradingEvent(`Processing ${activeSignals.length} active signals from live order book analysis`);
+                    activeSignals.forEach(signal => {
+                        this.logTradingEvent(`Signal: ${signal.signal.toUpperCase()} ${signal.symbol} @ $${signal.price} (${signal.signal_type})`);
+                    });
+                }
+            }
+            
+            // Update portfolio status when new signals are processed
+            if (this.liveTrading.isActive) {
+                await this.updateTradingStatusFromAPI();
+            }
 
         } catch (error) {
             console.error('Error loading order book signals:', error);
@@ -1307,6 +1324,9 @@ class EnhancedTradingDashboard {
                 // Start live order book signals refresh
                 this.startOrderBookAutoRefresh();
                 
+                // Update portfolio status immediately
+                await this.updateTradingStatusFromAPI();
+                
                 // Log appropriate message based on symbol mode
                 if (this.liveTrading.symbolMode === 'universe') {
                     this.logTradingEvent(`Started ${this.liveTrading.mode} universe trading with ${strategyType} strategy on ${symbols.length} symbols: ${symbols.join(', ')}`);
@@ -1316,6 +1336,9 @@ class EnhancedTradingDashboard {
 
                 // Start strategy monitoring
                 this.startStrategyMonitoring();
+                
+                // Start periodic portfolio status updates
+                this.startPortfolioStatusUpdates();
             } else {
                 this.logTradingEvent(`Failed to start trading: ${data.error}`);
             }
@@ -1342,6 +1365,12 @@ class EnhancedTradingDashboard {
                 
                 // Stop live order book signals refresh
                 this.stopOrderBookAutoRefresh();
+                
+                // Stop portfolio status updates
+                this.stopPortfolioStatusUpdates();
+                
+                // Update portfolio status one final time
+                await this.updateTradingStatusFromAPI();
             } else {
                 this.logTradingEvent(`Error stopping trading: ${data.error}`);
             }
@@ -1440,6 +1469,110 @@ class EnhancedTradingDashboard {
         // Keep only last 100 entries
         while (logContainer.children.length > 100) {
             logContainer.removeChild(logContainer.firstChild);
+        }
+    }
+
+    updatePortfolioStatus(portfolioData) {
+        // Update available balance
+        const availableBalance = document.getElementById('available-balance');
+        if (availableBalance && portfolioData.cash_balance !== undefined) {
+            availableBalance.textContent = `$${portfolioData.cash_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        // Update total value
+        const totalValue = document.getElementById('total-value');
+        if (totalValue && portfolioData.total_value !== undefined) {
+            totalValue.textContent = `$${portfolioData.total_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        // Update open positions count
+        const openPositions = document.getElementById('open-positions');
+        if (openPositions && portfolioData.open_positions !== undefined) {
+            openPositions.textContent = portfolioData.open_positions.length || 0;
+        }
+
+        // Update daily P&L
+        const dailyPnl = document.getElementById('daily-pnl');
+        if (dailyPnl && portfolioData.total_pnl !== undefined) {
+            const pnlValue = portfolioData.total_pnl;
+            dailyPnl.textContent = `${pnlValue >= 0 ? '+' : ''}$${pnlValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            dailyPnl.className = `text-sm font-semibold ${pnlValue >= 0 ? 'text-green-600' : 'text-red-600'}`;
+        }
+    }
+
+    async updateTradingStatusFromAPI() {
+        try {
+            const response = await fetch('/api/simulated-trading/status');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error fetching trading status:', data.error);
+                return;
+            }
+
+            // Update portfolio status
+            if (data.portfolio) {
+                this.updatePortfolioStatus(data.portfolio);
+            }
+
+            // Update open positions if available
+            if (data.open_positions) {
+                this.updateOpenPositions(data.open_positions);
+            }
+
+            // Update recent trades if available
+            if (data.recent_trades) {
+                this.updateRecentTrades(data.recent_trades);
+            }
+
+        } catch (error) {
+            console.error('Error updating trading status:', error);
+        }
+    }
+
+    updateOpenPositions(positions) {
+        // This would update the open positions display
+        // For now, just log the positions
+        if (positions && positions.length > 0) {
+            this.logTradingEvent(`Open positions: ${positions.length}`);
+            positions.forEach(position => {
+                this.logTradingEvent(`Position: ${position.symbol} ${position.side} ${position.quantity} @ $${position.entry_price}`);
+            });
+        }
+    }
+
+    updateRecentTrades(trades) {
+        // This would update the recent trades display
+        // For now, just log the trades
+        if (trades && trades.length > 0) {
+            this.logTradingEvent(`Recent trades: ${trades.length}`);
+            trades.forEach(trade => {
+                this.logTradingEvent(`Trade: ${trade.action} ${trade.quantity} ${trade.symbol} @ $${trade.price}`);
+            });
+        }
+    }
+
+    startPortfolioStatusUpdates() {
+        // Clear existing interval
+        if (this.portfolioUpdateInterval) {
+            clearInterval(this.portfolioUpdateInterval);
+        }
+
+        // Update portfolio status every 5 seconds while trading is active
+        this.portfolioUpdateInterval = setInterval(async () => {
+            if (this.liveTrading.isActive) {
+                await this.updateTradingStatusFromAPI();
+            } else {
+                // Stop updating if trading is not active
+                this.stopPortfolioStatusUpdates();
+            }
+        }, 5000);
+    }
+
+    stopPortfolioStatusUpdates() {
+        if (this.portfolioUpdateInterval) {
+            clearInterval(this.portfolioUpdateInterval);
+            this.portfolioUpdateInterval = null;
         }
     }
 
