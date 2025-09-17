@@ -1050,9 +1050,14 @@ async def get_rate_limit_status():
 @app.get("/api/realtime-status")
 async def get_realtime_status():
     """Get real-time data collection status."""
+    websocket_connected = False
+    if manager.websocket_client is not None:
+        websocket_status = await manager.websocket_client.get_subscription_info()
+        websocket_connected = websocket_status.get('connected', False)
+    
     return {
         "enabled": realtime_data_enabled,
-        "websocket_connected": manager.websocket_client is not None and manager.websocket_client.connected if manager.websocket_client else False,
+        "websocket_connected": websocket_connected,
         "active_connections": len(manager.active_connections)
     }
 
