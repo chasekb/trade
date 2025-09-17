@@ -635,8 +635,7 @@ class EnhancedTradingDashboard {
             this.switchTab('live-trading');
             this.resetLiveTradingInputs();
             await this.loadLiveTradingProducts();
-            await this.loadOrderBookSignals();
-            // Don't start auto-refresh here - only when trading starts
+            // loadLiveTradingData() will be called by switchTab()
         });
 
         // Trading mode selection
@@ -1936,6 +1935,26 @@ class EnhancedTradingDashboard {
         while (logContainer.children.length > 100) {
             logContainer.removeChild(logContainer.firstChild);
         }
+        
+        // Store log event in session for restoration
+        this.storeTradingLogEvent(message, timestamp);
+    }
+    
+    storeTradingLogEvent(message, timestamp) {
+        // Store trading log events in localStorage for session restoration
+        const logEvents = JSON.parse(localStorage.getItem('trading_log_events') || '[]');
+        logEvents.push({
+            message: message,
+            timestamp: timestamp,
+            fullTimestamp: new Date().toISOString()
+        });
+        
+        // Keep only last 50 events in localStorage
+        if (logEvents.length > 50) {
+            logEvents.splice(0, logEvents.length - 50);
+        }
+        
+        localStorage.setItem('trading_log_events', JSON.stringify(logEvents));
     }
 
     updatePortfolioStatus(portfolioData) {
@@ -4028,6 +4047,8 @@ class EnhancedTradingDashboard {
         } else if (tabName === 'backtesting') {
             this.loadBacktestFilters();
             this.loadBacktestHistory();
+        } else if (tabName === 'live-trading') {
+            this.loadLiveTradingData();
         }
     }
 
@@ -4035,6 +4056,80 @@ class EnhancedTradingDashboard {
         const resultsContainer = document.getElementById('backtest-results');
         resultsContainer.classList.add('hidden');
         resultsContainer.innerHTML = '';
+    }
+    
+    async loadLiveTradingData() {
+        // Load order book signals
+        await this.loadOrderBookSignals();
+        
+        // If trading is active, restart auto-refresh
+        if (this.liveTrading.isActive) {
+            this.startOrderBookAutoRefresh();
+        }
+        
+        // Load recent trades and positions
+        await this.updateTradingStatusFromAPI();
+        
+        // Restore trading log from session if available
+        await this.restoreTradingLog();
+    }
+    
+    async restoreTradingLog() {
+        const logContainer = document.getElementById('trading-log');
+        if (!logContainer) return;
+        
+        // Clear existing log
+        logContainer.innerHTML = '';
+        
+        // First, try to restore from localStorage (trading events)
+        const logEvents = JSON.parse(localStorage.getItem('trading_log_events') || '[]');
+        if (logEvents.length > 0) {
+            // Add recent trading events to log
+            logEvents.slice(-20).forEach(event => {
+                const logEntry = document.createElement('div');
+                logEntry.className = 'text-green-400';
+                logEntry.innerHTML = `[${event.timestamp}] ${event.message}`;
+                logContainer.appendChild(logEntry);
+            });
+        }
+        
+        // Then, try to load recent trades from the session
+        if (this.sessionId) {
+            try {
+                const response = await fetch(`/api/trades/session/${this.sessionId}`);
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.trades && data.trades.length > 0) {
+                    // Add separator if we have both events and trades
+                    if (logEvents.length > 0) {
+                        const separator = document.createElement('div');
+                        separator.className = 'text-gray-500 text-sm my-2';
+                        separator.innerHTML = '--- Recent trades ---';
+                        logContainer.appendChild(separator);
+                    }
+                    
+                    // Add recent trades to log
+                    const recentTrades = data.trades.slice(0, 10); // Show last 10 trades
+                    recentTrades.reverse().forEach(trade => {
+                        const timestamp = new Date(trade.timestamp).toLocaleTimeString();
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'text-blue-400';
+                        logEntry.innerHTML = `[${timestamp}] Trade: ${trade.action} ${trade.quantity} ${trade.symbol} at $${trade.price}`;
+                        logContainer.appendChild(logEntry);
+                    });
+                }
+            } catch (error) {
+                console.error('Error restoring trading log from session:', error);
+            }
+        }
+        
+        // If no data to restore, show placeholder
+        if (logContainer.children.length === 0) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'text-gray-500 text-sm';
+            placeholder.innerHTML = 'Trading log will appear here...';
+            logContainer.appendChild(placeholder);
+        }
     }
 
     loadDataFeed() {
