@@ -706,7 +706,7 @@ class DatabaseManager:
             return []
     
     def get_trade_stats(self, session_id: str = None) -> Dict[str, Any]:
-        """Get trading statistics."""
+        """Get comprehensive trading statistics."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -723,29 +723,95 @@ class DatabaseManager:
                 cursor.execute(f"SELECT COUNT(*) {base_query}", params)
                 total_trades = cursor.fetchone()[0]
                 
-                # Winning trades
-                cursor.execute(f"SELECT COUNT(*) {base_query} AND pnl > 0", params)
-                winning_trades = cursor.fetchone()[0]
+                if total_trades == 0:
+                    return {
+                        'total_trades': 0,
+                        'winning_trades': 0,
+                        'losing_trades': 0,
+                        'win_rate': 0.0,
+                        'total_pnl': 0.0,
+                        'total_fees': 0.0,
+                        'net_pnl': 0.0,
+                        'max_drawdown': 0.0,
+                        'sharpe_ratio': 0.0,
+                        'best_trade': 0.0,
+                        'worst_trade': 0.0,
+                        'avg_win': 0.0,
+                        'avg_loss': 0.0,
+                        'trades_today': 0,
+                        'total_volume': 0.0
+                    }
                 
-                # Total PnL
-                cursor.execute(f"SELECT SUM(pnl) {base_query}", params)
-                total_pnl = cursor.fetchone()[0] or 0.0
+                # Get all trades for detailed analysis
+                cursor.execute(f"SELECT pnl, fees, price, quantity, timestamp {base_query} ORDER BY timestamp", params)
+                trades = cursor.fetchall()
                 
-                # Total fees
-                cursor.execute(f"SELECT SUM(fees) {base_query}", params)
-                total_fees = cursor.fetchone()[0] or 0.0
-                
-                # Win rate
+                # Basic stats
+                winning_trades = sum(1 for trade in trades if trade[0] > 0)
+                losing_trades = total_trades - winning_trades
                 win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+                
+                # PnL and fees
+                total_pnl = sum(trade[0] for trade in trades)
+                total_fees = sum(trade[1] for trade in trades)
+                net_pnl = total_pnl - total_fees
+                
+                # Best and worst trades
+                pnls = [trade[0] for trade in trades]
+                best_trade = max(pnls) if pnls else 0.0
+                worst_trade = min(pnls) if pnls else 0.0
+                
+                # Average win and loss
+                winning_pnls = [pnl for pnl in pnls if pnl > 0]
+                losing_pnls = [pnl for pnl in pnls if pnl < 0]
+                avg_win = sum(winning_pnls) / len(winning_pnls) if winning_pnls else 0.0
+                avg_loss = sum(losing_pnls) / len(losing_pnls) if losing_pnls else 0.0
+                
+                # Total volume
+                total_volume = sum(trade[2] * trade[3] for trade in trades)
+                
+                # Trades today
+                today = datetime.now().date()
+                trades_today = sum(1 for trade in trades if datetime.fromisoformat(trade[4].replace('Z', '+00:00')).date() == today)
+                
+                # Calculate max drawdown
+                cumulative_pnl = 0
+                peak = 0
+                max_drawdown = 0.0
+                
+                for trade in trades:
+                    cumulative_pnl += trade[0]
+                    if cumulative_pnl > peak:
+                        peak = cumulative_pnl
+                    drawdown = peak - cumulative_pnl
+                    if drawdown > max_drawdown:
+                        max_drawdown = drawdown
+                
+                # Calculate Sharpe ratio (simplified)
+                if len(pnls) > 1:
+                    mean_return = sum(pnls) / len(pnls)
+                    variance = sum((pnl - mean_return) ** 2 for pnl in pnls) / len(pnls)
+                    std_dev = variance ** 0.5
+                    sharpe_ratio = (mean_return / std_dev) if std_dev > 0 else 0.0
+                else:
+                    sharpe_ratio = 0.0
                 
                 return {
                     'total_trades': total_trades,
                     'winning_trades': winning_trades,
-                    'losing_trades': total_trades - winning_trades,
+                    'losing_trades': losing_trades,
                     'win_rate': win_rate,
                     'total_pnl': total_pnl,
                     'total_fees': total_fees,
-                    'net_pnl': total_pnl - total_fees
+                    'net_pnl': net_pnl,
+                    'max_drawdown': max_drawdown,
+                    'sharpe_ratio': sharpe_ratio,
+                    'best_trade': best_trade,
+                    'worst_trade': worst_trade,
+                    'avg_win': avg_win,
+                    'avg_loss': avg_loss,
+                    'trades_today': trades_today,
+                    'total_volume': total_volume
                 }
                 
         except Exception as e:

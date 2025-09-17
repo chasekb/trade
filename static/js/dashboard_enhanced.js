@@ -80,6 +80,27 @@ class EnhancedTradingDashboard {
         // Session management
         this.sessionId = this.getOrCreateSessionId();
         this.autoSaveInterval = null;
+        
+        // Trading stats
+        this.tradingStats = {
+            totalPnl: 0,
+            winRate: 0,
+            totalTrades: 0,
+            activePositions: 0,
+            maxDrawdown: 0,
+            sharpeRatio: 0,
+            bestTrade: 0,
+            worstTrade: 0,
+            avgWin: 0,
+            avgLoss: 0,
+            tradesToday: 0,
+            totalVolume: 0,
+            sessionStartTime: null,
+            sessionTrades: 0,
+            sessionPnl: 0,
+            lastTradeTime: null
+        };
+        this.statsUpdateInterval = null;
     }
 
     getOrCreateSessionId() {
@@ -235,6 +256,168 @@ class EnhancedTradingDashboard {
         }
     }
 
+    // Trading Stats Methods
+    
+    async loadTradingStats() {
+        try {
+            // Load stats from API
+            const response = await fetch('/api/trades/stats');
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                this.updateTradingStats(data.stats);
+            }
+            
+            // Also load session-specific stats if we have a session
+            if (this.sessionId) {
+                const sessionResponse = await fetch(`/api/trades/session/${this.sessionId}`);
+                const sessionData = await sessionResponse.json();
+                
+                if (sessionData.status === 'success') {
+                    this.updateSessionStats(sessionData.trades);
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error loading trading stats:', error);
+        }
+    }
+    
+    updateTradingStats(stats) {
+        if (!stats) return;
+        
+        // Update main stats
+        this.tradingStats.totalPnl = stats.total_pnl || 0;
+        this.tradingStats.winRate = stats.win_rate || 0;
+        this.tradingStats.totalTrades = stats.total_trades || 0;
+        this.tradingStats.maxDrawdown = stats.max_drawdown || 0;
+        this.tradingStats.sharpeRatio = stats.sharpe_ratio || 0;
+        this.tradingStats.bestTrade = stats.best_trade || 0;
+        this.tradingStats.worstTrade = stats.worst_trade || 0;
+        this.tradingStats.avgWin = stats.avg_win || 0;
+        this.tradingStats.avgLoss = stats.avg_loss || 0;
+        this.tradingStats.tradesToday = stats.trades_today || 0;
+        this.tradingStats.totalVolume = stats.total_volume || 0;
+        
+        // Update UI
+        this.updateTradingStatsUI();
+    }
+    
+    updateSessionStats(trades) {
+        if (!trades) return;
+        
+        // Calculate session stats
+        const today = new Date().toDateString();
+        const sessionTrades = trades.filter(trade => {
+            const tradeDate = new Date(trade.timestamp).toDateString();
+            return tradeDate === today;
+        });
+        
+        this.tradingStats.sessionTrades = sessionTrades.length;
+        this.tradingStats.sessionPnl = sessionTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
+        
+        if (trades.length > 0) {
+            this.tradingStats.lastTradeTime = new Date(trades[0].timestamp).toLocaleTimeString();
+        }
+        
+        // Update UI
+        this.updateTradingStatsUI();
+    }
+    
+    updateTradingStatsUI() {
+        // Performance Metrics
+        this.updateElement('total-pnl', `$${this.tradingStats.totalPnl.toFixed(2)}`);
+        this.updateElement('win-rate', `${this.tradingStats.winRate.toFixed(2)}%`);
+        this.updateElement('total-trades', this.tradingStats.totalTrades.toString());
+        this.updateElement('active-positions', this.liveTrading.positions.length.toString());
+        
+        // Risk Metrics
+        this.updateElement('max-drawdown', `${this.tradingStats.maxDrawdown.toFixed(2)}%`);
+        this.updateElement('sharpe-ratio', this.tradingStats.sharpeRatio.toFixed(2));
+        this.updateElement('risk-adjusted-return', `${(this.tradingStats.sharpeRatio * 10).toFixed(2)}%`);
+        
+        // Trading Activity
+        this.updateElement('trades-today-count', this.tradingStats.tradesToday.toString());
+        this.updateElement('avg-trade-size', `$${(this.tradingStats.totalVolume / Math.max(this.tradingStats.totalTrades, 1)).toFixed(2)}`);
+        this.updateElement('total-volume', `$${this.tradingStats.totalVolume.toFixed(2)}`);
+        
+        // Performance Trends
+        this.updateElement('best-trade', `$${this.tradingStats.bestTrade.toFixed(2)}`);
+        this.updateElement('worst-trade', `$${this.tradingStats.worstTrade.toFixed(2)}`);
+        this.updateElement('avg-win', `$${this.tradingStats.avgWin.toFixed(2)}`);
+        this.updateElement('avg-loss', `$${this.tradingStats.avgLoss.toFixed(2)}`);
+        
+        // Session Info
+        this.updateElement('session-trades', this.tradingStats.sessionTrades.toString());
+        this.updateElement('session-pnl', `$${this.tradingStats.sessionPnl.toFixed(2)}`);
+        this.updateElement('last-trade-time', this.tradingStats.lastTradeTime || 'Never');
+        
+        // Update position value
+        const positionValue = this.liveTrading.positions.reduce((sum, pos) => {
+            return sum + (pos.quantity * pos.currentPrice);
+        }, 0);
+        this.updateElement('position-value', `$${positionValue.toFixed(2)} value`);
+        
+        // Update trades today
+        this.updateElement('trades-today', `${this.tradingStats.tradesToday} today`);
+        
+        // Update PnL change (simplified)
+        const pnlChange = this.tradingStats.totalPnl > 0 ? '+' : '';
+        this.updateElement('pnl-change', `${pnlChange}${this.tradingStats.totalPnl.toFixed(2)}%`);
+        
+        // Update win rate change (simplified)
+        const winRateChange = this.tradingStats.winRate > 50 ? '+' : '';
+        this.updateElement('win-rate-change', `${winRateChange}${(this.tradingStats.winRate - 50).toFixed(2)}%`);
+    }
+    
+    updateElement(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+        }
+    }
+    
+    startTradingStatsUpdates() {
+        // Clear existing interval
+        if (this.statsUpdateInterval) {
+            clearInterval(this.statsUpdateInterval);
+        }
+        
+        // Update stats every 30 seconds
+        this.statsUpdateInterval = setInterval(async () => {
+            await this.loadTradingStats();
+        }, 30000);
+        
+        // Update session duration every second
+        this.sessionDurationInterval = setInterval(() => {
+            this.updateSessionDuration();
+        }, 1000);
+    }
+    
+    stopTradingStatsUpdates() {
+        if (this.statsUpdateInterval) {
+            clearInterval(this.statsUpdateInterval);
+            this.statsUpdateInterval = null;
+        }
+        if (this.sessionDurationInterval) {
+            clearInterval(this.sessionDurationInterval);
+            this.sessionDurationInterval = null;
+        }
+    }
+    
+    updateSessionDuration() {
+        if (this.tradingStats.sessionStartTime) {
+            const now = new Date();
+            const duration = now - this.tradingStats.sessionStartTime;
+            const hours = Math.floor(duration / 3600000);
+            const minutes = Math.floor((duration % 3600000) / 60000);
+            const seconds = Math.floor((duration % 60000) / 1000);
+            
+            const durationStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            this.updateElement('session-duration', durationStr);
+        }
+    }
+
     startAutoSave() {
         // Save session state every 30 seconds
         this.autoSaveInterval = setInterval(() => {
@@ -262,6 +445,9 @@ class EnhancedTradingDashboard {
             this.loadInitialData();
             this.startDataRefresh();
             this.loadRealtimeStatus();
+            
+            // Load trading stats
+            this.loadTradingStats();
             
             // Check for existing session and restore state
             this.checkAndRestoreSession();
@@ -475,6 +661,11 @@ class EnhancedTradingDashboard {
         // Order book signals refresh button
         document.getElementById('refresh-orderbook-signals')?.addEventListener('click', async () => {
             await this.loadOrderBookSignals();
+        });
+        
+        // Trading stats refresh button
+        document.getElementById('refresh-trading-stats')?.addEventListener('click', async () => {
+            await this.loadTradingStats();
         });
         
         // Auto-refresh order book signals every 30 seconds when on live trading tab
@@ -1522,6 +1713,10 @@ class EnhancedTradingDashboard {
                 // Start auto-save and save initial state
                 this.startAutoSave();
                 await this.saveSessionState();
+                
+                // Start trading stats updates
+                this.startTradingStatsUpdates();
+                this.tradingStats.sessionStartTime = new Date();
             } else {
                 this.logTradingEvent(`Failed to start trading: ${data.error}`);
             }
@@ -1571,6 +1766,9 @@ class EnhancedTradingDashboard {
         // Stop auto-save and save final state
         this.stopAutoSave();
         await this.saveSessionState();
+        
+        // Stop trading stats updates
+        this.stopTradingStatsUpdates();
     }
 
     pauseLiveTrading() {
@@ -1715,6 +1913,9 @@ class EnhancedTradingDashboard {
             if (data.recent_trades) {
                 this.updateRecentTrades(data.recent_trades);
             }
+            
+            // Update trading stats when portfolio status changes
+            this.loadTradingStats();
 
         } catch (error) {
             console.error('Error updating trading status:', error);
