@@ -352,6 +352,19 @@ class EnhancedTradingDashboard {
 
     async loadOrderBookSignals() {
         try {
+            // Check if trading is active
+            if (!this.liveTrading.isActive) {
+                this.updateOrderBookSignalsTable([]);
+                this.updateOrderBookStatistics({
+                    total_analyzed: 0,
+                    active_signals: 0,
+                    last_updated: new Date().toISOString(),
+                    average_strength: 0,
+                    message: "Trading is not active. Start trading to see live signals."
+                });
+                return;
+            }
+
             // Get selected symbols from strategy configuration
             const selectedSymbols = this.getSelectedSymbols();
             
@@ -368,6 +381,19 @@ class EnhancedTradingDashboard {
             if (data.error) {
                 console.error('Error loading order book signals:', data.error);
                 this.updateOrderBookSignalsTable([]);
+                return;
+            }
+            
+            // Check if trading is not active from server response
+            if (data.trading_active === false) {
+                this.updateOrderBookSignalsTable([]);
+                this.updateOrderBookStatistics({
+                    total_analyzed: 0,
+                    active_signals: 0,
+                    last_updated: new Date().toISOString(),
+                    average_strength: 0,
+                    message: data.message || "Trading is not active."
+                });
                 return;
             }
             
@@ -555,12 +581,27 @@ class EnhancedTradingDashboard {
         const lastUpdated = document.getElementById('last-updated');
         const avgStrength = document.getElementById('avg-strength');
         
+        // Show message if trading is not active
+        if (data.message) {
+            const messageElement = document.getElementById('orderbook-message');
+            const messageTextElement = document.getElementById('orderbook-message-text');
+            if (messageElement && messageTextElement) {
+                messageTextElement.textContent = data.message;
+                messageElement.style.display = 'block';
+            }
+        } else {
+            const messageElement = document.getElementById('orderbook-message');
+            if (messageElement) {
+                messageElement.style.display = 'none';
+            }
+        }
+        
         if (totalAnalyzed) {
             totalAnalyzed.textContent = data.total_analyzed || 0;
         }
         
         if (activeSignals) {
-            const activeCount = data.signals.filter(s => s.signal_generated === true).length;
+            const activeCount = data.signals ? data.signals.filter(s => s.signal_generated === true).length : 0;
             activeSignals.textContent = activeCount;
         }
         
@@ -569,9 +610,11 @@ class EnhancedTradingDashboard {
             lastUpdated.textContent = now.toLocaleTimeString();
         }
         
-        if (avgStrength && data.signals.length > 0) {
+        if (avgStrength && data.signals && data.signals.length > 0) {
             const avg = data.signals.reduce((sum, s) => sum + s.signal_strength, 0) / data.signals.length;
             avgStrength.textContent = avg.toFixed(2);
+        } else if (avgStrength) {
+            avgStrength.textContent = '0.00';
         }
     }
 
@@ -1224,8 +1267,8 @@ class EnhancedTradingDashboard {
         });
 
         try {
-            // Call backend API to start live trading
-            const response = await fetch('/api/live-trading/start', {
+            // Call backend API to start simulated trading
+            const response = await fetch('/api/simulated-trading/start', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1233,25 +1276,16 @@ class EnhancedTradingDashboard {
                 body: JSON.stringify({
                     symbols: symbols,
                     strategy_type: strategyType,
-                    mode: this.liveTrading.mode,
-                    symbol_mode: this.liveTrading.symbolMode,
                     strategy_params: params,
-                    position_size: positionSize,
+                    initial_balance: 10000.0,
                     max_positions: maxPositions,
-                    universe_config: this.liveTrading.symbolMode === 'universe' ? {
-                        type: this.liveTrading.universe.type,
-                        max_size: (() => {
-                            const maxSizeInput = document.getElementById('universe-max-size').value;
-                            return maxSizeInput ? parseInt(maxSizeInput) : null;
-                        })(),
-                        selection_method: document.getElementById('universe-selection-method').value
-                    } : null
+                    position_size_percent: positionSize
                 })
             });
 
             const data = await response.json();
 
-            if (data.status === 'success') {
+            if (data.status === 'started') {
                 // Initialize strategy
                 this.liveTrading.strategy = {
                     type: strategyType,
@@ -1260,7 +1294,8 @@ class EnhancedTradingDashboard {
                     params: params,
                     positionSize: positionSize,
                     maxPositions: maxPositions,
-                    sessionId: data.trading_session.session_id
+                    strategyType: data.strategy_type,
+                    strategyParams: data.strategy_params
                 };
 
                 this.liveTrading.isActive = true;
@@ -1268,6 +1303,9 @@ class EnhancedTradingDashboard {
 
                 this.updateTradingControls();
                 this.updateTradingStatus('active');
+                
+                // Start live order book signals refresh
+                this.startOrderBookAutoRefresh();
                 
                 // Log appropriate message based on symbol mode
                 if (this.liveTrading.symbolMode === 'universe') {
@@ -1290,24 +1328,22 @@ class EnhancedTradingDashboard {
         if (!this.liveTrading.isActive) return;
 
         try {
-            // Call backend API to stop live trading
-            if (this.liveTrading.strategy && this.liveTrading.strategy.sessionId) {
-                const response = await fetch('/api/live-trading/stop', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        session_id: this.liveTrading.strategy.sessionId
-                    })
-                });
-
-                const data = await response.json();
-                if (data.status === 'success') {
-                    this.logTradingEvent('Trading stopped successfully');
-                } else {
-                    this.logTradingEvent(`Error stopping trading: ${data.error}`);
+            // Call backend API to stop simulated trading
+            const response = await fetch('/api/simulated-trading/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
                 }
+            });
+
+            const data = await response.json();
+            if (data.status === 'stopped') {
+                this.logTradingEvent('Trading stopped successfully');
+                
+                // Stop live order book signals refresh
+                this.stopOrderBookAutoRefresh();
+            } else {
+                this.logTradingEvent(`Error stopping trading: ${data.error}`);
             }
         } catch (error) {
             this.logTradingEvent(`Error stopping trading: ${error.message}`);

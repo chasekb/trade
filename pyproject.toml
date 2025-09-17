@@ -20,4 +20,5 @@ dependencies = [
     "jinja2>=3.1.0",
     "plotly>=5.17.0",
     "python-multipart>=0.0.6",
+    "pytest-cov>=7.0.0",
 ]

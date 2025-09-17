@@ -1061,6 +1061,12 @@
                 
                 <p class="text-gray-600 mb-6">Real-time order book analysis showing the top 10 symbols with their signal strength, deltas, and market microstructure metrics.</p>
                 
+                <!-- Trading Status Message -->
+                <div id="orderbook-message" class="mb-4 p-3 rounded-md bg-yellow-50 border border-yellow-200" style="display: none;">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <span id="orderbook-message-text"></span>
+                </div>
+                
                 <!-- Order Book Signals Table -->
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">

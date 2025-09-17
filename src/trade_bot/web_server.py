@@ -146,6 +146,16 @@ simulated_trading = SimulatedTradingManager(
     trading_fee=0.001
 )
 
+# Trading State Management
+trading_state = {
+    "is_active": False,
+    "strategy_type": None,
+    "strategy_params": {},
+    "symbols": [],
+    "mode": "simulated",  # "simulated" or "live"
+    "last_signal_check": None
+}
+
 
 def clean_for_json(data):
     """Clean data for JSON serialization by replacing NaN, infinite values, and converting datetime objects."""
@@ -312,6 +322,35 @@ class WebSocketManager:
             
             # Start the simulated trading task
             asyncio.create_task(self._process_simulated_trading())
+    
+    async def _process_simulated_trading(self):
+        """Process simulated trading signals in the background."""
+        while True:
+            try:
+                # Check if trading is active
+                if trading_state["is_active"] and trading_state["strategy_type"] == "orderbook":
+                    # Get live order book signals
+                    symbols = trading_state.get("symbols", [])
+                    if symbols:
+                        # Call the live order book signals endpoint internally
+                        from fastapi.testclient import TestClient
+                        client = TestClient(app)
+                        
+                        symbols_param = ','.join(symbols)
+                        response = client.get(f"/api/orderbook/live-signals?symbols={symbols_param}")
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            if data.get("signals"):
+                                # Process signals through simulated trading
+                                await simulated_trading.process_signals(data["signals"])
+                
+                # Wait before next check
+                await asyncio.sleep(30)  # Check every 30 seconds
+                
+            except Exception as e:
+                logger.error(f"Error in simulated trading processing: {e}")
+                await asyncio.sleep(30)  # Wait before retrying
     
     async def _run_websocket_client(self):
         """Run the websocket client in the background."""
@@ -1364,6 +1403,15 @@ async def get_live_orderbook_signals(symbols: str = None):
         print(f"DEBUG: Main config API key: {'SET' if config.api_key else 'NOT SET'}")
         print(f"DEBUG: Main config API secret: {'SET' if config.api_secret else 'NOT SET'}")
         
+        # Check if trading is active
+        if not trading_state["is_active"]:
+            return {
+                "signals": [],
+                "message": "Trading is not active. Start trading to see live signals.",
+                "trading_active": False,
+                "timestamp": datetime.now().isoformat()
+            }
+        
         # DataHandler is now initialized in WebSocketManager.__init__
         
         # Parse symbols parameter if provided
@@ -1397,12 +1445,18 @@ async def get_live_orderbook_signals(symbols: str = None):
             
             symbols_to_analyze = available_symbols[:20]
         
-        # Create OrderBook strategy for analysis using main config
+        # Create OrderBook strategy for analysis using trading state parameters
+        strategy_params = trading_state.get("strategy_params", {})
         strategy = OrderBookStrategy(
             config=config,
-            order_book_level=2,
-            volume_imbalance_threshold=0.6,
-            large_trade_threshold=10000.0
+            order_book_level=strategy_params.get("order_book_level", 2),
+            trade_history_limit=strategy_params.get("trade_history_limit", 1000),
+            bid_ask_spread_threshold=strategy_params.get("bid_ask_spread_threshold", 0.001),
+            volume_imbalance_threshold=strategy_params.get("volume_imbalance_threshold", 0.6),
+            large_trade_threshold=strategy_params.get("large_trade_threshold", 10000.0),
+            data_analysis_mode=strategy_params.get("data_analysis_mode", "recent"),
+            recent_data_limit=strategy_params.get("recent_data_limit", 50),
+            sampling_ratio=strategy_params.get("sampling_ratio", 0.1)
         )
         
         live_signals = []
@@ -1592,6 +1646,16 @@ async def start_simulated_trading(request: dict):
         initial_balance = request.get('initial_balance', 10000.0)
         max_positions = request.get('max_positions', 5)
         position_size_percent = request.get('position_size_percent', 20.0)
+        strategy_type = request.get('strategy_type', 'orderbook')
+        strategy_params = request.get('strategy_params', {})
+        
+        # Update trading state
+        trading_state["is_active"] = True
+        trading_state["strategy_type"] = strategy_type
+        trading_state["strategy_params"] = strategy_params
+        trading_state["symbols"] = symbols
+        trading_state["mode"] = "simulated"
+        trading_state["last_signal_check"] = datetime.now()
         
         # Reset and configure simulated trading
         simulated_trading.reset_portfolio()
@@ -1604,13 +1668,17 @@ async def start_simulated_trading(request: dict):
         simulated_trading.start_trading(symbols)
         
         logger.info(f"Started simulated trading for {len(symbols)} symbols with ${initial_balance:,.2f}")
+        logger.info(f"Strategy: {strategy_type} with params: {strategy_params}")
         
         return {
             "status": "started",
             "symbols": symbols,
             "initial_balance": initial_balance,
             "max_positions": max_positions,
-            "position_size_percent": position_size_percent
+            "position_size_percent": position_size_percent,
+            "strategy_type": strategy_type,
+            "strategy_params": strategy_params,
+            "trading_active": True
         }
         
     except Exception as e:
@@ -1625,11 +1693,21 @@ async def stop_simulated_trading():
     
     try:
         simulated_trading.stop_trading()
+        
+        # Update trading state
+        trading_state["is_active"] = False
+        trading_state["strategy_type"] = None
+        trading_state["strategy_params"] = {}
+        trading_state["symbols"] = []
+        trading_state["mode"] = "simulated"
+        trading_state["last_signal_check"] = None
+        
         logger.info("Stopped simulated trading")
         
         return {
             "status": "stopped",
-            "message": "Simulated trading stopped and all positions closed"
+            "message": "Simulated trading stopped and all positions closed",
+            "trading_active": False
         }
         
     except Exception as e:
@@ -1708,6 +1786,26 @@ async def reset_simulated_trading():
         
     except Exception as e:
         logger.error(f"Failed to reset simulated trading: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/trading/state")
+async def get_trading_state():
+    """Get current trading state."""
+    await check_rate_limit()
+    
+    try:
+        return {
+            "trading_active": trading_state["is_active"],
+            "strategy_type": trading_state["strategy_type"],
+            "strategy_params": trading_state["strategy_params"],
+            "symbols": trading_state["symbols"],
+            "mode": trading_state["mode"],
+            "last_signal_check": trading_state["last_signal_check"].isoformat() if trading_state["last_signal_check"] else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get trading state: {e}")
         return {"error": str(e)}
 
 
