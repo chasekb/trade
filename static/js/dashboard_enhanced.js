@@ -101,6 +101,9 @@ class EnhancedTradingDashboard {
             lastTradeTime: null
         };
         this.statsUpdateInterval = null;
+        
+        // Strategy configuration visibility state
+        this.strategyConfigHidden = false;
     }
 
     getOrCreateSessionId() {
@@ -417,6 +420,59 @@ class EnhancedTradingDashboard {
             this.updateElement('session-duration', durationStr);
         }
     }
+    
+    // Strategy Configuration Hide/Show Methods
+    
+    hideStrategyConfiguration() {
+        const strategySection = document.getElementById('strategy-configuration-section');
+        const showStrategySection = document.getElementById('show-strategy-section');
+        
+        if (strategySection && showStrategySection) {
+            strategySection.style.display = 'none';
+            showStrategySection.classList.remove('hidden');
+            this.strategyConfigHidden = true;
+            this.saveStrategyConfigState();
+            
+            // Log the action
+            this.logTradingEvent('Strategy configuration hidden');
+        }
+    }
+    
+    showStrategyConfiguration() {
+        const strategySection = document.getElementById('strategy-configuration-section');
+        const showStrategySection = document.getElementById('show-strategy-section');
+        
+        if (strategySection && showStrategySection) {
+            strategySection.style.display = 'block';
+            showStrategySection.classList.add('hidden');
+            this.strategyConfigHidden = false;
+            this.saveStrategyConfigState();
+            
+            // Log the action
+            this.logTradingEvent('Strategy configuration shown');
+        }
+    }
+    
+    autoHideStrategyOnTradingStart() {
+        // Automatically hide strategy configuration when trading starts
+        // This provides a cleaner interface during active trading
+        if (this.liveTrading.isActive) {
+            this.hideStrategyConfiguration();
+        }
+    }
+    
+    restoreStrategyConfigState() {
+        // Restore strategy configuration visibility state from localStorage
+        const savedState = localStorage.getItem('strategy_config_hidden');
+        if (savedState === 'true') {
+            this.hideStrategyConfiguration();
+        }
+    }
+    
+    saveStrategyConfigState() {
+        // Save strategy configuration visibility state to localStorage
+        localStorage.setItem('strategy_config_hidden', this.strategyConfigHidden.toString());
+    }
 
     startAutoSave() {
         // Save session state every 30 seconds
@@ -451,6 +507,9 @@ class EnhancedTradingDashboard {
             
             // Check for existing session and restore state
             this.checkAndRestoreSession();
+            
+            // Restore strategy configuration visibility state
+            this.restoreStrategyConfigState();
         }, 100);
     }
 
@@ -666,6 +725,15 @@ class EnhancedTradingDashboard {
         // Trading stats refresh button
         document.getElementById('refresh-trading-stats')?.addEventListener('click', async () => {
             await this.loadTradingStats();
+        });
+        
+        // Strategy configuration hide/show buttons
+        document.getElementById('hide-strategy-btn')?.addEventListener('click', () => {
+            this.hideStrategyConfiguration();
+        });
+        
+        document.getElementById('show-strategy-btn')?.addEventListener('click', () => {
+            this.showStrategyConfiguration();
         });
         
         // Auto-refresh order book signals every 30 seconds when on live trading tab
@@ -1717,6 +1785,9 @@ class EnhancedTradingDashboard {
                 // Start trading stats updates
                 this.startTradingStatsUpdates();
                 this.tradingStats.sessionStartTime = new Date();
+                
+                // Auto-hide strategy configuration for cleaner interface
+                this.autoHideStrategyOnTradingStart();
             } else {
                 this.logTradingEvent(`Failed to start trading: ${data.error}`);
             }
@@ -1769,6 +1840,9 @@ class EnhancedTradingDashboard {
         
         // Stop trading stats updates
         this.stopTradingStatsUpdates();
+        
+        // Show strategy configuration again when trading stops
+        this.showStrategyConfiguration();
     }
 
     pauseLiveTrading() {
@@ -1796,6 +1870,9 @@ class EnhancedTradingDashboard {
         this.updateTradingControls();
         this.updateTradingStatus('emergency_stop');
         this.logTradingEvent('EMERGENCY STOP - All trading halted');
+        
+        // Show strategy configuration again after emergency stop
+        this.showStrategyConfiguration();
     }
 
     updateTradingControls() {
