@@ -228,6 +228,10 @@ class EnhancedTradingDashboard {
         // Start portfolio updates if trading is active
         if (this.liveTrading.isActive) {
             this.startPortfolioStatusUpdates();
+            // Also load order book signals if trading is active
+            this.loadOrderBookSignals();
+            // Only start auto-refresh if trading is actually active (not just restored)
+            this.startOrderBookAutoRefresh();
         }
     }
 
@@ -387,7 +391,7 @@ class EnhancedTradingDashboard {
             this.resetLiveTradingInputs();
             await this.loadLiveTradingProducts();
             await this.loadOrderBookSignals();
-            this.startOrderBookAutoRefresh();
+            // Don't start auto-refresh here - only when trading starts
         });
 
         // Trading mode selection
@@ -1493,6 +1497,9 @@ class EnhancedTradingDashboard {
                 this.updateTradingControls();
                 this.updateTradingStatus('active');
                 
+                // Load order book signals immediately
+                await this.loadOrderBookSignals();
+                
                 // Start live order book signals refresh
                 this.startOrderBookAutoRefresh();
                 
@@ -1578,6 +1585,10 @@ class EnhancedTradingDashboard {
     emergencyStop() {
         this.liveTrading.isActive = false;
         this.liveTrading.isPaused = false;
+        
+        // Stop auto-refresh
+        this.stopOrderBookAutoRefresh();
+        this.stopPortfolioStatusUpdates();
         
         // Close all positions if in live mode
         if (this.liveTrading.mode === 'live') {
