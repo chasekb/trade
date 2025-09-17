@@ -9,6 +9,8 @@ A comprehensive Python trading bot built with `coinbase-advanced-py` featuring r
 - **Intelligent Trading Strategies** (Simple Moving Average with Golden Cross/Death Cross)
 - **Risk Management** with stop-loss and take-profit mechanisms
 - **Data Storage** with CSV export for analysis
+- **Simulated Trading** with live portfolio management
+- **Order Book Analysis** with real-time signal generation
 
 ### 📊 Web Dashboard
 - **Real-time Data Visualization** with live price updates
@@ -16,6 +18,9 @@ A comprehensive Python trading bot built with `coinbase-advanced-py` featuring r
 - **Historical Data Analysis** with multiple timeframes
 - **Responsive Design** with Tailwind CSS
 - **WebSocket Integration** for live data streaming
+- **Live Trading Interface** with position management
+- **Trading Statistics Widget** with comprehensive metrics
+- **Strategy Configuration** with hide/show functionality
 
 ### 🧮 Advanced Backtesting
 - **Real Historical Data** from Coinbase API
@@ -30,6 +35,9 @@ A comprehensive Python trading bot built with `coinbase-advanced-py` featuring r
 - **Modern Python** with type hints and dataclasses
 - **Dependency Management** with uv
 - **Git Integration** with proper version control
+- **Database Persistence** with SQLite
+- **Session Management** with state restoration
+- **Rate Limiting** and error handling
 
 ## 🚀 Quick Start
 
@@ -88,43 +96,88 @@ uv run python scripts/backtest.py
 uv run python scripts/backtest_comprehensive.py
 ```
 
+## 📊 Project Statistics
+
+### Code Metrics
+- **Total Lines of Code**: ~44,000+ lines
+- **Python Files**: 23,887 lines (71 files)
+- **JavaScript Files**: 5,274 lines (3 files)
+- **HTML Templates**: 3,638 lines (6 files)
+- **Documentation**: 2,754 lines (22 files)
+- **Configuration**: 10,500+ lines (JSON, TOML, etc.)
+
+### Largest Components
+1. **`dashboard_enhanced.js`** - 4,633 lines (Frontend dashboard)
+2. **`trading_strategy.py`** - 3,440 lines (Trading strategies)
+3. **`web_server.py`** - 2,048 lines (FastAPI backend)
+4. **`dashboard_enhanced.html`** - 1,462 lines (UI templates)
+5. **`database_manager.py`** - 819 lines (Data persistence)
+
+## 🆕 Recent Updates
+
+### Latest Features (v2.0+)
+- **Trading Statistics Widget**: Comprehensive real-time metrics dashboard
+- **Strategy Configuration Hide/Show**: Cleaner interface during active trading
+- **Session State Persistence**: Maintains trading state across page refreshes
+- **Individual Trade Logging**: Detailed trade history in SQLite database
+- **Order Book Signal Generation**: Real-time trading signals from market data
+- **Enhanced WebSocket Management**: Improved connection stability and error handling
+- **Live Trading Interface**: Complete simulated trading with position management
+
+### Technical Improvements
+- **Database Integration**: SQLite for persistent data storage
+- **API Enhancements**: Comprehensive REST endpoints for trading data
+- **Frontend Optimization**: Real-time updates and responsive design
+- **Error Handling**: Robust error management and recovery
+- **Performance**: Optimized data processing and caching
+
 ## 📁 Project Structure
 
 ```
 trade/
-├── src/trade_bot/           # Core trading bot modules
+├── src/trade_bot/           # Core trading bot modules (23,887 lines)
 │   ├── __init__.py
 │   ├── config.py            # Configuration management
 │   ├── trading_bot.py       # Main trading bot class
-│   ├── trading_strategy.py  # Trading strategies
+│   ├── trading_strategy.py  # Trading strategies (3,440 lines)
 │   ├── websocket_client.py  # WebSocket client
 │   ├── data_handler.py      # Data storage and management
 │   ├── data_provider.py     # Historical data provider
 │   ├── backtester.py        # Backtesting engine
-│   └── web_server.py        # FastAPI web server
+│   ├── web_server.py        # FastAPI web server (2,048 lines)
+│   ├── database_manager.py  # SQLite database operations (819 lines)
+│   ├── simulated_trading_manager.py  # Live trading simulation
+│   └── orderbook_analyzer.py # Order book signal generation
 ├── scripts/                 # Executable scripts
 │   ├── web_dashboard.py     # Web dashboard launcher
 │   ├── backtest.py          # Simple backtesting
 │   └── backtest_comprehensive.py  # Advanced backtesting
-├── examples/                # Example usage scripts
-│   ├── test_trading_bot.py
-│   ├── test_websocket.py
-│   └── test_public_*.py
-├── tests/                   # Test suite
-│   ├── test_backtester.py
-│   ├── test_data_provider.py
-│   └── test_*.py
-├── templates/               # Web dashboard templates
-│   └── dashboard.html
-├── static/                  # Static web assets
-│   └── js/dashboard.js
-├── docs/                    # Documentation
+├── tests/                   # Comprehensive test suite
+│   ├── test_*.py            # Unit and integration tests
+│   ├── dashboard_test_suite.py  # Dashboard testing (866 lines)
+│   ├── integration_tests/   # Integration test suite
+│   └── fallback_tests/      # Fallback testing scenarios
+├── templates/               # Web dashboard templates (3,638 lines)
+│   ├── dashboard.html       # Basic dashboard
+│   └── dashboard_enhanced.html  # Enhanced dashboard (1,462 lines)
+├── static/                  # Static web assets (5,274 lines)
+│   ├── js/
+│   │   ├── dashboard.js     # Basic dashboard logic
+│   │   └── dashboard_enhanced.js  # Enhanced dashboard (4,633 lines)
+│   └── css/                 # Styling files
+├── docs/                    # Documentation (2,754 lines)
 │   ├── WEB_DASHBOARD_README.md
+│   ├── PROJECT_OVERVIEW.md
+│   ├── CHANGELOG.md
 │   └── *.md
 ├── outputs/                 # Generated data and results
-├── main.py                  # Main entry point
-├── pyproject.toml          # Project configuration
-└── requirements.txt        # Python dependencies
+├── test_outputs/           # Test-generated outputs
+├── rules/                  # Development rules and guidelines
+├── main.py                 # Main entry point
+├── pyproject.toml         # Project configuration
+├── requirements.txt       # Python dependencies
+├── trading_cache.db       # SQLite database for persistence
+└── backtests.db          # Backtest results database
 ```
 
 ## 🎯 Usage Examples
@@ -194,6 +247,14 @@ result = await backtester.run_backtest(historical_data)
 - Trade statistics
 - Best strategy identification
 
+### Live Trading Interface
+- **Real-time Portfolio Management** with position tracking
+- **Trading Statistics Widget** with comprehensive metrics
+- **Order Book Signal Generation** for market analysis
+- **Session State Persistence** across page refreshes
+- **Strategy Configuration** with hide/show functionality
+- **Live P&L Tracking** with real-time updates
+
 ## 🧪 Testing
 
 ```bash
@@ -218,8 +279,35 @@ uv run python -m pytest --cov=src/trade_bot
 - `GET /api/trading-metrics` - Performance metrics
 - `WebSocket /ws` - Real-time data stream
 
+### Live Trading API
+- `POST /api/simulated-trading/start` - Start simulated trading
+- `POST /api/simulated-trading/stop` - Stop simulated trading
+- `GET /api/simulated-trading/status` - Get trading status
+- `GET /api/portfolio/status` - Get portfolio information
+- `GET /api/positions` - Get open positions
+- `GET /api/trades/recent` - Get recent trades
+
+### Trading Statistics API
+- `GET /api/trades/stats` - Comprehensive trading statistics
+- `GET /api/trades/session/{session_id}` - Session-specific trades
+- `GET /api/trades/symbol/{symbol}` - Symbol-specific trades
+- `GET /api/trades/recent` - Recent trades across all sessions
+
+### Order Book API
+- `GET /api/orderbook/live-signals` - Live order book signals
+- `GET /api/orderbook/signals/{symbol}` - Symbol-specific signals
+
+### Session Management API
+- `POST /api/session/save` - Save trading session state
+- `GET /api/session/load/{session_id}` - Load trading session state
+- `POST /api/session/save-dashboard` - Save dashboard UI state
+- `GET /api/session/load-dashboard/{session_id}` - Load dashboard UI state
+- `GET /api/session/active` - Get active trading sessions
+- `POST /api/session/deactivate/{session_id}` - Deactivate session
+
 ### Health Check
 - `GET /api/health` - Server health status
+- `GET /api/realtime-status` - Real-time data collection status
 
 ## 🔧 Configuration Options
 
