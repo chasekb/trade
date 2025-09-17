@@ -23,6 +23,7 @@ from .product_fetcher import ProductFetcher
 from .backtester import Backtester
 from .trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy, ATRStrategy, FibonacciRetracementStrategy, OrderBookStrategy
 from .database import BacktestDatabase
+from .database_manager import DatabaseManager
 import math
 from .websocket_client import WebSocketClient
 from .data_handler import DataHandler
@@ -125,6 +126,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize database
 backtest_db = BacktestDatabase()
+db_manager = DatabaseManager("trading_cache.db")
 
 # Global variables for data storage
 real_time_data: Dict[str, Dict] = {}
@@ -1648,6 +1650,7 @@ async def start_simulated_trading(request: dict):
         position_size_percent = request.get('position_size_percent', 20.0)
         strategy_type = request.get('strategy_type', 'orderbook')
         strategy_params = request.get('strategy_params', {})
+        session_id = request.get('session_id')
         
         # Update trading state
         trading_state["is_active"] = True
@@ -1656,6 +1659,7 @@ async def start_simulated_trading(request: dict):
         trading_state["symbols"] = symbols
         trading_state["mode"] = "simulated"
         trading_state["last_signal_check"] = datetime.now()
+        trading_state["session_id"] = session_id
         
         # Reset and configure simulated trading
         simulated_trading.reset_portfolio()
@@ -1663,6 +1667,10 @@ async def start_simulated_trading(request: dict):
         simulated_trading.cash_balance = initial_balance
         simulated_trading.max_positions = max_positions
         simulated_trading.position_size_percent = position_size_percent / 100.0
+        
+        # Set session info for trade logging
+        if session_id:
+            simulated_trading.set_session_info(db_manager, session_id)
         
         # Start trading
         simulated_trading.start_trading(symbols)
@@ -1806,6 +1814,227 @@ async def get_trading_state():
         
     except Exception as e:
         logger.error(f"Failed to get trading state: {e}")
+        return {"error": str(e)}
+
+
+# Session State Management Endpoints
+
+@app.post("/api/session/save")
+async def save_session_state(request: dict):
+    """Save current trading session state."""
+    await check_rate_limit()
+    
+    try:
+        session_id = request.get('session_id')
+        if not session_id:
+            return {"error": "Session ID is required"}
+        
+        # Get current trading state
+        trading_status = await get_simulated_trading_status()
+        if trading_status.get('error'):
+            return {"error": "Failed to get current trading status"}
+        
+        # Prepare session data
+        session_data = {
+            'is_active': trading_status.get('is_trading', False),
+            'trading_mode': 'simulated',  # Currently only simulated trading
+            'symbol_mode': 'universe' if len(trading_status.get('symbols', [])) > 1 else 'single',
+            'strategy_type': trading_status.get('strategy_type'),
+            'strategy_params': trading_status.get('strategy_params', {}),
+            'symbols': trading_status.get('symbols', []),
+            'universe_config': {},
+            'portfolio_state': trading_status.get('portfolio', {}),
+            'positions': trading_status.get('open_positions', []),
+            'recent_trades': trading_status.get('recent_trades', [])
+        }
+        
+        # Save to database
+        success = db_manager.save_trading_session(session_id, session_data)
+        
+        if success:
+            return {"status": "saved", "session_id": session_id}
+        else:
+            return {"error": "Failed to save session state"}
+            
+    except Exception as e:
+        logger.error(f"Failed to save session state: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/session/load/{session_id}")
+async def load_session_state(session_id: str):
+    """Load trading session state."""
+    await check_rate_limit()
+    
+    try:
+        session_data = db_manager.load_trading_session(session_id)
+        if not session_data:
+            return {"error": "Session not found"}
+        
+        return {
+            "status": "loaded",
+            "session_id": session_id,
+            "session_data": session_data
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to load session state: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/api/session/save-dashboard")
+async def save_dashboard_state(request: dict):
+    """Save dashboard UI state."""
+    await check_rate_limit()
+    
+    try:
+        session_id = request.get('session_id')
+        state_data = request.get('state_data', {})
+        
+        if not session_id:
+            return {"error": "Session ID is required"}
+        
+        success = db_manager.save_dashboard_state(session_id, state_data)
+        
+        if success:
+            return {"status": "saved", "session_id": session_id}
+        else:
+            return {"error": "Failed to save dashboard state"}
+            
+    except Exception as e:
+        logger.error(f"Failed to save dashboard state: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/session/load-dashboard/{session_id}")
+async def load_dashboard_state(session_id: str):
+    """Load dashboard UI state."""
+    await check_rate_limit()
+    
+    try:
+        state_data = db_manager.load_dashboard_state(session_id)
+        if not state_data:
+            return {"error": "Dashboard state not found"}
+        
+        return {
+            "status": "loaded",
+            "session_id": session_id,
+            "state_data": state_data
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to load dashboard state: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/session/active")
+async def get_active_sessions():
+    """Get all active trading sessions."""
+    await check_rate_limit()
+    
+    try:
+        sessions = db_manager.get_active_sessions()
+        return {
+            "status": "success",
+            "sessions": sessions
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get active sessions: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/api/session/deactivate/{session_id}")
+async def deactivate_session(session_id: str):
+    """Deactivate a trading session."""
+    await check_rate_limit()
+    
+    try:
+        success = db_manager.deactivate_session(session_id)
+        
+        if success:
+            return {"status": "deactivated", "session_id": session_id}
+        else:
+            return {"error": "Failed to deactivate session"}
+            
+    except Exception as e:
+        logger.error(f"Failed to deactivate session: {e}")
+        return {"error": str(e)}
+
+
+# Trade History Endpoints
+
+@app.get("/api/trades/session/{session_id}")
+async def get_trades_by_session(session_id: str, limit: int = 100):
+    """Get trades for a specific session."""
+    await check_rate_limit()
+    
+    try:
+        trades = db_manager.get_trades_by_session(session_id, limit)
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "trades": trades,
+            "count": len(trades)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get trades by session: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/trades/symbol/{symbol}")
+async def get_trades_by_symbol(symbol: str, limit: int = 100):
+    """Get trades for a specific symbol."""
+    await check_rate_limit()
+    
+    try:
+        trades = db_manager.get_trades_by_symbol(symbol, limit)
+        return {
+            "status": "success",
+            "symbol": symbol,
+            "trades": trades,
+            "count": len(trades)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get trades by symbol: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/trades/recent")
+async def get_recent_trades(limit: int = 50):
+    """Get recent trades across all sessions."""
+    await check_rate_limit()
+    
+    try:
+        trades = db_manager.get_recent_trades(limit)
+        return {
+            "status": "success",
+            "trades": trades,
+            "count": len(trades)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get recent trades: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/trades/stats")
+async def get_trade_stats(session_id: str = None):
+    """Get trading statistics."""
+    await check_rate_limit()
+    
+    try:
+        stats = db_manager.get_trade_stats(session_id)
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "stats": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get trade stats: {e}")
         return {"error": str(e)}
 
 

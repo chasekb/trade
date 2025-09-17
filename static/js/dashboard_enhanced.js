@@ -76,6 +76,174 @@ class EnhancedTradingDashboard {
         // Reset inputs to defaults on page load
         this.resetBacktestingInputs();
         this.resetLiveTradingInputs();
+        
+        // Session management
+        this.sessionId = this.getOrCreateSessionId();
+        this.autoSaveInterval = null;
+    }
+
+    getOrCreateSessionId() {
+        // Try to get existing session ID from localStorage
+        let sessionId = localStorage.getItem('trading_session_id');
+        if (!sessionId) {
+            // Create new session ID
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('trading_session_id', sessionId);
+        }
+        return sessionId;
+    }
+
+    async checkAndRestoreSession() {
+        try {
+            // Check if there's an active session
+            const response = await fetch('/api/session/active');
+            const data = await response.json();
+            
+            if (data.sessions && data.sessions.length > 0) {
+                // Find our session or use the most recent one
+                let sessionToRestore = data.sessions.find(s => s.session_id === this.sessionId);
+                if (!sessionToRestore) {
+                    sessionToRestore = data.sessions[0]; // Use most recent
+                    this.sessionId = sessionToRestore.session_id;
+                    localStorage.setItem('trading_session_id', this.sessionId);
+                }
+                
+                // Load session data
+                await this.loadSessionData(this.sessionId);
+            }
+        } catch (error) {
+            console.error('Error checking for existing session:', error);
+        }
+    }
+
+    async loadSessionData(sessionId) {
+        try {
+            const response = await fetch(`/api/session/load/${sessionId}`);
+            const data = await response.json();
+            
+            if (data.session_data) {
+                this.restoreTradingState(data.session_data);
+                this.logTradingEvent(`Restored session: ${sessionId}`);
+            }
+        } catch (error) {
+            console.error('Error loading session data:', error);
+        }
+    }
+
+    async saveSessionState() {
+        try {
+            const sessionData = {
+                is_active: this.liveTrading.isActive,
+                trading_mode: this.liveTrading.mode,
+                symbol_mode: this.liveTrading.symbolMode,
+                strategy_type: this.liveTrading.strategy?.type,
+                strategy_params: this.liveTrading.strategy?.params || {},
+                symbols: this.liveTrading.strategy?.symbols || [],
+                universe_config: this.liveTrading.universe,
+                portfolio_state: this.liveTrading.portfolio,
+                positions: this.liveTrading.positions,
+                recent_trades: this.liveTrading.history
+            };
+
+            const response = await fetch('/api/session/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    session_data: sessionData
+                })
+            });
+
+            const result = await response.json();
+            if (result.status === 'saved') {
+                console.log('Session state saved successfully');
+            }
+        } catch (error) {
+            console.error('Error saving session state:', error);
+        }
+    }
+
+    async saveDashboardState() {
+        try {
+            const stateData = {
+                current_symbol: this.currentSymbol,
+                current_timeframe: this.currentCandlePeriod,
+                chart_settings: {
+                    yAxisRange: this.currentYAxisRange,
+                    layout: this.currentLayout
+                },
+                ui_preferences: {
+                    percentageTimeframe: this.percentageTimeframe,
+                    subscriptions: this.subscriptions
+                }
+            };
+
+            const response = await fetch('/api/session/save-dashboard', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    state_data: stateData
+                })
+            });
+
+            const result = await response.json();
+            if (result.status === 'saved') {
+                console.log('Dashboard state saved successfully');
+            }
+        } catch (error) {
+            console.error('Error saving dashboard state:', error);
+        }
+    }
+
+    restoreTradingState(sessionData) {
+        if (!sessionData) return;
+
+        // Restore trading state
+        this.liveTrading.isActive = sessionData.is_active || false;
+        this.liveTrading.mode = sessionData.trading_mode || 'simulated';
+        this.liveTrading.symbolMode = sessionData.symbol_mode || 'single';
+        this.liveTrading.strategy = sessionData.strategy_type ? {
+            type: sessionData.strategy_type,
+            params: sessionData.strategy_params || {},
+            symbols: sessionData.symbols || []
+        } : null;
+        this.liveTrading.universe = sessionData.universe_config || this.liveTrading.universe;
+        this.liveTrading.portfolio = sessionData.portfolio_state || this.liveTrading.portfolio;
+        this.liveTrading.positions = sessionData.positions || [];
+        this.liveTrading.history = sessionData.recent_trades || [];
+
+        // Update UI
+        this.updateTradingControls();
+        this.updateTradingStatus(this.liveTrading.isActive ? 'active' : 'stopped');
+        
+        // Update positions and history tables
+        this.updateOpenPositions(this.liveTrading.positions);
+        this.updateRecentTrades(this.liveTrading.history);
+
+        // Start portfolio updates if trading is active
+        if (this.liveTrading.isActive) {
+            this.startPortfolioStatusUpdates();
+        }
+    }
+
+    startAutoSave() {
+        // Save session state every 30 seconds
+        this.autoSaveInterval = setInterval(() => {
+            this.saveSessionState();
+            this.saveDashboardState();
+        }, 30000);
+    }
+
+    stopAutoSave() {
+        if (this.autoSaveInterval) {
+            clearInterval(this.autoSaveInterval);
+            this.autoSaveInterval = null;
+        }
     }
 
     init() {
@@ -90,6 +258,9 @@ class EnhancedTradingDashboard {
             this.loadInitialData();
             this.startDataRefresh();
             this.loadRealtimeStatus();
+            
+            // Check for existing session and restore state
+            this.checkAndRestoreSession();
         }, 100);
     }
 
@@ -1296,7 +1467,8 @@ class EnhancedTradingDashboard {
                     strategy_params: params,
                     initial_balance: 10000.0,
                     max_positions: maxPositions,
-                    position_size_percent: positionSize
+                    position_size_percent: positionSize,
+                    session_id: this.sessionId
                 })
             });
 
@@ -1339,6 +1511,10 @@ class EnhancedTradingDashboard {
                 
                 // Start periodic portfolio status updates
                 this.startPortfolioStatusUpdates();
+                
+                // Start auto-save and save initial state
+                this.startAutoSave();
+                await this.saveSessionState();
             } else {
                 this.logTradingEvent(`Failed to start trading: ${data.error}`);
             }
@@ -1384,6 +1560,10 @@ class EnhancedTradingDashboard {
         this.updateTradingControls();
         this.updateTradingStatus('stopped');
         this.logTradingEvent('Trading stopped');
+        
+        // Stop auto-save and save final state
+        this.stopAutoSave();
+        await this.saveSessionState();
     }
 
     pauseLiveTrading() {
@@ -1531,25 +1711,65 @@ class EnhancedTradingDashboard {
     }
 
     updateOpenPositions(positions) {
-        // This would update the open positions display
-        // For now, just log the positions
-        if (positions && positions.length > 0) {
-            this.logTradingEvent(`Open positions: ${positions.length}`);
-            positions.forEach(position => {
-                this.logTradingEvent(`Position: ${position.symbol} ${position.side} ${position.quantity} @ $${position.entry_price}`);
-            });
+        // Update the open positions display
+        const tbody = document.getElementById('positions-tbody');
+        if (!tbody) return;
+
+        if (!positions || positions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No open positions</td></tr>';
+            return;
         }
+
+        tbody.innerHTML = positions.map(position => `
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${position.symbol}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.side}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.quantity.toFixed(6)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.entry_price.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.current_price.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm ${position.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${position.unrealized_pnl >= 0 ? '+' : ''}$${position.unrealized_pnl.toFixed(2)}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <button onclick="dashboard.closePosition('${position.symbol}')" 
+                            class="text-red-600 hover:text-red-900">Close</button>
+                </td>
+            </tr>
+        `).join('');
+
+        // Also log for debugging
+        this.logTradingEvent(`Updated ${positions.length} open positions`);
     }
 
     updateRecentTrades(trades) {
-        // This would update the recent trades display
-        // For now, just log the trades
-        if (trades && trades.length > 0) {
-            this.logTradingEvent(`Recent trades: ${trades.length}`);
-            trades.forEach(trade => {
-                this.logTradingEvent(`Trade: ${trade.action} ${trade.quantity} ${trade.symbol} @ $${trade.price}`);
-            });
+        // Update the trading history display
+        const tbody = document.getElementById('history-tbody');
+        if (!tbody) return;
+
+        if (!trades || trades.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No trading history</td></tr>';
+            return;
         }
+
+        tbody.innerHTML = trades.map(trade => `
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(trade.timestamp).toLocaleString()}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${trade.symbol}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${trade.side === 'buy' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                        ${trade.side.toUpperCase()}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${trade.quantity.toFixed(6)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${trade.price.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm ${trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}
+                </td>
+            </tr>
+        `).join('');
+
+        // Also log for debugging
+        this.logTradingEvent(`Updated ${trades.length} recent trades`);
     }
 
     startPortfolioStatusUpdates() {

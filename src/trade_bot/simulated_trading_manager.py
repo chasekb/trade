@@ -70,11 +70,16 @@ class SimulatedTradingManager:
     """Manages simulated trading based on live order book signals."""
     
     def __init__(self, initial_balance: float = 10000.0, max_positions: int = 5, 
-                 position_size_percent: float = 20.0, trading_fee: float = 0.001):
+                 position_size_percent: float = 20.0, trading_fee: float = 0.001,
+                 db_manager=None, session_id: str = None):
         self.initial_balance = initial_balance
         self.max_positions = max_positions
         self.position_size_percent = position_size_percent / 100.0  # Convert to decimal
         self.trading_fee = trading_fee
+        
+        # Database and session
+        self.db_manager = db_manager
+        self.session_id = session_id
         
         # Portfolio state
         self.cash_balance = initial_balance
@@ -92,6 +97,32 @@ class SimulatedTradingManager:
         self.last_signal_check = None
         
         logger.info(f"SimulatedTradingManager initialized with ${initial_balance:,.2f} balance")
+    
+    def set_session_info(self, db_manager, session_id: str) -> None:
+        """Set database manager and session ID for trade logging."""
+        self.db_manager = db_manager
+        self.session_id = session_id
+        logger.info(f"Session info set: {session_id}")
+    
+    def _save_trade_to_db(self, trade: Trade) -> None:
+        """Save trade to database if db_manager is available."""
+        if self.db_manager and self.session_id:
+            try:
+                trade_data = {
+                    'trade_id': trade.trade_id,
+                    'session_id': self.session_id,
+                    'symbol': trade.symbol,
+                    'side': trade.side,
+                    'quantity': trade.quantity,
+                    'price': trade.price,
+                    'timestamp': trade.timestamp.isoformat(),
+                    'reason': trade.reason,
+                    'pnl': trade.pnl,
+                    'fees': trade.fees
+                }
+                self.db_manager.save_trade(trade_data)
+            except Exception as e:
+                logger.error(f"Failed to save trade to database: {e}")
     
     def start_trading(self, symbols: List[str]) -> None:
         """Start simulated trading for specified symbols."""
@@ -272,6 +303,9 @@ class SimulatedTradingManager:
         )
         self.trades.append(trade)
         
+        # Save trade to database
+        self._save_trade_to_db(trade)
+        
         logger.info(f"Executed BUY: {quantity:.6f} {symbol} at ${price:.2f} (fees: ${fees:.2f})")
         
         return {
@@ -313,6 +347,9 @@ class SimulatedTradingManager:
             fees=fees
         )
         self.trades.append(trade)
+        
+        # Save trade to database
+        self._save_trade_to_db(trade)
         
         # Close position
         self._close_position(symbol, "Sell signal executed")
