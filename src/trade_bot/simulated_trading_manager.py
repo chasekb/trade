@@ -1,0 +1,382 @@
+"""
+Simulated Trading Manager for Live Order Book Signals.
+
+This module handles simulated trading based on live order book signals,
+including position tracking, portfolio management, and trade execution.
+"""
+
+import asyncio
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass, asdict
+import json
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Position:
+    """Represents a trading position."""
+    symbol: str
+    side: str  # 'long' or 'short'
+    quantity: float
+    entry_price: float
+    entry_time: datetime
+    current_price: float
+    unrealized_pnl: float
+    realized_pnl: float = 0.0
+    status: str = 'open'  # 'open', 'closed'
+    
+    def update_price(self, new_price: float) -> None:
+        """Update current price and calculate unrealized PnL."""
+        self.current_price = new_price
+        if self.side == 'long':
+            self.unrealized_pnl = (new_price - self.entry_price) * self.quantity
+        else:  # short
+            self.unrealized_pnl = (self.entry_price - new_price) * self.quantity
+
+
+@dataclass
+class Trade:
+    """Represents a completed trade."""
+    trade_id: str
+    symbol: str
+    side: str  # 'buy' or 'sell'
+    quantity: float
+    price: float
+    timestamp: datetime
+    reason: str
+    pnl: float = 0.0
+    fees: float = 0.0
+
+
+@dataclass
+class Portfolio:
+    """Represents the trading portfolio."""
+    cash_balance: float
+    total_value: float
+    positions: Dict[str, Position]
+    trades: List[Trade]
+    total_pnl: float
+    total_fees: float
+    max_drawdown: float
+    win_rate: float
+    total_trades: int
+    winning_trades: int
+
+
+class SimulatedTradingManager:
+    """Manages simulated trading based on live order book signals."""
+    
+    def __init__(self, initial_balance: float = 10000.0, max_positions: int = 5, 
+                 position_size_percent: float = 20.0, trading_fee: float = 0.001):
+        self.initial_balance = initial_balance
+        self.max_positions = max_positions
+        self.position_size_percent = position_size_percent / 100.0  # Convert to decimal
+        self.trading_fee = trading_fee
+        
+        # Portfolio state
+        self.cash_balance = initial_balance
+        self.positions: Dict[str, Position] = {}
+        self.trades: List[Trade] = []
+        self.trade_counter = 0
+        
+        # Performance tracking
+        self.peak_value = initial_balance
+        self.max_drawdown = 0.0
+        
+        # Trading state
+        self.is_trading = False
+        self.symbols_to_trade: List[str] = []
+        self.last_signal_check = None
+        
+        logger.info(f"SimulatedTradingManager initialized with ${initial_balance:,.2f} balance")
+    
+    def start_trading(self, symbols: List[str]) -> None:
+        """Start simulated trading for specified symbols."""
+        self.symbols_to_trade = symbols
+        self.is_trading = True
+        self.last_signal_check = datetime.now()
+        logger.info(f"Started simulated trading for symbols: {symbols}")
+    
+    def stop_trading(self) -> None:
+        """Stop simulated trading and close all positions."""
+        self.is_trading = False
+        
+        # Close all open positions
+        for symbol, position in list(self.positions.items()):
+            if position.status == 'open':
+                self._close_position(symbol, "Trading stopped")
+        
+        logger.info("Stopped simulated trading")
+    
+    def get_portfolio_summary(self) -> Portfolio:
+        """Get current portfolio summary."""
+        total_value = self.cash_balance
+        total_pnl = 0.0
+        total_fees = sum(trade.fees for trade in self.trades)
+        winning_trades = sum(1 for trade in self.trades if trade.pnl > 0)
+        
+        # Calculate total value including open positions
+        for position in self.positions.values():
+            if position.status == 'open':
+                total_value += position.quantity * position.current_price
+                total_pnl += position.unrealized_pnl
+        
+        # Calculate win rate
+        total_trades = len(self.trades)
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+        
+        # Update peak value and max drawdown
+        if total_value > self.peak_value:
+            self.peak_value = total_value
+        else:
+            current_drawdown = (self.peak_value - total_value) / self.peak_value
+            self.max_drawdown = max(self.max_drawdown, current_drawdown)
+        
+        return Portfolio(
+            cash_balance=self.cash_balance,
+            total_value=total_value,
+            positions=self.positions.copy(),
+            trades=self.trades.copy(),
+            total_pnl=total_pnl,
+            total_fees=total_fees,
+            max_drawdown=self.max_drawdown,
+            win_rate=win_rate,
+            total_trades=total_trades,
+            winning_trades=winning_trades
+        )
+    
+    async def process_signals(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Process live order book signals and execute trades."""
+        if not self.is_trading:
+            return {"status": "not_trading", "message": "Trading is not active"}
+        
+        executed_trades = []
+        closed_positions = []
+        
+        for signal in signals:
+            symbol = signal.get('symbol')
+            if symbol not in self.symbols_to_trade:
+                continue
+            
+            signal_action = signal.get('signal')
+            signal_generated = signal.get('signal_generated', False)
+            current_price = signal.get('price', 0.0)
+            signal_strength = signal.get('signal_strength', 0.0)
+            
+            if not signal_generated or signal_action == 'hold':
+                continue
+            
+            # Update existing position price
+            if symbol in self.positions and self.positions[symbol].status == 'open':
+                self.positions[symbol].update_price(current_price)
+            
+            # Process buy signals
+            if signal_action == 'buy':
+                trade_result = await self._process_buy_signal(symbol, current_price, signal_strength, signal)
+                if trade_result:
+                    executed_trades.append(trade_result)
+            
+            # Process sell signals
+            elif signal_action == 'sell':
+                trade_result = await self._process_sell_signal(symbol, current_price, signal_strength, signal)
+                if trade_result:
+                    executed_trades.append(trade_result)
+                    if symbol in self.positions and self.positions[symbol].status == 'closed':
+                        closed_positions.append(symbol)
+        
+        self.last_signal_check = datetime.now()
+        
+        return {
+            "status": "processed",
+            "executed_trades": len(executed_trades),
+            "closed_positions": len(closed_positions),
+            "trades": executed_trades,
+            "portfolio": self.get_portfolio_summary()
+        }
+    
+    async def _process_buy_signal(self, symbol: str, price: float, strength: float, signal: Dict) -> Optional[Dict]:
+        """Process a buy signal."""
+        # Check if we already have a position
+        if symbol in self.positions and self.positions[symbol].status == 'open':
+            logger.debug(f"Already have open position for {symbol}, skipping buy signal")
+            return None
+        
+        # Check if we have reached max positions
+        open_positions = sum(1 for p in self.positions.values() if p.status == 'open')
+        if open_positions >= self.max_positions:
+            logger.debug(f"Max positions ({self.max_positions}) reached, skipping buy signal for {symbol}")
+            return None
+        
+        # Calculate position size
+        available_cash = self.cash_balance * self.position_size_percent
+        quantity = available_cash / price
+        
+        if quantity < 0.001:  # Minimum quantity threshold
+            logger.debug(f"Insufficient cash for {symbol} position")
+            return None
+        
+        # Calculate fees
+        fees = price * quantity * self.trading_fee
+        total_cost = (price * quantity) + fees
+        
+        if total_cost > self.cash_balance:
+            logger.debug(f"Insufficient balance for {symbol} trade")
+            return None
+        
+        # Execute buy trade
+        return await self._execute_buy_trade(symbol, price, quantity, fees, signal)
+    
+    async def _process_sell_signal(self, symbol: str, price: float, strength: float, signal: Dict) -> Optional[Dict]:
+        """Process a sell signal."""
+        if symbol not in self.positions or self.positions[symbol].status != 'open':
+            logger.debug(f"No open position for {symbol}, skipping sell signal")
+            return None
+        
+        position = self.positions[symbol]
+        return await self._execute_sell_trade(symbol, price, position.quantity, signal)
+    
+    async def _execute_buy_trade(self, symbol: str, price: float, quantity: float, fees: float, signal: Dict) -> Dict:
+        """Execute a buy trade."""
+        self.trade_counter += 1
+        trade_id = f"sim_{self.trade_counter}_{symbol}_{int(datetime.now().timestamp())}"
+        
+        # Update cash balance
+        total_cost = (price * quantity) + fees
+        self.cash_balance -= total_cost
+        
+        # Create position
+        position = Position(
+            symbol=symbol,
+            side='long',
+            quantity=quantity,
+            entry_price=price,
+            entry_time=datetime.now(),
+            current_price=price,
+            unrealized_pnl=0.0
+        )
+        self.positions[symbol] = position
+        
+        # Create trade record
+        trade = Trade(
+            trade_id=trade_id,
+            symbol=symbol,
+            side='buy',
+            quantity=quantity,
+            price=price,
+            timestamp=datetime.now(),
+            reason=signal.get('signal_reason', 'Order book signal'),
+            fees=fees
+        )
+        self.trades.append(trade)
+        
+        logger.info(f"Executed BUY: {quantity:.6f} {symbol} at ${price:.2f} (fees: ${fees:.2f})")
+        
+        return {
+            "trade_id": trade_id,
+            "action": "buy",
+            "symbol": symbol,
+            "quantity": quantity,
+            "price": price,
+            "fees": fees,
+            "reason": trade.reason
+        }
+    
+    async def _execute_sell_trade(self, symbol: str, price: float, quantity: float, signal: Dict) -> Dict:
+        """Execute a sell trade."""
+        position = self.positions[symbol]
+        
+        # Calculate PnL
+        pnl = (price - position.entry_price) * quantity
+        fees = price * quantity * self.trading_fee
+        net_pnl = pnl - fees
+        
+        # Update cash balance
+        proceeds = (price * quantity) - fees
+        self.cash_balance += proceeds
+        
+        # Create trade record
+        self.trade_counter += 1
+        trade_id = f"sim_{self.trade_counter}_{symbol}_{int(datetime.now().timestamp())}"
+        
+        trade = Trade(
+            trade_id=trade_id,
+            symbol=symbol,
+            side='sell',
+            quantity=quantity,
+            price=price,
+            timestamp=datetime.now(),
+            reason=signal.get('signal_reason', 'Order book signal'),
+            pnl=net_pnl,
+            fees=fees
+        )
+        self.trades.append(trade)
+        
+        # Close position
+        self._close_position(symbol, "Sell signal executed")
+        
+        logger.info(f"Executed SELL: {quantity:.6f} {symbol} at ${price:.2f} (PnL: ${net_pnl:.2f}, fees: ${fees:.2f})")
+        
+        return {
+            "trade_id": trade_id,
+            "action": "sell",
+            "symbol": symbol,
+            "quantity": quantity,
+            "price": price,
+            "pnl": net_pnl,
+            "fees": fees,
+            "reason": trade.reason
+        }
+    
+    def _close_position(self, symbol: str, reason: str) -> None:
+        """Close a position."""
+        if symbol in self.positions:
+            self.positions[symbol].status = 'closed'
+            logger.info(f"Closed position for {symbol}: {reason}")
+    
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """Get all open positions."""
+        open_positions = []
+        for symbol, position in self.positions.items():
+            if position.status == 'open':
+                open_positions.append({
+                    "symbol": symbol,
+                    "side": position.side,
+                    "quantity": position.quantity,
+                    "entry_price": position.entry_price,
+                    "current_price": position.current_price,
+                    "unrealized_pnl": position.unrealized_pnl,
+                    "entry_time": position.entry_time.isoformat(),
+                    "duration": str(datetime.now() - position.entry_time)
+                })
+        return open_positions
+    
+    def get_recent_trades(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent trades."""
+        recent_trades = sorted(self.trades, key=lambda t: t.timestamp, reverse=True)[:limit]
+        return [
+            {
+                "trade_id": trade.trade_id,
+                "symbol": trade.symbol,
+                "side": trade.side,
+                "quantity": trade.quantity,
+                "price": trade.price,
+                "pnl": trade.pnl,
+                "fees": trade.fees,
+                "timestamp": trade.timestamp.isoformat(),
+                "reason": trade.reason
+            }
+            for trade in recent_trades
+        ]
+    
+    def reset_portfolio(self) -> None:
+        """Reset portfolio to initial state."""
+        self.cash_balance = self.initial_balance
+        self.positions.clear()
+        self.trades.clear()
+        self.trade_counter = 0
+        self.peak_value = self.initial_balance
+        self.max_drawdown = 0.0
+        logger.info("Portfolio reset to initial state")

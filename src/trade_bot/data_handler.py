@@ -3,9 +3,16 @@
 import csv
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import pandas as pd
+import aiohttp
+import asyncio
+import base64
+import hmac
+import hashlib
+import time
+import json
 
 from .config import TradingConfig
 
@@ -26,6 +33,17 @@ class DataHandler:
         self.matches_data: List[Dict[str, Any]] = []
         self.status_data: List[Dict[str, Any]] = []
         self.market_trades_data: List[Dict[str, Any]] = []
+        
+        # API configuration
+        self.base_url = "https://api.coinbase.com/api/v3/brokerage"
+        self.public_base_url = "https://api.exchange.coinbase.com"
+        self.api_key = getattr(config, 'api_key', None)
+        self.api_secret = getattr(config, 'api_secret', None)
+        self.passphrase = getattr(config, 'passphrase', None)
+        
+        # Debug logging
+        logger.info(f"DataHandler initialized with API key: {'SET' if self.api_key else 'NOT SET'}")
+        logger.info(f"DataHandler initialized with API secret: {'SET' if self.api_secret else 'NOT SET'}")
         
         # Ensure output directory exists
         os.makedirs(config.output_dir, exist_ok=True)
@@ -335,3 +353,312 @@ class DataHandler:
                 stats['max_price'] = df['price'].max()
         
         return stats
+    
+    def _generate_jwt_token(self, method: str, uri: str) -> str:
+        """Generate JWT token for Coinbase Advanced Trade API authentication."""
+        try:
+            from coinbase import jwt_generator
+            
+            # Format the JWT URI according to the SDK
+            jwt_uri = jwt_generator.format_jwt_uri(method, uri)
+            
+            # Build the JWT token using the official SDK
+            jwt = jwt_generator.build_rest_jwt(jwt_uri, self.api_key, self.api_secret)
+            
+            return jwt
+        except ImportError:
+            logger.error("coinbase-advanced-py package not installed. Install with: pip install coinbase-advanced-py")
+            return None
+        except Exception as e:
+            logger.error(f"Error generating JWT token: {e}")
+            return None
+    
+    def _create_auth_headers(self, method: str, path: str, body: str = "") -> Dict[str, str]:
+        """Create authentication headers for Coinbase Advanced Trade API using JWT."""
+        if not all([self.api_key, self.api_secret]):
+            logger.warning("API credentials not configured, using public endpoints only")
+            return {}
+        
+        logger.info(f"Creating JWT token for API key: {self.api_key[:8]}...")
+        jwt_token = self._generate_jwt_token(method, path)
+        if not jwt_token:
+            logger.warning("Failed to generate JWT token, using public endpoints only")
+            return {}
+        
+        logger.info(f"Generated JWT token: {jwt_token[:50]}...")
+        
+        return {
+            'Authorization': f'Bearer {jwt_token}',
+            'Content-Type': 'application/json'
+        }
+    
+    async def _make_api_request(self, method: str, endpoint: str, params: Dict[str, Any] = None, use_auth: bool = True) -> Optional[Dict[str, Any]]:
+        """Make API request to Coinbase Advanced Trade API."""
+        try:
+            url = f"{self.base_url}{endpoint}"
+            headers = {}
+            
+            if use_auth and all([self.api_key, self.api_secret]):
+                logger.info(f"Making authenticated API request to {endpoint}")
+                headers = self._create_auth_headers(method, endpoint)
+            else:
+                headers = {'Content-Type': 'application/json'}
+                logger.info(f"Making public API request to {endpoint}")
+            
+            async with aiohttp.ClientSession() as session:
+                if method.upper() == 'GET':
+                    async with session.get(url, headers=headers, params=params) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        elif response.status == 401:
+                            logger.warning(f"Authentication required for {endpoint}, trying public endpoint")
+                            return None
+                        else:
+                            logger.error(f"API request failed: {response.status} - {await response.text()}")
+                            return None
+                else:
+                    async with session.post(url, headers=headers, json=params) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        elif response.status == 401:
+                            logger.warning(f"Authentication required for {endpoint}, trying public endpoint")
+                            return None
+                        else:
+                            logger.error(f"API request failed: {response.status} - {await response.text()}")
+                            return None
+        except Exception as e:
+            logger.error(f"Error making API request: {e}")
+            return None
+    
+    async def _make_public_api_request(self, endpoint: str, params: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """Make public API request to Coinbase Pro (no authentication required)."""
+        try:
+            url = f"{self.public_base_url}{endpoint}"
+            headers = {'Content-Type': 'application/json'}
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=params) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        logger.error(f"Public API request failed: {response.status} - {await response.text()}")
+                        return None
+        except Exception as e:
+            logger.error(f"Error making public API request: {e}")
+            return None
+    
+    async def get_product_book(self, product_id: str, limit: int = 20) -> Optional[Dict[str, Any]]:
+        """Get product book data from Coinbase API."""
+        try:
+            # Try authenticated API first
+            endpoint = "/product_book"
+            params = {
+                'product_id': product_id,
+                'limit': limit
+            }
+            
+            response = await self._make_api_request('GET', endpoint, params, use_auth=True)
+            if response and 'pricebook' in response:
+                logger.info(f"Retrieved product book data for {product_id} from authenticated API")
+                return response['pricebook']
+            
+            # Fallback to public API
+            logger.info(f"Trying public API for product book data for {product_id}")
+            public_endpoint = f"/products/{product_id}/book"
+            public_params = {'level': 2}
+            
+            response = await self._make_public_api_request(public_endpoint, public_params)
+            if response:
+                # Convert public API format to match expected format
+                # Public API returns bids/asks as arrays of [price, size]
+                # We need to convert to arrays of {price, size} objects
+                bids = []
+                for bid in response.get('bids', []):
+                    if len(bid) >= 2:
+                        bids.append({'price': str(bid[0]), 'size': str(bid[1])})
+                
+                asks = []
+                for ask in response.get('asks', []):
+                    if len(ask) >= 2:
+                        asks.append({'price': str(ask[0]), 'size': str(ask[1])})
+                
+                order_book = {
+                    'product_id': product_id,
+                    'bids': bids,
+                    'asks': asks,
+                    'time': response.get('time', datetime.now().isoformat())
+                }
+                logger.info(f"Retrieved product book data for {product_id} from public API")
+                return order_book
+            else:
+                logger.warning(f"No product book data available for {product_id}")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Error getting product book for {product_id}: {e}")
+            return None
+    
+    async def get_historical_candles(self, product_id: str, start_time: int, end_time: int, granularity: int = 60) -> List[Dict[str, Any]]:
+        """Get historical candles from Coinbase API."""
+        try:
+            # Try authenticated API first
+            endpoint = "/product_candles"
+            params = {
+                'product_id': product_id,
+                'start': start_time,
+                'end': end_time,
+                'granularity': granularity
+            }
+            
+            response = await self._make_api_request('GET', endpoint, params, use_auth=True)
+            if response and 'candles' in response:
+                logger.info(f"Retrieved {len(response['candles'])} historical candles for {product_id} from authenticated API")
+                return response['candles']
+            
+            # Fallback to public API
+            logger.info(f"Trying public API for historical candles for {product_id}")
+            public_endpoint = f"/products/{product_id}/candles"
+            public_params = {
+                'start': datetime.fromtimestamp(start_time).isoformat(),
+                'end': datetime.fromtimestamp(end_time).isoformat(),
+                'granularity': granularity
+            }
+            
+            response = await self._make_public_api_request(public_endpoint, public_params)
+            if response:
+                # Convert public API format to match expected format
+                candles = []
+                for candle in response:
+                    candles.append({
+                        'time': datetime.fromtimestamp(candle[0]).isoformat(),
+                        'low': str(candle[1]),
+                        'high': str(candle[2]),
+                        'open': str(candle[3]),
+                        'close': str(candle[4]),
+                        'volume': str(candle[5])
+                    })
+                logger.info(f"Retrieved {len(candles)} historical candles for {product_id} from public API")
+                return candles
+            else:
+                logger.warning(f"No historical candles data available for {product_id}")
+                return []
+            
+        except Exception as e:
+            logger.error(f"Error getting historical candles for {product_id}: {e}")
+            return []
+    
+    async def get_recent_trades(self, product_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get recent trades from Coinbase API."""
+        try:
+            # Try authenticated API first
+            endpoint = "/market_trades"
+            params = {
+                'product_id': product_id,
+                'limit': limit
+            }
+            
+            response = await self._make_api_request('GET', endpoint, params, use_auth=True)
+            if response and 'trades' in response:
+                logger.info(f"Retrieved {len(response['trades'])} recent trades for {product_id} from authenticated API")
+                return response['trades']
+            
+            # Fallback to public API
+            logger.info(f"Trying public API for recent trades for {product_id}")
+            public_endpoint = f"/products/{product_id}/trades"
+            public_params = {'limit': limit}
+            
+            response = await self._make_public_api_request(public_endpoint, public_params)
+            if response:
+                # Convert public API format to match expected format
+                trades = []
+                for trade in response:
+                    trades.append({
+                        'trade_id': trade.get('trade_id', ''),
+                        'product_id': product_id,
+                        'price': str(trade.get('price', '0')),
+                        'size': str(trade.get('size', '0')),
+                        'side': trade.get('side', ''),
+                        'time': trade.get('time', datetime.now().isoformat())
+                    })
+                logger.info(f"Retrieved {len(trades)} recent trades for {product_id} from public API")
+                return trades
+            else:
+                logger.warning(f"No recent trades data available for {product_id}")
+                return []
+            
+        except Exception as e:
+            logger.error(f"Error getting recent trades for {product_id}: {e}")
+            return []
+    
+    async def get_product_info(self, product_id: str) -> Optional[Dict[str, Any]]:
+        """Get product information from Coinbase Advanced Trade API."""
+        try:
+            endpoint = f"/products/{product_id}"
+            
+            response = await self._make_api_request('GET', endpoint)
+            if response and 'product' in response:
+                logger.info(f"Retrieved product info for {product_id}")
+                return response['product']
+            else:
+                logger.warning(f"No product info available for {product_id}")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Error getting product info for {product_id}: {e}")
+            return None
+    
+    async def get_best_bid_ask(self, product_id: str) -> Optional[Dict[str, Any]]:
+        """Get best bid/ask prices from Coinbase Advanced Trade API."""
+        try:
+            endpoint = "/best_bid_ask"
+            params = {'product_ids': product_id}
+            
+            response = await self._make_api_request('GET', endpoint, params)
+            if response and 'pricebooks' in response and response['pricebooks']:
+                logger.info(f"Retrieved best bid/ask for {product_id}")
+                return response['pricebooks'][0]
+            else:
+                logger.warning(f"No best bid/ask data available for {product_id}")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Error getting best bid/ask for {product_id}: {e}")
+            return None
+    
+    async def get_products(self) -> List[Dict[str, Any]]:
+        """Get list of all available products from Coinbase API."""
+        try:
+            # Try authenticated API first
+            endpoint = "/products"
+            
+            response = await self._make_api_request('GET', endpoint, use_auth=True)
+            if response and 'products' in response:
+                logger.info(f"Retrieved {len(response['products'])} products from authenticated API")
+                return response['products']
+            
+            # Fallback to public API
+            logger.info("Trying public API for products list")
+            public_endpoint = "/products"
+            
+            response = await self._make_public_api_request(public_endpoint)
+            if response:
+                # Convert public API format to match expected format
+                products = []
+                for product in response:
+                    products.append({
+                        'product_id': product.get('id', ''),
+                        'base_currency_id': product.get('base_currency', ''),
+                        'quote_currency_id': product.get('quote_currency', ''),
+                        'display_name': product.get('display_name', ''),
+                        'status': product.get('status', ''),
+                        'trading_disabled': product.get('trading_disabled', False)
+                    })
+                logger.info(f"Retrieved {len(products)} products from public API")
+                return products
+            else:
+                logger.warning("No products data available")
+                return []
+            
+        except Exception as e:
+            logger.error(f"Error getting products: {e}")
+            return []

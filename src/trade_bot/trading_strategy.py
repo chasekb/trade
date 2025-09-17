@@ -2810,8 +2810,8 @@ class OrderBookStrategy:
         if not order_book.get('bids') or not order_book.get('asks'):
             return 0.0
         
-        best_bid = order_book['bids'][0]['price']
-        best_ask = order_book['asks'][0]['price']
+        best_bid = float(order_book['bids'][0]['price'])
+        best_ask = float(order_book['asks'][0]['price'])
         
         if best_bid == 0 or best_ask == 0:
             return 0.0
@@ -2824,8 +2824,8 @@ class OrderBookStrategy:
         if not order_book.get('bids') or not order_book.get('asks'):
             return 0.0
         
-        bid_volume = sum(order['size'] for order in order_book['bids'][:levels])
-        ask_volume = sum(order['size'] for order in order_book['asks'][:levels])
+        bid_volume = sum(float(order['size']) for order in order_book['bids'][:levels])
+        ask_volume = sum(float(order['size']) for order in order_book['asks'][:levels])
         
         if bid_volume + ask_volume == 0:
             return 0.0
@@ -2838,8 +2838,8 @@ class OrderBookStrategy:
         if not order_book.get('bids') or not order_book.get('asks'):
             return 0.0
         
-        best_bid = order_book['bids'][0]['price']
-        best_ask = order_book['asks'][0]['price']
+        best_bid = float(order_book['bids'][0]['price'])
+        best_ask = float(order_book['asks'][0]['price'])
         
         return (best_bid + best_ask) / 2
     
@@ -2866,6 +2866,8 @@ class OrderBookStrategy:
     
     def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal based on order book and trade analysis."""
+        logger.info(f"Starting signal generation for price {current_price}")
+        
         # Check stop loss first (highest priority) - only if enabled
         if self.position > 0 and self.enable_stop_loss:
             loss_percentage = (current_price - self.entry_price) / self.entry_price
@@ -2948,9 +2950,12 @@ class OrderBookStrategy:
             
             # Check for large trades using optimized analysis
             if len(self.trade_history) >= 1:
+                logger.info(f"Analyzing trades: {len(self.trade_history)} trades in history")
                 # Get trades based on analysis mode
                 analysis_trades = self._get_analysis_data('trades')
+                logger.info(f"Got {len(analysis_trades)} trades for analysis")
                 trade_analysis = self._incremental_trade_analysis()
+                logger.info(f"Trade analysis result: {trade_analysis}")
                 
                 if trade_analysis['large_trades'] > 0:
                     if trade_analysis['buy_pressure'] > 0.6:
@@ -3056,6 +3061,175 @@ class OrderBookStrategy:
             'best_bid': current_order_book['bids'][0]['price'] if current_order_book.get('bids') else 0.0,
             'best_ask': current_order_book['asks'][0]['price'] if current_order_book.get('asks') else 0.0
         }
+
+    def get_detailed_signal_analysis(self, current_price: float, timestamp: datetime) -> Dict[str, Any]:
+        """Get detailed analysis of signal criteria and deltas."""
+        analysis = {
+            'signal_generated': False,
+            'signal_type': None,
+            'signal_reason': None,
+            'criteria_analysis': {
+                'bid_ask_squeeze': {
+                    'enabled': len(self.order_book_history) >= 10,
+                    'current_spread': 0.0,
+                    'historical_avg_spread': 0.0,
+                    'threshold_ratio': 0.5,
+                    'threshold_spread': 0.0,
+                    'meets_criteria': False,
+                    'delta_to_threshold': 0.0,
+                    'analysis': 'Insufficient data'
+                },
+                'volume_imbalance_buy': {
+                    'enabled': len(self.order_book_history) >= 1,
+                    'current_imbalance': 0.0,
+                    'threshold': self.volume_imbalance_threshold,
+                    'meets_criteria': False,
+                    'delta_to_threshold': 0.0,
+                    'analysis': 'Insufficient data'
+                },
+                'volume_imbalance_sell': {
+                    'enabled': len(self.order_book_history) >= 1,
+                    'current_imbalance': 0.0,
+                    'threshold': -self.volume_imbalance_threshold,
+                    'meets_criteria': False,
+                    'delta_to_threshold': 0.0,
+                    'analysis': 'Insufficient data'
+                },
+                'large_trade_buy': {
+                    'enabled': len(self.trade_history) >= 1,
+                    'large_trades_count': 0,
+                    'buy_pressure': 0.0,
+                    'threshold': 0.6,
+                    'meets_criteria': False,
+                    'delta_to_threshold': 0.0,
+                    'analysis': 'Insufficient data'
+                },
+                'large_trade_sell': {
+                    'enabled': len(self.trade_history) >= 1,
+                    'large_trades_count': 0,
+                    'sell_pressure': 0.0,
+                    'threshold': 0.6,
+                    'meets_criteria': False,
+                    'delta_to_threshold': 0.0,
+                    'analysis': 'Insufficient data'
+                }
+            }
+        }
+        
+        # Analyze bid-ask squeeze
+        if len(self.order_book_history) >= 10:
+            current_order_book = self.order_book_history[-1]['order_book']
+            metrics = self._calculate_metrics_cached(current_order_book)
+            current_spread = metrics['spread']
+            
+            historical_spreads = []
+            for ob_data in self.order_book_history[-10:]:
+                ob_metrics = self._calculate_metrics_cached(ob_data['order_book'])
+                historical_spreads.append(ob_metrics['spread'])
+            
+            avg_spread = sum(historical_spreads) / len(historical_spreads)
+            threshold_spread = avg_spread * 0.5
+            meets_criteria = current_spread < threshold_spread
+            delta = (threshold_spread - current_spread) / threshold_spread if threshold_spread > 0 else 0
+            
+            analysis['criteria_analysis']['bid_ask_squeeze'].update({
+                'current_spread': current_spread,
+                'historical_avg_spread': avg_spread,
+                'threshold_spread': threshold_spread,
+                'meets_criteria': meets_criteria,
+                'delta_to_threshold': delta,
+                'analysis': f"Current: {current_spread:.4f}, Threshold: {threshold_spread:.4f}, {'✓ MEETS' if meets_criteria else '✗ MISSES'}"
+            })
+            
+            if meets_criteria:
+                analysis['signal_generated'] = True
+                analysis['signal_type'] = 'bid_ask_squeeze'
+                analysis['signal_reason'] = f"Bid-ask squeeze detected: spread {current_spread:.4f}"
+        
+        # Analyze volume imbalance
+        if len(self.order_book_history) >= 1:
+            current_order_book = self.order_book_history[-1]['order_book']
+            metrics = self._calculate_metrics_cached(current_order_book)
+            current_imbalance = metrics['imbalance']
+            
+            # Buy imbalance analysis
+            buy_threshold = self.volume_imbalance_threshold
+            buy_meets = current_imbalance > buy_threshold
+            buy_delta = (current_imbalance - buy_threshold) / buy_threshold if buy_threshold > 0 else 0
+            
+            analysis['criteria_analysis']['volume_imbalance_buy'].update({
+                'current_imbalance': current_imbalance,
+                'meets_criteria': buy_meets,
+                'delta_to_threshold': buy_delta,
+                'analysis': f"Current: {current_imbalance:.3f}, Threshold: {buy_threshold:.3f}, {'✓ MEETS' if buy_meets else '✗ MISSES'}"
+            })
+            
+            # Sell imbalance analysis
+            sell_threshold = -self.volume_imbalance_threshold
+            sell_meets = current_imbalance < sell_threshold
+            sell_delta = (sell_threshold - current_imbalance) / abs(sell_threshold) if sell_threshold != 0 else 0
+            
+            analysis['criteria_analysis']['volume_imbalance_sell'].update({
+                'current_imbalance': current_imbalance,
+                'meets_criteria': sell_meets,
+                'delta_to_threshold': sell_delta,
+                'analysis': f"Current: {current_imbalance:.3f}, Threshold: {sell_threshold:.3f}, {'✓ MEETS' if sell_meets else '✗ MISSES'}"
+            })
+            
+            if not analysis['signal_generated']:
+                if buy_meets:
+                    analysis['signal_generated'] = True
+                    analysis['signal_type'] = 'volume_imbalance_buy'
+                    analysis['signal_reason'] = f"Volume imbalance buy: {current_imbalance:.3f}"
+                elif sell_meets:
+                    analysis['signal_generated'] = True
+                    analysis['signal_type'] = 'volume_imbalance_sell'
+                    analysis['signal_reason'] = f"Volume imbalance sell: {current_imbalance:.3f}"
+        
+        # Analyze large trades
+        if len(self.trade_history) >= 1:
+            analysis_trades = self._get_analysis_data('trades')
+            trade_analysis = self._incremental_trade_analysis()
+            
+            large_trades = trade_analysis['large_trades']
+            buy_pressure = trade_analysis['buy_pressure']
+            sell_pressure = trade_analysis['sell_pressure']
+            
+            # Buy pressure analysis
+            buy_meets = large_trades > 0 and buy_pressure > 0.6
+            buy_delta = (buy_pressure - 0.6) / 0.6 if 0.6 > 0 else 0
+            
+            analysis['criteria_analysis']['large_trade_buy'].update({
+                'large_trades_count': large_trades,
+                'buy_pressure': buy_pressure,
+                'meets_criteria': buy_meets,
+                'delta_to_threshold': buy_delta,
+                'analysis': f"Large trades: {large_trades}, Buy pressure: {buy_pressure:.3f}, Threshold: 0.6, {'✓ MEETS' if buy_meets else '✗ MISSES'}"
+            })
+            
+            # Sell pressure analysis
+            sell_meets = large_trades > 0 and sell_pressure > 0.6
+            sell_delta = (sell_pressure - 0.6) / 0.6 if 0.6 > 0 else 0
+            
+            analysis['criteria_analysis']['large_trade_sell'].update({
+                'large_trades_count': large_trades,
+                'sell_pressure': sell_pressure,
+                'meets_criteria': sell_meets,
+                'delta_to_threshold': sell_delta,
+                'analysis': f"Large trades: {large_trades}, Sell pressure: {sell_pressure:.3f}, Threshold: 0.6, {'✓ MEETS' if sell_meets else '✗ MISSES'}"
+            })
+            
+            if not analysis['signal_generated']:
+                if buy_meets:
+                    analysis['signal_generated'] = True
+                    analysis['signal_type'] = 'large_trade_buy'
+                    analysis['signal_reason'] = f"Large trade buy pressure: {buy_pressure:.3f}"
+                elif sell_meets:
+                    analysis['signal_generated'] = True
+                    analysis['signal_type'] = 'large_trade_sell'
+                    analysis['signal_reason'] = f"Large trade sell pressure: {sell_pressure:.3f}"
+        
+        return analysis
     
     def _is_cache_valid(self) -> bool:
         """Check if cached metrics are still valid."""
@@ -3146,6 +3320,15 @@ class OrderBookStrategy:
         """Optimized trade flow analysis using Polars, numpy, or Python fallback."""
         if not trades:
             return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': 0}
+        
+        # Debug logging to understand data structure
+        logger.info(f"Analyzing {len(trades)} trades")
+        if trades:
+            logger.info(f"First trade structure: {type(trades[0])} - {trades[0]}")
+            if isinstance(trades[0], dict) and 'trade' in trades[0]:
+                logger.info(f"First trade data: {trades[0]['trade']}")
+            else:
+                logger.info(f"First trade is not wrapped: {trades[0]}")
         
         # Try Polars first (highest performance)
         if self.polars_optimizer and self.polars_optimizer.polars_available:

@@ -47,6 +47,11 @@ class PolarsOptimizer:
             return {'buy_pressure': 0.0, 'sell_pressure': 0.0, 'large_trades': 0}
         
         try:
+            # Debug logging
+            logger.info(f"Polars analyzing {len(trades)} trades")
+            if trades:
+                logger.info(f"First trade in Polars: {type(trades[0])} - {trades[0]}")
+            
             # Convert trades to Polars DataFrame
             trade_data = []
             for trade_data_item in trades:

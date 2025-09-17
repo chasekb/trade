@@ -215,6 +215,8 @@ class EnhancedTradingDashboard {
             this.switchTab('live-trading');
             this.resetLiveTradingInputs();
             await this.loadLiveTradingProducts();
+            await this.loadOrderBookSignals();
+            this.startOrderBookAutoRefresh();
         });
 
         // Trading mode selection
@@ -230,22 +232,36 @@ class EnhancedTradingDashboard {
             radio.addEventListener('change', (e) => {
                 this.liveTrading.symbolMode = e.target.value;
                 this.updateSymbolModeUI();
+                // Refresh order book signals when symbol mode changes
+                this.loadOrderBookSignals();
             });
         });
 
         // Universe type selection
         document.getElementById('universe-type')?.addEventListener('change', (e) => {
             this.updateUniverseSelection(e.target.value);
+            // Refresh order book signals when universe type changes
+            this.loadOrderBookSignals();
+        });
+
+        // Single symbol selection
+        document.getElementById('live-trading-symbol')?.addEventListener('change', () => {
+            // Refresh order book signals when single symbol changes
+            this.loadOrderBookSignals();
         });
 
         // Custom symbol management
         document.getElementById('add-custom-symbol')?.addEventListener('click', () => {
             this.addCustomSymbol();
+            // Refresh order book signals when custom symbols change
+            this.loadOrderBookSignals();
         });
 
         document.getElementById('custom-symbol-input')?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 this.addCustomSymbol();
+                // Refresh order book signals when custom symbols change
+                this.loadOrderBookSignals();
             }
         });
 
@@ -280,6 +296,14 @@ class EnhancedTradingDashboard {
         document.getElementById('emergency-stop')?.addEventListener('click', () => {
             this.emergencyStop();
         });
+        
+        // Order book signals refresh button
+        document.getElementById('refresh-orderbook-signals')?.addEventListener('click', async () => {
+            await this.loadOrderBookSignals();
+        });
+        
+        // Auto-refresh order book signals every 30 seconds when on live trading tab
+        this.orderBookRefreshInterval = null;
     }
 
     async loadLiveTradingProducts() {
@@ -301,6 +325,272 @@ class EnhancedTradingDashboard {
             } catch (error) {
                 console.error('Error loading products for live trading:', error);
             }
+        }
+    }
+
+    getSelectedSymbols() {
+        // Get the current trading symbol mode
+        const symbolMode = document.querySelector('input[name="trading-symbol-mode"]:checked')?.value;
+        
+        if (symbolMode === 'universe') {
+            // Get universe symbols
+            const universeType = document.getElementById('universe-type')?.value;
+            
+            if (universeType === 'custom') {
+                // Get custom symbols from the universe widget
+                return this.liveTrading.universe.customSymbols || [];
+            } else {
+                // Get predefined universe symbols
+                return this.liveTrading.universe.symbols || [];
+            }
+        } else {
+            // Single symbol mode
+            const symbol = document.getElementById('live-trading-symbol')?.value;
+            return symbol ? [symbol] : [];
+        }
+    }
+
+    async loadOrderBookSignals() {
+        try {
+            // Get selected symbols from strategy configuration
+            const selectedSymbols = this.getSelectedSymbols();
+            
+            // Build API URL with symbols parameter
+            let apiUrl = '/api/orderbook/live-signals';
+            if (selectedSymbols && selectedSymbols.length > 0) {
+                const symbolsParam = selectedSymbols.join(',');
+                apiUrl += `?symbols=${encodeURIComponent(symbolsParam)}`;
+            }
+            
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading order book signals:', data.error);
+                this.updateOrderBookSignalsTable([]);
+                return;
+            }
+            
+            this.updateOrderBookSignalsTable(data.signals);
+            this.updateOrderBookStatistics(data);
+
+        } catch (error) {
+            console.error('Error loading order book signals:', error);
+            this.updateOrderBookSignalsTable([]);
+        }
+    }
+
+    updateOrderBookSignalsTable(signals) {
+        const tableBody = document.getElementById('orderbook-signals-table');
+        if (!tableBody) return;
+        
+        if (signals.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="10" class="px-6 py-4 text-center text-gray-500">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>No order book signals available
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tableBody.innerHTML = signals.map(signal => {
+            // Determine signal class based on signal and data status
+            let signalClass = 'text-gray-600 bg-gray-50';
+            if (signal.data_status === 'sufficient') {
+                signalClass = signal.signal === 'buy' ? 'text-green-600 bg-green-50' : 
+                             signal.signal === 'sell' ? 'text-red-600 bg-red-50' : 
+                             'text-gray-600 bg-gray-50';
+            } else if (signal.data_status === 'insufficient') {
+                signalClass = 'text-yellow-600 bg-yellow-50';
+            } else {
+                signalClass = 'text-gray-400 bg-gray-100';
+            }
+            
+            const strengthColor = signal.signal_strength >= 0.7 ? 'text-green-600' : 
+                                 signal.signal_strength >= 0.4 ? 'text-yellow-600' : 
+                                 'text-red-600';
+            
+            // Get criteria analysis
+            const criteria = signal.criteria_analysis || {};
+            const squeeze = criteria.bid_ask_squeeze || {};
+            const imbalanceBuy = criteria.volume_imbalance_buy || {};
+            const imbalanceSell = criteria.volume_imbalance_sell || {};
+            const largeTradeBuy = criteria.large_trade_buy || {};
+            const largeTradeSell = criteria.large_trade_sell || {};
+            
+            // Helper function to get status color
+            const getStatusColor = (meets, enabled) => {
+                if (!enabled) return 'text-gray-400';
+                return meets ? 'text-green-600' : 'text-red-600';
+            };
+            
+            // Helper function to get delta color
+            const getDeltaColor = (delta) => {
+                if (delta >= 0.8) return 'text-green-600';
+                if (delta >= 0.5) return 'text-yellow-600';
+                if (delta >= 0.2) return 'text-orange-600';
+                return 'text-red-600';
+            };
+            
+            // Get data status indicator
+            const getDataStatusIcon = (status) => {
+                switch (status) {
+                    case 'sufficient': return '✓';
+                    case 'insufficient': return '⚠';
+                    case 'none': return '✗';
+                    default: return '?';
+                }
+            };
+            
+            const getDataStatusColor = (status) => {
+                switch (status) {
+                    case 'sufficient': return 'text-green-600';
+                    case 'insufficient': return 'text-yellow-600';
+                    case 'none': return 'text-red-600';
+                    default: return 'text-gray-400';
+                }
+            };
+            
+            return `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center space-x-2">
+                            <div class="text-sm font-medium text-gray-900">${signal.symbol}</div>
+                            <span class="text-xs ${getDataStatusColor(signal.data_status)}" title="Data Status: ${signal.data_status}">
+                                ${getDataStatusIcon(signal.data_status)}
+                            </span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">$${signal.price.toFixed(2)}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${signalClass}">
+                            ${signal.data_status === 'sufficient' ? signal.signal.toUpperCase() : 
+                              signal.data_status === 'insufficient' ? 'WAITING' : 'NO DATA'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                                <div class="bg-blue-600 h-2 rounded-full" style="width: ${signal.signal_strength * 100}%"></div>
+                            </div>
+                            <span class="text-sm font-medium ${strengthColor}">${signal.signal_strength.toFixed(2)}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-xs">
+                            <div class="flex items-center space-x-1">
+                                <span class="${getStatusColor(squeeze.meets_criteria, squeeze.enabled)}">
+                                    ${squeeze.enabled ? (squeeze.meets_criteria ? '✓' : '✗') : '○'}
+                                </span>
+                                <span class="text-gray-600">${squeeze.enabled ? squeeze.delta_to_threshold.toFixed(2) : 'N/A'}</span>
+                            </div>
+                            <div class="text-gray-500 text-xs mt-1">
+                                ${squeeze.enabled ? `T: ${squeeze.threshold_spread.toFixed(4)}` : 'No data'}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-xs">
+                            <div class="flex items-center space-x-1">
+                                <span class="${getStatusColor(imbalanceBuy.meets_criteria, imbalanceBuy.enabled)}">
+                                    ${imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? '✓' : '✗') : '○'}
+                                </span>
+                                <span class="text-gray-600">${imbalanceBuy.enabled ? imbalanceBuy.delta_to_threshold.toFixed(2) : 'N/A'}</span>
+                            </div>
+                            <div class="text-gray-500 text-xs mt-1">
+                                ${imbalanceBuy.enabled ? `T: ${imbalanceBuy.threshold.toFixed(2)}` : 'No data'}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-xs">
+                            <div class="flex items-center space-x-1">
+                                <span class="${getStatusColor(largeTradeBuy.meets_criteria, largeTradeBuy.enabled)}">
+                                    ${largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? '✓' : '✗') : '○'}
+                                </span>
+                                <span class="text-gray-600">${largeTradeBuy.enabled ? largeTradeBuy.delta_to_threshold.toFixed(2) : 'N/A'}</span>
+                            </div>
+                            <div class="text-gray-500 text-xs mt-1">
+                                ${largeTradeBuy.enabled ? `Trades: ${largeTradeBuy.large_trades_count}` : 'No data'}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">${signal.spread.toFixed(4)}%</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">${signal.volume.toFixed(2)}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <button onclick="this.nextElementSibling.classList.toggle('hidden')" 
+                                class="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                            <i class="fas fa-info-circle mr-1"></i>Details
+                        </button>
+                        <div class="hidden absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg p-4 mt-1 max-w-md">
+                            <div class="text-xs space-y-2">
+                                <div><strong>Signal Type:</strong> ${signal.signal_type || 'None'}</div>
+                                <div><strong>Reason:</strong> ${signal.signal_reason}</div>
+                                <div class="border-t pt-2">
+                                    <div><strong>Squeeze:</strong> ${squeeze.analysis || 'N/A'}</div>
+                                    <div><strong>Imbalance Buy:</strong> ${imbalanceBuy.analysis || 'N/A'}</div>
+                                    <div><strong>Imbalance Sell:</strong> ${imbalanceSell.analysis || 'N/A'}</div>
+                                    <div><strong>Large Trade Buy:</strong> ${largeTradeBuy.analysis || 'N/A'}</div>
+                                    <div><strong>Large Trade Sell:</strong> ${largeTradeSell.analysis || 'N/A'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    updateOrderBookStatistics(data) {
+        const totalAnalyzed = document.getElementById('total-analyzed');
+        const activeSignals = document.getElementById('active-signals');
+        const lastUpdated = document.getElementById('last-updated');
+        const avgStrength = document.getElementById('avg-strength');
+        
+        if (totalAnalyzed) {
+            totalAnalyzed.textContent = data.total_analyzed || 0;
+        }
+        
+        if (activeSignals) {
+            const activeCount = data.signals.filter(s => s.signal_generated === true).length;
+            activeSignals.textContent = activeCount;
+        }
+        
+        if (lastUpdated) {
+            const now = new Date();
+            lastUpdated.textContent = now.toLocaleTimeString();
+        }
+        
+        if (avgStrength && data.signals.length > 0) {
+            const avg = data.signals.reduce((sum, s) => sum + s.signal_strength, 0) / data.signals.length;
+            avgStrength.textContent = avg.toFixed(2);
+        }
+    }
+
+    startOrderBookAutoRefresh() {
+        // Clear existing interval
+        if (this.orderBookRefreshInterval) {
+            clearInterval(this.orderBookRefreshInterval);
+        }
+        
+        // Start new interval - refresh every 30 seconds
+        this.orderBookRefreshInterval = setInterval(async () => {
+            await this.loadOrderBookSignals();
+        }, 30000);
+    }
+
+    stopOrderBookAutoRefresh() {
+        if (this.orderBookRefreshInterval) {
+            clearInterval(this.orderBookRefreshInterval);
+            this.orderBookRefreshInterval = null;
         }
     }
 
@@ -3045,6 +3335,11 @@ class EnhancedTradingDashboard {
         if (buttonElement) {
             buttonElement.classList.add('active', 'border-white', 'text-white');
             buttonElement.classList.remove('border-transparent', 'text-white', 'text-opacity-80');
+        }
+        
+        // Stop order book auto-refresh when leaving live trading tab
+        if (tabName !== 'live-trading') {
+            this.stopOrderBookAutoRefresh();
         }
         
         // Load data for specific tabs if needed

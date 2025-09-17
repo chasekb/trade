@@ -26,6 +26,7 @@ from .database import BacktestDatabase
 import math
 from .websocket_client import WebSocketClient
 from .data_handler import DataHandler
+from .simulated_trading_manager import SimulatedTradingManager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -133,7 +134,17 @@ websocket_clients: List[WebSocket] = []
 
 # Configuration
 config = TradingConfig.from_env()
+logger.info(f"DEBUG: Config loaded - API key: {'SET' if config.api_key else 'NOT SET'}")
+logger.info(f"DEBUG: Config loaded - API secret: {'SET' if config.api_secret else 'NOT SET'}")
 product_fetcher = ProductFetcher()
+
+# Simulated Trading Manager
+simulated_trading = SimulatedTradingManager(
+    initial_balance=10000.0,
+    max_positions=5,
+    position_size_percent=20.0,
+    trading_fee=0.001
+)
 
 
 def clean_for_json(data):
@@ -148,6 +159,10 @@ def clean_for_json(data):
         return data
     elif isinstance(data, datetime):
         return data.isoformat()
+    elif hasattr(data, 'item'):  # numpy scalar types
+        return data.item()
+    elif hasattr(data, 'tolist'):  # numpy arrays
+        return data.tolist()
     else:
         return data
 
@@ -243,6 +258,7 @@ class WebSocketManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
         self.websocket_client = None
+        self.data_handler = DataHandler(config)
     
     async def connect(self, websocket: WebSocket):
         """Accept a new WebSocket connection."""
@@ -277,7 +293,6 @@ class WebSocketManager:
         """Start the real-time data feed with all subscription types."""
         if not self.websocket_client:
             self.websocket_client = WebSocketClient(config)
-            self.data_handler = DataHandler(config)
             
             # Register message handlers for Coinbase channel names
             # Per documentation: https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/websocket/websocket-channels
@@ -294,6 +309,9 @@ class WebSocketManager:
             
             # Start the data collection task
             asyncio.create_task(self._collect_real_time_data())
+            
+            # Start the simulated trading task
+            asyncio.create_task(self._process_simulated_trading())
     
     async def _run_websocket_client(self):
         """Run the websocket client in the background."""
@@ -1330,6 +1348,367 @@ async def health_check():
             "limit_per_hour": 10000
         }
     }
+
+@app.get("/api/orderbook/live-signals")
+async def get_live_orderbook_signals(symbols: str = None):
+    """Get live order book signals for specified symbols or top 20 symbols."""
+    await check_rate_limit()
+    
+    try:
+        print("DEBUG: Starting live order book signals endpoint")
+        if not manager.data_handler:
+            return {"error": "Data handler not initialized"}
+        print("DEBUG: Data handler is initialized")
+        print(f"DEBUG: DataHandler API key: {'SET' if manager.data_handler.api_key else 'NOT SET'}")
+        print(f"DEBUG: DataHandler API secret: {'SET' if manager.data_handler.api_secret else 'NOT SET'}")
+        print(f"DEBUG: Main config API key: {'SET' if config.api_key else 'NOT SET'}")
+        print(f"DEBUG: Main config API secret: {'SET' if config.api_secret else 'NOT SET'}")
+        
+        # DataHandler is now initialized in WebSocketManager.__init__
+        
+        # Parse symbols parameter if provided
+        if symbols:
+            try:
+                symbols_to_analyze = symbols.split(',') if ',' in symbols else [symbols]
+                logger.info(f"Using provided symbols: {symbols_to_analyze}")
+            except Exception as e:
+                logger.error(f"Error parsing symbols parameter: {e}")
+                return {"error": "Invalid symbols parameter format"}
+        else:
+            # Get available symbols from Coinbase Advanced Trade API
+            if manager.data_handler:
+                products = await manager.data_handler.get_products()
+                if products:
+                    # Filter for USD pairs and extract symbols
+                    usd_products = [p for p in products if p.get('quote_currency_id') == 'USD']
+                    available_symbols = [p['product_id'] for p in usd_products[:20]]
+                else:
+                    # Fallback to hardcoded symbols
+                    symbols_response = await get_available_symbols()
+                    if not symbols_response or 'symbols' not in symbols_response:
+                        return {"error": "No symbols available"}
+                    available_symbols = [symbol['symbol'] for symbol in symbols_response['symbols']]
+            else:
+                # Fallback to hardcoded symbols
+                symbols_response = await get_available_symbols()
+                if not symbols_response or 'symbols' not in symbols_response:
+                    return {"error": "No symbols available"}
+                available_symbols = [symbol['symbol'] for symbol in symbols_response['symbols']]
+            
+            symbols_to_analyze = available_symbols[:20]
+        
+        # Create OrderBook strategy for analysis using main config
+        strategy = OrderBookStrategy(
+            config=config,
+            order_book_level=2,
+            volume_imbalance_threshold=0.6,
+            large_trade_threshold=10000.0
+        )
+        
+        live_signals = []
+        
+        logger.info(f"Analyzing {len(symbols_to_analyze)} symbols: {symbols_to_analyze[:5]}...")
+        
+        for symbol in symbols_to_analyze:
+            try:
+                # Get historical candles from Coinbase Advanced Trade API
+                candles = []
+                if manager.data_handler:
+                    candles = await manager.data_handler.get_historical_candles(
+                        product_id=symbol,
+                        start_time=int((datetime.now() - timedelta(hours=2)).timestamp()),
+                        end_time=int(datetime.now().timestamp()),
+                        granularity=60  # 1 minute
+                    )
+                
+                # Initialize default values
+                current_price = 0.0
+                signal = None
+                detailed_analysis = {
+                    'signal_generated': False,
+                    'signal_type': None,
+                    'signal_reason': 'Insufficient data for analysis',
+                    'criteria_analysis': {
+                        'bid_ask_squeeze': {'enabled': False, 'analysis': 'Insufficient data'},
+                        'volume_imbalance_buy': {'enabled': False, 'analysis': 'Insufficient data'},
+                        'volume_imbalance_sell': {'enabled': False, 'analysis': 'Insufficient data'},
+                        'large_trade_buy': {'enabled': False, 'analysis': 'Insufficient data'},
+                        'large_trade_sell': {'enabled': False, 'analysis': 'Insufficient data'}
+                    }
+                }
+                ob_summary = {
+                    'current_spread': 0.0,
+                    'current_imbalance': 0.0,
+                    'current_mid_price': 0.0,
+                    'order_book_depth': 0,
+                    'best_bid': 0.0,
+                    'best_ask': 0.0,
+                    'spread_trend': 'unknown',
+                    'imbalance_trend': 'unknown'
+                }
+                signal_strength = 0.0
+                volume = 0.0
+                stats = {'total_signals': 0, 'signal_rate': 0.0}
+                
+                # Process data if available
+                logger.info(f"Symbol {symbol}: {len(candles) if candles else 0} candles available")
+                if candles and len(candles) >= 10:
+                    # Add price data to strategy
+                    for candle in candles:
+                        strategy.add_price(float(candle['close']), candle['time'])
+                    
+                    current_price = float(candles[-1]['close'])
+                    volume = float(candles[-1]['volume'])
+                    
+                    # Get order book data - try WebSocket first, then API
+                    order_book = manager.data_handler.get_latest_level2()
+                    if not order_book:
+                        # Fallback to Coinbase Advanced Trade API
+                        order_book = await manager.data_handler.get_product_book(symbol, limit=20)
+                    
+                    if order_book:
+                        strategy.add_order_book(order_book, candles[-1]['time'])
+                    
+                    # Get recent trades - try WebSocket first, then API
+                    trades = manager.data_handler.get_latest_trades()
+                    if not trades:
+                        # Fallback to Coinbase Advanced Trade API
+                        trades = await manager.data_handler.get_recent_trades(symbol, limit=100)
+                    
+                    if trades:
+                        logger.info(f"Adding {len(trades)} trades to strategy for {symbol}")
+                        strategy.add_trades(trades, candles[-1]['time'])
+                    
+                    # Generate signal and get detailed analysis
+                    logger.info(f"Generating signal for {symbol}")
+                    try:
+                        signal = strategy.generate_signal(current_price, candles[-1]['time'])
+                        logger.info(f"Getting detailed analysis for {symbol}")
+                        detailed_analysis = strategy.get_detailed_signal_analysis(current_price, candles[-1]['time'])
+                    except Exception as e:
+                        logger.error(f"Error in signal generation for {symbol}: {e}")
+                        logger.error(f"Error type: {type(e)}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        raise
+                    ob_summary = strategy.get_order_book_summary()
+                    stats = strategy.get_signal_stats()
+                    
+                    # Calculate signal strength based on closest criteria
+                    criteria = detailed_analysis['criteria_analysis']
+                    max_delta = 0.0
+                    
+                    # Find the highest delta (closest to triggering)
+                    for criterion_name, criterion_data in criteria.items():
+                        if criterion_data['enabled'] and not criterion_data['meets_criteria']:
+                            delta = criterion_data['delta_to_threshold']
+                            if delta > max_delta:
+                                max_delta = delta
+                    
+                    # Calculate signal strength based on deltas
+                    if detailed_analysis['signal_generated']:
+                        signal_strength = 0.9  # High strength for active signals
+                    else:
+                        signal_strength = min(0.8, max_delta)  # Strength based on closest criteria
+                elif candles and len(candles) > 0:
+                    # Some data available but not enough for full analysis
+                    current_price = float(candles[-1]['close'])
+                    volume = float(candles[-1]['volume'])
+                    detailed_analysis['signal_reason'] = f'Insufficient data: {len(candles)}/10 candles available'
+                else:
+                    # No data available
+                    detailed_analysis['signal_reason'] = 'No historical data available'
+                
+                # Always add the symbol to results
+                data_status = 'sufficient' if candles and len(candles) >= 10 else 'insufficient' if candles else 'none'
+                logger.info(f"Adding {symbol} to results: price={current_price}, data_status={data_status}")
+                live_signals.append({
+                    'symbol': symbol,
+                    'price': current_price,
+                    'signal': signal.action if signal else 'hold',
+                    'signal_strength': round(signal_strength, 3),
+                    'signal_generated': detailed_analysis['signal_generated'],
+                    'signal_type': detailed_analysis['signal_type'],
+                    'signal_reason': detailed_analysis['signal_reason'],
+                    'criteria_analysis': {},  # Simplified to avoid serialization issues
+                'spread': round(float(ob_summary.get('current_spread', 0.0)) * 100, 4),  # Convert to percentage
+                'imbalance': round(float(ob_summary.get('current_imbalance', 0.0)), 3),
+                'mid_price': round(float(ob_summary.get('current_mid_price', 0.0)), 2),
+                'best_bid': round(float(ob_summary.get('best_bid', 0.0)), 2),
+                'best_ask': round(float(ob_summary.get('best_ask', 0.0)), 2),
+                'order_book_depth': int(ob_summary.get('order_book_depth', 0)),
+                'spread_trend': str(ob_summary.get('spread_trend', 'unknown')),
+                'imbalance_trend': str(ob_summary.get('imbalance_trend', 'unknown')),
+                'volume': float(volume),
+                'total_signals': int(stats.get('total_signals', 0)),
+                'signal_rate': round(float(stats.get('signal_rate', 0.0)), 2),
+                    'data_status': data_status
+                })
+                
+                # Reset strategy for next symbol
+                strategy = OrderBookStrategy(
+                    config=config,
+                    order_book_level=2,
+                    volume_imbalance_threshold=0.6,
+                    large_trade_threshold=10000.0
+                )
+                
+            except Exception as e:
+                logger.error(f"Error processing {symbol}: {e}")
+                logger.error(f"Error type: {type(e)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                continue
+        
+        # Sort by signal strength and return top 10
+        live_signals.sort(key=lambda x: x['signal_strength'], reverse=True)
+        
+        # Clean data for JSON serialization
+        cleaned_signals = clean_for_json(live_signals)
+        
+        # Count active signals
+        active_signals = sum(1 for signal in live_signals if signal.get('signal_generated', False))
+        
+        return {
+            "signals": cleaned_signals[:10],  # Return top 10
+            "timestamp": datetime.now().isoformat(),
+            "total_analyzed": len(live_signals),
+            "total_signals": active_signals
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting live order book signals: {e}")
+        return {"error": str(e)}
+
+
+# Simulated Trading Endpoints
+@app.post("/api/simulated-trading/start")
+async def start_simulated_trading(request: dict):
+    """Start simulated trading based on live order book signals."""
+    await check_rate_limit()
+    
+    try:
+        symbols = request.get('symbols', ['BTC-USD', 'ETH-USD'])
+        initial_balance = request.get('initial_balance', 10000.0)
+        max_positions = request.get('max_positions', 5)
+        position_size_percent = request.get('position_size_percent', 20.0)
+        
+        # Reset and configure simulated trading
+        simulated_trading.reset_portfolio()
+        simulated_trading.initial_balance = initial_balance
+        simulated_trading.cash_balance = initial_balance
+        simulated_trading.max_positions = max_positions
+        simulated_trading.position_size_percent = position_size_percent / 100.0
+        
+        # Start trading
+        simulated_trading.start_trading(symbols)
+        
+        logger.info(f"Started simulated trading for {len(symbols)} symbols with ${initial_balance:,.2f}")
+        
+        return {
+            "status": "started",
+            "symbols": symbols,
+            "initial_balance": initial_balance,
+            "max_positions": max_positions,
+            "position_size_percent": position_size_percent
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start simulated trading: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/api/simulated-trading/stop")
+async def stop_simulated_trading():
+    """Stop simulated trading and close all positions."""
+    await check_rate_limit()
+    
+    try:
+        simulated_trading.stop_trading()
+        logger.info("Stopped simulated trading")
+        
+        return {
+            "status": "stopped",
+            "message": "Simulated trading stopped and all positions closed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to stop simulated trading: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/simulated-trading/status")
+async def get_simulated_trading_status():
+    """Get current simulated trading status and portfolio."""
+    await check_rate_limit()
+    
+    try:
+        portfolio = simulated_trading.get_portfolio_summary()
+        open_positions = simulated_trading.get_open_positions()
+        recent_trades = simulated_trading.get_recent_trades(10)
+        
+        return {
+            "is_trading": simulated_trading.is_trading,
+            "symbols": simulated_trading.symbols_to_trade,
+            "portfolio": {
+                "cash_balance": portfolio.cash_balance,
+                "total_value": portfolio.total_value,
+                "total_pnl": portfolio.total_pnl,
+                "total_fees": portfolio.total_fees,
+                "max_drawdown": portfolio.max_drawdown,
+                "win_rate": portfolio.win_rate,
+                "total_trades": portfolio.total_trades,
+                "winning_trades": portfolio.winning_trades
+            },
+            "open_positions": open_positions,
+            "recent_trades": recent_trades,
+            "last_signal_check": simulated_trading.last_signal_check.isoformat() if simulated_trading.last_signal_check else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get simulated trading status: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/api/simulated-trading/process-signals")
+async def process_simulated_signals(request: dict):
+    """Process live order book signals and execute simulated trades."""
+    await check_rate_limit()
+    
+    try:
+        signals = request.get('signals', [])
+        
+        if not signals:
+            return {"error": "No signals provided"}
+        
+        result = await simulated_trading.process_signals(signals)
+        
+        logger.info(f"Processed {len(signals)} signals, executed {result.get('executed_trades', 0)} trades")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to process simulated signals: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/api/simulated-trading/reset")
+async def reset_simulated_trading():
+    """Reset simulated trading portfolio to initial state."""
+    await check_rate_limit()
+    
+    try:
+        simulated_trading.reset_portfolio()
+        logger.info("Reset simulated trading portfolio")
+        
+        return {
+            "status": "reset",
+            "message": "Portfolio reset to initial state"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to reset simulated trading: {e}")
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
