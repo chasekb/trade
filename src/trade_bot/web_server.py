@@ -1621,21 +1621,51 @@ async def get_live_orderbook_signals(symbols: str = None):
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 continue
         
-        # Sort by signal strength and return top 10
-        live_signals.sort(key=lambda x: x['signal_strength'], reverse=True)
-        
-        # Clean data for JSON serialization
-        cleaned_signals = clean_for_json(live_signals)
-        
-        # Count active signals
-        active_signals = sum(1 for signal in live_signals if signal.get('signal_generated', False))
-        
-        return {
-            "signals": cleaned_signals[:10],  # Return top 10
-            "timestamp": datetime.now().isoformat(),
-            "total_analyzed": len(live_signals),
-            "total_signals": active_signals
-        }
+                # Sort by signal strength and return top 10
+                live_signals.sort(key=lambda x: x['signal_strength'], reverse=True)
+                
+                # Save signals to database if trading is active
+                if trading_state["is_active"] and trading_state.get("session_id"):
+                    current_time = datetime.now()
+                    for signal in live_signals:
+                        signal_data = {
+                            'signal_id': f"{signal['symbol']}_{int(current_time.timestamp() * 1000)}",
+                            'session_id': trading_state["session_id"],
+                            'symbol': signal['symbol'],
+                            'price': signal['price'],
+                            'signal': signal['signal'],
+                            'signal_strength': signal['signal_strength'],
+                            'signal_generated': signal['signal_generated'],
+                            'signal_type': signal['signal_type'],
+                            'signal_reason': signal['signal_reason'],
+                            'spread': signal.get('spread'),
+                            'imbalance': signal.get('imbalance'),
+                            'mid_price': signal.get('mid_price'),
+                            'best_bid': signal.get('best_bid'),
+                            'best_ask': signal.get('best_ask'),
+                            'order_book_depth': signal.get('order_book_depth'),
+                            'spread_trend': signal.get('spread_trend'),
+                            'imbalance_trend': signal.get('imbalance_trend'),
+                            'volume': signal.get('volume'),
+                            'total_signals': signal.get('total_signals'),
+                            'signal_rate': signal.get('signal_rate'),
+                            'data_status': signal.get('data_status'),
+                            'timestamp': current_time.isoformat()
+                        }
+                        db_manager.save_order_book_signal(signal_data)
+                
+                # Clean data for JSON serialization
+                cleaned_signals = clean_for_json(live_signals)
+                
+                # Count active signals
+                active_signals = sum(1 for signal in live_signals if signal.get('signal_generated', False))
+                
+                return {
+                    "signals": cleaned_signals[:10],  # Return top 10
+                    "timestamp": datetime.now().isoformat(),
+                    "total_analyzed": len(live_signals),
+                    "total_signals": active_signals
+                }
         
     except Exception as e:
         logger.error(f"Error getting live order book signals: {e}")
@@ -1676,6 +1706,9 @@ async def start_simulated_trading(request: dict):
         # Set session info for trade logging
         if session_id:
             simulated_trading.set_session_info(db_manager, session_id)
+        
+        # Set strategy info for trade logging
+        simulated_trading.set_strategy_info(strategy_type, strategy_params)
         
         # Start trading
         simulated_trading.start_trading(symbols)
@@ -1781,6 +1814,9 @@ async def start_async_trading(request: dict):
         
         # Set session info for trade logging
         simulated_trading.set_session_info(db_manager, session_id)
+        
+        # Set strategy info for trade logging
+        simulated_trading.set_strategy_info(strategy_type, strategy_params)
         
         # Start trading with initial symbols
         simulated_trading.start_trading(initial_symbols)
@@ -2296,6 +2332,30 @@ async def get_paginated_trades(page: int = 1, per_page: int = 10, session_id: st
     except Exception as e:
         logger.error(f"Failed to get paginated trades: {e}")
         return {"error": str(e)}
+
+
+@app.get("/api/orderbook/signals/paginated")
+async def get_paginated_orderbook_signals(page: int = 1, per_page: int = 10, session_id: str = None, symbol: str = None):
+    """Get paginated order book signals."""
+    await check_rate_limit()
+    
+    try:
+        result = db_manager.get_order_book_signals_paginated(
+            session_id=session_id,
+            symbol=symbol,
+            page=page,
+            per_page=per_page
+        )
+        
+        return {
+            "status": "success",
+            "signals": result["signals"],
+            "pagination": result["pagination"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting paginated order book signals: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/api/trades/stats")

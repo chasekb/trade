@@ -116,6 +116,39 @@ class DatabaseManager:
                     reason TEXT,
                     pnl REAL DEFAULT 0.0,
                     fees REAL DEFAULT 0.0,
+                    strategy_type TEXT,
+                    strategy_params TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES trading_sessions (session_id)
+                )
+            """)
+            
+            # Order book signals table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS order_book_signals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    signal_id TEXT UNIQUE NOT NULL,
+                    session_id TEXT,
+                    symbol TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    signal TEXT NOT NULL,
+                    signal_strength REAL NOT NULL,
+                    signal_generated BOOLEAN NOT NULL,
+                    signal_type TEXT,
+                    signal_reason TEXT,
+                    spread REAL,
+                    imbalance REAL,
+                    mid_price REAL,
+                    best_bid REAL,
+                    best_ask REAL,
+                    order_book_depth INTEGER,
+                    spread_trend TEXT,
+                    imbalance_trend TEXT,
+                    volume REAL,
+                    total_signals INTEGER,
+                    signal_rate REAL,
+                    data_status TEXT,
+                    timestamp TIMESTAMP NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (session_id) REFERENCES trading_sessions (session_id)
                 )
@@ -135,9 +168,31 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_active ON trading_sessions(is_active)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_updated ON trading_sessions(updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_dashboard_session ON dashboard_state(session_id)")
+            # Migration: Add strategy fields to existing individual_trades table
+            try:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN strategy_type TEXT")
+                logger.info("Added strategy_type column to individual_trades table")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
+            try:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN strategy_params TEXT")
+                logger.info("Added strategy_params column to individual_trades table")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_session ON individual_trades(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON individual_trades(symbol)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON individual_trades(timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_strategy ON individual_trades(strategy_type)")
+            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_session ON order_book_signals(session_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_symbol ON order_book_signals(symbol)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON order_book_signals(timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_signal ON order_book_signals(signal)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_generated ON order_book_signals(signal_generated)")
             
             conn.commit()
             logger.info("Database initialized successfully")
@@ -573,11 +628,17 @@ class DatabaseManager:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                
+                # Convert strategy_params to JSON string if it's a dict
+                strategy_params = trade_data.get('strategy_params', {})
+                if isinstance(strategy_params, dict):
+                    strategy_params = json.dumps(strategy_params)
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO individual_trades 
                     (trade_id, session_id, symbol, side, quantity, price, 
-                     timestamp, reason, pnl, fees)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     timestamp, reason, pnl, fees, strategy_type, strategy_params)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     trade_data.get('trade_id'),
                     trade_data.get('session_id'),
@@ -588,11 +649,13 @@ class DatabaseManager:
                     trade_data.get('timestamp'),
                     trade_data.get('reason'),
                     trade_data.get('pnl', 0.0),
-                    trade_data.get('fees', 0.0)
+                    trade_data.get('fees', 0.0),
+                    trade_data.get('strategy_type'),
+                    strategy_params
                 ))
                 conn.commit()
             
-            logger.debug(f"Saved trade: {trade_data.get('trade_id')}")
+            logger.debug(f"Saved trade: {trade_data.get('trade_id')} with strategy: {trade_data.get('strategy_type')}")
             return True
             
         except Exception as e:
@@ -606,7 +669,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT trade_id, symbol, side, quantity, price, timestamp, 
-                           reason, pnl, fees, created_at
+                           reason, pnl, fees, strategy_type, strategy_params, created_at
                     FROM individual_trades 
                     WHERE session_id = ?
                     ORDER BY timestamp DESC
@@ -615,6 +678,16 @@ class DatabaseManager:
                 
                 trades = []
                 for row in cursor.fetchall():
+                    # Parse strategy_params JSON if it exists
+                    strategy_params = row[10]
+                    if strategy_params:
+                        try:
+                            strategy_params = json.loads(strategy_params)
+                        except (json.JSONDecodeError, TypeError):
+                            strategy_params = {}
+                    else:
+                        strategy_params = {}
+                    
                     trades.append({
                         'trade_id': row[0],
                         'symbol': row[1],
@@ -625,7 +698,9 @@ class DatabaseManager:
                         'reason': row[6],
                         'pnl': row[7],
                         'fees': row[8],
-                        'created_at': row[9]
+                        'strategy_type': row[9],
+                        'strategy_params': strategy_params,
+                        'created_at': row[11]
                     })
                 
                 return trades
@@ -641,7 +716,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT trade_id, session_id, symbol, side, quantity, price, 
-                           timestamp, reason, pnl, fees, created_at
+                           timestamp, reason, pnl, fees, strategy_type, strategy_params, created_at
                     FROM individual_trades 
                     WHERE symbol = ?
                     ORDER BY timestamp DESC
@@ -650,6 +725,16 @@ class DatabaseManager:
                 
                 trades = []
                 for row in cursor.fetchall():
+                    # Parse strategy_params JSON if it exists
+                    strategy_params = row[11]
+                    if strategy_params:
+                        try:
+                            strategy_params = json.loads(strategy_params)
+                        except (json.JSONDecodeError, TypeError):
+                            strategy_params = {}
+                    else:
+                        strategy_params = {}
+                    
                     trades.append({
                         'trade_id': row[0],
                         'session_id': row[1],
@@ -661,7 +746,9 @@ class DatabaseManager:
                         'reason': row[7],
                         'pnl': row[8],
                         'fees': row[9],
-                        'created_at': row[10]
+                        'strategy_type': row[10],
+                        'strategy_params': strategy_params,
+                        'created_at': row[12]
                     })
                 
                 return trades
@@ -677,7 +764,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT trade_id, session_id, symbol, side, quantity, price, 
-                           timestamp, reason, pnl, fees, created_at
+                           timestamp, reason, pnl, fees, strategy_type, strategy_params, created_at
                     FROM individual_trades 
                     ORDER BY timestamp DESC
                     LIMIT ?
@@ -685,6 +772,16 @@ class DatabaseManager:
                 
                 trades = []
                 for row in cursor.fetchall():
+                    # Parse strategy_params JSON if it exists
+                    strategy_params = row[11]
+                    if strategy_params:
+                        try:
+                            strategy_params = json.loads(strategy_params)
+                        except (json.JSONDecodeError, TypeError):
+                            strategy_params = {}
+                    else:
+                        strategy_params = {}
+                    
                     trades.append({
                         'trade_id': row[0],
                         'session_id': row[1],
@@ -696,7 +793,9 @@ class DatabaseManager:
                         'reason': row[7],
                         'pnl': row[8],
                         'fees': row[9],
-                        'created_at': row[10]
+                        'strategy_type': row[10],
+                        'strategy_params': strategy_params,
+                        'created_at': row[12]
                     })
                 
                 return trades
@@ -704,6 +803,150 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get recent trades: {e}")
             return []
+    
+    # Order Book Signals Management Methods
+    
+    def save_order_book_signal(self, signal_data: Dict[str, Any]) -> bool:
+        """Save an order book signal to the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO order_book_signals 
+                    (signal_id, session_id, symbol, price, signal, signal_strength, 
+                     signal_generated, signal_type, signal_reason, spread, imbalance, 
+                     mid_price, best_bid, best_ask, order_book_depth, spread_trend, 
+                     imbalance_trend, volume, total_signals, signal_rate, data_status, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    signal_data.get('signal_id'),
+                    signal_data.get('session_id'),
+                    signal_data.get('symbol'),
+                    signal_data.get('price'),
+                    signal_data.get('signal'),
+                    signal_data.get('signal_strength'),
+                    signal_data.get('signal_generated'),
+                    signal_data.get('signal_type'),
+                    signal_data.get('signal_reason'),
+                    signal_data.get('spread'),
+                    signal_data.get('imbalance'),
+                    signal_data.get('mid_price'),
+                    signal_data.get('best_bid'),
+                    signal_data.get('best_ask'),
+                    signal_data.get('order_book_depth'),
+                    signal_data.get('spread_trend'),
+                    signal_data.get('imbalance_trend'),
+                    signal_data.get('volume'),
+                    signal_data.get('total_signals'),
+                    signal_data.get('signal_rate'),
+                    signal_data.get('data_status'),
+                    signal_data.get('timestamp')
+                ))
+                conn.commit()
+            
+            logger.debug(f"Saved order book signal: {signal_data.get('signal_id')}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save order book signal: {e}")
+            return False
+    
+    def get_order_book_signals_paginated(self, session_id: str = None, symbol: str = None, 
+                                       page: int = 1, per_page: int = 10) -> Dict[str, Any]:
+        """Get paginated order book signals."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Build WHERE clause
+                where_conditions = []
+                params = []
+                
+                if session_id:
+                    where_conditions.append("session_id = ?")
+                    params.append(session_id)
+                
+                if symbol:
+                    where_conditions.append("symbol = ?")
+                    params.append(symbol)
+                
+                where_clause = " WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+                
+                # Get total count
+                count_query = f"SELECT COUNT(*) FROM order_book_signals{where_clause}"
+                cursor.execute(count_query, params)
+                total_signals = cursor.fetchone()[0]
+                
+                # Calculate pagination
+                total_pages = (total_signals + per_page - 1) // per_page
+                offset = (page - 1) * per_page
+                
+                # Get paginated results
+                query = f"""
+                    SELECT signal_id, session_id, symbol, price, signal, signal_strength,
+                           signal_generated, signal_type, signal_reason, spread, imbalance,
+                           mid_price, best_bid, best_ask, order_book_depth, spread_trend,
+                           imbalance_trend, volume, total_signals, signal_rate, data_status,
+                           timestamp, created_at
+                    FROM order_book_signals{where_clause}
+                    ORDER BY timestamp DESC
+                    LIMIT ? OFFSET ?
+                """
+                cursor.execute(query, params + [per_page, offset])
+                
+                signals = []
+                for row in cursor.fetchall():
+                    signals.append({
+                        'signal_id': row[0],
+                        'session_id': row[1],
+                        'symbol': row[2],
+                        'price': row[3],
+                        'signal': row[4],
+                        'signal_strength': row[5],
+                        'signal_generated': bool(row[6]),
+                        'signal_type': row[7],
+                        'signal_reason': row[8],
+                        'spread': row[9],
+                        'imbalance': row[10],
+                        'mid_price': row[11],
+                        'best_bid': row[12],
+                        'best_ask': row[13],
+                        'order_book_depth': row[14],
+                        'spread_trend': row[15],
+                        'imbalance_trend': row[16],
+                        'volume': row[17],
+                        'total_signals': row[18],
+                        'signal_rate': row[19],
+                        'data_status': row[20],
+                        'timestamp': row[21],
+                        'created_at': row[22]
+                    })
+                
+                return {
+                    'signals': signals,
+                    'pagination': {
+                        'current_page': page,
+                        'per_page': per_page,
+                        'total_signals': total_signals,
+                        'total_pages': total_pages,
+                        'has_next': page < total_pages,
+                        'has_prev': page > 1
+                    }
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get paginated order book signals: {e}")
+            return {
+                'signals': [],
+                'pagination': {
+                    'current_page': 1,
+                    'per_page': per_page,
+                    'total_signals': 0,
+                    'total_pages': 0,
+                    'has_next': False,
+                    'has_prev': False
+                }
+            }
     
     def get_trade_stats(self, session_id: str = None) -> Dict[str, Any]:
         """Get comprehensive trading statistics."""

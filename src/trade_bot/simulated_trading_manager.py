@@ -96,6 +96,10 @@ class SimulatedTradingManager:
         self.symbols_to_trade: List[str] = []
         self.last_signal_check = None
         
+        # Strategy information
+        self.strategy_type = None
+        self.strategy_params = {}
+        
         logger.info(f"SimulatedTradingManager initialized with ${initial_balance:,.2f} balance")
     
     def set_session_info(self, db_manager, session_id: str) -> None:
@@ -103,6 +107,12 @@ class SimulatedTradingManager:
         self.db_manager = db_manager
         self.session_id = session_id
         logger.info(f"Session info set: {session_id}")
+    
+    def set_strategy_info(self, strategy_type: str, strategy_params: Dict[str, Any]) -> None:
+        """Set strategy type and parameters for trade logging."""
+        self.strategy_type = strategy_type
+        self.strategy_params = strategy_params
+        logger.info(f"Strategy info set: {strategy_type} with params: {strategy_params}")
     
     def _save_trade_to_db(self, trade: Trade) -> None:
         """Save trade to database if db_manager is available."""
@@ -118,7 +128,9 @@ class SimulatedTradingManager:
                     'timestamp': trade.timestamp.isoformat(),
                     'reason': trade.reason,
                     'pnl': trade.pnl,
-                    'fees': trade.fees
+                    'fees': trade.fees,
+                    'strategy_type': self.strategy_type,
+                    'strategy_params': self.strategy_params
                 }
                 self.db_manager.save_trade(trade_data)
             except Exception as e:

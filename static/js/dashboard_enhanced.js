@@ -112,6 +112,14 @@ class EnhancedTradingDashboard {
             totalPages: 1,
             totalTrades: 0
         };
+        
+        // Order book signals pagination state
+        this.orderBookSignalsPagination = {
+            currentPage: 1,
+            perPage: 10,
+            totalPages: 1,
+            totalSignals: 0
+        };
     }
 
     getOrCreateSessionId() {
@@ -506,6 +514,9 @@ class EnhancedTradingDashboard {
         // Setup trading history pagination
         this.setupTradingHistoryPagination();
         
+        // Setup order book signals pagination
+        this.setupOrderBookSignalsPagination();
+        
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
             this.loadAvailableProducts();
@@ -877,7 +888,7 @@ class EnhancedTradingDashboard {
         if (signals.length === 0) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="10" class="px-6 py-4 text-center text-gray-500">
+                    <td colspan="11" class="px-6 py-4 text-center text-gray-500">
                         <i class="fas fa-exclamation-triangle mr-2"></i>No order book signals available
                     </td>
                 </tr>
@@ -945,6 +956,9 @@ class EnhancedTradingDashboard {
             
             return `
                 <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${signal.timestamp ? new Date(signal.timestamp).toLocaleString() : 'N/A'}
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="flex items-center space-x-2">
                             <div class="text-sm font-medium text-gray-900">${signal.symbol}</div>
@@ -2093,26 +2107,40 @@ class EnhancedTradingDashboard {
         if (!tbody) return;
 
         if (!trades || trades.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No trading history</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No trading history</td></tr>';
             return;
         }
 
-        tbody.innerHTML = trades.map(trade => `
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(trade.timestamp).toLocaleString()}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${trade.symbol}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${trade.side === 'buy' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                        ${trade.side.toUpperCase()}
-                    </span>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${trade.quantity.toFixed(6)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${trade.price.toFixed(2)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm ${trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
-                    ${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = trades.map(trade => {
+            // Format strategy information
+            const strategyInfo = trade.strategy_type || 'Unknown';
+            const strategyParams = trade.strategy_params || {};
+            const strategyTooltip = Object.keys(strategyParams).length > 0 
+                ? `title="${JSON.stringify(strategyParams, null, 2)}"` 
+                : '';
+            
+            return `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(trade.timestamp).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${trade.symbol}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${trade.side === 'buy' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${trade.side.toUpperCase()}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${trade.quantity.toFixed(6)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${trade.price.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        ${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" ${strategyTooltip}>
+                        <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                            ${strategyInfo}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
         // Also log for debugging
         this.logTradingEvent(`Updated ${trades.length} recent trades`);
@@ -2252,6 +2280,151 @@ class EnhancedTradingDashboard {
             refreshBtn.addEventListener('click', () => {
                 this.loadPaginatedTradingHistory(this.tradingHistoryPagination.currentPage, this.tradingHistoryPagination.perPage);
             });
+        }
+    }
+
+    setupOrderBookSignalsPagination() {
+        // First page button
+        const firstPageBtn = document.getElementById('orderbook-first-page');
+        if (firstPageBtn) {
+            firstPageBtn.addEventListener('click', () => {
+                this.loadPaginatedOrderBookSignals(1, this.orderBookSignalsPagination.perPage);
+            });
+        }
+        
+        // Previous page button
+        const prevPageBtn = document.getElementById('orderbook-prev-page');
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener('click', () => {
+                const newPage = Math.max(1, this.orderBookSignalsPagination.currentPage - 1);
+                this.loadPaginatedOrderBookSignals(newPage, this.orderBookSignalsPagination.perPage);
+            });
+        }
+        
+        // Next page button
+        const nextPageBtn = document.getElementById('orderbook-next-page');
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener('click', () => {
+                const newPage = Math.min(this.orderBookSignalsPagination.totalPages, this.orderBookSignalsPagination.currentPage + 1);
+                this.loadPaginatedOrderBookSignals(newPage, this.orderBookSignalsPagination.perPage);
+            });
+        }
+        
+        // Last page button
+        const lastPageBtn = document.getElementById('orderbook-last-page');
+        if (lastPageBtn) {
+            lastPageBtn.addEventListener('click', () => {
+                this.loadPaginatedOrderBookSignals(this.orderBookSignalsPagination.totalPages, this.orderBookSignalsPagination.perPage);
+            });
+        }
+        
+        // Per page selector
+        const perPageSelect = document.getElementById('orderbook-per-page');
+        if (perPageSelect) {
+            perPageSelect.addEventListener('change', (e) => {
+                const newPerPage = parseInt(e.target.value);
+                this.orderBookSignalsPagination.perPage = newPerPage;
+                this.loadPaginatedOrderBookSignals(1, newPerPage); // Reset to first page
+            });
+        }
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-orderbook-signals');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadPaginatedOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
+            });
+        }
+    }
+
+    // Paginated Order Book Signals Methods
+    async loadPaginatedOrderBookSignals(page = 1, perPage = 10) {
+        try {
+            const sessionId = this.liveTrading.strategy?.sessionId || this.sessionId;
+            const params = new URLSearchParams({
+                page: page.toString(),
+                per_page: perPage.toString()
+            });
+            
+            if (sessionId) {
+                params.append('session_id', sessionId);
+            }
+            
+            const response = await fetch(`/api/orderbook/signals/paginated?${params}`);
+            const data = await response.json();
+            
+            if (data.status !== 'success') {
+                console.error('Error loading paginated order book signals:', data.message);
+                this.updateOrderBookSignalsInfo('Error loading signals', 0, 0);
+                return;
+            }
+            
+            // Update pagination state
+            this.orderBookSignalsPagination = {
+                currentPage: data.pagination.current_page,
+                perPage: data.pagination.per_page,
+                totalPages: data.pagination.total_pages,
+                totalSignals: data.pagination.total_signals
+            };
+            
+            // Update the display
+            this.updateOrderBookSignalsTable(data.signals);
+            this.updateOrderBookSignalsInfo(
+                `Page ${data.pagination.current_page} of ${data.pagination.total_pages}`,
+                data.pagination.total_signals,
+                data.signals.length
+            );
+            this.updateOrderBookSignalsPaginationControls();
+            
+        } catch (error) {
+            console.error('Error loading paginated order book signals:', error);
+            this.updateOrderBookSignalsInfo('Error loading signals', 0, 0);
+        }
+    }
+
+    updateOrderBookSignalsInfo(pageInfo, totalSignals, currentPageSignals) {
+        const infoElement = document.getElementById('orderbook-signals-info');
+        if (infoElement) {
+            if (totalSignals > 0) {
+                infoElement.textContent = `${pageInfo} (${totalSignals} total signals, showing ${currentPageSignals})`;
+            } else {
+                infoElement.textContent = 'No order book signals available';
+            }
+        }
+    }
+
+    updateOrderBookSignalsPaginationControls() {
+        const { currentPage, totalPages, totalSignals } = this.orderBookSignalsPagination;
+        
+        // Update page info
+        const pageInfoElement = document.getElementById('orderbook-page-info');
+        if (pageInfoElement) {
+            pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        
+        // Update button states
+        const firstBtn = document.getElementById('orderbook-first-page');
+        const prevBtn = document.getElementById('orderbook-prev-page');
+        const nextBtn = document.getElementById('orderbook-next-page');
+        const lastBtn = document.getElementById('orderbook-last-page');
+        
+        if (firstBtn) {
+            firstBtn.disabled = currentPage <= 1;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = currentPage <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = currentPage >= totalPages;
+        }
+        if (lastBtn) {
+            lastBtn.disabled = currentPage >= totalPages;
+        }
+        
+        // Show/hide pagination controls
+        const paginationElement = document.getElementById('orderbook-signals-pagination');
+        if (paginationElement) {
+            paginationElement.style.display = totalPages > 1 ? 'flex' : 'none';
         }
     }
 
