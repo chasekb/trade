@@ -123,6 +123,9 @@ uv run python scripts/backtest_comprehensive.py
 - **Order Book Signal Generation**: Real-time trading signals from market data
 - **Enhanced WebSocket Management**: Improved connection stability and error handling
 - **Live Trading Interface**: Complete simulated trading with position management
+- **Order Book Signals Pagination**: Historical signal analysis with time display
+- **Complete Analysis Calculations**: Squeeze, Imbalance, and Large Trade analysis
+- **Strategy Information Tracking**: Trade history includes strategy type and parameters
 
 ### Technical Improvements
 - **Database Integration**: SQLite for persistent data storage
@@ -254,6 +257,31 @@ result = await backtester.run_backtest(historical_data)
 - **Session State Persistence** across page refreshes
 - **Strategy Configuration** with hide/show functionality
 - **Live P&L Tracking** with real-time updates
+- **Paginated Order Book Signals** with historical analysis
+- **Complete Market Analysis** with Squeeze, Imbalance, and Large Trade detection
+- **Strategy Information Tracking** in trade history
+- **Time-based Signal Display** with detailed timestamps
+
+## 📊 Order Book Analysis
+
+### Real-time Signal Generation
+- **Bid-Ask Squeeze Detection**: Identifies when spread is 50% below historical average
+- **Volume Imbalance Analysis**: Detects buy/sell pressure from order book depth
+- **Large Trade Analysis**: Identifies significant volume transactions above threshold
+- **Signal Strength Calculation**: Dynamic strength based on market conditions
+
+### Historical Analysis
+- **Paginated Signal History**: Navigate through all historical signals
+- **Time-based Display**: Each signal shows precise generation timestamp
+- **Comprehensive Metadata**: Spread, imbalance, volume, and analysis data
+- **Session Filtering**: View signals for specific trading sessions
+- **Symbol Filtering**: Focus on specific trading pairs
+
+### Analysis Components
+- **Squeeze Analysis**: Current vs historical spread comparison with thresholds
+- **Imbalance Analysis**: Buy/sell volume imbalance with configurable thresholds
+- **Large Trade Analysis**: Trade flow pressure analysis with volume thresholds
+- **Real-time Updates**: Live analysis during active trading sessions
 
 ## 🧪 Testing
 
@@ -295,6 +323,7 @@ uv run python -m pytest --cov=src/trade_bot
 
 ### Order Book API
 - `GET /api/orderbook/live-signals` - Live order book signals
+- `GET /api/orderbook/signals/paginated` - Paginated order book signals with time
 - `GET /api/orderbook/signals/{symbol}` - Symbol-specific signals
 
 ### Session Management API

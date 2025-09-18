@@ -1591,18 +1591,18 @@ async def get_live_orderbook_signals(symbols: str = None):
                     'signal_generated': detailed_analysis['signal_generated'],
                     'signal_type': detailed_analysis['signal_type'],
                     'signal_reason': detailed_analysis['signal_reason'],
-                    'criteria_analysis': {},  # Simplified to avoid serialization issues
-                'spread': round(float(ob_summary.get('current_spread', 0.0)) * 100, 4),  # Convert to percentage
-                'imbalance': round(float(ob_summary.get('current_imbalance', 0.0)), 3),
-                'mid_price': round(float(ob_summary.get('current_mid_price', 0.0)), 2),
-                'best_bid': round(float(ob_summary.get('best_bid', 0.0)), 2),
-                'best_ask': round(float(ob_summary.get('best_ask', 0.0)), 2),
-                'order_book_depth': int(ob_summary.get('order_book_depth', 0)),
-                'spread_trend': str(ob_summary.get('spread_trend', 'unknown')),
-                'imbalance_trend': str(ob_summary.get('imbalance_trend', 'unknown')),
-                'volume': float(volume),
-                'total_signals': int(stats.get('total_signals', 0)),
-                'signal_rate': round(float(stats.get('signal_rate', 0.0)), 2),
+                    'criteria_analysis': detailed_analysis['criteria_analysis'],
+                    'spread': round(float(ob_summary.get('current_spread', 0.0)) * 100, 4),  # Convert to percentage
+                    'imbalance': round(float(ob_summary.get('current_imbalance', 0.0)), 3),
+                    'mid_price': round(float(ob_summary.get('current_mid_price', 0.0)), 2),
+                    'best_bid': round(float(ob_summary.get('best_bid', 0.0)), 2),
+                    'best_ask': round(float(ob_summary.get('best_ask', 0.0)), 2),
+                    'order_book_depth': int(ob_summary.get('order_book_depth', 0)),
+                    'spread_trend': str(ob_summary.get('spread_trend', 'unknown')),
+                    'imbalance_trend': str(ob_summary.get('imbalance_trend', 'unknown')),
+                    'volume': float(volume),
+                    'total_signals': int(stats.get('total_signals', 0)),
+                    'signal_rate': round(float(stats.get('signal_rate', 0.0)), 2),
                     'data_status': data_status
                 })
                 
