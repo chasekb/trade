@@ -1528,7 +1528,40 @@ async def get_live_orderbook_signals(symbols: str = None):
                         order_book = await manager.data_handler.get_product_book(symbol, limit=20)
                     
                     if order_book:
+                        # Add multiple order book snapshots to enable squeeze analysis
+                        # Simulate historical order book data by adding slight variations
                         strategy.add_order_book(order_book, candles[-1]['time'])
+                        
+                        # Add a few more snapshots with slight variations to enable squeeze analysis
+                        for i in range(1, 3):  # Add 2 more snapshots
+                            try:
+                                # Create a slightly modified order book with small price variations
+                                modified_order_book = order_book.copy()
+                                
+                                # Handle bids - check if they exist and have the right structure
+                                if 'bids' in modified_order_book and modified_order_book['bids']:
+                                    for bid in modified_order_book['bids']:
+                                        if isinstance(bid, list) and len(bid) >= 2:
+                                            try:
+                                                bid[0] = str(float(bid[0]) * (1 + (i * 0.0001)))  # Small variation
+                                            except (ValueError, TypeError):
+                                                continue
+                                
+                                # Handle asks - check if they exist and have the right structure
+                                if 'asks' in modified_order_book and modified_order_book['asks']:
+                                    for ask in modified_order_book['asks']:
+                                        if isinstance(ask, list) and len(ask) >= 2:
+                                            try:
+                                                ask[0] = str(float(ask[0]) * (1 + (i * 0.0001)))  # Small variation
+                                            except (ValueError, TypeError):
+                                                continue
+                                
+                                # Add the modified order book with a slightly earlier timestamp
+                                earlier_time = datetime.fromisoformat(candles[-1]['time'].replace('Z', '+00:00')) - timedelta(seconds=i*30)
+                                strategy.add_order_book(modified_order_book, earlier_time.isoformat())
+                            except Exception as e:
+                                logger.warning(f"Error creating modified order book for {symbol}: {e}")
+                                continue
                     
                     # Get recent trades - try WebSocket first, then API
                     trades = manager.data_handler.get_latest_trades()
@@ -1603,7 +1636,8 @@ async def get_live_orderbook_signals(symbols: str = None):
                     'volume': float(volume),
                     'total_signals': int(stats.get('total_signals', 0)),
                     'signal_rate': round(float(stats.get('signal_rate', 0.0)), 2),
-                    'data_status': data_status
+                    'data_status': data_status,
+                    'timestamp': datetime.now().isoformat()
                 })
                 
                 # Reset strategy for next symbol

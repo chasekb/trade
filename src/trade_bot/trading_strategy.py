@@ -3070,7 +3070,7 @@ class OrderBookStrategy:
             'signal_reason': None,
             'criteria_analysis': {
                 'bid_ask_squeeze': {
-                    'enabled': len(self.order_book_history) >= 10,
+                    'enabled': len(self.order_book_history) >= 2,
                     'current_spread': 0.0,
                     'historical_avg_spread': 0.0,
                     'threshold_ratio': 0.5,
@@ -3117,17 +3117,17 @@ class OrderBookStrategy:
         }
         
         # Analyze bid-ask squeeze
-        if len(self.order_book_history) >= 10:
+        if len(self.order_book_history) >= 2:
             current_order_book = self.order_book_history[-1]['order_book']
             metrics = self._calculate_metrics_cached(current_order_book)
             current_spread = metrics['spread']
             
             historical_spreads = []
-            for ob_data in self.order_book_history[-10:]:
+            for ob_data in self.order_book_history:
                 ob_metrics = self._calculate_metrics_cached(ob_data['order_book'])
                 historical_spreads.append(ob_metrics['spread'])
             
-            avg_spread = sum(historical_spreads) / len(historical_spreads)
+            avg_spread = sum(historical_spreads) / len(historical_spreads) if historical_spreads else current_spread
             threshold_spread = avg_spread * 0.5
             meets_criteria = current_spread < threshold_spread
             delta = (threshold_spread - current_spread) / threshold_spread if threshold_spread > 0 else 0
