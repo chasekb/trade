@@ -1258,9 +1258,17 @@
 
                 <!-- Trading History -->
                 <div class="bg-white border border-gray-200 rounded-lg p-6">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
-                        <i class="fas fa-history mr-2"></i>Trading History
-                    </h3>
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">
+                            <i class="fas fa-history mr-2"></i>Trading History
+                        </h3>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-gray-500" id="trading-history-info">Loading...</span>
+                            <button id="refresh-trading-history" class="text-gray-400 hover:text-gray-600 transition-colors">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
                     <div id="trading-history-table" class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -1279,6 +1287,33 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    <!-- Pagination Controls -->
+                    <div id="trading-history-pagination" class="mt-4 flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <button id="first-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-double-left"></i>
+                            </button>
+                            <button id="prev-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-left"></i>
+                            </button>
+                            <span id="page-info" class="px-3 py-1 text-sm text-gray-700">Page 1 of 1</span>
+                            <button id="next-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-right"></i>
+                            </button>
+                            <button id="last-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-double-right"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label for="per-page-select" class="text-sm text-gray-500">Per page:</label>
+                            <select id="per-page-select" class="text-sm border border-gray-300 rounded px-2 py-1">
+                                <option value="10" selected>10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>

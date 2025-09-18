@@ -2248,6 +2248,56 @@ async def get_recent_trades(limit: int = 50):
         return {"error": str(e)}
 
 
+@app.get("/api/trades/paginated")
+async def get_paginated_trades(page: int = 1, per_page: int = 10, session_id: str = None):
+    """Get paginated trading history."""
+    await check_rate_limit()
+    
+    try:
+        # Calculate offset
+        offset = (page - 1) * per_page
+        
+        # Get total count
+        if session_id:
+            total_trades = len(db_manager.get_trades_by_session(session_id, 10000))  # Get all to count
+        else:
+            total_trades = len(db_manager.get_recent_trades(10000))  # Get all to count
+        
+        # Calculate total pages
+        total_pages = (total_trades + per_page - 1) // per_page
+        
+        # Get paginated trades
+        if session_id:
+            all_trades = db_manager.get_trades_by_session(session_id, 10000)
+        else:
+            all_trades = db_manager.get_recent_trades(10000)
+        
+        # Sort by timestamp descending (most recent first)
+        all_trades.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        
+        # Get the page slice
+        start_idx = offset
+        end_idx = min(offset + per_page, len(all_trades))
+        trades = all_trades[start_idx:end_idx]
+        
+        return {
+            "status": "success",
+            "trades": trades,
+            "pagination": {
+                "current_page": page,
+                "per_page": per_page,
+                "total_trades": total_trades,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get paginated trades: {e}")
+        return {"error": str(e)}
+
+
 @app.get("/api/trades/stats")
 async def get_trade_stats(session_id: str = None):
     """Get trading statistics."""

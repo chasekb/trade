@@ -104,6 +104,14 @@ class EnhancedTradingDashboard {
         
         // Strategy configuration visibility state
         this.strategyConfigHidden = false;
+        
+        // Trading history pagination state
+        this.tradingHistoryPagination = {
+            currentPage: 1,
+            perPage: 10,
+            totalPages: 1,
+            totalTrades: 0
+        };
     }
 
     getOrCreateSessionId() {
@@ -495,6 +503,9 @@ class EnhancedTradingDashboard {
         this.loadSubscriptions();
         this.setupLiveTrading();
         
+        // Setup trading history pagination
+        this.setupTradingHistoryPagination();
+        
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
             this.loadAvailableProducts();
@@ -504,6 +515,9 @@ class EnhancedTradingDashboard {
             
             // Load trading stats
             this.loadTradingStats();
+            
+            // Load initial paginated trading history
+            this.loadPaginatedTradingHistory();
             
             // Check for existing session and restore state
             this.checkAndRestoreSession();
@@ -2031,10 +2045,8 @@ class EnhancedTradingDashboard {
                 this.updateOpenPositions(data.open_positions);
             }
 
-            // Update recent trades if available
-            if (data.recent_trades) {
-                this.updateRecentTrades(data.recent_trades);
-            }
+            // Refresh paginated trading history to show latest trades
+            this.loadPaginatedTradingHistory(this.tradingHistoryPagination.currentPage, this.tradingHistoryPagination.perPage);
             
             // Update trading stats when portfolio status changes
             this.loadTradingStats();
@@ -2104,6 +2116,143 @@ class EnhancedTradingDashboard {
 
         // Also log for debugging
         this.logTradingEvent(`Updated ${trades.length} recent trades`);
+    }
+
+    // Paginated Trading History Methods
+    async loadPaginatedTradingHistory(page = 1, perPage = 10) {
+        try {
+            const sessionId = this.liveTrading.strategy?.sessionId || this.sessionId;
+            const params = new URLSearchParams({
+                page: page.toString(),
+                per_page: perPage.toString()
+            });
+            
+            if (sessionId) {
+                params.append('session_id', sessionId);
+            }
+            
+            const response = await fetch(`/api/trades/paginated?${params}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading paginated trading history:', data.error);
+                this.updateTradingHistoryInfo('Error loading history', 0, 0);
+                return;
+            }
+            
+            // Update pagination state
+            this.tradingHistoryPagination = {
+                currentPage: data.pagination.current_page,
+                perPage: data.pagination.per_page,
+                totalPages: data.pagination.total_pages,
+                totalTrades: data.pagination.total_trades
+            };
+            
+            // Update the display
+            this.updateRecentTrades(data.trades);
+            this.updateTradingHistoryInfo(
+                `Page ${data.pagination.current_page} of ${data.pagination.total_pages}`,
+                data.pagination.total_trades,
+                data.trades.length
+            );
+            this.updatePaginationControls();
+            
+        } catch (error) {
+            console.error('Error loading paginated trading history:', error);
+            this.updateTradingHistoryInfo('Error loading history', 0, 0);
+        }
+    }
+
+    updateTradingHistoryInfo(pageInfo, totalTrades, currentPageTrades) {
+        const infoElement = document.getElementById('trading-history-info');
+        if (infoElement) {
+            if (totalTrades > 0) {
+                infoElement.textContent = `${pageInfo} (${totalTrades} total trades, showing ${currentPageTrades})`;
+            } else {
+                infoElement.textContent = 'No trading history';
+            }
+        }
+    }
+
+    updatePaginationControls() {
+        const { currentPage, totalPages, totalTrades } = this.tradingHistoryPagination;
+        
+        // Update page info
+        const pageInfoElement = document.getElementById('page-info');
+        if (pageInfoElement) {
+            pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        
+        // Update button states
+        const firstPageBtn = document.getElementById('first-page');
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+        const lastPageBtn = document.getElementById('last-page');
+        
+        if (firstPageBtn) firstPageBtn.disabled = currentPage <= 1;
+        if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
+        if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
+        if (lastPageBtn) lastPageBtn.disabled = currentPage >= totalPages;
+        
+        // Show/hide pagination controls based on total pages
+        const paginationElement = document.getElementById('trading-history-pagination');
+        if (paginationElement) {
+            paginationElement.style.display = totalPages > 1 ? 'flex' : 'none';
+        }
+    }
+
+    setupTradingHistoryPagination() {
+        // First page button
+        const firstPageBtn = document.getElementById('first-page');
+        if (firstPageBtn) {
+            firstPageBtn.addEventListener('click', () => {
+                this.loadPaginatedTradingHistory(1, this.tradingHistoryPagination.perPage);
+            });
+        }
+        
+        // Previous page button
+        const prevPageBtn = document.getElementById('prev-page');
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener('click', () => {
+                const newPage = Math.max(1, this.tradingHistoryPagination.currentPage - 1);
+                this.loadPaginatedTradingHistory(newPage, this.tradingHistoryPagination.perPage);
+            });
+        }
+        
+        // Next page button
+        const nextPageBtn = document.getElementById('next-page');
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener('click', () => {
+                const newPage = Math.min(this.tradingHistoryPagination.totalPages, this.tradingHistoryPagination.currentPage + 1);
+                this.loadPaginatedTradingHistory(newPage, this.tradingHistoryPagination.perPage);
+            });
+        }
+        
+        // Last page button
+        const lastPageBtn = document.getElementById('last-page');
+        if (lastPageBtn) {
+            lastPageBtn.addEventListener('click', () => {
+                this.loadPaginatedTradingHistory(this.tradingHistoryPagination.totalPages, this.tradingHistoryPagination.perPage);
+            });
+        }
+        
+        // Per page selector
+        const perPageSelect = document.getElementById('per-page-select');
+        if (perPageSelect) {
+            perPageSelect.addEventListener('change', (e) => {
+                const newPerPage = parseInt(e.target.value);
+                this.tradingHistoryPagination.perPage = newPerPage;
+                this.loadPaginatedTradingHistory(1, newPerPage); // Reset to first page
+            });
+        }
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-trading-history');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadPaginatedTradingHistory(this.tradingHistoryPagination.currentPage, this.tradingHistoryPagination.perPage);
+            });
+        }
     }
 
     startPortfolioStatusUpdates() {
