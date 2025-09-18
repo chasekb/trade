@@ -1080,6 +1080,18 @@ class EnhancedTradingDashboard {
         }, 30000);
     }
 
+    startOrderBookFrequentRefresh() {
+        // Clear existing interval
+        if (this.orderBookRefreshInterval) {
+            clearInterval(this.orderBookRefreshInterval);
+        }
+        
+        // Start more frequent refresh during async loading - every 10 seconds
+        this.orderBookRefreshInterval = setInterval(async () => {
+            await this.loadOrderBookSignals();
+        }, 10000);
+    }
+
     stopOrderBookAutoRefresh() {
         if (this.orderBookRefreshInterval) {
             clearInterval(this.orderBookRefreshInterval);
@@ -1766,8 +1778,8 @@ class EnhancedTradingDashboard {
                 // Load order book signals immediately for initial symbols
                 await this.loadOrderBookSignals();
                 
-                // Start live order book signals refresh
-                this.startOrderBookAutoRefresh();
+                // Start frequent order book signals refresh for async loading
+                this.startOrderBookFrequentRefresh();
                 
                 // Start monitoring loading progress
                 this.startLoadingProgressMonitoring();
@@ -2548,13 +2560,19 @@ class EnhancedTradingDashboard {
             }
         } else if (data.type === 'symbol_loading_progress') {
             // Handle symbol loading progress updates
-            this.handleSymbolLoadingProgress(data.data);
+            this.handleSymbolLoadingProgress(data.data).catch(error => {
+                console.error('Error handling symbol loading progress:', error);
+            });
         } else if (data.type === 'symbol_loading_complete') {
             // Handle symbol loading completion
-            this.handleSymbolLoadingComplete(data.data);
+            this.handleSymbolLoadingComplete(data.data).catch(error => {
+                console.error('Error handling symbol loading complete:', error);
+            });
         } else if (data.type === 'symbol_loading_error') {
             // Handle symbol loading errors
-            this.handleSymbolLoadingError(data.data);
+            this.handleSymbolLoadingError(data.data).catch(error => {
+                console.error('Error handling symbol loading error:', error);
+            });
         }
     }
 
@@ -4831,6 +4849,9 @@ class EnhancedTradingDashboard {
                     // Reload order book signals when new symbols are added
                     if (data.loading_progress.status === 'loading') {
                         await this.loadOrderBookSignals();
+                    } else if (data.loading_progress.status === 'complete') {
+                        // Switch back to normal refresh rate when loading is complete
+                        this.startOrderBookAutoRefresh();
                     }
                 }
             } catch (error) {
@@ -4884,7 +4905,7 @@ class EnhancedTradingDashboard {
     }
 
     // WebSocket Symbol Loading Handlers
-    handleSymbolLoadingProgress(data) {
+    async handleSymbolLoadingProgress(data) {
         if (data.loading_progress) {
             this.updateLoadingProgress(data.loading_progress);
             
@@ -4895,16 +4916,14 @@ class EnhancedTradingDashboard {
             }
             
             // Update portfolio status to refresh open positions and trading history
-            this.updateTradingStatusFromAPI();
+            await this.updateTradingStatusFromAPI();
             
-            // Reload order book signals when new symbols are added
-            if (data.loading_progress.status === 'loading') {
-                this.loadOrderBookSignals();
-            }
+            // Always reload order book signals when symbols change
+            await this.loadOrderBookSignals();
         }
     }
 
-    handleSymbolLoadingComplete(data) {
+    async handleSymbolLoadingComplete(data) {
         if (data.loading_progress) {
             this.updateLoadingProgress(data.loading_progress);
             
@@ -4915,23 +4934,26 @@ class EnhancedTradingDashboard {
             }
             
             // Update portfolio status to refresh open positions and trading history
-            this.updateTradingStatusFromAPI();
+            await this.updateTradingStatusFromAPI();
             
             // Final reload of order book signals
-            this.loadOrderBookSignals();
+            await this.loadOrderBookSignals();
             
             // Log completion message
             this.logTradingEvent(data.message || 'All symbols loaded successfully!');
         }
     }
 
-    handleSymbolLoadingError(data) {
+    async handleSymbolLoadingError(data) {
         if (data.loading_progress) {
             this.updateLoadingProgress(data.loading_progress);
         }
         
         // Update portfolio status even on error
-        this.updateTradingStatusFromAPI();
+        await this.updateTradingStatusFromAPI();
+        
+        // Reload order book signals even on error
+        await this.loadOrderBookSignals();
         
         // Log error message
         this.logTradingEvent(data.message || 'Error loading some symbols');
