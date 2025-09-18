@@ -799,8 +799,8 @@ class EnhancedTradingDashboard {
                 return;
             }
 
-            // Get selected symbols from strategy configuration
-            const selectedSymbols = this.getSelectedSymbols();
+            // Get symbols from current trading strategy (for async trading) or form (for regular trading)
+            const selectedSymbols = this.liveTrading.strategy?.symbols || this.getSelectedSymbols();
             
             // Build API URL with symbols parameter
             let apiUrl = '/api/orderbook/live-signals';
@@ -4825,6 +4825,9 @@ class EnhancedTradingDashboard {
                         this.liveTrading.strategy.loadingProgress = data.loading_progress;
                     }
                     
+                    // Update portfolio status to refresh open positions and trading history
+                    await this.updateTradingStatusFromAPI();
+                    
                     // Reload order book signals when new symbols are added
                     if (data.loading_progress.status === 'loading') {
                         await this.loadOrderBookSignals();
@@ -4891,6 +4894,9 @@ class EnhancedTradingDashboard {
                 this.liveTrading.strategy.loadingProgress = data.loading_progress;
             }
             
+            // Update portfolio status to refresh open positions and trading history
+            this.updateTradingStatusFromAPI();
+            
             // Reload order book signals when new symbols are added
             if (data.loading_progress.status === 'loading') {
                 this.loadOrderBookSignals();
@@ -4908,6 +4914,9 @@ class EnhancedTradingDashboard {
                 this.liveTrading.strategy.loadingProgress = data.loading_progress;
             }
             
+            // Update portfolio status to refresh open positions and trading history
+            this.updateTradingStatusFromAPI();
+            
             // Final reload of order book signals
             this.loadOrderBookSignals();
             
@@ -4920,6 +4929,9 @@ class EnhancedTradingDashboard {
         if (data.loading_progress) {
             this.updateLoadingProgress(data.loading_progress);
         }
+        
+        // Update portfolio status even on error
+        this.updateTradingStatusFromAPI();
         
         // Log error message
         this.logTradingEvent(data.message || 'Error loading some symbols');
