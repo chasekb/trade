@@ -1717,8 +1717,8 @@ class EnhancedTradingDashboard {
         });
 
         try {
-            // Call backend API to start simulated trading
-            const response = await fetch('/api/simulated-trading/start', {
+            // Call backend API to start asynchronous trading
+            const response = await fetch('/api/async-trading/start', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1730,36 +1730,47 @@ class EnhancedTradingDashboard {
                     initial_balance: 10000.0,
                     max_positions: maxPositions,
                     position_size_percent: positionSize,
-                    session_id: this.sessionId
+                    session_id: this.sessionId,
+                    immediate_start: true,
+                    batch_size: 3
                 })
             });
 
             const data = await response.json();
 
             if (data.status === 'started') {
-                // Initialize strategy
+                // Initialize strategy with async loading info
                 this.liveTrading.strategy = {
                     type: strategyType,
-                    symbols: symbols,
+                    symbols: data.initial_symbols,
+                    allSymbols: symbols,
                     symbolMode: this.liveTrading.symbolMode,
                     params: params,
                     positionSize: positionSize,
                     maxPositions: maxPositions,
                     strategyType: data.strategy_type,
-                    strategyParams: data.strategy_params
+                    strategyParams: data.strategy_params,
+                    loadingProgress: data.loading_progress
                 };
 
                 this.liveTrading.isActive = true;
                 this.liveTrading.isPaused = false;
+                this.liveTrading.asyncLoading = true;
 
                 this.updateTradingControls();
                 this.updateTradingStatus('active');
                 
-                // Load order book signals immediately
+                // Show loading progress
+                this.updateLoadingProgress(data.loading_progress);
+                
+                // Load order book signals immediately for initial symbols
                 await this.loadOrderBookSignals();
                 
                 // Start live order book signals refresh
                 this.startOrderBookAutoRefresh();
+                
+                // Start monitoring loading progress
+                this.startLoadingProgressMonitoring();
                 
                 // Update portfolio status immediately
                 await this.updateTradingStatusFromAPI();
@@ -1816,6 +1827,9 @@ class EnhancedTradingDashboard {
                 
                 // Stop portfolio status updates
                 this.stopPortfolioStatusUpdates();
+                
+                // Stop loading progress monitoring
+                this.stopLoadingProgressMonitoring();
                 
                 // Update portfolio status one final time
                 await this.updateTradingStatusFromAPI();
@@ -2532,6 +2546,15 @@ class EnhancedTradingDashboard {
                 
                 this.updateCandlestickChart();
             }
+        } else if (data.type === 'symbol_loading_progress') {
+            // Handle symbol loading progress updates
+            this.handleSymbolLoadingProgress(data.data);
+        } else if (data.type === 'symbol_loading_complete') {
+            // Handle symbol loading completion
+            this.handleSymbolLoadingComplete(data.data);
+        } else if (data.type === 'symbol_loading_error') {
+            // Handle symbol loading errors
+            this.handleSymbolLoadingError(data.data);
         }
     }
 
@@ -4718,6 +4741,191 @@ class EnhancedTradingDashboard {
             alert('Clear old backtests feature not yet implemented');
         } catch (error) {
             console.error('Error clearing old backtests:', error);
+        }
+    }
+
+    // Asynchronous Trading Methods
+    updateLoadingProgress(progress) {
+        const progressContainer = document.getElementById('loading-progress');
+        if (!progressContainer) {
+            // Create progress container if it doesn't exist
+            this.createLoadingProgressUI();
+        }
+        
+        const progressBar = document.getElementById('loading-progress-bar');
+        const progressText = document.getElementById('loading-progress-text');
+        const statusText = document.getElementById('loading-status-text');
+        
+        if (progressBar && progressText && statusText) {
+            const percentage = (progress.loaded / progress.total) * 100;
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${progress.loaded}/${progress.total} symbols loaded`;
+            
+            if (progress.status === 'loading') {
+                statusText.textContent = `Loading ${progress.remaining} remaining symbols...`;
+                statusText.className = 'loading-status loading';
+            } else if (progress.status === 'complete') {
+                statusText.textContent = 'All symbols loaded successfully!';
+                statusText.className = 'loading-status complete';
+                this.liveTrading.asyncLoading = false;
+            } else if (progress.status === 'error') {
+                statusText.textContent = 'Error loading some symbols';
+                statusText.className = 'loading-status error';
+                this.liveTrading.asyncLoading = false;
+            }
+        }
+    }
+
+    createLoadingProgressUI() {
+        // Create loading progress container
+        const progressContainer = document.createElement('div');
+        progressContainer.id = 'loading-progress';
+        progressContainer.className = 'loading-progress-container';
+        progressContainer.innerHTML = `
+            <div class="loading-progress-header">
+                <h4>Symbol Loading Progress</h4>
+                <span id="loading-status-text" class="loading-status">Loading symbols...</span>
+            </div>
+            <div class="loading-progress-bar-container">
+                <div id="loading-progress-bar" class="loading-progress-bar"></div>
+            </div>
+            <div class="loading-progress-text">
+                <span id="loading-progress-text">0/0 symbols loaded</span>
+            </div>
+        `;
+        
+        // Insert after trading controls
+        const tradingControls = document.getElementById('trading-controls');
+        if (tradingControls && tradingControls.parentNode) {
+            tradingControls.parentNode.insertBefore(progressContainer, tradingControls.nextSibling);
+        }
+    }
+
+    async startLoadingProgressMonitoring() {
+        if (this.loadingProgressInterval) {
+            clearInterval(this.loadingProgressInterval);
+        }
+        
+        this.loadingProgressInterval = setInterval(async () => {
+            if (!this.liveTrading.asyncLoading) {
+                clearInterval(this.loadingProgressInterval);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/async-trading/loading-status');
+                const data = await response.json();
+                
+                if (data.loading_progress) {
+                    this.updateLoadingProgress(data.loading_progress);
+                    
+                    // Update strategy symbols if they've changed
+                    if (this.liveTrading.strategy && data.current_symbols) {
+                        this.liveTrading.strategy.symbols = data.current_symbols;
+                        this.liveTrading.strategy.loadingProgress = data.loading_progress;
+                    }
+                    
+                    // Reload order book signals when new symbols are added
+                    if (data.loading_progress.status === 'loading') {
+                        await this.loadOrderBookSignals();
+                    }
+                }
+            } catch (error) {
+                console.error('Error monitoring loading progress:', error);
+            }
+        }, 2000); // Check every 2 seconds
+    }
+
+    stopLoadingProgressMonitoring() {
+        if (this.loadingProgressInterval) {
+            clearInterval(this.loadingProgressInterval);
+            this.loadingProgressInterval = null;
+        }
+    }
+
+    async addSymbolsToTrading(symbols) {
+        try {
+            const response = await fetch('/api/async-trading/add-symbols', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    symbols: symbols
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                this.logTradingEvent(`Added ${data.added_symbols.length} symbols to trading: ${data.added_symbols.join(', ')}`);
+                
+                // Update strategy symbols
+                if (this.liveTrading.strategy) {
+                    this.liveTrading.strategy.symbols = data.current_symbols;
+                    this.liveTrading.strategy.loadingProgress = data.loading_progress;
+                }
+                
+                // Reload order book signals
+                await this.loadOrderBookSignals();
+                
+                return true;
+            } else {
+                this.logTradingEvent(`Failed to add symbols: ${data.error}`);
+                return false;
+            }
+        } catch (error) {
+            this.logTradingEvent(`Error adding symbols: ${error.message}`);
+            return false;
+        }
+    }
+
+    // WebSocket Symbol Loading Handlers
+    handleSymbolLoadingProgress(data) {
+        if (data.loading_progress) {
+            this.updateLoadingProgress(data.loading_progress);
+            
+            // Update strategy symbols if they've changed
+            if (this.liveTrading.strategy && data.current_symbols) {
+                this.liveTrading.strategy.symbols = data.current_symbols;
+                this.liveTrading.strategy.loadingProgress = data.loading_progress;
+            }
+            
+            // Reload order book signals when new symbols are added
+            if (data.loading_progress.status === 'loading') {
+                this.loadOrderBookSignals();
+            }
+        }
+    }
+
+    handleSymbolLoadingComplete(data) {
+        if (data.loading_progress) {
+            this.updateLoadingProgress(data.loading_progress);
+            
+            // Update strategy symbols
+            if (this.liveTrading.strategy && data.current_symbols) {
+                this.liveTrading.strategy.symbols = data.current_symbols;
+                this.liveTrading.strategy.loadingProgress = data.loading_progress;
+            }
+            
+            // Final reload of order book signals
+            this.loadOrderBookSignals();
+            
+            // Log completion message
+            this.logTradingEvent(data.message || 'All symbols loaded successfully!');
+        }
+    }
+
+    handleSymbolLoadingError(data) {
+        if (data.loading_progress) {
+            this.updateLoadingProgress(data.loading_progress);
+        }
+        
+        // Log error message
+        this.logTradingEvent(data.message || 'Error loading some symbols');
+        
+        if (data.error) {
+            console.error('Symbol loading error:', data.error);
         }
     }
 }

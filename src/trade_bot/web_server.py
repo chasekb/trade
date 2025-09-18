@@ -1728,6 +1728,229 @@ async def stop_simulated_trading():
         return {"error": str(e)}
 
 
+# Asynchronous Trading Endpoints
+@app.post("/api/async-trading/start")
+async def start_async_trading(request: dict):
+    """Start asynchronous trading with progressive symbol loading."""
+    await check_rate_limit()
+    
+    try:
+        # Extract trading parameters
+        symbols = request.get('symbols', ['BTC-USD', 'ETH-USD'])
+        strategy_type = request.get('strategy_type', 'orderbook')
+        strategy_params = request.get('strategy_params', {})
+        initial_balance = request.get('initial_balance', 10000.0)
+        max_positions = request.get('max_positions', 5)
+        position_size_percent = request.get('position_size_percent', 20.0)
+        session_id = request.get('session_id')
+        immediate_start = request.get('immediate_start', True)
+        batch_size = request.get('batch_size', 3)
+        
+        # Create session ID if not provided
+        if not session_id:
+            session_id = f"async_trading_{int(time.time())}"
+        
+        # Start with first batch of symbols for immediate trading
+        initial_symbols = symbols[:batch_size] if len(symbols) > batch_size else symbols
+        remaining_symbols = symbols[batch_size:] if len(symbols) > batch_size else []
+        
+        # Update trading state
+        trading_state["is_active"] = True
+        trading_state["strategy_type"] = strategy_type
+        trading_state["strategy_params"] = strategy_params
+        trading_state["symbols"] = initial_symbols
+        trading_state["all_symbols"] = symbols  # Store all symbols for reference
+        trading_state["remaining_symbols"] = remaining_symbols
+        trading_state["mode"] = "simulated"
+        trading_state["last_signal_check"] = datetime.now()
+        trading_state["session_id"] = session_id
+        trading_state["async_loading"] = True
+        trading_state["loading_progress"] = {
+            "total": len(symbols),
+            "loaded": len(initial_symbols),
+            "remaining": len(remaining_symbols),
+            "status": "loading"
+        }
+        
+        # Reset and configure simulated trading
+        simulated_trading.reset_portfolio()
+        simulated_trading.initial_balance = initial_balance
+        simulated_trading.cash_balance = initial_balance
+        simulated_trading.max_positions = max_positions
+        simulated_trading.position_size_percent = position_size_percent / 100.0
+        
+        # Set session info for trade logging
+        simulated_trading.set_session_info(db_manager, session_id)
+        
+        # Start trading with initial symbols
+        simulated_trading.start_trading(initial_symbols)
+        
+        logger.info(f"Started async trading with {len(initial_symbols)} initial symbols, {len(remaining_symbols)} remaining")
+        logger.info(f"Strategy: {strategy_type} with params: {strategy_params}")
+        
+        # Start background symbol loading if there are remaining symbols
+        if remaining_symbols and immediate_start:
+            asyncio.create_task(load_remaining_symbols_async(remaining_symbols, batch_size))
+        
+        return {
+            "status": "started",
+            "session_id": session_id,
+            "initial_symbols": initial_symbols,
+            "remaining_symbols": remaining_symbols,
+            "total_symbols": len(symbols),
+            "loading_progress": trading_state["loading_progress"],
+            "initial_balance": initial_balance,
+            "max_positions": max_positions,
+            "position_size_percent": position_size_percent,
+            "strategy_type": strategy_type,
+            "strategy_params": strategy_params,
+            "trading_active": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start async trading: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/api/async-trading/add-symbols")
+async def add_symbols_to_trading(request: dict):
+    """Add additional symbols to active trading session."""
+    await check_rate_limit()
+    
+    try:
+        new_symbols = request.get('symbols', [])
+        if not new_symbols:
+            return {"error": "No symbols provided"}
+        
+        if not trading_state.get("is_active", False):
+            return {"error": "No active trading session"}
+        
+        # Add symbols to the trading session
+        current_symbols = trading_state.get("symbols", [])
+        all_symbols = trading_state.get("all_symbols", [])
+        
+        # Add new symbols to current trading
+        for symbol in new_symbols:
+            if symbol not in current_symbols:
+                current_symbols.append(symbol)
+                all_symbols.append(symbol)
+        
+        # Update trading state
+        trading_state["symbols"] = current_symbols
+        trading_state["all_symbols"] = all_symbols
+        
+        # Add symbols to simulated trading
+        simulated_trading.add_symbols(new_symbols)
+        
+        # Update loading progress
+        remaining = trading_state.get("remaining_symbols", [])
+        for symbol in new_symbols:
+            if symbol in remaining:
+                remaining.remove(symbol)
+        trading_state["remaining_symbols"] = remaining
+        
+        trading_state["loading_progress"] = {
+            "total": len(all_symbols),
+            "loaded": len(current_symbols),
+            "remaining": len(remaining),
+            "status": "loading" if remaining else "complete"
+        }
+        
+        logger.info(f"Added {len(new_symbols)} symbols to trading session: {new_symbols}")
+        
+        return {
+            "status": "success",
+            "added_symbols": new_symbols,
+            "current_symbols": current_symbols,
+            "loading_progress": trading_state["loading_progress"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to add symbols to trading: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/async-trading/loading-status")
+async def get_loading_status():
+    """Get current symbol loading status."""
+    await check_rate_limit()
+    
+    try:
+        if not trading_state.get("is_active", False):
+            return {"error": "No active trading session"}
+        
+        return {
+            "loading_progress": trading_state.get("loading_progress", {}),
+            "current_symbols": trading_state.get("symbols", []),
+            "remaining_symbols": trading_state.get("remaining_symbols", []),
+            "total_symbols": len(trading_state.get("all_symbols", []))
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get loading status: {e}")
+        return {"error": str(e)}
+
+
+async def load_remaining_symbols_async(remaining_symbols: list, batch_size: int = 3):
+    """Background task to load remaining symbols progressively."""
+    try:
+        logger.info(f"Starting background loading of {len(remaining_symbols)} symbols")
+        
+        # Process symbols in batches
+        for i in range(0, len(remaining_symbols), batch_size):
+            batch = remaining_symbols[i:i + batch_size]
+            
+            # Add batch to trading
+            await add_symbols_to_trading({"symbols": batch})
+            
+            # Broadcast progress update via WebSocket
+            await manager.broadcast(json.dumps({
+                'type': 'symbol_loading_progress',
+                'data': {
+                    'loading_progress': trading_state.get("loading_progress", {}),
+                    'current_symbols': trading_state.get("symbols", []),
+                    'remaining_symbols': trading_state.get("remaining_symbols", []),
+                    'total_symbols': len(trading_state.get("all_symbols", []))
+                }
+            }))
+            
+            # Wait between batches to avoid overwhelming the system
+            await asyncio.sleep(2.0)
+            
+            logger.info(f"Loaded batch {i//batch_size + 1}: {batch}")
+        
+        # Mark loading as complete
+        trading_state["loading_progress"]["status"] = "complete"
+        trading_state["async_loading"] = False
+        
+        # Broadcast final completion update
+        await manager.broadcast(json.dumps({
+            'type': 'symbol_loading_complete',
+            'data': {
+                'loading_progress': trading_state.get("loading_progress", {}),
+                'current_symbols': trading_state.get("symbols", []),
+                'message': 'All symbols loaded successfully!'
+            }
+        }))
+        
+        logger.info("Background symbol loading completed")
+        
+    except Exception as e:
+        logger.error(f"Error in background symbol loading: {e}")
+        trading_state["loading_progress"]["status"] = "error"
+        trading_state["async_loading"] = False
+        
+        # Broadcast error update
+        await manager.broadcast(json.dumps({
+            'type': 'symbol_loading_error',
+            'data': {
+                'loading_progress': trading_state.get("loading_progress", {}),
+                'error': str(e),
+                'message': 'Error loading some symbols'
+            }
+        }))
+
+
 @app.get("/api/simulated-trading/status")
 async def get_simulated_trading_status():
     """Get current simulated trading status and portfolio."""

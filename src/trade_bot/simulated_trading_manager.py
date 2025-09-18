@@ -417,3 +417,12 @@ class SimulatedTradingManager:
         self.peak_value = self.initial_balance
         self.max_drawdown = 0.0
         logger.info("Portfolio reset to initial state")
+    
+    def add_symbols(self, new_symbols: List[str]) -> None:
+        """Add new symbols to the trading list."""
+        for symbol in new_symbols:
+            if symbol not in self.symbols_to_trade:
+                self.symbols_to_trade.append(symbol)
+                logger.info(f"Added symbol to trading: {symbol}")
+        
+        logger.info(f"Updated trading symbols: {self.symbols_to_trade}")
