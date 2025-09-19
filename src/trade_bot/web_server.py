@@ -2159,6 +2159,71 @@ async def save_session_state(request: dict):
         return {"error": str(e)}
 
 
+@app.post("/api/simulated-trading/restore")
+async def restore_simulated_trading(request: dict):
+    """Restore simulated trading with existing portfolio state."""
+    await check_rate_limit()
+    
+    try:
+        session_id = request.get('session_id')
+        if not session_id:
+            return {"error": "Session ID is required"}
+        
+        # Load session data from database
+        session_data = db_manager.load_trading_session(session_id)
+        if not session_data:
+            return {"error": "Session not found"}
+        
+        # Extract trading parameters
+        symbols = session_data.get('symbols', [])
+        strategy_type = session_data.get('strategy_type', 'orderbook')
+        strategy_params = session_data.get('strategy_params', {})
+        portfolio_state = session_data.get('portfolio_state', {})
+        positions = session_data.get('positions', [])
+        recent_trades = session_data.get('recent_trades', [])
+        
+        # Update trading state
+        trading_state["is_active"] = True
+        trading_state["strategy_type"] = strategy_type
+        trading_state["strategy_params"] = strategy_params
+        trading_state["symbols"] = symbols
+        trading_state["mode"] = "simulated"
+        trading_state["last_signal_check"] = datetime.now()
+        trading_state["session_id"] = session_id
+        
+        # Restore simulated trading state instead of resetting
+        simulated_trading.restore_portfolio_state(
+            portfolio_state=portfolio_state,
+            positions=positions,
+            trades=recent_trades,
+            symbols=symbols
+        )
+        
+        # Set session info for trade logging
+        simulated_trading.set_session_info(db_manager, session_id)
+        
+        # Set strategy info for trade logging
+        simulated_trading.set_strategy_info(strategy_type, strategy_params)
+        
+        # Start trading
+        simulated_trading.start_trading(symbols)
+        
+        logger.info(f"Restored simulated trading for {len(symbols)} symbols with existing portfolio state")
+        logger.info(f"Strategy: {strategy_type} with params: {strategy_params}")
+        
+        return {
+            "status": "restored",
+            "symbols": symbols,
+            "portfolio": portfolio_state,
+            "positions": positions,
+            "recent_trades": recent_trades
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to restore simulated trading: {e}")
+        return {"error": str(e)}
+
+
 @app.get("/api/session/load/{session_id}")
 async def load_session_state(session_id: str):
     """Load trading session state."""

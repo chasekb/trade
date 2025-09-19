@@ -114,6 +114,77 @@ class SimulatedTradingManager:
         self.strategy_params = strategy_params
         logger.info(f"Strategy info set: {strategy_type} with params: {strategy_params}")
     
+    def restore_portfolio_state(self, portfolio_state: Dict[str, Any], positions: List[Dict[str, Any]], 
+                               trades: List[Dict[str, Any]], symbols: List[str]) -> None:
+        """Restore portfolio state from saved session data."""
+        try:
+            # Restore portfolio state
+            self.cash_balance = portfolio_state.get('cash_balance', self.initial_balance)
+            self.peak_value = portfolio_state.get('total_value', self.initial_balance)
+            self.max_drawdown = portfolio_state.get('max_drawdown', 0.0)
+            
+            # Restore positions
+            self.positions = {}
+            for pos_data in positions:
+                if isinstance(pos_data, dict) and 'symbol' in pos_data:
+                    # Convert entry_time string to datetime if needed
+                    entry_time = pos_data.get('entry_time', '')
+                    if isinstance(entry_time, str) and entry_time:
+                        try:
+                            from datetime import datetime
+                            entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                        except:
+                            entry_time = datetime.now()
+                    elif not entry_time:
+                        entry_time = datetime.now()
+                    
+                    position = Position(
+                        symbol=pos_data['symbol'],
+                        side=pos_data.get('side', 'long'),
+                        quantity=float(pos_data.get('quantity', 0.0)),
+                        entry_price=float(pos_data.get('entry_price', 0.0)),
+                        entry_time=entry_time,
+                        current_price=float(pos_data.get('current_price', 0.0)),
+                        unrealized_pnl=float(pos_data.get('unrealized_pnl', 0.0))
+                    )
+                    self.positions[position.symbol] = position
+            
+            # Restore trades
+            self.trades = []
+            for trade_data in trades:
+                if isinstance(trade_data, dict) and 'symbol' in trade_data:
+                    trade = Trade(
+                        trade_id=trade_data.get('trade_id', ''),
+                        symbol=trade_data['symbol'],
+                        side=trade_data.get('side', 'buy'),
+                        quantity=float(trade_data.get('quantity', 0.0)),
+                        price=float(trade_data.get('price', 0.0)),
+                        pnl=float(trade_data.get('pnl', 0.0)),
+                        fees=float(trade_data.get('fees', 0.0)),
+                        timestamp=trade_data.get('timestamp', ''),
+                        reason=trade_data.get('reason', '')
+                    )
+                    self.trades.append(trade)
+            
+            # Restore symbols
+            self.symbols_to_trade = symbols.copy()
+            
+            # Update trade counter
+            self.trade_counter = len(self.trades)
+            
+            logger.info(f"Restored portfolio state: ${self.cash_balance:,.2f} cash, {len(self.positions)} positions, {len(self.trades)} trades")
+            logger.info(f"Portfolio state details: {portfolio_state}")
+            logger.info(f"Positions details: {positions}")
+            logger.info(f"Trades details: {trades}")
+            
+            # Debug: Check if the restoration actually worked
+            logger.info(f"After restoration - cash_balance: {self.cash_balance}, positions: {len(self.positions)}, trades: {len(self.trades)}")
+            
+        except Exception as e:
+            logger.error(f"Error restoring portfolio state: {e}")
+            # Reset to initial state if restoration fails
+            self.reset_portfolio()
+    
     def _save_trade_to_db(self, trade: Trade) -> None:
         """Save trade to database if db_manager is available."""
         if self.db_manager and self.session_id:
@@ -390,6 +461,14 @@ class SimulatedTradingManager:
         open_positions = []
         for symbol, position in self.positions.items():
             if position.status == 'open':
+                # Handle entry_time conversion
+                entry_time = position.entry_time
+                if isinstance(entry_time, str):
+                    try:
+                        entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                    except:
+                        entry_time = datetime.now()
+                
                 open_positions.append({
                     "symbol": symbol,
                     "side": position.side,
@@ -397,8 +476,8 @@ class SimulatedTradingManager:
                     "entry_price": position.entry_price,
                     "current_price": position.current_price,
                     "unrealized_pnl": position.unrealized_pnl,
-                    "entry_time": position.entry_time.isoformat(),
-                    "duration": str(datetime.now() - position.entry_time)
+                    "entry_time": entry_time.isoformat(),
+                    "duration": str(datetime.now() - entry_time)
                 })
         return open_positions
     
@@ -414,7 +493,7 @@ class SimulatedTradingManager:
                 "price": trade.price,
                 "pnl": trade.pnl,
                 "fees": trade.fees,
-                "timestamp": trade.timestamp.isoformat(),
+                "timestamp": trade.timestamp.isoformat() if hasattr(trade.timestamp, 'isoformat') else str(trade.timestamp),
                 "reason": trade.reason
             }
             for trade in recent_trades

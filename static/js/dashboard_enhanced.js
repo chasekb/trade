@@ -162,7 +162,7 @@ class EnhancedTradingDashboard {
             const data = await response.json();
             
             if (data.session_data) {
-                this.restoreTradingState(data.session_data);
+                await this.restoreTradingState(data.session_data);
                 this.logTradingEvent(`Restored session: ${sessionId}`);
             }
         } catch (error) {
@@ -240,7 +240,7 @@ class EnhancedTradingDashboard {
         }
     }
 
-    restoreTradingState(sessionData) {
+    async restoreTradingState(sessionData) {
         if (!sessionData) return;
 
         // Restore trading state
@@ -265,8 +265,38 @@ class EnhancedTradingDashboard {
         this.updateOpenPositions(this.liveTrading.positions);
         this.updateRecentTrades(this.liveTrading.history);
 
-        // Start portfolio updates if trading is active
+        // If trading is active, restore the backend state
         if (this.liveTrading.isActive) {
+            try {
+                const response = await fetch('/api/simulated-trading/restore', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        session_id: this.sessionId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'restored') {
+                    // Update with restored data
+                    this.liveTrading.portfolio = data.portfolio;
+                    this.liveTrading.positions = data.positions;
+                    this.liveTrading.history = data.recent_trades;
+                    
+                    // Update UI with restored data
+                    this.updateOpenPositions(this.liveTrading.positions);
+                    this.updateRecentTrades(this.liveTrading.history);
+                    
+                    this.logTradingEvent(`Restored trading session with ${data.positions.length} positions and $${data.portfolio.cash_balance?.toFixed(2) || '0.00'} balance`);
+                } else {
+                    this.logTradingEvent(`Failed to restore trading session: ${data.error}`);
+                }
+            } catch (error) {
+                this.logTradingEvent(`Error restoring trading session: ${error.message}`);
+            }
+            
             this.startPortfolioStatusUpdates();
             // Also load order book signals if trading is active
             this.loadOrderBookSignals();
