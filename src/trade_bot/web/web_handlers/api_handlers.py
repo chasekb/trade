@@ -47,7 +47,12 @@ class APIHandlers:
         """Get available products for trading."""
         try:
             products = await self.product_fetcher.fetch_all_products()
-            return {"products": products}
+            categories = self.product_fetcher.get_products_by_category()
+            return {
+                "status": "success",
+                "products": products,
+                "categories": categories
+            }
         except Exception as e:
             logger.error(f"Error getting available products: {e}")
             raise HTTPException(status_code=500, detail=str(e))
