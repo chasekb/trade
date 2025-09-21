@@ -164,8 +164,13 @@ async def startup_event():
 async def get_dashboard(request: Request):
     """Serve the main dashboard page."""
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
-    check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_dashboard(request)
+
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve favicon."""
+    from fastapi.responses import Response
+    return Response(content="", media_type="image/x-icon")
 
 @app.get("/api/real-time-data")
 async def get_real_time_data(product_id: str = None):
@@ -175,9 +180,18 @@ async def get_real_time_data(product_id: str = None):
     return await dashboard_handlers.get_real_time_data(product_id)
 
 @app.get("/api/historical-data")
-async def get_historical_data(product_id: str, start_time: str, end_time: str, granularity: int):
+async def get_historical_data(product_id: str, start_time: str = None, end_time: str = None, granularity: int = 3600, days: int = 7):
     """Get historical market data."""
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    
+    # If start_time and end_time are not provided, calculate from days
+    if start_time is None or end_time is None:
+        from datetime import datetime, timedelta
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=days)
+        start_time = start_time.isoformat()
+        end_time = end_time.isoformat()
+    
     return await dashboard_handlers.get_historical_data(product_id, start_time, end_time, granularity)
 
 @app.get("/api/symbols")
