@@ -626,8 +626,19 @@ async def save_dashboard_session(request: dict):
 async def get_session_trades(session_id: str):
     """Get trades for a specific session."""
     check_handlers_ready("trading_handlers", trading_handlers)
+    return await trading_handlers.get_session_trading_history(session_id)
+
+@app.get("/api/trading/history/all")
+async def get_all_trading_history(limit: int = 1000, offset: int = 0):
+    """Get all trading history from database."""
     check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_live_trading_history()
+    return await trading_handlers.get_all_trading_history(limit=limit, offset=offset)
+
+@app.get("/api/trading/metrics")
+async def get_trading_metrics():
+    """Get comprehensive trading metrics."""
+    check_handlers_ready("trading_handlers", trading_handlers)
+    return await trading_handlers.get_trading_metrics()
 
 @app.get("/api/candles")
 async def get_candles(product_id: str, granularity: int, days: int = 7):

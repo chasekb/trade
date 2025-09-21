@@ -83,6 +83,125 @@ class TradingHandlers:
             logger.error(f"Error getting live trading history: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
+    async def get_all_trading_history(self, limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
+        """Get all trading history from database."""
+        try:
+            trades = self.database_manager.get_all_trades(limit=limit, offset=offset)
+            total_count = self.database_manager.get_trades_count()
+            
+            return {
+                "trades": trades,
+                "total_count": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": (offset + limit) < total_count
+            }
+        except Exception as e:
+            logger.error(f"Error getting all trading history: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    async def get_session_trading_history(self, session_id: str, limit: int = 100) -> Dict[str, Any]:
+        """Get trading history for a specific session."""
+        try:
+            trades = self.database_manager.get_trades_by_session(session_id, limit=limit)
+            session_info = self.database_manager.get_session_info(session_id)
+            
+            return {
+                "session_id": session_id,
+                "trades": trades,
+                "session_info": session_info,
+                "trade_count": len(trades)
+            }
+        except Exception as e:
+            logger.error(f"Error getting session trading history: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    async def get_trading_metrics(self) -> Dict[str, Any]:
+        """Get comprehensive trading metrics."""
+        try:
+            # Get all trades for analysis
+            all_trades = self.database_manager.get_all_trades(limit=10000)
+            
+            if not all_trades:
+                return {
+                    "total_trades": 0,
+                    "total_volume": 0,
+                    "total_pnl": 0,
+                    "win_rate": 0,
+                    "avg_trade_size": 0,
+                    "best_trade": 0,
+                    "worst_trade": 0,
+                    "total_fees": 0,
+                    "symbols_traded": [],
+                    "strategy_performance": {},
+                    "daily_pnl": [],
+                    "monthly_pnl": []
+                }
+            
+            # Calculate basic metrics
+            total_trades = len(all_trades)
+            total_volume = sum(trade.get('quantity', 0) * trade.get('price', 0) for trade in all_trades)
+            total_pnl = sum(trade.get('pnl', 0) for trade in all_trades)
+            total_fees = sum(trade.get('fees', 0) for trade in all_trades)
+            
+            # Calculate win rate
+            winning_trades = [trade for trade in all_trades if trade.get('pnl', 0) > 0]
+            win_rate = (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
+            
+            # Calculate trade size metrics
+            trade_sizes = [trade.get('quantity', 0) * trade.get('price', 0) for trade in all_trades]
+            avg_trade_size = sum(trade_sizes) / len(trade_sizes) if trade_sizes else 0
+            
+            # Best and worst trades
+            pnl_values = [trade.get('pnl', 0) for trade in all_trades]
+            best_trade = max(pnl_values) if pnl_values else 0
+            worst_trade = min(pnl_values) if pnl_values else 0
+            
+            # Symbols traded
+            symbols_traded = list(set(trade.get('symbol', '') for trade in all_trades if trade.get('symbol')))
+            
+            # Strategy performance
+            strategy_performance = {}
+            for trade in all_trades:
+                strategy = trade.get('strategy_type', 'unknown')
+                if strategy not in strategy_performance:
+                    strategy_performance[strategy] = {
+                        'trades': 0,
+                        'pnl': 0,
+                        'volume': 0
+                    }
+                strategy_performance[strategy]['trades'] += 1
+                strategy_performance[strategy]['pnl'] += trade.get('pnl', 0)
+                strategy_performance[strategy]['volume'] += trade.get('quantity', 0) * trade.get('price', 0)
+            
+            # Daily P&L (last 30 days)
+            from datetime import datetime, timedelta
+            daily_pnl = []
+            for i in range(30):
+                date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+                day_trades = [trade for trade in all_trades 
+                             if trade.get('timestamp', '').startswith(date)]
+                day_pnl = sum(trade.get('pnl', 0) for trade in day_trades)
+                daily_pnl.append({'date': date, 'pnl': day_pnl})
+            
+            return {
+                "total_trades": total_trades,
+                "total_volume": total_volume,
+                "total_pnl": total_pnl,
+                "win_rate": win_rate,
+                "avg_trade_size": avg_trade_size,
+                "best_trade": best_trade,
+                "worst_trade": worst_trade,
+                "total_fees": total_fees,
+                "symbols_traded": symbols_traded,
+                "strategy_performance": strategy_performance,
+                "daily_pnl": daily_pnl,
+                "monthly_pnl": []  # Could be implemented similarly
+            }
+        except Exception as e:
+            logger.error(f"Error getting trading metrics: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
     async def start_simulated_trading(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Start simulated trading session."""
         try:

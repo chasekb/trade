@@ -1060,3 +1060,92 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get trade stats: {e}")
             return {}
+    
+    def get_all_trades(self, limit: int = 1000, offset: int = 0) -> List[Dict[str, Any]]:
+        """Get all trades with pagination."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT trade_id, session_id, symbol, side, quantity, price, 
+                           timestamp, reason, pnl, fees, strategy_type, strategy_params, created_at
+                    FROM individual_trades 
+                    ORDER BY timestamp DESC 
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
+                
+                rows = cursor.fetchall()
+                trades = []
+                
+                for row in rows:
+                    # Parse strategy_params JSON
+                    strategy_params = {}
+                    if row[11]:
+                        try:
+                            strategy_params = json.loads(row[11])
+                        except:
+                            strategy_params = {}
+                    
+                    trades.append({
+                        'trade_id': row[0],
+                        'session_id': row[1],
+                        'symbol': row[2],
+                        'side': row[3],
+                        'quantity': row[4],
+                        'price': row[5],
+                        'timestamp': row[6],
+                        'reason': row[7],
+                        'pnl': row[8],
+                        'fees': row[9],
+                        'strategy_type': row[10],
+                        'strategy_params': strategy_params,
+                        'created_at': row[12]
+                    })
+                
+                return trades
+                
+        except Exception as e:
+            logger.error(f"Failed to get all trades: {e}")
+            return []
+    
+    def get_trades_count(self) -> int:
+        """Get total count of trades."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM individual_trades")
+                return cursor.fetchone()[0]
+        except Exception as e:
+            logger.error(f"Failed to get trades count: {e}")
+            return 0
+    
+    def get_session_info(self, session_id: str) -> Dict[str, Any]:
+        """Get session information."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT session_id, start_time, end_time, status, strategy_type, 
+                           total_trades, total_pnl, total_volume, created_at
+                    FROM trading_sessions 
+                    WHERE session_id = ?
+                """, (session_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'session_id': row[0],
+                        'start_time': row[1],
+                        'end_time': row[2],
+                        'status': row[3],
+                        'strategy_type': row[4],
+                        'total_trades': row[5],
+                        'total_pnl': row[6],
+                        'total_volume': row[7],
+                        'created_at': row[8]
+                    }
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Failed to get session info: {e}")
+            return {}

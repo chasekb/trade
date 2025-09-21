@@ -2759,6 +2759,9 @@ class EnhancedTradingDashboard {
         document.getElementById('tab-data').addEventListener('click', () => {
             this.switchTab('data');
         });
+        document.getElementById('tab-trading-history').addEventListener('click', () => {
+            this.switchTab('trading-history');
+        });
         document.getElementById('tab-settings').addEventListener('click', () => {
             this.switchTab('settings');
         });
@@ -4565,6 +4568,8 @@ class EnhancedTradingDashboard {
             this.loadBacktestHistory();
         } else if (tabName === 'live-trading') {
             this.loadLiveTradingData();
+        } else if (tabName === 'trading-history') {
+            this.loadTradingHistory();
         }
     }
 
@@ -5455,6 +5460,344 @@ class EnhancedTradingDashboard {
         if (data.error) {
             console.error('Symbol loading error:', data.error);
         }
+    }
+
+    // Trading History Methods
+    async loadTradingHistory() {
+        console.log('Loading trading history...');
+        try {
+            // Load trading metrics
+            await this.loadTradingMetrics();
+            
+            // Load trading history table
+            await this.loadTradingHistoryTable();
+            
+            // Load charts
+            await this.loadTradingHistoryCharts();
+            
+            // Setup event listeners
+            this.setupTradingHistoryEventListeners();
+            
+        } catch (error) {
+            console.error('Error loading trading history:', error);
+        }
+    }
+
+    async loadTradingMetrics() {
+        try {
+            const response = await fetch('/api/trading/metrics');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading trading metrics:', data.error);
+                return;
+            }
+            
+            // Update metrics display
+            document.getElementById('total-trades').textContent = data.total_trades || 0;
+            document.getElementById('total-pnl').textContent = `$${(data.total_pnl || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('win-rate').textContent = `${(data.win_rate || 0).toFixed(1)}%`;
+            document.getElementById('avg-trade-size').textContent = `$${(data.avg_trade_size || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            
+            // Update P&L color
+            const pnlElement = document.getElementById('total-pnl');
+            if (data.total_pnl > 0) {
+                pnlElement.className = 'text-2xl font-bold text-green-600';
+            } else if (data.total_pnl < 0) {
+                pnlElement.className = 'text-2xl font-bold text-red-600';
+            } else {
+                pnlElement.className = 'text-2xl font-bold text-gray-900';
+            }
+            
+        } catch (error) {
+            console.error('Error loading trading metrics:', error);
+        }
+    }
+
+    async loadTradingHistoryTable(page = 1, perPage = 25) {
+        try {
+            const response = await fetch(`/api/trading/history/all?limit=${perPage}&offset=${(page - 1) * perPage}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading trading history:', data.error);
+                return;
+            }
+            
+            // Update pagination info
+            const totalPages = Math.ceil(data.total_count / perPage);
+            document.getElementById('page-info').textContent = `Page ${page} of ${totalPages}`;
+            
+            // Update pagination buttons
+            document.getElementById('prev-page').disabled = page <= 1;
+            document.getElementById('next-page').disabled = page >= totalPages;
+            
+            // Populate table
+            this.populateTradingHistoryTable(data.trades);
+            
+        } catch (error) {
+            console.error('Error loading trading history table:', error);
+        }
+    }
+
+    populateTradingHistoryTable(trades) {
+        const tbody = document.getElementById('history-table-body');
+        tbody.innerHTML = '';
+        
+        if (!trades || trades.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No trades found</td></tr>';
+            return;
+        }
+        
+        trades.forEach(trade => {
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-50';
+            
+            const timestamp = new Date(trade.timestamp).toLocaleString();
+            const pnl = trade.pnl || 0;
+            const pnlClass = pnl > 0 ? 'text-green-600' : pnl < 0 ? 'text-red-600' : 'text-gray-600';
+            
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${timestamp}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${trade.symbol || 'N/A'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full ${trade.side === 'buy' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                        ${trade.side || 'N/A'}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(trade.quantity || 0).toFixed(6)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(trade.price || 0).toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm ${pnlClass}">$${pnl.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${(trade.fees || 0).toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.strategy_type || 'N/A'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.reason || 'N/A'}</td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+    }
+
+    async loadTradingHistoryCharts() {
+        try {
+            // Load strategy performance chart
+            await this.loadStrategyPerformanceChart();
+            
+            // Load daily P&L chart
+            await this.loadDailyPnlChart();
+            
+        } catch (error) {
+            console.error('Error loading trading history charts:', error);
+        }
+    }
+
+    async loadStrategyPerformanceChart() {
+        try {
+            const response = await fetch('/api/trading/metrics');
+            const data = await response.json();
+            
+            if (data.error || !data.strategy_performance) {
+                console.error('Error loading strategy performance:', data.error);
+                return;
+            }
+            
+            const strategies = Object.keys(data.strategy_performance);
+            const pnlData = strategies.map(strategy => data.strategy_performance[strategy].pnl);
+            const tradeCounts = strategies.map(strategy => data.strategy_performance[strategy].trades);
+            
+            const ctx = document.getElementById('strategy-performance-chart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (this.charts.strategyPerformance) {
+                this.charts.strategyPerformance.destroy();
+            }
+            
+            this.charts.strategyPerformance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: strategies,
+                    datasets: [{
+                        data: pnlData,
+                        backgroundColor: [
+                            '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const strategy = context.label;
+                                    const pnl = context.parsed;
+                                    const trades = tradeCounts[context.dataIndex];
+                                    return `${strategy}: $${pnl.toFixed(2)} (${trades} trades)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error loading strategy performance chart:', error);
+        }
+    }
+
+    async loadDailyPnlChart() {
+        try {
+            const response = await fetch('/api/trading/metrics');
+            const data = await response.json();
+            
+            if (data.error || !data.daily_pnl) {
+                console.error('Error loading daily P&L data:', data.error);
+                return;
+            }
+            
+            const dates = data.daily_pnl.map(day => day.date).reverse();
+            const pnlValues = data.daily_pnl.map(day => day.pnl).reverse();
+            
+            const ctx = document.getElementById('daily-pnl-chart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (this.charts.dailyPnl) {
+                this.charts.dailyPnl.destroy();
+            }
+            
+            this.charts.dailyPnl = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Daily P&L',
+                        data: pnlValues,
+                        borderColor: '#3B82F6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error loading daily P&L chart:', error);
+        }
+    }
+
+    setupTradingHistoryEventListeners() {
+        // Refresh button
+        document.getElementById('refresh-history')?.addEventListener('click', () => {
+            this.loadTradingHistory();
+        });
+        
+        // Export button
+        document.getElementById('export-history')?.addEventListener('click', () => {
+            this.exportTradingHistory();
+        });
+        
+        // Pagination controls
+        document.getElementById('prev-page')?.addEventListener('click', () => {
+            const currentPage = parseInt(document.getElementById('page-info').textContent.split(' ')[1]);
+            const perPage = parseInt(document.getElementById('history-per-page').value);
+            if (currentPage > 1) {
+                this.loadTradingHistoryTable(currentPage - 1, perPage);
+            }
+        });
+        
+        document.getElementById('next-page')?.addEventListener('click', () => {
+            const pageInfo = document.getElementById('page-info').textContent;
+            const currentPage = parseInt(pageInfo.split(' ')[1]);
+            const totalPages = parseInt(pageInfo.split(' ')[3]);
+            const perPage = parseInt(document.getElementById('history-per-page').value);
+            if (currentPage < totalPages) {
+                this.loadTradingHistoryTable(currentPage + 1, perPage);
+            }
+        });
+        
+        // Per page selector
+        document.getElementById('history-per-page')?.addEventListener('change', (e) => {
+            this.loadTradingHistoryTable(1, parseInt(e.target.value));
+        });
+    }
+
+    async exportTradingHistory() {
+        try {
+            const response = await fetch('/api/trading/history/all?limit=10000');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error exporting trading history:', data.error);
+                return;
+            }
+            
+            // Convert to CSV
+            const csv = this.convertTradesToCSV(data.trades);
+            
+            // Download CSV
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `trading_history_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+        } catch (error) {
+            console.error('Error exporting trading history:', error);
+        }
+    }
+
+    convertTradesToCSV(trades) {
+        const headers = ['Timestamp', 'Symbol', 'Side', 'Quantity', 'Price', 'P&L', 'Fees', 'Strategy', 'Reason'];
+        const csvRows = [headers.join(',')];
+        
+        trades.forEach(trade => {
+            const row = [
+                trade.timestamp || '',
+                trade.symbol || '',
+                trade.side || '',
+                trade.quantity || 0,
+                trade.price || 0,
+                trade.pnl || 0,
+                trade.fees || 0,
+                trade.strategy_type || '',
+                trade.reason || ''
+            ];
+            csvRows.push(row.join(','));
+        });
+        
+        return csvRows.join('\n');
     }
 }
 
