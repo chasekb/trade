@@ -310,6 +310,12 @@ async def get_simulated_trading_status():
     check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.get_simulated_trading_status()
 
+@app.get("/api/simulated-trading/status")
+async def get_simulated_trading_status_alt():
+    """Alternative endpoint for simulated trading status."""
+    check_handlers_ready("trading_handlers", trading_handlers)
+    return await trading_handlers.get_simulated_trading_status()
+
 @app.post("/api/trading/simulated/process-signals")
 async def process_simulated_signals(request: dict):
     """Process simulated trading signals."""
