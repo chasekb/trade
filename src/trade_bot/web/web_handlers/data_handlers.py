@@ -114,6 +114,7 @@ class DataHandlers:
                             "data_status": data_status,
                             "spread": spread,
                             "volume": total_volume,
+                            "signal_generated": signal != "hold" and signal_strength > 0.1,  # Only process strong signals
                             "criteria_analysis": {
                                 "bid_ask_squeeze": {
                                     "analysis": f"Spread: {spread:.4f}%" if spread < 0.1 else "Wide spread detected"
@@ -141,6 +142,7 @@ class DataHandlers:
                             "data_status": "insufficient",
                             "spread": 0.0,
                             "volume": 0.0,
+                            "signal_generated": False,  # No data available, don't process
                             "criteria_analysis": {
                                 "bid_ask_squeeze": {
                                     "analysis": "No data available"
@@ -167,6 +169,7 @@ class DataHandlers:
                         "data_status": "insufficient",
                         "spread": 0.0,
                         "volume": 0.0,
+                        "signal_generated": False,  # Error occurred, don't process
                         "criteria_analysis": {
                             "bid_ask_squeeze": {
                                 "analysis": "Error fetching data"

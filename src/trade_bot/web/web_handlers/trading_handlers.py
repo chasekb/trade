@@ -131,12 +131,17 @@ class TradingHandlers:
     async def process_simulated_signals(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process simulated trading signals."""
         try:
-            # Signal processing logic would go here
-            return {
-                "status": "processed",
-                "signals_processed": 0,
-                "message": "Signals processed successfully"
-            }
+            signals = request_data.get('signals', [])
+            
+            if not signals:
+                return {"error": "No signals provided"}
+            
+            result = await self.simulated_trading_manager.process_signals(signals)
+            
+            logger.info(f"Processed {len(signals)} signals, executed {result.get('executed_trades', 0)} trades")
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error processing simulated signals: {e}")
             raise HTTPException(status_code=500, detail=str(e))

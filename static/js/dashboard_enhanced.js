@@ -928,7 +928,7 @@ class EnhancedTradingDashboard {
             this.updateOrderBookStatistics(data);
             this.updateOrderBookPaginationControls();
             
-            // Log signal processing if trading is active
+            // Process signals for trading if trading is active
             if (this.liveTrading.isActive && data.signals && data.signals.length > 0) {
                 const activeSignals = data.signals.filter(s => s.signal_generated === true);
                 if (activeSignals.length > 0) {
@@ -936,6 +936,30 @@ class EnhancedTradingDashboard {
                     activeSignals.forEach(signal => {
                         this.logTradingEvent(`Signal: ${signal.signal.toUpperCase()} ${signal.symbol} @ $${signal.price} (${signal.signal_type})`);
                     });
+                    
+                    // Process signals through simulated trading
+                    try {
+                        const processResponse = await fetch('/api/simulated-trading/process-signals', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                signals: activeSignals
+                            })
+                        });
+                        
+                        const processData = await processResponse.json();
+                        if (processData.status === 'processed') {
+                            const executedTrades = processData.executed_trades || 0;
+                            if (executedTrades > 0) {
+                                this.logTradingEvent(`Executed ${executedTrades} trades based on order book signals`);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error processing signals:', error);
+                        this.logTradingEvent(`Error processing signals: ${error.message}`);
+                    }
                 }
             }
             
