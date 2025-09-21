@@ -533,8 +533,19 @@ async def get_trades_paginated(page: int = 1, per_page: int = 10, session_id: st
 async def get_active_session():
     """Get active session."""
     check_handlers_ready("data_handlers", data_handlers)
-    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_trading_state()
+
+@app.post("/api/session/save")
+async def save_session(request: dict):
+    """Save trading session (alternative endpoint)."""
+    check_handlers_ready("data_handlers", data_handlers)
+    return await data_handlers.save_session_state(request)
+
+@app.post("/api/session/save-dashboard")
+async def save_dashboard_session(request: dict):
+    """Save dashboard session (alternative endpoint)."""
+    check_handlers_ready("data_handlers", data_handlers)
+    return await data_handlers.save_dashboard_state(request)
 
 @app.get("/api/trades/session/{session_id}")
 async def get_session_trades(session_id: str):
