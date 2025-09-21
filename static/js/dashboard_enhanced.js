@@ -706,36 +706,46 @@ class EnhancedTradingDashboard {
             radio.addEventListener('change', (e) => {
                 this.liveTrading.symbolMode = e.target.value;
                 this.updateSymbolModeUI();
-                // Refresh order book signals when symbol mode changes
-                this.loadOrderBookSignals();
+                // Only refresh order book signals if trading is active
+                if (this.liveTrading.isActive) {
+                    this.loadOrderBookSignals();
+                }
             });
         });
 
         // Universe type selection
         document.getElementById('universe-type')?.addEventListener('change', (e) => {
             this.updateUniverseSelection(e.target.value);
-            // Refresh order book signals when universe type changes
-            this.loadOrderBookSignals();
+            // Only refresh order book signals if trading is active
+            if (this.liveTrading.isActive) {
+                this.loadOrderBookSignals();
+            }
         });
 
         // Single symbol selection
         document.getElementById('live-trading-symbol')?.addEventListener('change', () => {
-            // Refresh order book signals when single symbol changes
-            this.loadOrderBookSignals();
+            // Only refresh order book signals if trading is active
+            if (this.liveTrading.isActive) {
+                this.loadOrderBookSignals();
+            }
         });
 
         // Custom symbol management
         document.getElementById('add-custom-symbol')?.addEventListener('click', () => {
             this.addCustomSymbol();
-            // Refresh order book signals when custom symbols change
-            this.loadOrderBookSignals();
+            // Only refresh order book signals if trading is active
+            if (this.liveTrading.isActive) {
+                this.loadOrderBookSignals();
+            }
         });
 
         document.getElementById('custom-symbol-input')?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 this.addCustomSymbol();
-                // Refresh order book signals when custom symbols change
-                this.loadOrderBookSignals();
+                // Only refresh order book signals if trading is active
+                if (this.liveTrading.isActive) {
+                    this.loadOrderBookSignals();
+                }
             }
         });
 
@@ -773,7 +783,11 @@ class EnhancedTradingDashboard {
         
         // Order book signals refresh button
         document.getElementById('refresh-orderbook-signals')?.addEventListener('click', async () => {
-            await this.loadOrderBookSignals();
+            if (this.liveTrading.isActive) {
+                await this.loadOrderBookSignals();
+            } else {
+                this.logTradingEvent("Please start trading first to refresh order book signals.");
+            }
         });
         
         // Trading stats refresh button
@@ -1919,6 +1933,16 @@ class EnhancedTradingDashboard {
                 // Stop live order book signals refresh
                 this.stopOrderBookAutoRefresh();
                 
+                // Clear order book signals display
+                this.updateOrderBookSignalsTable([]);
+                this.updateOrderBookStatistics({
+                    total_analyzed: 0,
+                    active_signals: 0,
+                    last_updated: new Date().toISOString(),
+                    average_strength: 0,
+                    message: "Trading stopped. Configure your strategy and start trading to see live signals."
+                });
+                
                 // Stop portfolio status updates
                 this.stopPortfolioStatusUpdates();
                 
@@ -1968,6 +1992,16 @@ class EnhancedTradingDashboard {
         // Stop auto-refresh
         this.stopOrderBookAutoRefresh();
         this.stopPortfolioStatusUpdates();
+        
+        // Clear order book signals display
+        this.updateOrderBookSignalsTable([]);
+        this.updateOrderBookStatistics({
+            total_analyzed: 0,
+            active_signals: 0,
+            last_updated: new Date().toISOString(),
+            average_strength: 0,
+            message: "Emergency stop activated. Configure your strategy and start trading to see live signals."
+        });
         
         // Close all positions if in live mode
         if (this.liveTrading.mode === 'live') {
@@ -4504,12 +4538,20 @@ class EnhancedTradingDashboard {
     }
     
     async loadLiveTradingData() {
-        // Load order book signals
-        await this.loadOrderBookSignals();
-        
-        // If trading is active, restart auto-refresh
+        // Only load order book signals if trading is active
         if (this.liveTrading.isActive) {
+            await this.loadOrderBookSignals();
             this.startOrderBookAutoRefresh();
+        } else {
+            // Show empty state when trading is not active
+            this.updateOrderBookSignalsTable([]);
+            this.updateOrderBookStatistics({
+                total_analyzed: 0,
+                active_signals: 0,
+                last_updated: new Date().toISOString(),
+                average_strength: 0,
+                message: "Trading is not active. Configure your strategy and start trading to see live signals."
+            });
         }
         
         // Load recent trades and positions
