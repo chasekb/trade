@@ -10,11 +10,12 @@ logger = logging.getLogger(__name__)
 class DataHandlers:
     """Handles data-related functionality for the trading web server."""
     
-    def __init__(self, config, data_provider, cached_data_provider, database_manager):
+    def __init__(self, config, data_provider, cached_data_provider, database_manager, simulated_trading_manager=None):
         self.config = config
         self.data_provider = data_provider
         self.cached_data_provider = cached_data_provider
         self.database_manager = database_manager
+        self.simulated_trading_manager = simulated_trading_manager
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -31,10 +32,22 @@ class DataHandlers:
             if not symbols:
                 return {"error": "No symbols provided"}
             
+            # Check if trading is active
+            trading_active = False
+            if self.simulated_trading_manager:
+                trading_active = self.simulated_trading_manager.is_trading
+            
+            if not trading_active:
+                return {
+                    "signals": [],
+                    "trading_active": False,
+                    "message": "Trading is not active. Please start trading first."
+                }
+            
             symbol_list = [s.strip() for s in symbols.split(',')]
             
             # This would typically analyze order book data
-            # For now, return placeholder data
+            # For now, return placeholder data with trading status
             signals = []
             for symbol in symbol_list:
                 signals.append({
@@ -46,7 +59,11 @@ class DataHandlers:
                     "reason": "Order book imbalance detected"
                 })
             
-            return {"signals": signals}
+            return {
+                "signals": signals,
+                "trading_active": True,
+                "message": "Order book signals generated successfully"
+            }
         except Exception as e:
             logger.error(f"Error getting live orderbook signals: {e}")
             raise HTTPException(status_code=500, detail=str(e))
