@@ -26,7 +26,7 @@ class DataHandlers:
             logger.error(f"Error getting cache stats: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    async def get_live_orderbook_signals(self, symbols: str = None) -> Dict[str, Any]:
+    async def get_live_orderbook_signals(self, symbols: str = None, page: int = 1, per_page: int = 10) -> Dict[str, Any]:
         """Get live order book signals."""
         try:
             if not symbols:
@@ -165,10 +165,28 @@ class DataHandlers:
                         }
                     })
             
+            # Sort signals by signal strength (descending)
+            signals.sort(key=lambda x: x.get('signal_strength', 0), reverse=True)
+            
+            # Calculate pagination
+            total_signals = len(signals)
+            total_pages = (total_signals + per_page - 1) // per_page
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            paginated_signals = signals[start_idx:end_idx]
+            
             return {
-                "signals": signals,
+                "signals": paginated_signals,
                 "trading_active": True,  # Always true for testing
-                "message": "Order book signals generated successfully"
+                "message": "Order book signals generated successfully",
+                "pagination": {
+                    "current_page": page,
+                    "per_page": per_page,
+                    "total_signals": total_signals,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
             }
         except Exception as e:
             logger.error(f"Error getting live orderbook signals: {e}")

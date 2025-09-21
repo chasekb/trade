@@ -839,7 +839,7 @@ class EnhancedTradingDashboard {
         }
     }
 
-    async loadOrderBookSignals() {
+    async loadOrderBookSignals(page = 1, perPage = 10) {
         try {
             // Check if trading is active
             if (!this.liveTrading.isActive) {
@@ -870,10 +870,10 @@ class EnhancedTradingDashboard {
                 return;
             }
             
-            // Build API URL with symbols parameter
+            // Build API URL with symbols and pagination parameters
             let apiUrl = '/api/orderbook/live-signals';
             const symbolsParam = selectedSymbols.join(',');
-            apiUrl += `?symbols=${encodeURIComponent(symbolsParam)}`;
+            apiUrl += `?symbols=${encodeURIComponent(symbolsParam)}&page=${page}&per_page=${perPage}`;
             
             const response = await fetch(apiUrl);
             const data = await response.json();
@@ -897,8 +897,21 @@ class EnhancedTradingDashboard {
                 return;
             }
             
+            // Update pagination info
+            if (data.pagination) {
+                this.orderBookSignalsPagination = {
+                    currentPage: data.pagination.current_page,
+                    perPage: data.pagination.per_page,
+                    totalSignals: data.pagination.total_signals,
+                    totalPages: data.pagination.total_pages,
+                    hasNext: data.pagination.has_next,
+                    hasPrev: data.pagination.has_prev
+                };
+            }
+            
             this.updateOrderBookSignalsTable(data.signals);
             this.updateOrderBookStatistics(data);
+            this.updateOrderBookPaginationControls();
             
             // Log signal processing if trading is active
             if (this.liveTrading.isActive && data.signals && data.signals.length > 0) {
@@ -1145,7 +1158,7 @@ class EnhancedTradingDashboard {
         
         // Start new interval - refresh every 30 seconds
         this.orderBookRefreshInterval = setInterval(async () => {
-            await this.loadOrderBookSignals();
+            await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
         }, 30000);
     }
 
@@ -1157,7 +1170,7 @@ class EnhancedTradingDashboard {
         
         // Start more frequent refresh during async loading - every 10 seconds
         this.orderBookRefreshInterval = setInterval(async () => {
-            await this.loadOrderBookSignals();
+            await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
         }, 10000);
     }
 
@@ -2097,7 +2110,14 @@ class EnhancedTradingDashboard {
 
             // Update open positions if available
             if (data.open_positions) {
+                this.liveTrading.positions = data.open_positions;
                 this.updateOpenPositions(data.open_positions);
+            }
+
+            // Update recent trades if available
+            if (data.recent_trades) {
+                this.liveTrading.history = data.recent_trades;
+                this.updateRecentTrades(data.recent_trades);
             }
 
             // Refresh paginated trading history to show latest trades
@@ -2432,6 +2452,27 @@ class EnhancedTradingDashboard {
                 infoElement.textContent = 'No order book signals available';
             }
         }
+    }
+
+    updateOrderBookPaginationControls() {
+        const { currentPage, totalPages, totalSignals } = this.orderBookSignalsPagination;
+        
+        // Update page info
+        const pageInfoElement = document.getElementById('orderbook-page-info');
+        if (pageInfoElement) {
+            pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        
+        // Update button states
+        const firstPageBtn = document.getElementById('orderbook-first-page');
+        const prevPageBtn = document.getElementById('orderbook-prev-page');
+        const nextPageBtn = document.getElementById('orderbook-next-page');
+        const lastPageBtn = document.getElementById('orderbook-last-page');
+        
+        if (firstPageBtn) firstPageBtn.disabled = currentPage <= 1;
+        if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
+        if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
+        if (lastPageBtn) lastPageBtn.disabled = currentPage >= totalPages;
     }
 
     updateOrderBookSignalsPaginationControls() {
