@@ -939,7 +939,7 @@ class EnhancedTradingDashboard {
                     
                     // Process signals through simulated trading
                     try {
-                        const processResponse = await fetch('/api/simulated-trading/process-signals', {
+                        const processResponse = await fetch('/api/trading/simulated/process-signals', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
