@@ -433,6 +433,11 @@ async def get_trading_metrics():
 async def get_data_summary():
     """Get data summary statistics."""
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    return await dashboard_handlers.get_data_summary()
+
+@app.get("/api/data-summary")
+async def get_data_summary_alt():
+    """Alternative endpoint for data summary statistics."""
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_data_summary()
 
