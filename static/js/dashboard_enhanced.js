@@ -857,12 +857,23 @@ class EnhancedTradingDashboard {
             // Get symbols from current trading strategy (for async trading) or form (for regular trading)
             const selectedSymbols = this.liveTrading.strategy?.symbols || this.getSelectedSymbols();
             
+            // If no symbols are selected, show appropriate message
+            if (!selectedSymbols || selectedSymbols.length === 0) {
+                this.updateOrderBookSignalsTable([]);
+                this.updateOrderBookStatistics({
+                    total_analyzed: 0,
+                    active_signals: 0,
+                    last_updated: new Date().toISOString(),
+                    average_strength: 0,
+                    message: "No symbols selected for trading. Please select symbols to see live signals."
+                });
+                return;
+            }
+            
             // Build API URL with symbols parameter
             let apiUrl = '/api/orderbook/live-signals';
-            if (selectedSymbols && selectedSymbols.length > 0) {
-                const symbolsParam = selectedSymbols.join(',');
-                apiUrl += `?symbols=${encodeURIComponent(symbolsParam)}`;
-            }
+            const symbolsParam = selectedSymbols.join(',');
+            apiUrl += `?symbols=${encodeURIComponent(symbolsParam)}`;
             
             const response = await fetch(apiUrl);
             const data = await response.json();

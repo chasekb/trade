@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import uvicorn
-from trade_bot.web_server import app
+from trade_bot.web.web_server_new import app
 
 def main():
     """Launch the web server."""
@@ -24,7 +24,7 @@ def main():
     
     try:
         uvicorn.run(
-            "trade_bot.web_server:app",
+            "trade_bot.web.web_server_new:app",
             host="0.0.0.0",
             port=8001,
             log_level="info",
