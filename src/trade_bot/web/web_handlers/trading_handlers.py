@@ -89,14 +89,28 @@ class TradingHandlers:
             symbols = request_data.get('symbols', ['BTC-USD'])
             strategy_type = request_data.get('strategy_type', 'SMA')
             strategy_params = request_data.get('strategy_params', {})
+            position_size_percent = request_data.get('position_size_percent', 20.0)
+            max_positions = request_data.get('max_positions', 5)
+            initial_balance = request_data.get('initial_balance', 10000.0)
             
-            # Start simulated trading
-            self.simulated_trading_manager.start_trading(symbols)
+            # Update simulated trading manager with new parameters
+            self.simulated_trading_manager.initial_balance = initial_balance
+            self.simulated_trading_manager.cash_balance = initial_balance
+            
+            # Start simulated trading with position size parameters
+            self.simulated_trading_manager.start_trading(
+                symbols, 
+                position_size_percent=position_size_percent,
+                max_positions=max_positions
+            )
             
             return {
                 "status": "started",
                 "symbols": symbols,
                 "strategy_type": strategy_type,
+                "position_size_percent": position_size_percent,
+                "max_positions": max_positions,
+                "initial_balance": initial_balance,
                 "message": "Simulated trading started successfully"
             }
         except Exception as e:

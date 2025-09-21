@@ -207,11 +207,21 @@ class SimulatedTradingManager:
             except Exception as e:
                 logger.error(f"Failed to save trade to database: {e}")
     
-    def start_trading(self, symbols: List[str]) -> None:
+    def start_trading(self, symbols: List[str], position_size_percent: float = None, max_positions: int = None) -> None:
         """Start simulated trading for specified symbols."""
         self.symbols_to_trade = symbols
         self.is_trading = True
         self.last_signal_check = datetime.now()
+        
+        # Update position size and max positions if provided
+        if position_size_percent is not None:
+            self.position_size_percent = position_size_percent / 100.0  # Convert to decimal
+            logger.info(f"Updated position size to {position_size_percent}%")
+        
+        if max_positions is not None:
+            self.max_positions = max_positions
+            logger.info(f"Updated max positions to {max_positions}")
+        
         logger.info(f"Started simulated trading for symbols: {symbols}")
     
     def stop_trading(self) -> None:
@@ -337,7 +347,8 @@ class SimulatedTradingManager:
             logger.debug(f"Max positions ({self.max_positions}) reached, skipping buy signal for {symbol}")
             return None
         
-        # Calculate position size
+        # Calculate position size based on remaining cash balance
+        # This ensures we don't over-leverage by using the same percentage of total balance for each position
         available_cash = self.cash_balance * self.position_size_percent
         quantity = available_cash / price
         

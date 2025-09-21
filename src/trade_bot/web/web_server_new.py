@@ -342,7 +342,10 @@ async def start_async_trading(request: dict):
         await trading_handlers.start_simulated_trading({
             'symbols': initial_symbols,
             'strategy_type': strategy_type,
-            'strategy_params': strategy_params
+            'strategy_params': strategy_params,
+            'position_size_percent': position_size_percent,
+            'max_positions': max_positions,
+            'initial_balance': initial_balance
         })
         
         # Start background symbol loading if there are remaining symbols
