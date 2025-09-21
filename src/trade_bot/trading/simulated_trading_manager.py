@@ -243,7 +243,9 @@ class SimulatedTradingManager:
             import asyncio
             
             async def update_prices():
-                for symbol, position in self.positions.items():
+                # Create a copy of positions to avoid dictionary changed size during iteration
+                positions_copy = dict(self.positions)
+                for symbol, position in positions_copy.items():
                     if position.status == 'open':
                         try:
                             # Create a data provider for this symbol
