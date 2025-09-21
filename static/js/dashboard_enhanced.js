@@ -1183,10 +1183,10 @@ class EnhancedTradingDashboard {
             clearInterval(this.orderBookRefreshInterval);
         }
         
-        // Start more frequent refresh during async loading - every 10 seconds
+        // Start more frequent refresh during async loading - every 5 seconds
         this.orderBookRefreshInterval = setInterval(async () => {
             await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
-        }, 10000);
+        }, 5000);
     }
 
     stopOrderBookAutoRefresh() {
@@ -1869,15 +1869,13 @@ class EnhancedTradingDashboard {
                 this.updateTradingControls();
                 this.updateTradingStatus('active');
                 
+                // Start loading order book signals immediately when trading starts
+                await this.loadOrderBookSignals();
+                // Start frequent order book signals refresh for async loading
+                this.startOrderBookFrequentRefresh();
+                
                 // Show loading progress
                 this.updateLoadingProgress(data.loading_progress);
-                
-                // Only load order book signals if trading is active
-                if (this.liveTrading.isActive) {
-                    await this.loadOrderBookSignals();
-                    // Start frequent order book signals refresh for async loading
-                    this.startOrderBookFrequentRefresh();
-                }
                 
                 // Start monitoring loading progress
                 this.startLoadingProgressMonitoring();
@@ -5294,9 +5292,10 @@ class EnhancedTradingDashboard {
                     // Update portfolio status to refresh open positions and trading history
                     await this.updateTradingStatusFromAPI();
                     
-                    // Reload order book signals when new symbols are added (only if trading is active)
+                    // Reload order book signals continuously during loading (only if trading is active)
                     if (this.liveTrading.isActive) {
                         if (data.loading_progress.status === 'loading') {
+                            // Refresh orderbook signals every time we check loading progress
                             await this.loadOrderBookSignals();
                         } else if (data.loading_progress.status === 'complete') {
                             // Switch back to normal refresh rate when loading is complete
