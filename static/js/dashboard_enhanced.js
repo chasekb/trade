@@ -931,6 +931,9 @@ class EnhancedTradingDashboard {
             // Process signals for trading if trading is active
             if (this.liveTrading.isActive && data.signals && data.signals.length > 0) {
                 const activeSignals = data.signals.filter(s => s.signal_generated === true);
+                console.log(`Found ${activeSignals.length} active signals out of ${data.signals.length} total signals`);
+                console.log('Active signals:', activeSignals);
+                
                 if (activeSignals.length > 0) {
                     this.logTradingEvent(`Processing ${activeSignals.length} active signals from live order book analysis`);
                     activeSignals.forEach(signal => {
@@ -938,6 +941,7 @@ class EnhancedTradingDashboard {
                     });
                     
                     // Process signals through simulated trading
+                    console.log('Calling signal processing endpoint...');
                     try {
                         const processResponse = await fetch('/api/trading/simulated/process-signals', {
                             method: 'POST',
@@ -950,11 +954,18 @@ class EnhancedTradingDashboard {
                         });
                         
                         const processData = await processResponse.json();
+                        console.log('Signal processing response:', processData);
+                        
                         if (processData.status === 'processed') {
                             const executedTrades = processData.executed_trades || 0;
                             if (executedTrades > 0) {
                                 this.logTradingEvent(`Executed ${executedTrades} trades based on order book signals`);
+                                console.log(`Executed ${executedTrades} trades`);
+                            } else {
+                                console.log('No trades executed');
                             }
+                        } else {
+                            console.log('Signal processing failed:', processData);
                         }
                     } catch (error) {
                         console.error('Error processing signals:', error);
