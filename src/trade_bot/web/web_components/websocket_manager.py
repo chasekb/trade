@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Set
 
 from fastapi import WebSocket
 from ...core.config import TradingConfig
@@ -24,6 +24,7 @@ class WebSocketManager:
         self.real_time_data: Dict[str, Any] = {}
         self.trading_state: Dict[str, Any] = {}
         self.simulated_trading = None
+        self.subscriptions: Dict[str, Set[str]] = {}  # channel -> set of product_ids
     
     async def connect(self, websocket: WebSocket):
         """Accept a new WebSocket connection."""
@@ -220,3 +221,26 @@ class WebSocketManager:
     def set_simulated_trading(self, simulated_trading):
         """Set the simulated trading manager."""
         self.simulated_trading = simulated_trading
+    
+    def get_active_subscriptions(self) -> List[Dict[str, Any]]:
+        """Get active WebSocket subscriptions."""
+        subscriptions = []
+        for channel, product_ids in self.subscriptions.items():
+            for product_id in product_ids:
+                subscriptions.append({
+                    "channel": channel,
+                    "product_id": product_id
+                })
+        return subscriptions
+    
+    def get_connection_count(self) -> int:
+        """Get the number of active connections."""
+        return len(self.active_connections)
+    
+    def is_connected(self) -> bool:
+        """Check if WebSocket is connected."""
+        return self.websocket_client is not None and self.websocket_client.running
+    
+    def get_active_channels(self) -> List[str]:
+        """Get list of active channels."""
+        return list(self.subscriptions.keys())

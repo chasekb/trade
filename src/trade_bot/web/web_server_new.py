@@ -99,6 +99,12 @@ data_handlers = None
 # FastAPI app
 app = FastAPI(title="Trading Dashboard API", version="1.0.0")
 
+# Helper function to check if handlers are ready
+def check_handlers_ready(handlers_name: str, handlers):
+    """Check if handlers are ready, raise HTTPException if not."""
+    if handlers is None:
+        raise HTTPException(status_code=503, detail=f"Server not ready - {handlers_name} not initialized")
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -157,6 +163,7 @@ async def startup_event():
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
     """Serve the main dashboard page."""
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_dashboard(request)
 
 @app.get("/api/real-time-data")
@@ -285,31 +292,40 @@ async def add_symbols_to_trading(request: dict):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections."""
+    if websocket_handlers is None:
+        await websocket.close(code=1011, reason="Server not ready")
+        return
     await websocket_handlers.websocket_endpoint(websocket)
 
 @app.get("/api/websocket/subscriptions")
 async def get_subscriptions():
     """Get current WebSocket subscriptions."""
+    if websocket_handlers is None:
+        raise HTTPException(status_code=503, detail="Server not ready")
     return await websocket_handlers.get_subscriptions()
 
 @app.post("/api/websocket/subscribe")
 async def subscribe_to_channel(request: SubscriptionRequest):
     """Subscribe to a WebSocket channel."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.subscribe_to_channel(request.dict())
 
 @app.post("/api/websocket/unsubscribe")
 async def unsubscribe_from_channel(request: SubscriptionRequest):
     """Unsubscribe from a WebSocket channel."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.unsubscribe_from_channel(request.dict())
 
 @app.get("/api/websocket/status")
 async def get_realtime_status():
     """Get real-time data status."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.get_realtime_status()
 
 @app.post("/api/websocket/toggle")
 async def toggle_realtime_data():
     """Toggle real-time data streaming."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.toggle_realtime_data()
 
 # Data Routes
