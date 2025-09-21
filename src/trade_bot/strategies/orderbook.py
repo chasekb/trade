@@ -15,12 +15,26 @@ class OrderBookStrategy(BaseStrategy):
     
     def __init__(self, config: TradingConfig, min_volume_ratio: float = 2.0, 
                  max_spread_percent: float = 0.1, enable_stop_loss: bool = True, 
-                 enable_take_profit: bool = True):
+                 enable_take_profit: bool = True, order_book_level: int = 2,
+                 trade_history_limit: int = 1000, bid_ask_spread_threshold: float = 0.001,
+                 volume_imbalance_threshold: float = 0.6, large_trade_threshold: float = 10000.0,
+                 data_analysis_mode: str = "recent", recent_data_limit: int = 50,
+                 sampling_ratio: float = 0.1):
         super().__init__(config)
         self.min_volume_ratio = min_volume_ratio
         self.max_spread_percent = max_spread_percent
         self.enable_stop_loss = enable_stop_loss
         self.enable_take_profit = enable_take_profit
+        
+        # Additional parameters for order book analysis
+        self.order_book_level = order_book_level
+        self.trade_history_limit = trade_history_limit
+        self.bid_ask_spread_threshold = bid_ask_spread_threshold
+        self.volume_imbalance_threshold = volume_imbalance_threshold
+        self.large_trade_threshold = large_trade_threshold
+        self.data_analysis_mode = data_analysis_mode
+        self.recent_data_limit = recent_data_limit
+        self.sampling_ratio = sampling_ratio
         
         # Order book data
         self.bids = []
@@ -197,7 +211,15 @@ class OrderBookStrategy(BaseStrategy):
                 'min_volume_ratio': self.min_volume_ratio,
                 'max_spread_percent': self.max_spread_percent,
                 'enable_stop_loss': self.enable_stop_loss,
-                'enable_take_profit': self.enable_take_profit
+                'enable_take_profit': self.enable_take_profit,
+                'order_book_level': self.order_book_level,
+                'trade_history_limit': self.trade_history_limit,
+                'bid_ask_spread_threshold': self.bid_ask_spread_threshold,
+                'volume_imbalance_threshold': self.volume_imbalance_threshold,
+                'large_trade_threshold': self.large_trade_threshold,
+                'data_analysis_mode': self.data_analysis_mode,
+                'recent_data_limit': self.recent_data_limit,
+                'sampling_ratio': self.sampling_ratio
             },
             'current_values': {
                 'bid_ask_imbalance': imbalance,
