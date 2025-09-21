@@ -298,6 +298,13 @@ async def start_simulated_trading(request: dict):
     check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.start_simulated_trading(request)
 
+@app.post("/api/async-trading/start")
+async def start_async_trading(request: dict):
+    """Start async trading session (alternative endpoint)."""
+    check_handlers_ready("trading_handlers", trading_handlers)
+    # Route to simulated trading for now
+    return await trading_handlers.start_simulated_trading(request)
+
 @app.post("/api/trading/simulated/stop")
 async def stop_simulated_trading():
     """Stop simulated trading session."""
