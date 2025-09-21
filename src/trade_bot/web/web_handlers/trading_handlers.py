@@ -120,9 +120,14 @@ class TradingHandlers:
         """Get simulated trading status."""
         try:
             portfolio = self.simulated_trading_manager.get_portfolio_summary()
+            open_positions = self.simulated_trading_manager.get_open_positions()
+            recent_trades = self.simulated_trading_manager.get_recent_trades()
+            
             return {
                 "is_trading": self.simulated_trading_manager.is_trading,
-                "portfolio": portfolio
+                "portfolio": portfolio,
+                "open_positions": open_positions,
+                "recent_trades": recent_trades
             }
         except Exception as e:
             logger.error(f"Error getting simulated trading status: {e}")

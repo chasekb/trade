@@ -1,6 +1,7 @@
 """Data handlers for the trading web server."""
 
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import HTTPException
 
@@ -190,10 +191,18 @@ class DataHandlers:
             end_idx = start_idx + per_page
             paginated_signals = signals[start_idx:end_idx]
             
+            # Calculate statistics
+            active_signals = len([s for s in signals if s.get('signal_generated', False)])
+            avg_strength = sum(s.get('signal_strength', 0) for s in signals) / len(signals) if signals else 0
+            
             return {
                 "signals": paginated_signals,
                 "trading_active": trading_active,
                 "message": "Order book signals generated successfully",
+                "total_analyzed": total_signals,
+                "active_signals": active_signals,
+                "average_strength": avg_strength,
+                "last_updated": datetime.now().isoformat(),
                 "pagination": {
                     "current_page": page,
                     "per_page": per_page,
