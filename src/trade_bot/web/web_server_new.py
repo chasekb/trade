@@ -305,6 +305,32 @@ async def start_async_trading(request: dict):
     # Route to simulated trading for now
     return await trading_handlers.start_simulated_trading(request)
 
+@app.get("/api/async-trading/loading-status")
+async def get_async_trading_loading_status():
+    """Get async trading loading status (alternative endpoint)."""
+    check_handlers_ready("data_handlers", data_handlers)
+    return await data_handlers.get_loading_status()
+
+@app.get("/api/data/load-universe")
+async def load_universe_data(symbols: str = None):
+    """Load data for universe of symbols."""
+    check_handlers_ready("data_handlers", data_handlers)
+    if symbols:
+        symbol_list = symbols.split(',')
+        return await data_handlers.load_remaining_symbols_async(symbol_list, 3)
+    else:
+        return {"status": "error", "message": "No symbols provided"}
+
+@app.get("/api/data/load-symbols")
+async def load_symbols_data(symbols: str = None):
+    """Load data for symbols (alternative endpoint)."""
+    check_handlers_ready("data_handlers", data_handlers)
+    if symbols:
+        symbol_list = symbols.split(',')
+        return await data_handlers.load_remaining_symbols_async(symbol_list, 3)
+    else:
+        return {"status": "error", "message": "No symbols provided"}
+
 @app.post("/api/trading/simulated/stop")
 async def stop_simulated_trading():
     """Stop simulated trading session."""
