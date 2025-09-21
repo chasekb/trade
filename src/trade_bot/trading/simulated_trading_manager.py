@@ -267,12 +267,17 @@ class SimulatedTradingManager:
         if not self.is_trading:
             return {"status": "not_trading", "message": "Trading is not active"}
         
+        logger.info(f"Processing {len(signals)} signals. Trading symbols: {self.symbols_to_trade}")
+        
         executed_trades = []
         closed_positions = []
         
         for signal in signals:
             symbol = signal.get('symbol')
+            logger.info(f"Processing signal for {symbol}: {signal.get('signal')} (generated: {signal.get('signal_generated')})")
+            
             if symbol not in self.symbols_to_trade:
+                logger.info(f"Skipping {symbol} - not in trading symbols")
                 continue
             
             signal_action = signal.get('signal')
@@ -289,17 +294,25 @@ class SimulatedTradingManager:
             
             # Process buy signals
             if signal_action == 'buy':
+                logger.info(f"Processing buy signal for {symbol} at ${current_price}")
                 trade_result = await self._process_buy_signal(symbol, current_price, signal_strength, signal)
                 if trade_result:
                     executed_trades.append(trade_result)
+                    logger.info(f"Executed buy trade for {symbol}: {trade_result}")
+                else:
+                    logger.info(f"Failed to execute buy trade for {symbol}")
             
             # Process sell signals
             elif signal_action == 'sell':
+                logger.info(f"Processing sell signal for {symbol} at ${current_price}")
                 trade_result = await self._process_sell_signal(symbol, current_price, signal_strength, signal)
                 if trade_result:
                     executed_trades.append(trade_result)
+                    logger.info(f"Executed sell trade for {symbol}: {trade_result}")
                     if symbol in self.positions and self.positions[symbol].status == 'closed':
                         closed_positions.append(symbol)
+                else:
+                    logger.info(f"Failed to execute sell trade for {symbol}")
         
         self.last_signal_check = datetime.now()
         
