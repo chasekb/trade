@@ -1125,27 +1125,82 @@ class DatabaseManager:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT session_id, start_time, end_time, status, strategy_type, 
-                           total_trades, total_pnl, total_volume, created_at
+                    SELECT session_id, is_active, trading_mode, symbol_mode, strategy_type, 
+                           strategy_params, symbols, universe_config, created_at, updated_at
                     FROM trading_sessions 
                     WHERE session_id = ?
                 """, (session_id,))
                 
                 row = cursor.fetchone()
                 if row:
+                    # Parse JSON fields
+                    strategy_params = {}
+                    if row[5]:
+                        try:
+                            strategy_params = json.loads(row[5])
+                        except:
+                            strategy_params = {}
+                    
+                    symbols = []
+                    if row[6]:
+                        try:
+                            symbols = json.loads(row[6])
+                        except:
+                            symbols = []
+                    
+                    universe_config = {}
+                    if row[7]:
+                        try:
+                            universe_config = json.loads(row[7])
+                        except:
+                            universe_config = {}
+                    
+                    # Get trade statistics for this session
+                    trade_stats = self.get_session_trade_stats(session_id)
+                    
                     return {
                         'session_id': row[0],
-                        'start_time': row[1],
-                        'end_time': row[2],
-                        'status': row[3],
+                        'is_active': bool(row[1]),
+                        'trading_mode': row[2],
+                        'symbol_mode': row[3],
                         'strategy_type': row[4],
-                        'total_trades': row[5],
-                        'total_pnl': row[6],
-                        'total_volume': row[7],
-                        'created_at': row[8]
+                        'strategy_params': strategy_params,
+                        'symbols': symbols,
+                        'universe_config': universe_config,
+                        'created_at': row[8],
+                        'updated_at': row[9],
+                        'total_trades': trade_stats.get('total_trades', 0),
+                        'total_pnl': trade_stats.get('total_pnl', 0),
+                        'total_volume': trade_stats.get('total_volume', 0)
                     }
                 return {}
                 
         except Exception as e:
             logger.error(f"Failed to get session info: {e}")
             return {}
+    
+    def get_session_trade_stats(self, session_id: str) -> Dict[str, Any]:
+        """Get trade statistics for a specific session."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(*) as total_trades,
+                           COALESCE(SUM(pnl), 0) as total_pnl,
+                           COALESCE(SUM(quantity * price), 0) as total_volume
+                    FROM individual_trades 
+                    WHERE session_id = ?
+                """, (session_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'total_trades': row[0],
+                        'total_pnl': row[1],
+                        'total_volume': row[2]
+                    }
+                return {'total_trades': 0, 'total_pnl': 0, 'total_volume': 0}
+                
+        except Exception as e:
+            logger.error(f"Failed to get session trade stats: {e}")
+            return {'total_trades': 0, 'total_pnl': 0, 'total_volume': 0}
