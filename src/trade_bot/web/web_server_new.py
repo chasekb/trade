@@ -1,5 +1,6 @@
 """New modular web server using component architecture."""
 
+import os
 import logging
 from fastapi import FastAPI, Request, WebSocket, HTTPException
 from fastapi.responses import HTMLResponse
@@ -113,19 +114,23 @@ async def startup_event():
     
     try:
         # Initialize configuration
-        config = TradingConfig()
+        config = TradingConfig(
+            api_key=os.getenv('COINBASE_API_KEY', ''),
+            api_secret=os.getenv('COINBASE_API_SECRET', ''),
+            passphrase=os.getenv('COINBASE_PASSPHRASE', '')
+        )
         
         # Initialize core components
         data_provider = CoinbaseDataProvider(config)
         cached_data_provider = CachedDataProvider(config)
-        product_fetcher = ProductFetcher(config)
+        product_fetcher = ProductFetcher()
         database_manager = DatabaseManager()
         simulated_trading_manager = SimulatedTradingManager(
             initial_balance=10000.0,
             db_manager=database_manager
         )
         data_handler = DataHandler(config)
-        websocket_client = WebSocketClient(config, data_handler)
+        websocket_client = WebSocketClient(config)
         websocket_manager = WebSocketManager(config)
         
         # Initialize handlers
@@ -137,7 +142,7 @@ async def startup_event():
         data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager)
         
         # Start WebSocket client
-        await websocket_client.start()
+        # Note: WebSocket client will be started when needed
         
         logger.info("🚀 Trading Dashboard started successfully!")
         logger.info("📊 Dashboard available at: http://localhost:8001")
