@@ -276,8 +276,14 @@ class SimulatedTradingManager:
                             # Keep the existing price if we can't get current data
                             continue
             
-            # Run the async function
-            asyncio.run(update_prices())
+            # Check if we're already in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an event loop, create a task
+                loop.create_task(update_prices())
+            except RuntimeError:
+                # No event loop running, we can use asyncio.run()
+                asyncio.run(update_prices())
         except Exception as e:
             logger.error(f"Error updating position prices: {e}")
     
