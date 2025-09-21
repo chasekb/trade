@@ -235,8 +235,39 @@ class SimulatedTradingManager:
         
         logger.info("Stopped simulated trading")
     
+    def _update_all_position_prices(self) -> None:
+        """Update all position prices with current market data."""
+        try:
+            # Import here to avoid circular imports
+            from ..data.data_provider import CoinbaseDataProvider
+            
+            for symbol, position in self.positions.items():
+                if position.status == 'open':
+                    try:
+                        # Create a data provider for this symbol
+                        data_provider = CoinbaseDataProvider(symbol)
+                        
+                        # Get current ticker data
+                        ticker_data = data_provider.get_ticker()
+                        
+                        if ticker_data and 'price' in ticker_data:
+                            current_price = float(ticker_data['price'])
+                            position.update_price(current_price)
+                            logger.debug(f"Updated {symbol} price from {position.entry_price} to {current_price}")
+                        else:
+                            logger.warning(f"Could not get current price for {symbol}")
+                    except Exception as e:
+                        logger.warning(f"Error updating price for {symbol}: {e}")
+                        # Keep the existing price if we can't get current data
+                        continue
+        except Exception as e:
+            logger.error(f"Error updating position prices: {e}")
+    
     def get_portfolio_summary(self) -> Portfolio:
         """Get current portfolio summary."""
+        # Update all position prices with current market data
+        self._update_all_position_prices()
+        
         total_value = self.cash_balance
         total_pnl = 0.0
         total_fees = sum(trade.fees for trade in self.trades)
