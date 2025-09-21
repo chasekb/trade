@@ -22,10 +22,10 @@ class WebSocketHandlers:
                     data = await websocket.receive_text()
                     await self.websocket_manager.handle_message(websocket, data)
             except WebSocketDisconnect:
-                await self.websocket_manager.disconnect(websocket)
+                self.websocket_manager.disconnect(websocket)
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
-            await self.websocket_manager.disconnect(websocket)
+            self.websocket_manager.disconnect(websocket)
     
     async def get_subscriptions(self) -> Dict[str, Any]:
         """Get current WebSocket subscriptions."""

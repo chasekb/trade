@@ -164,128 +164,154 @@ async def startup_event():
 async def get_dashboard(request: Request):
     """Serve the main dashboard page."""
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_dashboard(request)
 
 @app.get("/api/real-time-data")
 async def get_real_time_data(product_id: str = None):
     """Get real-time market data."""
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_real_time_data(product_id)
 
 @app.get("/api/historical-data")
 async def get_historical_data(product_id: str, start_time: str, end_time: str, granularity: int):
     """Get historical market data."""
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_historical_data(product_id, start_time, end_time, granularity)
 
 @app.get("/api/symbols")
 async def get_available_symbols():
     """Get available trading symbols."""
+    check_handlers_ready("api_handlers", api_handlers)
     return await api_handlers.get_available_symbols()
 
 @app.get("/api/products")
 async def get_available_products():
     """Get available products for trading."""
+    check_handlers_ready("api_handlers", api_handlers)
     return await api_handlers.get_available_products()
 
 @app.get("/api/channels")
 async def get_available_channels():
     """Get available WebSocket channels."""
+    check_handlers_ready("api_handlers", api_handlers)
     return await api_handlers.get_available_channels()
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
+    check_handlers_ready("api_handlers", api_handlers)
     return await api_handlers.health_check()
 
 # Backtest Routes
 @app.post("/api/backtest")
 async def run_backtest(request: BacktestRequest):
     """Run a backtest with the specified parameters."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.run_backtest(request.dict())
 
 @app.get("/api/backtest/results")
 async def get_backtest_results():
     """Get all backtest results."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.get_backtest_results()
 
 @app.get("/api/backtest/history")
 async def get_backtest_history(limit: int = 10, offset: int = 0):
     """Get backtest history with pagination."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.get_backtest_history(limit, offset)
 
 @app.get("/api/backtest/{backtest_id}")
 async def get_backtest(backtest_id: int):
     """Get a specific backtest by ID."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.get_backtest(backtest_id)
 
 @app.get("/api/backtest/stats")
 async def get_backtest_stats():
     """Get backtest statistics."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.get_backtest_stats()
 
 @app.delete("/api/backtest/{backtest_id}")
 async def delete_backtest(backtest_id: int):
     """Delete a backtest."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.delete_backtest(backtest_id)
 
 @app.get("/api/backtest/filters")
 async def get_backtest_filters():
     """Get available backtest filters."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.get_backtest_filters()
 
 # Trading Routes
 @app.post("/api/trading/live/start")
 async def start_live_trading(request: dict):
     """Start live trading session."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.start_live_trading(request)
 
 @app.post("/api/trading/live/stop")
 async def stop_live_trading(request: dict):
     """Stop live trading session."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.stop_live_trading(request)
 
 @app.get("/api/trading/live/positions")
 async def get_live_positions():
     """Get current live trading positions."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.get_live_positions()
 
 @app.post("/api/trading/live/close-position")
 async def close_live_position(request: dict):
     """Close a specific live trading position."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.close_live_position(request)
 
 @app.get("/api/trading/live/history")
 async def get_live_trading_history():
     """Get live trading history."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.get_live_trading_history()
 
 @app.post("/api/trading/simulated/start")
 async def start_simulated_trading(request: dict):
     """Start simulated trading session."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.start_simulated_trading(request)
 
 @app.post("/api/trading/simulated/stop")
 async def stop_simulated_trading():
     """Stop simulated trading session."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.stop_simulated_trading()
 
 @app.get("/api/trading/simulated/status")
 async def get_simulated_trading_status():
     """Get simulated trading status."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.get_simulated_trading_status()
 
 @app.post("/api/trading/simulated/process-signals")
 async def process_simulated_signals(request: dict):
     """Process simulated trading signals."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.process_simulated_signals(request)
 
 @app.post("/api/trading/simulated/reset")
 async def reset_simulated_trading():
     """Reset simulated trading session."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.reset_simulated_trading()
 
 @app.post("/api/trading/simulated/add-symbols")
 async def add_symbols_to_trading(request: dict):
     """Add symbols to current trading session."""
+    check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.add_symbols_to_trading(request)
 
 # WebSocket Routes
@@ -302,11 +328,13 @@ async def get_subscriptions():
     """Get current WebSocket subscriptions."""
     if websocket_handlers is None:
         raise HTTPException(status_code=503, detail="Server not ready")
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.get_subscriptions()
 
 @app.post("/api/websocket/subscribe")
 async def subscribe_to_channel(request: SubscriptionRequest):
     """Subscribe to a WebSocket channel."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.subscribe_to_channel(request.dict())
 
@@ -314,11 +342,13 @@ async def subscribe_to_channel(request: SubscriptionRequest):
 async def unsubscribe_from_channel(request: SubscriptionRequest):
     """Unsubscribe from a WebSocket channel."""
     check_handlers_ready("websocket_handlers", websocket_handlers)
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.unsubscribe_from_channel(request.dict())
 
 @app.get("/api/websocket/status")
 async def get_realtime_status():
     """Get real-time data status."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.get_realtime_status()
 
@@ -326,22 +356,26 @@ async def get_realtime_status():
 async def toggle_realtime_data():
     """Toggle real-time data streaming."""
     check_handlers_ready("websocket_handlers", websocket_handlers)
+    check_handlers_ready("websocket_handlers", websocket_handlers)
     return await websocket_handlers.toggle_realtime_data()
 
 # Data Routes
 @app.get("/api/data/cache-stats")
 async def get_cache_stats():
     """Get cache statistics."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_cache_stats()
 
 @app.get("/api/data/orderbook-signals")
 async def get_live_orderbook_signals(symbols: str = None):
     """Get live order book signals."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_live_orderbook_signals(symbols)
 
 @app.get("/api/data/loading-status")
 async def get_loading_status():
     """Get data loading status."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_loading_status()
 
 @app.post("/api/data/load-symbols")
@@ -349,48 +383,116 @@ async def load_remaining_symbols_async(request: dict):
     """Load remaining symbols asynchronously."""
     remaining_symbols = request.get('remaining_symbols', [])
     batch_size = request.get('batch_size', 3)
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.load_remaining_symbols_async(remaining_symbols, batch_size)
 
 @app.get("/api/data/trading-state")
 async def get_trading_state():
     """Get current trading state."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_trading_state()
 
 @app.post("/api/data/save-session")
 async def save_session_state(request: dict):
     """Save trading session state."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.save_session_state(request)
 
 @app.post("/api/data/restore-trading")
 async def restore_simulated_trading(request: dict):
     """Restore simulated trading from saved state."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.restore_simulated_trading(request)
 
 @app.get("/api/data/load-session/{session_id}")
 async def load_session_state(session_id: str):
     """Load trading session state."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.load_session_state(session_id)
 
 @app.post("/api/data/save-dashboard")
 async def save_dashboard_state(request: dict):
     """Save dashboard UI state."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.save_dashboard_state(request)
 
 @app.get("/api/data/load-dashboard/{session_id}")
 async def load_dashboard_state(session_id: str):
     """Load dashboard UI state."""
+    check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.load_dashboard_state(session_id)
 
 # Metrics Routes
 @app.get("/api/metrics/trading")
 async def get_trading_metrics():
     """Get trading performance metrics."""
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_trading_metrics()
 
 @app.get("/api/metrics/data-summary")
 async def get_data_summary():
     """Get data summary statistics."""
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_data_summary()
+
+# Additional missing endpoints
+@app.get("/api/subscriptions")
+async def get_subscriptions_alt():
+    """Alternative endpoint for subscriptions."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
+    check_handlers_ready("websocket_handlers", websocket_handlers)
+    return await websocket_handlers.get_subscriptions()
+
+@app.get("/api/realtime-status")
+async def get_realtime_status_alt():
+    """Alternative endpoint for realtime status."""
+    check_handlers_ready("websocket_handlers", websocket_handlers)
+    check_handlers_ready("websocket_handlers", websocket_handlers)
+    return await websocket_handlers.get_realtime_status()
+
+@app.get("/api/trades/stats")
+async def get_trades_stats():
+    """Get trading statistics."""
+    check_handlers_ready("trading_handlers", trading_handlers)
+    check_handlers_ready("trading_handlers", trading_handlers)
+    return await trading_handlers.get_simulated_trading_status()
+
+@app.get("/api/trades/paginated")
+async def get_trades_paginated(page: int = 1, per_page: int = 10, session_id: str = None):
+    """Get paginated trades."""
+    check_handlers_ready("trading_handlers", trading_handlers)
+    check_handlers_ready("trading_handlers", trading_handlers)
+    return await trading_handlers.get_live_trading_history()
+
+@app.get("/api/session/active")
+async def get_active_session():
+    """Get active session."""
+    check_handlers_ready("data_handlers", data_handlers)
+    check_handlers_ready("data_handlers", data_handlers)
+    return await data_handlers.get_trading_state()
+
+@app.get("/api/trades/session/{session_id}")
+async def get_session_trades(session_id: str):
+    """Get trades for a specific session."""
+    check_handlers_ready("trading_handlers", trading_handlers)
+    check_handlers_ready("trading_handlers", trading_handlers)
+    return await trading_handlers.get_live_trading_history()
+
+@app.get("/api/candles")
+async def get_candles(product_id: str, granularity: int, days: int = 7):
+    """Get candle data."""
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    from datetime import datetime, timedelta
+    end_time = datetime.now()
+    start_time = end_time - timedelta(days=days)
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    return await dashboard_handlers.get_candles_data(
+        product_id, 
+        start_time.isoformat(), 
+        end_time.isoformat(), 
+        granularity
+    )
 
 if __name__ == "__main__":
     import uvicorn

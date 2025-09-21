@@ -46,8 +46,8 @@ class APIHandlers:
     async def get_available_products(self) -> Dict[str, Any]:
         """Get available products for trading."""
         try:
-            products = await self.product_fetcher.get_available_products()
-            return products
+            products = await self.product_fetcher.fetch_all_products()
+            return {"products": products}
         except Exception as e:
             logger.error(f"Error getting available products: {e}")
             raise HTTPException(status_code=500, detail=str(e))
