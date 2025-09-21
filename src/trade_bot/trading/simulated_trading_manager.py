@@ -240,26 +240,44 @@ class SimulatedTradingManager:
         try:
             # Import here to avoid circular imports
             from ..data.data_provider import CoinbaseDataProvider
+            import asyncio
             
-            for symbol, position in self.positions.items():
-                if position.status == 'open':
-                    try:
-                        # Create a data provider for this symbol
-                        data_provider = CoinbaseDataProvider(symbol)
-                        
-                        # Get current ticker data
-                        ticker_data = data_provider.get_ticker()
-                        
-                        if ticker_data and 'price' in ticker_data:
-                            current_price = float(ticker_data['price'])
-                            position.update_price(current_price)
-                            logger.debug(f"Updated {symbol} price from {position.entry_price} to {current_price}")
-                        else:
-                            logger.warning(f"Could not get current price for {symbol}")
-                    except Exception as e:
-                        logger.warning(f"Error updating price for {symbol}: {e}")
-                        # Keep the existing price if we can't get current data
-                        continue
+            async def update_prices():
+                for symbol, position in self.positions.items():
+                    if position.status == 'open':
+                        try:
+                            # Create a data provider for this symbol
+                            data_provider = CoinbaseDataProvider(symbol)
+                            
+                            # Get current orderbook data to extract current price
+                            orderbook_data = await data_provider.get_order_book(level=1)
+                            
+                            if orderbook_data and 'bids' in orderbook_data and 'asks' in orderbook_data:
+                                bids = orderbook_data['bids']
+                                asks = orderbook_data['asks']
+                                
+                                if bids and asks:
+                                    # Calculate current price as midpoint between best bid and ask
+                                    best_bid = float(bids[0]['price']) if bids else 0
+                                    best_ask = float(asks[0]['price']) if asks else 0
+                                    current_price = (best_bid + best_ask) / 2
+                                    
+                                    if current_price > 0:
+                                        position.update_price(current_price)
+                                        logger.debug(f"Updated {symbol} price from {position.entry_price} to {current_price}")
+                                    else:
+                                        logger.warning(f"Invalid price for {symbol}: {current_price}")
+                                else:
+                                    logger.warning(f"No bid/ask data for {symbol}")
+                            else:
+                                logger.warning(f"Could not get orderbook data for {symbol}")
+                        except Exception as e:
+                            logger.warning(f"Error updating price for {symbol}: {e}")
+                            # Keep the existing price if we can't get current data
+                            continue
+            
+            # Run the async function
+            asyncio.run(update_prices())
         except Exception as e:
             logger.error(f"Error updating position prices: {e}")
     
