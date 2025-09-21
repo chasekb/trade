@@ -425,6 +425,12 @@ async def get_live_orderbook_signals(symbols: str = None):
     check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_live_orderbook_signals(symbols)
 
+@app.get("/api/orderbook/live-signals")
+async def get_orderbook_live_signals(symbols: str = None):
+    """Get live order book signals (alternative endpoint)."""
+    check_handlers_ready("data_handlers", data_handlers)
+    return await data_handlers.get_live_orderbook_signals(symbols)
+
 @app.get("/api/data/loading-status")
 async def get_loading_status():
     """Get data loading status."""
