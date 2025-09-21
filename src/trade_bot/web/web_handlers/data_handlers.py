@@ -210,6 +210,11 @@ class DataHandlers:
     async def get_loading_status(self) -> Dict[str, Any]:
         """Get data loading status."""
         try:
+            # Get loading status from simulated trading manager
+            if self.simulated_trading_manager and hasattr(self.simulated_trading_manager, 'get_loading_status'):
+                return await self.simulated_trading_manager.get_loading_status()
+            
+            # Fallback to static response if no trading manager
             return {
                 "is_loading": False,
                 "progress": 100,

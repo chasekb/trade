@@ -517,3 +517,33 @@ class SimulatedTradingManager:
                 logger.info(f"Added symbol to trading: {symbol}")
         
         logger.info(f"Updated trading symbols: {self.symbols_to_trade}")
+    
+    async def get_loading_status(self) -> Dict[str, Any]:
+        """Get current loading status for async symbol loading."""
+        try:
+            # This would typically track loading progress from async operations
+            # For now, return a basic status indicating loading is complete
+            return {
+                "loading_progress": {
+                    "status": "complete",
+                    "loaded": len(self.symbols_to_trade),
+                    "total": len(self.symbols_to_trade),
+                    "remaining": 0,
+                    "progress": 100
+                },
+                "current_symbols": self.symbols_to_trade,
+                "is_loading": False
+            }
+        except Exception as e:
+            logger.error(f"Error getting loading status: {e}")
+            return {
+                "loading_progress": {
+                    "status": "error",
+                    "loaded": 0,
+                    "total": 0,
+                    "remaining": 0,
+                    "progress": 0
+                },
+                "current_symbols": [],
+                "is_loading": False
+            }

@@ -1,6 +1,7 @@
 """New modular web server using component architecture."""
 
 import os
+import asyncio
 import logging
 from fastapi import FastAPI, Request, WebSocket, HTTPException
 from fastapi.responses import HTMLResponse
@@ -300,16 +301,87 @@ async def start_simulated_trading(request: dict):
 
 @app.post("/api/async-trading/start")
 async def start_async_trading(request: dict):
-    """Start async trading session (alternative endpoint)."""
+    """Start async trading session with progressive symbol loading."""
     check_handlers_ready("trading_handlers", trading_handlers)
-    # Route to simulated trading for now
-    return await trading_handlers.start_simulated_trading(request)
+    
+    try:
+        # Extract trading parameters
+        symbols = request.get('symbols', ['BTC-USD', 'ETH-USD'])
+        strategy_type = request.get('strategy_type', 'orderbook')
+        strategy_params = request.get('strategy_params', {})
+        initial_balance = request.get('initial_balance', 10000.0)
+        max_positions = request.get('max_positions', 5)
+        position_size_percent = request.get('position_size_percent', 20.0)
+        session_id = request.get('session_id')
+        immediate_start = request.get('immediate_start', True)
+        batch_size = request.get('batch_size', 3)
+        
+        # Create session ID if not provided
+        if not session_id:
+            import time
+            session_id = f"async_trading_{int(time.time())}"
+        
+        # Start with first batch of symbols for immediate trading
+        initial_symbols = symbols[:batch_size] if len(symbols) > batch_size else symbols
+        remaining_symbols = symbols[batch_size:] if len(symbols) > batch_size else []
+        
+        # Update global trading state
+        trading_state["is_trading"] = True
+        trading_state["active_strategy"] = strategy_type
+        trading_state["symbols"] = initial_symbols
+        trading_state["session_id"] = session_id
+        trading_state["loading_progress"] = {
+            "status": "loading",
+            "loaded": len(initial_symbols),
+            "total": len(symbols),
+            "remaining": len(remaining_symbols),
+            "progress": int((len(initial_symbols) / len(symbols)) * 100) if symbols else 100
+        }
+        
+        # Start simulated trading with initial symbols
+        await trading_handlers.start_simulated_trading({
+            'symbols': initial_symbols,
+            'strategy_type': strategy_type,
+            'strategy_params': strategy_params
+        })
+        
+        # Start background symbol loading if there are remaining symbols
+        if remaining_symbols and immediate_start:
+            import asyncio
+            asyncio.create_task(load_remaining_symbols_background(remaining_symbols, batch_size))
+        
+        return {
+            "status": "started",
+            "session_id": session_id,
+            "initial_symbols": initial_symbols,
+            "remaining_symbols": remaining_symbols,
+            "total_symbols": len(symbols),
+            "loading_progress": trading_state["loading_progress"],
+            "trading_active": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Error starting async trading: {e}")
+        return {"error": str(e)}
 
 @app.get("/api/async-trading/loading-status")
 async def get_async_trading_loading_status():
     """Get async trading loading status (alternative endpoint)."""
-    check_handlers_ready("data_handlers", data_handlers)
-    return await data_handlers.get_loading_status()
+    try:
+        return {
+            "loading_progress": trading_state.get("loading_progress", {
+                "status": "complete",
+                "loaded": 0,
+                "total": 0,
+                "remaining": 0,
+                "progress": 100
+            }),
+            "current_symbols": trading_state.get("symbols", []),
+            "is_loading": trading_state.get("loading_progress", {}).get("status") == "loading"
+        }
+    except Exception as e:
+        logger.error(f"Error getting loading status: {e}")
+        return {"error": str(e)}
 
 @app.get("/api/data/load-universe")
 async def load_universe_data(symbols: str = None):
@@ -568,6 +640,49 @@ async def get_candles(product_id: str, granularity: int, days: int = 7):
         end_time.isoformat(), 
         granularity
     )
+
+async def load_remaining_symbols_background(remaining_symbols: list, batch_size: int = 3):
+    """Background task to load remaining symbols progressively."""
+    try:
+        logger.info(f"Starting background loading of {len(remaining_symbols)} symbols")
+        
+        # Process symbols in batches
+        for i in range(0, len(remaining_symbols), batch_size):
+            batch = remaining_symbols[i:i + batch_size]
+            
+            # Add batch to trading
+            await trading_handlers.add_symbols_to_trading({"symbols": batch})
+            
+            # Update trading state
+            current_symbols = trading_state.get("symbols", [])
+            trading_state["symbols"] = current_symbols + batch
+            
+            # Update loading progress
+            loaded_count = len(trading_state["symbols"])
+            total_count = trading_state["loading_progress"]["total"]
+            remaining_count = len(remaining_symbols) - (i + len(batch))
+            
+            trading_state["loading_progress"] = {
+                "status": "loading" if remaining_count > 0 else "complete",
+                "loaded": loaded_count,
+                "total": total_count,
+                "remaining": remaining_count,
+                "progress": int((loaded_count / total_count) * 100) if total_count > 0 else 100
+            }
+            
+            # Wait between batches to avoid overwhelming the system
+            await asyncio.sleep(2.0)
+            
+            logger.info(f"Loaded batch {i//batch_size + 1}: {batch}")
+        
+        # Mark loading as complete
+        trading_state["loading_progress"]["status"] = "complete"
+        
+        logger.info("Background symbol loading completed")
+        
+    except Exception as e:
+        logger.error(f"Error in background symbol loading: {e}")
+        trading_state["loading_progress"]["status"] = "error"
 
 if __name__ == "__main__":
     import uvicorn
