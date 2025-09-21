@@ -37,10 +37,22 @@ class DataHandlers:
             if self.simulated_trading_manager:
                 trading_active = self.simulated_trading_manager.is_trading
             
-            # For testing purposes, always return signals even when trading is not active
-            # This allows us to test the frontend display
+            # Only return signals if trading is actually active
             if not trading_active:
-                logger.info("Trading not active, but returning sample signals for testing")
+                logger.info("Trading not active, returning empty signals")
+                return {
+                    "signals": [],
+                    "trading_active": False,
+                    "message": "Trading is not active. Configure your strategy and start trading to see live signals.",
+                    "pagination": {
+                        "current_page": page,
+                        "per_page": per_page,
+                        "total_signals": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False
+                    }
+                }
             
             symbol_list = [s.strip() for s in symbols.split(',')]
             
@@ -177,7 +189,7 @@ class DataHandlers:
             
             return {
                 "signals": paginated_signals,
-                "trading_active": True,  # Always true for testing
+                "trading_active": trading_active,
                 "message": "Order book signals generated successfully",
                 "pagination": {
                     "current_page": page,
