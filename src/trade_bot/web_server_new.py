@@ -1,0 +1,382 @@
+"""New modular web server using component architecture."""
+
+import logging
+from fastapi import FastAPI, Request, WebSocket, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
+
+from .config import TradingConfig
+from .data_provider import CoinbaseDataProvider
+from .cached_data_provider import CachedDataProvider
+from .product_fetcher import ProductFetcher
+from .database_manager import DatabaseManager
+from .simulated_trading_manager import SimulatedTradingManager
+from .websocket_client import WebSocketClient
+from .data_handler import DataHandler
+from .web_components import RateLimiter, WebSocketManager
+from .web_handlers import (
+    APIHandlers, DashboardHandlers, BacktestHandlers, 
+    TradingHandlers, WebSocketHandlers, DataHandlers
+)
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Pydantic models
+class SubscriptionRequest(BaseModel):
+    channel: str
+    product_id: Optional[str] = None
+
+class BacktestRequest(BaseModel):
+    strategy: str
+    symbol: str
+    start_date: str
+    end_date: str
+    strategy_params: Dict[str, Any] = {}
+
+class BacktestHistoryItem(BaseModel):
+    backtest_id: int
+    strategy: str
+    symbol: str
+    start_date: str
+    end_date: str
+    total_trades: int
+    win_rate: float
+    total_return: float
+    created_at: str
+
+class BacktestHistoryResponse(BaseModel):
+    backtests: list[BacktestHistoryItem]
+    total: int
+    limit: int
+    offset: int
+
+class BacktestStatsResponse(BaseModel):
+    total_backtests: int
+    successful_backtests: int
+    average_return: float
+    best_strategy: str
+
+# Global rate limiter instance
+rate_limiter = RateLimiter()
+
+# Global WebSocket manager (will be initialized in startup)
+websocket_manager = None
+
+# Global trading state
+trading_state = {
+    "is_trading": False,
+    "active_strategy": None,
+    "symbols": [],
+    "session_id": None
+}
+
+# Global data handler
+data_handler = None
+
+# Global simulated trading manager
+simulated_trading_manager = None
+
+# Global database manager
+database_manager = None
+
+# Global WebSocket client
+websocket_client = None
+
+# Global handlers
+api_handlers = None
+dashboard_handlers = None
+backtest_handlers = None
+trading_handlers = None
+websocket_handlers = None
+data_handlers = None
+
+# FastAPI app
+app = FastAPI(title="Trading Dashboard API", version="1.0.0")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Templates
+templates = Jinja2Templates(directory="templates")
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the application on startup."""
+    global data_handler, simulated_trading_manager, database_manager, websocket_client
+    global api_handlers, dashboard_handlers, backtest_handlers, trading_handlers
+    global websocket_handlers, data_handlers, websocket_manager
+    
+    try:
+        # Initialize configuration
+        config = TradingConfig()
+        
+        # Initialize core components
+        data_provider = CoinbaseDataProvider(config)
+        cached_data_provider = CachedDataProvider(config)
+        product_fetcher = ProductFetcher(config)
+        database_manager = DatabaseManager()
+        simulated_trading_manager = SimulatedTradingManager(
+            initial_balance=10000.0,
+            db_manager=database_manager
+        )
+        data_handler = DataHandler(config)
+        websocket_client = WebSocketClient(config, data_handler)
+        websocket_manager = WebSocketManager(config)
+        
+        # Initialize handlers
+        api_handlers = APIHandlers(config, data_provider, cached_data_provider, product_fetcher, database_manager, simulated_trading_manager)
+        dashboard_handlers = DashboardHandlers(config, templates)
+        backtest_handlers = BacktestHandlers(config, database_manager)
+        trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager)
+        websocket_handlers = WebSocketHandlers(websocket_manager)
+        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager)
+        
+        # Start WebSocket client
+        await websocket_client.start()
+        
+        logger.info("🚀 Trading Dashboard started successfully!")
+        logger.info("📊 Dashboard available at: http://localhost:8001")
+        logger.info("🔌 WebSocket endpoint: ws://localhost:8001/ws")
+        logger.info("📈 API documentation: http://localhost:8001/docs")
+        
+    except Exception as e:
+        logger.error(f"Failed to start application: {e}")
+        raise
+
+# API Routes
+@app.get("/", response_class=HTMLResponse)
+async def get_dashboard(request: Request):
+    """Serve the main dashboard page."""
+    return await dashboard_handlers.get_dashboard(request)
+
+@app.get("/api/real-time-data")
+async def get_real_time_data(product_id: str = None):
+    """Get real-time market data."""
+    return await dashboard_handlers.get_real_time_data(product_id)
+
+@app.get("/api/historical-data")
+async def get_historical_data(product_id: str, start_time: str, end_time: str, granularity: int):
+    """Get historical market data."""
+    return await dashboard_handlers.get_historical_data(product_id, start_time, end_time, granularity)
+
+@app.get("/api/symbols")
+async def get_available_symbols():
+    """Get available trading symbols."""
+    return await api_handlers.get_available_symbols()
+
+@app.get("/api/products")
+async def get_available_products():
+    """Get available products for trading."""
+    return await api_handlers.get_available_products()
+
+@app.get("/api/channels")
+async def get_available_channels():
+    """Get available WebSocket channels."""
+    return await api_handlers.get_available_channels()
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint."""
+    return await api_handlers.health_check()
+
+# Backtest Routes
+@app.post("/api/backtest")
+async def run_backtest(request: BacktestRequest):
+    """Run a backtest with the specified parameters."""
+    return await backtest_handlers.run_backtest(request.dict())
+
+@app.get("/api/backtest/results")
+async def get_backtest_results():
+    """Get all backtest results."""
+    return await backtest_handlers.get_backtest_results()
+
+@app.get("/api/backtest/history")
+async def get_backtest_history(limit: int = 10, offset: int = 0):
+    """Get backtest history with pagination."""
+    return await backtest_handlers.get_backtest_history(limit, offset)
+
+@app.get("/api/backtest/{backtest_id}")
+async def get_backtest(backtest_id: int):
+    """Get a specific backtest by ID."""
+    return await backtest_handlers.get_backtest(backtest_id)
+
+@app.get("/api/backtest/stats")
+async def get_backtest_stats():
+    """Get backtest statistics."""
+    return await backtest_handlers.get_backtest_stats()
+
+@app.delete("/api/backtest/{backtest_id}")
+async def delete_backtest(backtest_id: int):
+    """Delete a backtest."""
+    return await backtest_handlers.delete_backtest(backtest_id)
+
+@app.get("/api/backtest/filters")
+async def get_backtest_filters():
+    """Get available backtest filters."""
+    return await backtest_handlers.get_backtest_filters()
+
+# Trading Routes
+@app.post("/api/trading/live/start")
+async def start_live_trading(request: dict):
+    """Start live trading session."""
+    return await trading_handlers.start_live_trading(request)
+
+@app.post("/api/trading/live/stop")
+async def stop_live_trading(request: dict):
+    """Stop live trading session."""
+    return await trading_handlers.stop_live_trading(request)
+
+@app.get("/api/trading/live/positions")
+async def get_live_positions():
+    """Get current live trading positions."""
+    return await trading_handlers.get_live_positions()
+
+@app.post("/api/trading/live/close-position")
+async def close_live_position(request: dict):
+    """Close a specific live trading position."""
+    return await trading_handlers.close_live_position(request)
+
+@app.get("/api/trading/live/history")
+async def get_live_trading_history():
+    """Get live trading history."""
+    return await trading_handlers.get_live_trading_history()
+
+@app.post("/api/trading/simulated/start")
+async def start_simulated_trading(request: dict):
+    """Start simulated trading session."""
+    return await trading_handlers.start_simulated_trading(request)
+
+@app.post("/api/trading/simulated/stop")
+async def stop_simulated_trading():
+    """Stop simulated trading session."""
+    return await trading_handlers.stop_simulated_trading()
+
+@app.get("/api/trading/simulated/status")
+async def get_simulated_trading_status():
+    """Get simulated trading status."""
+    return await trading_handlers.get_simulated_trading_status()
+
+@app.post("/api/trading/simulated/process-signals")
+async def process_simulated_signals(request: dict):
+    """Process simulated trading signals."""
+    return await trading_handlers.process_simulated_signals(request)
+
+@app.post("/api/trading/simulated/reset")
+async def reset_simulated_trading():
+    """Reset simulated trading session."""
+    return await trading_handlers.reset_simulated_trading()
+
+@app.post("/api/trading/simulated/add-symbols")
+async def add_symbols_to_trading(request: dict):
+    """Add symbols to current trading session."""
+    return await trading_handlers.add_symbols_to_trading(request)
+
+# WebSocket Routes
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Handle WebSocket connections."""
+    await websocket_handlers.websocket_endpoint(websocket)
+
+@app.get("/api/websocket/subscriptions")
+async def get_subscriptions():
+    """Get current WebSocket subscriptions."""
+    return await websocket_handlers.get_subscriptions()
+
+@app.post("/api/websocket/subscribe")
+async def subscribe_to_channel(request: SubscriptionRequest):
+    """Subscribe to a WebSocket channel."""
+    return await websocket_handlers.subscribe_to_channel(request.dict())
+
+@app.post("/api/websocket/unsubscribe")
+async def unsubscribe_from_channel(request: SubscriptionRequest):
+    """Unsubscribe from a WebSocket channel."""
+    return await websocket_handlers.unsubscribe_from_channel(request.dict())
+
+@app.get("/api/websocket/status")
+async def get_realtime_status():
+    """Get real-time data status."""
+    return await websocket_handlers.get_realtime_status()
+
+@app.post("/api/websocket/toggle")
+async def toggle_realtime_data():
+    """Toggle real-time data streaming."""
+    return await websocket_handlers.toggle_realtime_data()
+
+# Data Routes
+@app.get("/api/data/cache-stats")
+async def get_cache_stats():
+    """Get cache statistics."""
+    return await data_handlers.get_cache_stats()
+
+@app.get("/api/data/orderbook-signals")
+async def get_live_orderbook_signals(symbols: str = None):
+    """Get live order book signals."""
+    return await data_handlers.get_live_orderbook_signals(symbols)
+
+@app.get("/api/data/loading-status")
+async def get_loading_status():
+    """Get data loading status."""
+    return await data_handlers.get_loading_status()
+
+@app.post("/api/data/load-symbols")
+async def load_remaining_symbols_async(request: dict):
+    """Load remaining symbols asynchronously."""
+    remaining_symbols = request.get('remaining_symbols', [])
+    batch_size = request.get('batch_size', 3)
+    return await data_handlers.load_remaining_symbols_async(remaining_symbols, batch_size)
+
+@app.get("/api/data/trading-state")
+async def get_trading_state():
+    """Get current trading state."""
+    return await data_handlers.get_trading_state()
+
+@app.post("/api/data/save-session")
+async def save_session_state(request: dict):
+    """Save trading session state."""
+    return await data_handlers.save_session_state(request)
+
+@app.post("/api/data/restore-trading")
+async def restore_simulated_trading(request: dict):
+    """Restore simulated trading from saved state."""
+    return await data_handlers.restore_simulated_trading(request)
+
+@app.get("/api/data/load-session/{session_id}")
+async def load_session_state(session_id: str):
+    """Load trading session state."""
+    return await data_handlers.load_session_state(session_id)
+
+@app.post("/api/data/save-dashboard")
+async def save_dashboard_state(request: dict):
+    """Save dashboard UI state."""
+    return await data_handlers.save_dashboard_state(request)
+
+@app.get("/api/data/load-dashboard/{session_id}")
+async def load_dashboard_state(session_id: str):
+    """Load dashboard UI state."""
+    return await data_handlers.load_dashboard_state(session_id)
+
+# Metrics Routes
+@app.get("/api/metrics/trading")
+async def get_trading_metrics():
+    """Get trading performance metrics."""
+    return await dashboard_handlers.get_trading_metrics()
+
+@app.get("/api/metrics/data-summary")
+async def get_data_summary():
+    """Get data summary statistics."""
+    return await dashboard_handlers.get_data_summary()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "trade_bot.web_server_new:app",
+        host="0.0.0.0",
+        port=8001,
+        log_level="info",
+        reload=True
+    )
