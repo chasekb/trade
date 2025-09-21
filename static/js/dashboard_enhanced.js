@@ -298,10 +298,11 @@ class EnhancedTradingDashboard {
             }
             
             this.startPortfolioStatusUpdates();
-            // Also load order book signals if trading is active
-            this.loadOrderBookSignals();
-            // Only start auto-refresh if trading is actually active (not just restored)
-            this.startOrderBookAutoRefresh();
+            // Only load order book signals if trading is actually active (not just restored)
+            if (this.liveTrading.isActive) {
+                this.loadOrderBookSignals();
+                this.startOrderBookAutoRefresh();
+            }
         }
     }
 
@@ -1871,11 +1872,12 @@ class EnhancedTradingDashboard {
                 // Show loading progress
                 this.updateLoadingProgress(data.loading_progress);
                 
-                // Load order book signals immediately for initial symbols
-                await this.loadOrderBookSignals();
-                
-                // Start frequent order book signals refresh for async loading
-                this.startOrderBookFrequentRefresh();
+                // Only load order book signals if trading is active
+                if (this.liveTrading.isActive) {
+                    await this.loadOrderBookSignals();
+                    // Start frequent order book signals refresh for async loading
+                    this.startOrderBookFrequentRefresh();
+                }
                 
                 // Start monitoring loading progress
                 this.startLoadingProgressMonitoring();
@@ -5292,12 +5294,14 @@ class EnhancedTradingDashboard {
                     // Update portfolio status to refresh open positions and trading history
                     await this.updateTradingStatusFromAPI();
                     
-                    // Reload order book signals when new symbols are added
-                    if (data.loading_progress.status === 'loading') {
-                        await this.loadOrderBookSignals();
-                    } else if (data.loading_progress.status === 'complete') {
-                        // Switch back to normal refresh rate when loading is complete
-                        this.startOrderBookAutoRefresh();
+                    // Reload order book signals when new symbols are added (only if trading is active)
+                    if (this.liveTrading.isActive) {
+                        if (data.loading_progress.status === 'loading') {
+                            await this.loadOrderBookSignals();
+                        } else if (data.loading_progress.status === 'complete') {
+                            // Switch back to normal refresh rate when loading is complete
+                            this.startOrderBookAutoRefresh();
+                        }
                     }
                 }
             } catch (error) {
@@ -5336,8 +5340,10 @@ class EnhancedTradingDashboard {
                     this.liveTrading.strategy.loadingProgress = data.loading_progress;
                 }
                 
-                // Reload order book signals
-                await this.loadOrderBookSignals();
+                // Reload order book signals (only if trading is active)
+                if (this.liveTrading.isActive) {
+                    await this.loadOrderBookSignals();
+                }
                 
                 return true;
             } else {
@@ -5364,8 +5370,10 @@ class EnhancedTradingDashboard {
             // Update portfolio status to refresh open positions and trading history
             await this.updateTradingStatusFromAPI();
             
-            // Always reload order book signals when symbols change
-            await this.loadOrderBookSignals();
+            // Always reload order book signals when symbols change (only if trading is active)
+            if (this.liveTrading.isActive) {
+                await this.loadOrderBookSignals();
+            }
         }
     }
 
@@ -5382,8 +5390,10 @@ class EnhancedTradingDashboard {
             // Update portfolio status to refresh open positions and trading history
             await this.updateTradingStatusFromAPI();
             
-            // Final reload of order book signals
-            await this.loadOrderBookSignals();
+            // Final reload of order book signals (only if trading is active)
+            if (this.liveTrading.isActive) {
+                await this.loadOrderBookSignals();
+            }
             
             // Log completion message
             this.logTradingEvent(data.message || 'All symbols loaded successfully!');
@@ -5398,8 +5408,10 @@ class EnhancedTradingDashboard {
         // Update portfolio status even on error
         await this.updateTradingStatusFromAPI();
         
-        // Reload order book signals even on error
-        await this.loadOrderBookSignals();
+        // Reload order book signals even on error (only if trading is active)
+        if (this.liveTrading.isActive) {
+            await this.loadOrderBookSignals();
+        }
         
         // Log error message
         this.logTradingEvent(data.message || 'Error loading some symbols');
