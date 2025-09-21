@@ -44,32 +44,126 @@ class DataHandlers:
             
             symbol_list = [s.strip() for s in symbols.split(',')]
             
-            # This would typically analyze order book data
-            # For now, return placeholder data with trading status
+            # Fetch real orderbook data from Coinbase API
             signals = []
             for symbol in symbol_list:
-                signals.append({
-                    "symbol": symbol,
-                    "signal": "buy",  # Changed from signal_type to signal
-                    "signal_type": "buy",  # Keep both for compatibility
-                    "signal_strength": 0.7,  # Changed from strength to signal_strength
-                    "strength": 0.7,  # Keep both for compatibility
-                    "price": 50000.0,
-                    "timestamp": "2024-01-01T00:00:00Z",
-                    "reason": "Order book imbalance detected",
-                    "signal_reason": "Order book imbalance detected",  # Add signal_reason
-                    "data_status": "sufficient",  # Add data_status
-                    "spread": 0.001,  # Add spread
-                    "volume": 1000.0,  # Add volume
-                    "criteria_analysis": {  # Add criteria_analysis
-                        "bid_ask_squeeze": {
-                            "analysis": "Normal spread detected"
-                        },
-                        "volume_imbalance_buy": {
-                            "analysis": "Buy pressure detected"
+                try:
+                    # Create a data provider instance for this symbol
+                    from ...data.data_provider import CoinbaseDataProvider
+                    symbol_provider = CoinbaseDataProvider(symbol)
+                    
+                    # Fetch live orderbook data
+                    orderbook_data = await symbol_provider.get_order_book(level=2)
+                    
+                    if orderbook_data and orderbook_data.get('bids') and orderbook_data.get('asks'):
+                        # Calculate orderbook metrics
+                        best_bid = float(orderbook_data['bids'][0]['price']) if orderbook_data['bids'] else 0
+                        best_ask = float(orderbook_data['asks'][0]['price']) if orderbook_data['asks'] else 0
+                        current_price = (best_bid + best_ask) / 2 if best_bid and best_ask else 0
+                        
+                        # Calculate spread
+                        spread = ((best_ask - best_bid) / current_price * 100) if current_price > 0 else 0
+                        
+                        # Calculate volume (sum of top 5 bids/asks)
+                        bid_volume = sum(float(bid['size']) for bid in orderbook_data['bids'][:5])
+                        ask_volume = sum(float(ask['size']) for ask in orderbook_data['asks'][:5])
+                        total_volume = bid_volume + ask_volume
+                        
+                        # Calculate orderbook imbalance
+                        volume_imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume) if (bid_volume + ask_volume) > 0 else 0
+                        
+                        # Determine signal based on orderbook analysis
+                        if volume_imbalance > 0.1:  # More buy pressure
+                            signal = "buy"
+                            signal_strength = min(abs(volume_imbalance), 1.0)
+                            signal_reason = f"Buy pressure detected (imbalance: {volume_imbalance:.2f})"
+                        elif volume_imbalance < -0.1:  # More sell pressure
+                            signal = "sell"
+                            signal_strength = min(abs(volume_imbalance), 1.0)
+                            signal_reason = f"Sell pressure detected (imbalance: {volume_imbalance:.2f})"
+                        else:  # Balanced
+                            signal = "hold"
+                            signal_strength = 0.3
+                            signal_reason = "Orderbook balanced"
+                        
+                        # Determine data status
+                        data_status = "sufficient" if len(orderbook_data['bids']) >= 5 and len(orderbook_data['asks']) >= 5 else "insufficient"
+                        
+                        signals.append({
+                            "symbol": symbol,
+                            "signal": signal,
+                            "signal_type": signal,
+                            "signal_strength": signal_strength,
+                            "strength": signal_strength,
+                            "price": current_price,
+                            "timestamp": orderbook_data.get('timestamp', '2024-01-01T00:00:00Z'),
+                            "reason": signal_reason,
+                            "signal_reason": signal_reason,
+                            "data_status": data_status,
+                            "spread": spread,
+                            "volume": total_volume,
+                            "criteria_analysis": {
+                                "bid_ask_squeeze": {
+                                    "analysis": f"Spread: {spread:.4f}%" if spread < 0.1 else "Wide spread detected"
+                                },
+                                "volume_imbalance_buy": {
+                                    "analysis": f"Volume imbalance: {volume_imbalance:.2f} (bid: {bid_volume:.2f}, ask: {ask_volume:.2f})"
+                                }
+                            }
+                        })
+                        
+                        logger.info(f"Generated live orderbook signal for {symbol}: {signal} (strength: {signal_strength:.2f})")
+                    else:
+                        # Fallback to placeholder if no data
+                        logger.warning(f"No orderbook data available for {symbol}, using placeholder")
+                        signals.append({
+                            "symbol": symbol,
+                            "signal": "hold",
+                            "signal_type": "hold",
+                            "signal_strength": 0.0,
+                            "strength": 0.0,
+                            "price": 0.0,
+                            "timestamp": "2024-01-01T00:00:00Z",
+                            "reason": "No orderbook data available",
+                            "signal_reason": "No orderbook data available",
+                            "data_status": "insufficient",
+                            "spread": 0.0,
+                            "volume": 0.0,
+                            "criteria_analysis": {
+                                "bid_ask_squeeze": {
+                                    "analysis": "No data available"
+                                },
+                                "volume_imbalance_buy": {
+                                    "analysis": "No data available"
+                                }
+                            }
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error fetching orderbook data for {symbol}: {e}")
+                    # Fallback to placeholder on error
+                    signals.append({
+                        "symbol": symbol,
+                        "signal": "hold",
+                        "signal_type": "hold",
+                        "signal_strength": 0.0,
+                        "strength": 0.0,
+                        "price": 0.0,
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "reason": f"Error fetching data: {str(e)}",
+                        "signal_reason": f"Error fetching data: {str(e)}",
+                        "data_status": "insufficient",
+                        "spread": 0.0,
+                        "volume": 0.0,
+                        "criteria_analysis": {
+                            "bid_ask_squeeze": {
+                                "analysis": "Error fetching data"
+                            },
+                            "volume_imbalance_buy": {
+                                "analysis": "Error fetching data"
+                            }
                         }
-                    }
-                })
+                    })
             
             return {
                 "signals": signals,
