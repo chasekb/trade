@@ -347,10 +347,14 @@ class SimulatedTradingManager:
             logger.debug(f"Max positions ({self.max_positions}) reached, skipping buy signal for {symbol}")
             return None
         
-        # Calculate position size based on remaining cash balance
-        # This ensures we don't over-leverage by using the same percentage of total balance for each position
-        available_cash = self.cash_balance * self.position_size_percent
-        quantity = available_cash / price
+        # Calculate position size based on total portfolio value
+        # This ensures each position represents a fixed percentage of the total portfolio
+        total_portfolio_value = self.cash_balance + sum(
+            pos.quantity * pos.current_price for pos in self.positions.values() 
+            if pos.status == 'open'
+        )
+        position_value = total_portfolio_value * self.position_size_percent
+        quantity = position_value / price
         
         if quantity < 0.001:  # Minimum quantity threshold
             logger.debug(f"Insufficient cash for {symbol} position")
@@ -360,9 +364,16 @@ class SimulatedTradingManager:
         fees = price * quantity * self.trading_fee
         total_cost = (price * quantity) + fees
         
+        # Check if we have enough cash for this position
         if total_cost > self.cash_balance:
-            logger.debug(f"Insufficient balance for {symbol} trade")
-            return None
+            # If we don't have enough cash, reduce the quantity to fit within available cash
+            max_quantity = (self.cash_balance * 0.99) / (price * (1 + self.trading_fee))  # 99% to account for fees
+            if max_quantity < 0.001:
+                logger.debug(f"Insufficient cash for {symbol} position: need ${total_cost:.2f}, have ${self.cash_balance:.2f}")
+                return None
+            quantity = max_quantity
+            fees = price * quantity * self.trading_fee
+            total_cost = (price * quantity) + fees
         
         # Execute buy trade
         return await self._execute_buy_trade(symbol, price, quantity, fees, signal)
