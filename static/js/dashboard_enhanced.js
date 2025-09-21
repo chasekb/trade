@@ -2149,8 +2149,10 @@ class EnhancedTradingDashboard {
 
         // Update open positions count
         const openPositions = document.getElementById('open-positions');
-        if (openPositions && portfolioData.open_positions !== undefined) {
-            openPositions.textContent = portfolioData.open_positions.length || 0;
+        if (openPositions) {
+            // Count open positions from the positions object
+            const positionsCount = portfolioData.positions ? Object.keys(portfolioData.positions).length : 0;
+            openPositions.textContent = positionsCount;
         }
 
         // Update daily P&L
