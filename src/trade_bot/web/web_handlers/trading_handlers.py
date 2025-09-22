@@ -258,6 +258,8 @@ class TradingHandlers:
             
             return {
                 "is_trading": self.simulated_trading_manager.is_trading,
+                "max_positions": self.simulated_trading_manager.max_positions,
+                "position_size_percent": self.simulated_trading_manager.position_size_percent * 100,
                 "portfolio": portfolio,
                 "open_positions": open_positions,
                 "recent_trades": recent_trades

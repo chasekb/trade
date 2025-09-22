@@ -123,10 +123,16 @@ class SimulatedTradingManager:
             self.peak_value = portfolio_state.get('total_value', self.initial_balance)
             self.max_drawdown = portfolio_state.get('max_drawdown', 0.0)
             
-            # Restore positions
+            # Restore positions (respecting max positions limit)
             self.positions = {}
+            open_positions_count = 0
             for pos_data in positions:
                 if isinstance(pos_data, dict) and 'symbol' in pos_data:
+                    # Check if we've reached max positions limit
+                    if open_positions_count >= self.max_positions:
+                        logger.warning(f"Max positions limit ({self.max_positions}) reached, skipping restoration of {pos_data['symbol']}")
+                        continue
+                    
                     # Convert entry_time string to datetime if needed
                     entry_time = pos_data.get('entry_time', '')
                     if isinstance(entry_time, str) and entry_time:
@@ -148,6 +154,7 @@ class SimulatedTradingManager:
                         unrealized_pnl=float(pos_data.get('unrealized_pnl', 0.0))
                     )
                     self.positions[position.symbol] = position
+                    open_positions_count += 1
             
             # Restore trades
             self.trades = []
@@ -222,6 +229,9 @@ class SimulatedTradingManager:
             self.max_positions = max_positions
             logger.info(f"Updated max positions to {max_positions}")
         
+        # Enforce max positions limit on existing positions
+        self._enforce_max_positions_limit()
+        
         logger.info(f"Started simulated trading for symbols: {symbols}")
     
     def stop_trading(self) -> None:
@@ -234,6 +244,21 @@ class SimulatedTradingManager:
                 self._close_position(symbol, "Trading stopped")
         
         logger.info("Stopped simulated trading")
+    
+    def _enforce_max_positions_limit(self) -> None:
+        """Enforce max positions limit by closing excess positions."""
+        open_positions = [symbol for symbol, pos in self.positions.items() if pos.status == 'open']
+        
+        if len(open_positions) > self.max_positions:
+            logger.warning(f"Found {len(open_positions)} open positions, but max is {self.max_positions}. Closing excess positions.")
+            
+            # Close excess positions (keep the most recent ones)
+            excess_count = len(open_positions) - self.max_positions
+            positions_to_close = open_positions[:excess_count]  # Close oldest positions first
+            
+            for symbol in positions_to_close:
+                self._close_position(symbol, f"Max positions limit enforced (closing excess position)")
+                logger.info(f"Closed excess position: {symbol}")
     
     def _update_all_position_prices(self) -> None:
         """Update all position prices with current market data."""
@@ -333,6 +358,9 @@ class SimulatedTradingManager:
         """Process live order book signals and execute trades."""
         if not self.is_trading:
             return {"status": "not_trading", "message": "Trading is not active"}
+        
+        # Enforce max positions limit before processing signals
+        self._enforce_max_positions_limit()
         
         logger.info(f"Processing {len(signals)} signals. Trading symbols: {self.symbols_to_trade}")
         
