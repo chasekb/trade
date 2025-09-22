@@ -358,6 +358,14 @@ class DataHandlers:
                 import traceback
                 print(f"DEBUG: Traceback: {traceback.format_exc()}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
+                # Try to identify the problematic object
+                try:
+                    import json
+                    json.dumps(session_data)
+                    print("DEBUG: Session data is JSON serializable")
+                except Exception as json_error:
+                    print(f"DEBUG: JSON serialization error: {json_error}")
+                    logger.error(f"JSON serialization error: {json_error}")
                 return {"error": f"Database save failed: {str(db_error)}"}
             
             if success:
