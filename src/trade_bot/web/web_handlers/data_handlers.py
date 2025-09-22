@@ -103,6 +103,26 @@ class DataHandlers:
                         # Determine data status
                         data_status = "sufficient" if len(orderbook_data['bids']) >= 5 and len(orderbook_data['asks']) >= 5 else "insufficient"
                         
+                        # Calculate analysis criteria
+                        squeeze_threshold = 0.1  # 0.1% spread threshold
+                        imbalance_threshold = 0.1  # 10% imbalance threshold
+                        large_trade_threshold = 10000  # $10k trade threshold
+                        
+                        # Bid-Ask Squeeze Analysis
+                        squeeze_meets = spread < squeeze_threshold
+                        squeeze_delta = squeeze_threshold - spread
+                        
+                        # Volume Imbalance Analysis
+                        imbalance_meets_buy = volume_imbalance > imbalance_threshold
+                        imbalance_meets_sell = volume_imbalance < -imbalance_threshold
+                        imbalance_delta_buy = volume_imbalance - imbalance_threshold if volume_imbalance > 0 else 0
+                        imbalance_delta_sell = abs(volume_imbalance) - imbalance_threshold if volume_imbalance < 0 else 0
+                        
+                        # Large Trade Analysis (simplified - would need trade data)
+                        large_trade_meets_buy = False  # Would need actual trade data
+                        large_trade_meets_sell = False  # Would need actual trade data
+                        large_trade_count = 0  # Would need actual trade data
+                        
                         signals.append({
                             "symbol": symbol,
                             "signal": signal,
@@ -119,10 +139,50 @@ class DataHandlers:
                             "signal_generated": signal != "hold" and signal_strength > 0.1,  # Only process strong signals
                             "criteria_analysis": {
                                 "bid_ask_squeeze": {
-                                    "analysis": f"Spread: {spread:.4f}%" if spread < 0.1 else "Wide spread detected"
+                                    "enabled": True,
+                                    "meets_criteria": squeeze_meets,
+                                    "delta_to_threshold": squeeze_delta,
+                                    "analysis": f"Spread: {spread:.4f}%" if squeeze_meets else f"Wide spread: {spread:.4f}%",
+                                    "threshold": squeeze_threshold,
+                                    "current_value": spread
                                 },
                                 "volume_imbalance_buy": {
-                                    "analysis": f"Volume imbalance: {volume_imbalance:.2f} (bid: {bid_volume:.2f}, ask: {ask_volume:.2f})"
+                                    "enabled": True,
+                                    "meets_criteria": imbalance_meets_buy,
+                                    "delta_to_threshold": imbalance_delta_buy,
+                                    "analysis": f"Buy pressure: {volume_imbalance:.2f} (bid: {bid_volume:.2f}, ask: {ask_volume:.2f})",
+                                    "threshold": imbalance_threshold,
+                                    "current_value": volume_imbalance,
+                                    "bid_volume": bid_volume,
+                                    "ask_volume": ask_volume
+                                },
+                                "volume_imbalance_sell": {
+                                    "enabled": True,
+                                    "meets_criteria": imbalance_meets_sell,
+                                    "delta_to_threshold": imbalance_delta_sell,
+                                    "analysis": f"Sell pressure: {volume_imbalance:.2f} (bid: {bid_volume:.2f}, ask: {ask_volume:.2f})",
+                                    "threshold": imbalance_threshold,
+                                    "current_value": volume_imbalance,
+                                    "bid_volume": bid_volume,
+                                    "ask_volume": ask_volume
+                                },
+                                "large_trade_buy": {
+                                    "enabled": False,  # Disabled until trade data is available
+                                    "meets_criteria": large_trade_meets_buy,
+                                    "delta_to_threshold": 0,
+                                    "analysis": "Trade data not available",
+                                    "threshold": large_trade_threshold,
+                                    "current_value": 0,
+                                    "large_trades_count": large_trade_count
+                                },
+                                "large_trade_sell": {
+                                    "enabled": False,  # Disabled until trade data is available
+                                    "meets_criteria": large_trade_meets_sell,
+                                    "delta_to_threshold": 0,
+                                    "analysis": "Trade data not available",
+                                    "threshold": large_trade_threshold,
+                                    "current_value": 0,
+                                    "large_trades_count": large_trade_count
                                 }
                             }
                         })
@@ -147,10 +207,50 @@ class DataHandlers:
                             "signal_generated": False,  # No data available, don't process
                             "criteria_analysis": {
                                 "bid_ask_squeeze": {
-                                    "analysis": "No data available"
+                                    "enabled": False,
+                                    "meets_criteria": False,
+                                    "delta_to_threshold": 0,
+                                    "analysis": "No data available",
+                                    "threshold": 0.1,
+                                    "current_value": 0
                                 },
                                 "volume_imbalance_buy": {
-                                    "analysis": "No data available"
+                                    "enabled": False,
+                                    "meets_criteria": False,
+                                    "delta_to_threshold": 0,
+                                    "analysis": "No data available",
+                                    "threshold": 0.1,
+                                    "current_value": 0,
+                                    "bid_volume": 0,
+                                    "ask_volume": 0
+                                },
+                                "volume_imbalance_sell": {
+                                    "enabled": False,
+                                    "meets_criteria": False,
+                                    "delta_to_threshold": 0,
+                                    "analysis": "No data available",
+                                    "threshold": 0.1,
+                                    "current_value": 0,
+                                    "bid_volume": 0,
+                                    "ask_volume": 0
+                                },
+                                "large_trade_buy": {
+                                    "enabled": False,
+                                    "meets_criteria": False,
+                                    "delta_to_threshold": 0,
+                                    "analysis": "No data available",
+                                    "threshold": 10000,
+                                    "current_value": 0,
+                                    "large_trades_count": 0
+                                },
+                                "large_trade_sell": {
+                                    "enabled": False,
+                                    "meets_criteria": False,
+                                    "delta_to_threshold": 0,
+                                    "analysis": "No data available",
+                                    "threshold": 10000,
+                                    "current_value": 0,
+                                    "large_trades_count": 0
                                 }
                             }
                         })
@@ -174,10 +274,50 @@ class DataHandlers:
                         "signal_generated": False,  # Error occurred, don't process
                         "criteria_analysis": {
                             "bid_ask_squeeze": {
-                                "analysis": "Error fetching data"
+                                "enabled": False,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Error fetching data",
+                                "threshold": 0.1,
+                                "current_value": 0
                             },
                             "volume_imbalance_buy": {
-                                "analysis": "Error fetching data"
+                                "enabled": False,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Error fetching data",
+                                "threshold": 0.1,
+                                "current_value": 0,
+                                "bid_volume": 0,
+                                "ask_volume": 0
+                            },
+                            "volume_imbalance_sell": {
+                                "enabled": False,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Error fetching data",
+                                "threshold": 0.1,
+                                "current_value": 0,
+                                "bid_volume": 0,
+                                "ask_volume": 0
+                            },
+                            "large_trade_buy": {
+                                "enabled": False,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Error fetching data",
+                                "threshold": 10000,
+                                "current_value": 0,
+                                "large_trades_count": 0
+                            },
+                            "large_trade_sell": {
+                                "enabled": False,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Error fetching data",
+                                "threshold": 10000,
+                                "current_value": 0,
+                                "large_trades_count": 0
                             }
                         }
                     })
