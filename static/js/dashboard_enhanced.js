@@ -166,11 +166,11 @@ class EnhancedTradingDashboard {
 
     async loadSessionData(sessionId) {
         try {
-            const response = await fetch(`/api/session/load/${sessionId}`);
+            const response = await fetch(`/api/data/load-session/${sessionId}`);
             const data = await response.json();
             
-            if (data.session_data) {
-                await this.restoreTradingState(data.session_data);
+            if (data.state) {
+                await this.restoreTradingState(data.state);
                 this.logTradingEvent(`Restored session: ${sessionId}`);
             }
         } catch (error) {
