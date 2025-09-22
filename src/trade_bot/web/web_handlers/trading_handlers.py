@@ -271,6 +271,9 @@ class TradingHandlers:
             
             return {
                 "is_trading": self.simulated_trading_manager.is_trading,
+                "symbols": self.simulated_trading_manager.symbols_to_trade,
+                "strategy_type": self.simulated_trading_manager.strategy_type,
+                "strategy_params": self.simulated_trading_manager.strategy_params,
                 "max_positions": self.simulated_trading_manager.max_positions,
                 "position_size_percent": self.simulated_trading_manager.position_size_percent * 100,
                 "position_update_interval": self.simulated_trading_manager.position_update_interval,
