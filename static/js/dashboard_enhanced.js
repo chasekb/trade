@@ -1817,7 +1817,14 @@ class EnhancedTradingDashboard {
     }
 
     async startLiveTrading() {
-        if (this.liveTrading.isActive) return;
+        // If trading is already active, restart it to ensure proper initialization
+        if (this.liveTrading.isActive) {
+            this.logTradingEvent("Trading already active, restarting to ensure proper initialization...");
+            // Stop current trading first
+            await this.stopLiveTrading();
+            // Wait a moment for cleanup
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
 
         // Get strategy type based on symbol mode
         const strategyType = this.liveTrading.symbolMode === 'universe' 
