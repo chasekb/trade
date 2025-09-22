@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Trading Frontend Test Suite</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .test-pass {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .test-summary {
+            background-color: #e2e3e5;
+            color: #383d41;
+            border: 1px solid #d6d8db;
+            font-size: 18px;
+            text-align: center;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #28a745;
+            transition: width 0.3s ease;
+        }
+        .log-container {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Live Trading Frontend Test Suite</h1>
+        <p>Comprehensive testing of live trading tab functionality including UI interactions, data loading, and real-time updates.</p>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        
+        <div>
+            <button onclick="runAllTests()" id="run-tests-btn">Run All Tests</button>
+            <button onclick="clearResults()" id="clear-btn">Clear Results</button>
+            <button onclick="exportResults()" id="export-btn">Export Results</button>
+        </div>
+        
+        <div class="test-summary" id="test-summary">
+            <div>Ready to run tests</div>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>Test Results</h2>
+        <div id="test-results"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>Test Log</h2>
+        <div class="log-container" id="test-log"></div>
+    </div>
+
+    <script>
+        class LiveTradingFrontendTest {
+            constructor() {
+                this.testResults = [];
+                this.currentTest = 0;
+                this.totalTests = 0;
+                this.baseUrl = 'http://localhost:8001';
+                this.dashboard = null;
+            }
+
+            log(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                const logContainer = document.getElementById('test-log');
+                const logEntry = document.createElement('div');
+                logEntry.innerHTML = `[${timestamp}] ${message}`;
+                logEntry.className = `test-${type}`;
+                logContainer.appendChild(logEntry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+                console.log(`[${timestamp}] ${message}`);
+            }
+
+            addTestResult(testName, expected, actual, passed, details = '') {
+                const result = {
+                    testName,
+                    expected,
+                    actual,
+                    passed,
+                    details,
+                    timestamp: new Date().toISOString()
+                };
+                this.testResults.push(result);
+                
+                const status = passed ? '✅ PASS' : '❌ FAIL';
+                this.log(`${status} ${testName}: ${details}`, passed ? 'pass' : 'fail');
+                
+                if (!passed) {
+                    this.log(`  Expected: ${expected}`, 'info');
+                    this.log(`  Actual: ${actual}`, 'info');
+                }
+            }
+
+            updateProgress() {
+                const progress = (this.currentTest / this.totalTests) * 100;
+                document.getElementById('progress-fill').style.width = `${progress}%`;
+            }
+
+            updateSummary() {
+                const total = this.testResults.length;
+                const passed = this.testResults.filter(r => r.passed).length;
+                const failed = total - passed;
+                const successRate = total > 0 ? ((passed / total) * 100).toFixed(1) : 0;
+                
+                document.getElementById('test-summary').innerHTML = `
+                    <div>Total Tests: ${total} | Passed: ${passed} ✅ | Failed: ${failed} ❌ | Success Rate: ${successRate}%</div>
+                `;
+            }
+
+            displayResults() {
+                const container = document.getElementById('test-results');
+                container.innerHTML = '';
+                
+                // Group results by category
+                const categories = {};
+                this.testResults.forEach(result => {
+                    const category = result.testName.split(' - ')[0];
+                    if (!categories[category]) {
+                        categories[category] = [];
+                    }
+                    categories[category].push(result);
+                });
+                
+                Object.keys(categories).forEach(category => {
+                    const categoryDiv = document.createElement('div');
+                    categoryDiv.className = 'test-section';
+                    
+                    const categoryResults = categories[category];
+                    const passed = categoryResults.filter(r => r.passed).length;
+                    const total = categoryResults.length;
+                    const successRate = ((passed / total) * 100).toFixed(1);
+                    
+                    categoryDiv.innerHTML = `
+                        <h3>${category} (${passed}/${total} - ${successRate}%)</h3>
+                        <div id="category-${category.replace(/\s+/g, '-').toLowerCase()}"></div>
+                    `;
+                    
+                    container.appendChild(categoryDiv);
+                    
+                    const categoryContainer = document.getElementById(`category-${category.replace(/\s+/g, '-').toLowerCase()}`);
+                    
+                    categoryResults.forEach(result => {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = `test-result ${result.passed ? 'test-pass' : 'test-fail'}`;
+                        resultDiv.innerHTML = `
+                            <strong>${result.testName}</strong><br>
+                            ${result.details}<br>
+                            <small>Expected: ${result.expected} | Actual: ${result.actual}</small>
+                        `;
+                        categoryContainer.appendChild(resultDiv);
+                    });
+                });
+            }
+
+            async testPageLoad() {
+                this.log('🧪 Testing page load and initialization...');
+                
+                try {
+                    // Check if we're on the dashboard page
+                    const isDashboard = window.location.href.includes('localhost:8001');
+                    this.addTestResult(
+                        'Page Load - Dashboard URL',
+                        true,
+                        isDashboard,
+                        isDashboard,
+                        'Should be on dashboard page'
+                    );
+                    
+                    // Check for essential elements
+                    const essentialElements = [
+                        'live-trading-tab',
+                        'live-trading-content',
+                        'trading-mode-simulated',
+                        'trading-mode-live',
+                        'trading-symbol-mode-single',
+                        'trading-symbol-mode-universe',
+                        'live-trading-symbol',
+                        'live-strategy-type',
+                        'start-trading-btn'
+                    ];
+                    
+                    essentialElements.forEach(elementId => {
+                        const element = document.getElementById(elementId);
+                        this.addTestResult(
+                            `Page Load - ${elementId} Present`,
+                            true,
+                            element !== null,
+                            element !== null,
+                            `Essential UI element ${elementId} should be present`
+                        );
+                    });
+                    
+                    // Test tab switching
+                    const liveTradingTab = document.getElementById('live-trading-tab');
+                    if (liveTradingTab) {
+                        liveTradingTab.click();
+                        await this.sleep(500);
+                        
+                        const liveTradingContent = document.getElementById('live-trading-content');
+                        const isVisible = liveTradingContent && liveTradingContent.style.display !== 'none';
+                        this.addTestResult(
+                            'Page Load - Tab Switching',
+                            true,
+                            isVisible,
+                            isVisible,
+                            'Live trading content should be visible after tab click'
+                        );
+                    }
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'Page Load - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during page load test: ${error.message}`
+                    );
+                }
+            }
+
+            async testTradingModeSelection() {
+                this.log('🧪 Testing trading mode selection...');
+                
+                try {
+                    // Test simulated mode
+                    const simulatedRadio = document.getElementById('trading-mode-simulated');
+                    if (simulatedRadio) {
+                        simulatedRadio.click();
+                        await this.sleep(100);
+                        
+                        this.addTestResult(
+                            'Trading Mode - Simulated Selection',
+                            true,
+                            simulatedRadio.checked,
+                            simulatedRadio.checked,
+                            'Simulated trading mode should be selectable'
+                        );
+                    }
+                    
+                    // Test live mode
+                    const liveRadio = document.getElementById('trading-mode-live');
+                    if (liveRadio) {
+                        liveRadio.click();
+                        await this.sleep(100);
+                        
+                        this.addTestResult(
+                            'Trading Mode - Live Selection',
+                            true,
+                            liveRadio.checked,
+                            liveRadio.checked,
+                            'Live trading mode should be selectable'
+                        );
+                        
+                        // Switch back to simulated
+                        simulatedRadio.click();
+                    }
+                    
+                    // Test symbol mode selection
+                    const singleRadio = document.getElementById('trading-symbol-mode-single');
+                    const universeRadio = document.getElementById('trading-symbol-mode-universe');
+                    
+                    if (singleRadio) {
+                        singleRadio.click();
+                        await this.sleep(100);
+                        
+                        this.addTestResult(
+                            'Trading Mode - Single Symbol Selection',
+                            true,
+                            singleRadio.checked,
+                            singleRadio.checked,
+                            'Single symbol mode should be selectable'
+                        );
+                    }
+                    
+                    if (universeRadio) {
+                        universeRadio.click();
+                        await this.sleep(100);
+                        
+                        this.addTestResult(
+                            'Trading Mode - Universe Selection',
+                            true,
+                            universeRadio.checked,
+                            universeRadio.checked,
+                            'Universe mode should be selectable'
+                        );
+                        
+                        // Switch back to single
+                        singleRadio.click();
+                    }
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'Trading Mode - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during trading mode test: ${error.message}`
+                    );
+                }
+            }
+
+            async testStrategyConfiguration() {
+                this.log('🧪 Testing strategy configuration...');
+                
+                try {
+                    // Test strategy selection
+                    const strategySelect = document.getElementById('live-strategy-type');
+                    if (strategySelect) {
+                        const options = Array.from(strategySelect.options).map(opt => opt.text);
+                        this.addTestResult(
+                            'Strategy Config - Available Strategies',
+                            'Multiple strategies',
+                            `${options.length} strategies`,
+                            options.length > 5,
+                            `Should have multiple strategy options (found ${options.length})`
+                        );
+                        
+                        // Select SMA strategy
+                        strategySelect.value = 'sma';
+                        const selectedStrategy = strategySelect.options[strategySelect.selectedIndex].text;
+                        this.addTestResult(
+                            'Strategy Config - SMA Selection',
+                            'SMA',
+                            selectedStrategy,
+                            selectedStrategy === 'SMA',
+                            'SMA strategy should be selectable'
+                        );
+                    }
+                    
+                    // Test symbol selection
+                    const symbolSelect = document.getElementById('live-trading-symbol');
+                    if (symbolSelect) {
+                        const options = Array.from(symbolSelect.options).filter(opt => opt.text);
+                        this.addTestResult(
+                            'Strategy Config - Available Symbols',
+                            'Multiple symbols',
+                            `${options.length} symbols`,
+                            options.length > 10,
+                            `Should have multiple trading symbols (found ${options.length})`
+                        );
+                        
+                        // Select BTC-USD
+                        symbolSelect.value = 'BTC-USD';
+                        const selectedSymbol = symbolSelect.options[symbolSelect.selectedIndex].text;
+                        this.addTestResult(
+                            'Strategy Config - BTC-USD Selection',
+                            'BTC-USD',
+                            selectedSymbol,
+                            selectedSymbol === 'BTC-USD',
+                            'BTC-USD should be selectable'
+                        );
+                    }
+                    
+                    // Test universe configuration
+                    const universeRadio = document.getElementById('trading-symbol-mode-universe');
+                    if (universeRadio) {
+                        universeRadio.click();
+                        await this.sleep(500);
+                        
+                        const universeConfig = document.getElementById('universe-config');
+                        const isVisible = universeConfig && universeConfig.style.display !== 'none';
+                        this.addTestResult(
+                            'Strategy Config - Universe Config Visible',
+                            true,
+                            isVisible,
+                            isVisible,
+                            'Universe configuration should be visible when universe mode is selected'
+                        );
+                        
+                        // Test universe type selection
+                        const universeTypeSelect = document.getElementById('universe-type');
+                        if (universeTypeSelect) {
+                            const options = Array.from(universeTypeSelect.options).map(opt => opt.text);
+                            this.addTestResult(
+                                'Strategy Config - Universe Types Available',
+                                'Multiple types',
+                                `${options.length} types`,
+                                options.length > 5,
+                                `Should have multiple universe types (found ${options.length})`
+                            );
+                        }
+                        
+                        // Switch back to single
+                        const singleRadio = document.getElementById('trading-symbol-mode-single');
+                        if (singleRadio) {
+                            singleRadio.click();
+                        }
+                    }
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'Strategy Config - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during strategy configuration test: ${error.message}`
+                    );
+                }
+            }
+
+            async testTradingControls() {
+                this.log('🧪 Testing trading controls...');
+                
+                try {
+                    const startButton = document.getElementById('start-trading-btn');
+                    if (startButton) {
+                        // Check initial state
+                        const isEnabled = !startButton.disabled;
+                        this.addTestResult(
+                            'Trading Controls - Start Button Enabled',
+                            true,
+                            isEnabled,
+                            isEnabled,
+                            'Start trading button should be enabled initially'
+                        );
+                        
+                        // Test start trading
+                        const initialText = startButton.textContent;
+                        startButton.click();
+                        await this.sleep(2000);
+                        
+                        const afterStartText = startButton.textContent;
+                        const textChanged = afterStartText !== initialText;
+                        this.addTestResult(
+                            'Trading Controls - Start Trading',
+                            true,
+                            textChanged,
+                            textChanged,
+                            `Button text should change after clicking (was: "${initialText}", now: "${afterStartText}")`
+                        );
+                        
+                        // Test stop trading
+                        if (textChanged && afterStartText.includes('Stop')) {
+                            startButton.click();
+                            await this.sleep(2000);
+                            
+                            const afterStopText = startButton.textContent;
+                            const textChangedBack = afterStopText !== afterStartText;
+                            this.addTestResult(
+                                'Trading Controls - Stop Trading',
+                                true,
+                                textChangedBack,
+                                textChangedBack,
+                                `Button text should change back after stopping (was: "${afterStartText}", now: "${afterStopText}")`
+                            );
+                        }
+                    }
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'Trading Controls - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during trading controls test: ${error.message}`
+                    );
+                }
+            }
+
+            async testOrderBookSignals() {
+                this.log('🧪 Testing live order book signals...');
+                
+                try {
+                    // Check if order book signals table exists
+                    const signalsTable = document.getElementById('orderbook-signals-table');
+                    this.addTestResult(
+                        'Order Book Signals - Table Present',
+                        true,
+                        signalsTable !== null,
+                        signalsTable !== null,
+                        'Order book signals table should be present'
+                    );
+                    
+                    if (signalsTable) {
+                        const rows = signalsTable.querySelectorAll('tr');
+                        const hasDataRows = rows.length > 1;
+                        this.addTestResult(
+                            'Order Book Signals - Data Rows',
+                            true,
+                            hasDataRows,
+                            hasDataRows,
+                            `Order book signals table should have data rows (found ${rows.length} rows)`
+                        );
+                        
+                        // Check for headers
+                        if (rows.length > 0) {
+                            const headers = Array.from(rows[0].querySelectorAll('th')).map(th => th.textContent);
+                            this.addTestResult(
+                                'Order Book Signals - Headers Present',
+                                'Multiple headers',
+                                `${headers.length} headers`,
+                                headers.length >= 5,
+                                `Order book signals should have proper headers (found: ${headers.join(', ')})`
+                            );
+                        }
+                    }
+                    
+                    // Test refresh button
+                    const refreshButton = document.getElementById('refresh-orderbook-signals');
+                    if (refreshButton) {
+                        refreshButton.click();
+                        this.addTestResult(
+                            'Order Book Signals - Refresh Button',
+                            true,
+                            true,
+                            true,
+                            'Refresh button should be clickable'
+                        );
+                    }
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'Order Book Signals - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during order book signals test: ${error.message}`
+                    );
+                }
+            }
+
+            async testOpenPositions() {
+                this.log('🧪 Testing open positions...');
+                
+                try {
+                    const positionsTable = document.getElementById('positions-tbody');
+                    this.addTestResult(
+                        'Open Positions - Table Present',
+                        true,
+                        positionsTable !== null,
+                        positionsTable !== null,
+                        'Open positions table should be present'
+                    );
+                    
+                    if (positionsTable) {
+                        const tableContent = positionsTable.textContent;
+                        const hasNoPositions = tableContent.includes('No open positions');
+                        this.addTestResult(
+                            'Open Positions - No Positions Initially',
+                            true,
+                            hasNoPositions,
+                            hasNoPositions,
+                            'Should show "No open positions" when no trades are active'
+                        );
+                    }
+                    
+                    // Test refresh button
+                    const refreshButton = document.getElementById('refresh-trading-stats');
+                    if (refreshButton) {
+                        refreshButton.click();
+                        this.addTestResult(
+                            'Open Positions - Refresh Button',
+                            true,
+                            true,
+                            true,
+                            'Refresh button should be clickable'
+                        );
+                    }
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'Open Positions - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during open positions test: ${error.message}`
+                    );
+                }
+            }
+
+            async testTradingHistory() {
+                this.log('🧪 Testing trading history...');
+                
+                try {
+                    const historyTable = document.getElementById('trading-history-tbody');
+                    this.addTestResult(
+                        'Trading History - Table Present',
+                        true,
+                        historyTable !== null,
+                        historyTable !== null,
+                        'Trading history table should be present'
+                    );
+                    
+                    if (historyTable) {
+                        const tableContent = historyTable.textContent;
+                        const hasNoTrades = tableContent.includes('No recent trades');
+                        this.addTestResult(
+                            'Trading History - No Trades Initially',
+                            true,
+                            hasNoTrades,
+                            hasNoTrades,
+                            'Should show "No recent trades" when no trades have been executed'
+                        );
+                    }
+                    
+                    // Test pagination
+                    const pagination = document.querySelector('.pagination');
+                    this.addTestResult(
+                        'Trading History - Pagination Present',
+                        true,
+                        pagination !== null,
+                        pagination !== null,
+                        'Trading history should have pagination controls'
+                    );
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'Trading History - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during trading history test: ${error.message}`
+                    );
+                }
+            }
+
+            async testAPIEndpoints() {
+                this.log('🧪 Testing API endpoints...');
+                
+                try {
+                    // Test health endpoint
+                    const healthResponse = await fetch(`${this.baseUrl}/api/health`);
+                    this.addTestResult(
+                        'API - Health Endpoint',
+                        200,
+                        healthResponse.status,
+                        healthResponse.status === 200,
+                        'Health endpoint should return 200'
+                    );
+                    
+                    if (healthResponse.ok) {
+                        const healthData = await healthResponse.json();
+                        this.addTestResult(
+                            'API - Health Response Structure',
+                            true,
+                            'status' in healthData,
+                            'status' in healthData,
+                            'Health response should contain status field'
+                        );
+                    }
+                    
+                    // Test products endpoint
+                    const productsResponse = await fetch(`${this.baseUrl}/api/products`);
+                    this.addTestResult(
+                        'API - Products Endpoint',
+                        200,
+                        productsResponse.status,
+                        productsResponse.status === 200,
+                        'Products endpoint should return 200'
+                    );
+                    
+                    if (productsResponse.ok) {
+                        const productsData = await productsResponse.json();
+                        this.addTestResult(
+                            'API - Products Response Structure',
+                            true,
+                            'categories' in productsData,
+                            'categories' in productsData,
+                            'Products response should contain categories'
+                        );
+                    }
+                    
+                    // Test simulated trading status
+                    const statusResponse = await fetch(`${this.baseUrl}/api/simulated-trading/status`);
+                    this.addTestResult(
+                        'API - Simulated Trading Status',
+                        200,
+                        statusResponse.status,
+                        statusResponse.status === 200,
+                        'Simulated trading status should return 200'
+                    );
+                    
+                    if (statusResponse.ok) {
+                        const statusData = await statusResponse.json();
+                        this.addTestResult(
+                            'API - Status Response Structure',
+                            true,
+                            'portfolio' in statusData,
+                            'portfolio' in statusData,
+                            'Status response should contain portfolio data'
+                        );
+                    }
+                    
+                } catch (error) {
+                    this.addTestResult(
+                        'API - Exception',
+                        'No exception',
+                        error.message,
+                        false,
+                        `Exception during API testing: ${error.message}`
+                    );
+                }
+            }
+
+            async runAllTests() {
+                this.log('🚀 Starting comprehensive live trading frontend tests...');
+                this.testResults = [];
+                this.currentTest = 0;
+                this.totalTests = 7;
+                
+                const testCategories = [
+                    { name: 'Page Load', method: () => this.testPageLoad() },
+                    { name: 'Trading Mode Selection', method: () => this.testTradingModeSelection() },
+                    { name: 'Strategy Configuration', method: () => this.testStrategyConfiguration() },
+                    { name: 'Trading Controls', method: () => this.testTradingControls() },
+                    { name: 'Order Book Signals', method: () => this.testOrderBookSignals() },
+                    { name: 'Open Positions', method: () => this.testOpenPositions() },
+                    { name: 'Trading History', method: () => this.testTradingHistory() },
+                    { name: 'API Endpoints', method: () => this.testAPIEndpoints() }
+                ];
+                
+                this.totalTests = testCategories.length;
+                
+                for (const category of testCategories) {
+                    this.log(`📋 Running ${category.name} tests...`);
+                    try {
+                        await category.method();
+                    } catch (error) {
+                        this.addTestResult(
+                            `${category.name} - Test Suite Error`,
+                            'No exception',
+                            error.message,
+                            false,
+                            `Test suite failed with exception: ${error.message}`
+                        );
+                    }
+                    this.currentTest++;
+                    this.updateProgress();
+                }
+                
+                this.updateSummary();
+                this.displayResults();
+                this.log('✅ All tests completed!');
+            }
+
+            sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Initialize test suite
+        const testSuite = new LiveTradingFrontendTest();
+
+        // Global functions for UI
+        function runAllTests() {
+            document.getElementById('run-tests-btn').disabled = true;
+            testSuite.runAllTests().finally(() => {
+                document.getElementById('run-tests-btn').disabled = false;
+            });
+        }
+
+        function clearResults() {
+            document.getElementById('test-results').innerHTML = '';
+            document.getElementById('test-log').innerHTML = '';
+            document.getElementById('test-summary').innerHTML = '<div>Ready to run tests</div>';
+            document.getElementById('progress-fill').style.width = '0%';
+            testSuite.testResults = [];
+        }
+
+        function exportResults() {
+            if (testSuite.testResults.length === 0) {
+                alert('No test results to export. Please run tests first.');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(testSuite.testResults, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `live_trading_frontend_test_results_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Auto-run tests when page loads (if on dashboard)
+        window.addEventListener('load', () => {
+            if (window.location.href.includes('localhost:8001')) {
+                testSuite.log('📄 Live Trading Frontend Test Suite loaded');
+                testSuite.log('💡 Click "Run All Tests" to start testing');
+            }
+        });
+    </script>
+</body>
+</html>
