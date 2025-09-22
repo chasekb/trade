@@ -65,7 +65,7 @@ class DataHandlers:
                     from ...data.data_provider import CoinbaseDataProvider
                     symbol_provider = CoinbaseDataProvider(symbol)
                     
-                    # Fetch live orderbook data
+                    # Fetch live orderbook data (using level 2 for comprehensive signal analysis)
                     orderbook_data = await symbol_provider.get_order_book(level=2)
                     
                     if orderbook_data and orderbook_data.get('bids') and orderbook_data.get('asks'):

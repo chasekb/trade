@@ -99,6 +99,10 @@ class SimulatedTradingManager:
         # Signal tracking
         self.total_signals_processed = 0
         
+        # Position price update rate limiting
+        self.last_position_update = None
+        self.position_update_interval = 30  # Update position prices every 30 seconds
+        
         # Strategy information
         self.strategy_type = None
         self.strategy_params = {}
@@ -266,6 +270,12 @@ class SimulatedTradingManager:
     def _update_all_position_prices(self) -> None:
         """Update all position prices with current market data."""
         try:
+            # Rate limiting: only update if enough time has passed
+            now = datetime.now()
+            if (self.last_position_update and 
+                (now - self.last_position_update).total_seconds() < self.position_update_interval):
+                return  # Skip update if too soon
+            
             # Import here to avoid circular imports
             from ..data.data_provider import CoinbaseDataProvider
             import asyncio
@@ -273,6 +283,13 @@ class SimulatedTradingManager:
             async def update_prices():
                 # Create a copy of positions to avoid dictionary changed size during iteration
                 positions_copy = dict(self.positions)
+                open_positions = [pos for pos in positions_copy.values() if pos.status == 'open']
+                
+                if not open_positions:
+                    return  # No open positions to update
+                
+                logger.debug(f"Updating prices for {len(open_positions)} open positions using level 1 data")
+                
                 for symbol, position in positions_copy.items():
                     if position.status == 'open':
                         try:
@@ -280,6 +297,7 @@ class SimulatedTradingManager:
                             data_provider = CoinbaseDataProvider(symbol)
                             
                             # Get current orderbook data to extract current price
+                            # Using level 1 for position price updates (only need best bid/ask)
                             orderbook_data = await data_provider.get_order_book(level=1)
                             
                             if orderbook_data and 'bids' in orderbook_data and 'asks' in orderbook_data:
@@ -314,6 +332,10 @@ class SimulatedTradingManager:
             except RuntimeError:
                 # No event loop running, we can use asyncio.run()
                 asyncio.run(update_prices())
+            
+            # Update the last update timestamp
+            self.last_position_update = now
+            
         except Exception as e:
             logger.error(f"Error updating position prices: {e}")
     
