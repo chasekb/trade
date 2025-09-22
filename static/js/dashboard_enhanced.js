@@ -276,7 +276,7 @@ class EnhancedTradingDashboard {
         // If trading is active, restore the backend state
         if (this.liveTrading.isActive) {
             try {
-                const response = await fetch('/api/simulated-trading/restore', {
+                const response = await fetch('/api/data/restore-trading', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

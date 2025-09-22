@@ -11,12 +11,13 @@ logger = logging.getLogger(__name__)
 class DataHandlers:
     """Handles data-related functionality for the trading web server."""
     
-    def __init__(self, config, data_provider, cached_data_provider, database_manager, simulated_trading_manager=None):
+    def __init__(self, config, data_provider, cached_data_provider, database_manager, simulated_trading_manager=None, trading_handlers=None):
         self.config = config
         self.data_provider = data_provider
         self.cached_data_provider = cached_data_provider
         self.database_manager = database_manager
         self.simulated_trading_manager = simulated_trading_manager
+        self.trading_handlers = trading_handlers
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -258,32 +259,97 @@ class DataHandlers:
     async def get_trading_state(self) -> Dict[str, Any]:
         """Get current trading state."""
         try:
-            # This would typically get the current trading state
+            # Get current trading status
+            trading_status = await self.trading_handlers.get_simulated_trading_status()
+            
             return {
-                "is_trading": False,
-                "active_strategy": None,
-                "symbols": [],
-                "session_id": None
+                "is_trading": trading_status.get('is_trading', False),
+                "active_strategy": trading_status.get('strategy_type'),
+                "symbols": trading_status.get('symbols', []),
+                "session_id": getattr(self.simulated_trading_manager, 'session_id', None)
             }
         except Exception as e:
             logger.error(f"Error getting trading state: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
+    async def save_current_trading_state(self, session_id: str) -> bool:
+        """Save current trading state to database."""
+        try:
+            if not session_id:
+                return False
+                
+            # Get current trading status
+            trading_status = await self.trading_handlers.get_simulated_trading_status()
+            
+            # Prepare session data
+            session_data = {
+                'is_active': trading_status.get('is_trading', False),
+                'trading_mode': 'simulated',
+                'symbol_mode': 'universe' if len(trading_status.get('symbols', [])) > 1 else 'single',
+                'strategy_type': trading_status.get('strategy_type'),
+                'strategy_params': trading_status.get('strategy_params', {}),
+                'symbols': trading_status.get('symbols', []),
+                'universe_config': {},
+                'portfolio_state': trading_status.get('portfolio', {}),
+                'positions': trading_status.get('open_positions', []),
+                'recent_trades': trading_status.get('recent_trades', [])
+            }
+            
+            # Save to database
+            success = self.database_manager.save_trading_session(session_id, session_data)
+            
+            if success:
+                logger.debug(f"Auto-saved trading session {session_id}")
+            
+            return success
+                
+        except Exception as e:
+            logger.error(f"Error auto-saving trading state: {e}")
+            return False
+    
     async def save_session_state(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Save trading session state."""
         try:
             session_id = request_data.get('session_id')
-            state_data = request_data.get('state', {})
+            logger.info(f"Save session request received for session_id: {session_id}")
             
             if not session_id:
                 raise HTTPException(status_code=400, detail="Session ID is required")
             
-            # Save state logic would go here
-            return {
-                "status": "saved",
-                "session_id": session_id,
-                "message": "Session state saved successfully"
+            # Get current trading status
+            logger.info("Getting current trading status...")
+            trading_status = await self.trading_handlers.get_simulated_trading_status()
+            logger.info(f"Trading status retrieved: is_trading={trading_status.get('is_trading')}, total_trades={trading_status.get('portfolio', {}).get('total_trades')}")
+            
+            # Prepare session data
+            session_data = {
+                'is_active': trading_status.get('is_trading', False),
+                'trading_mode': 'simulated',
+                'symbol_mode': 'universe' if len(trading_status.get('symbols', [])) > 1 else 'single',
+                'strategy_type': trading_status.get('strategy_type'),
+                'strategy_params': trading_status.get('strategy_params', {}),
+                'symbols': trading_status.get('symbols', []),
+                'universe_config': {},
+                'portfolio_state': trading_status.get('portfolio', {}),
+                'positions': trading_status.get('open_positions', []),
+                'recent_trades': trading_status.get('recent_trades', [])
             }
+            
+            # Save to database
+            logger.info(f"Attempting to save session {session_id} with data: {session_data}")
+            success = self.database_manager.save_trading_session(session_id, session_data)
+            
+            if success:
+                logger.info(f"Saved trading session {session_id} with {len(session_data['positions'])} positions and {len(session_data['recent_trades'])} trades")
+                return {
+                    "status": "saved",
+                    "session_id": session_id,
+                    "message": "Session state saved successfully"
+                }
+            else:
+                logger.error(f"Failed to save session {session_id}")
+                return {"error": "Failed to save session state"}
+                
         except Exception as e:
             logger.error(f"Error saving session state: {e}")
             raise HTTPException(status_code=500, detail=str(e))
@@ -296,10 +362,50 @@ class DataHandlers:
             if not session_id:
                 raise HTTPException(status_code=400, detail="Session ID is required")
             
-            # Restore logic would go here
+            # Load session data from database
+            session_data = self.database_manager.load_trading_session(session_id)
+            if not session_data:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Extract trading parameters
+            symbols = session_data.get('symbols', [])
+            strategy_type = session_data.get('strategy_type', 'orderbook')
+            strategy_params = session_data.get('strategy_params', {})
+            portfolio_state = session_data.get('portfolio_state', {})
+            positions = session_data.get('positions', [])
+            recent_trades = session_data.get('recent_trades', [])
+            
+            # Restore simulated trading state
+            self.simulated_trading_manager.restore_portfolio_state(
+                portfolio_state=portfolio_state,
+                positions=positions,
+                trades=recent_trades,
+                symbols=symbols
+            )
+            
+            # Set session info for trade logging
+            self.simulated_trading_manager.set_session_info(self.database_manager, session_id)
+            
+            # Set strategy info for trade logging
+            self.simulated_trading_manager.set_strategy_info(strategy_type, strategy_params)
+            
+            # Start trading
+            self.simulated_trading_manager.start_trading(symbols)
+            
+            # Get current portfolio summary
+            portfolio = self.simulated_trading_manager.get_portfolio_summary()
+            open_positions = self.simulated_trading_manager.get_open_positions()
+            
+            logger.info(f"Restored simulated trading for {len(symbols)} symbols with {len(open_positions)} positions")
+            
             return {
                 "status": "restored",
                 "session_id": session_id,
+                "symbols": symbols,
+                "strategy_type": strategy_type,
+                "portfolio": portfolio,
+                "positions": open_positions,
+                "recent_trades": recent_trades,
                 "message": "Simulated trading restored successfully"
             }
         except Exception as e:
@@ -312,10 +418,18 @@ class DataHandlers:
             if not session_id:
                 raise HTTPException(status_code=400, detail="Session ID is required")
             
-            # Load state logic would go here
+            # Load session data from database
+            session_data = self.database_manager.load_trading_session(session_id)
+            if not session_data:
+                return {
+                    "session_id": session_id,
+                    "state": {},
+                    "message": "Session not found"
+                }
+            
             return {
                 "session_id": session_id,
-                "state": {},
+                "state": session_data,
                 "message": "Session state loaded successfully"
             }
         except Exception as e:

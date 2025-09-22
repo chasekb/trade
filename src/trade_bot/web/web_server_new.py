@@ -146,7 +146,7 @@ async def startup_event():
         backtest_handlers = BacktestHandlers(config, database_manager)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager)
         websocket_handlers = WebSocketHandlers(websocket_manager)
-        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager)
+        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers)
         
         # Start WebSocket client
         # Note: WebSocket client will be started when needed

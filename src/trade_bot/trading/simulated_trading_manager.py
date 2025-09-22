@@ -135,11 +135,6 @@ class SimulatedTradingManager:
             open_positions_count = 0
             for pos_data in positions:
                 if isinstance(pos_data, dict) and 'symbol' in pos_data:
-                    # Check if we've reached max positions limit
-                    if open_positions_count >= self.max_positions:
-                        logger.warning(f"Max positions limit ({self.max_positions}) reached, skipping restoration of {pos_data['symbol']}")
-                        continue
-                    
                     # Convert entry_time string to datetime if needed
                     entry_time = pos_data.get('entry_time', '')
                     if isinstance(entry_time, str) and entry_time:
@@ -158,10 +153,18 @@ class SimulatedTradingManager:
                         entry_price=float(pos_data.get('entry_price', 0.0)),
                         entry_time=entry_time,
                         current_price=float(pos_data.get('current_price', 0.0)),
-                        unrealized_pnl=float(pos_data.get('unrealized_pnl', 0.0))
+                        unrealized_pnl=float(pos_data.get('unrealized_pnl', 0.0)),
+                        status=pos_data.get('status', 'open')  # Restore position status
                     )
+                    
+                    # Only count open positions towards the limit
+                    if position.status == 'open':
+                        if open_positions_count >= self.max_positions:
+                            logger.warning(f"Max positions limit ({self.max_positions}) reached, skipping restoration of {pos_data['symbol']}")
+                            continue
+                        open_positions_count += 1
+                    
                     self.positions[position.symbol] = position
-                    open_positions_count += 1
             
             # Restore trades
             self.trades = []

@@ -261,12 +261,16 @@ class TradingHandlers:
             open_positions = self.simulated_trading_manager.get_open_positions()
             recent_trades = self.simulated_trading_manager.get_recent_trades()
             
+            # Convert portfolio to dictionary for JSON serialization
+            from dataclasses import asdict
+            portfolio_dict = asdict(portfolio)
+            
             return {
                 "is_trading": self.simulated_trading_manager.is_trading,
                 "max_positions": self.simulated_trading_manager.max_positions,
                 "position_size_percent": self.simulated_trading_manager.position_size_percent * 100,
                 "position_update_interval": self.simulated_trading_manager.position_update_interval,
-                "portfolio": portfolio,
+                "portfolio": portfolio_dict,
                 "open_positions": open_positions,
                 "recent_trades": recent_trades
             }
