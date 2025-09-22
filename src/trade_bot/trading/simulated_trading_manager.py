@@ -101,7 +101,7 @@ class SimulatedTradingManager:
         
         # Position price update rate limiting
         self.last_position_update = None
-        self.position_update_interval = 30  # Update position prices every 30 seconds
+        self.position_update_interval = 5  # Update position prices every 5 seconds
         
         # Strategy information
         self.strategy_type = None
