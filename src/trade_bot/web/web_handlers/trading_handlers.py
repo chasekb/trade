@@ -210,11 +210,15 @@ class TradingHandlers:
             strategy_params = request_data.get('strategy_params', {})
             position_size_percent = request_data.get('position_size_percent', 20.0)
             max_positions = request_data.get('max_positions', 5)
+            position_update_interval = request_data.get('position_update_interval', 5)
             initial_balance = request_data.get('initial_balance', 10000.0)
             
             # Update simulated trading manager with new parameters
             self.simulated_trading_manager.initial_balance = initial_balance
             self.simulated_trading_manager.cash_balance = initial_balance
+            
+            # Update position update interval
+            self.simulated_trading_manager.position_update_interval = position_update_interval
             
             # Start simulated trading with position size parameters
             self.simulated_trading_manager.start_trading(
@@ -229,6 +233,7 @@ class TradingHandlers:
                 "strategy_type": strategy_type,
                 "position_size_percent": position_size_percent,
                 "max_positions": max_positions,
+                "position_update_interval": position_update_interval,
                 "initial_balance": initial_balance,
                 "message": "Simulated trading started successfully"
             }
@@ -260,6 +265,7 @@ class TradingHandlers:
                 "is_trading": self.simulated_trading_manager.is_trading,
                 "max_positions": self.simulated_trading_manager.max_positions,
                 "position_size_percent": self.simulated_trading_manager.position_size_percent * 100,
+                "position_update_interval": self.simulated_trading_manager.position_update_interval,
                 "portfolio": portfolio,
                 "open_positions": open_positions,
                 "recent_trades": recent_trades

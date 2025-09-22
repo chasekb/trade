@@ -1643,6 +1643,11 @@ class EnhancedTradingDashboard {
             maxPositionsInput.value = '3';
         }
         
+        const positionUpdateIntervalInput = document.getElementById('live-position-update-interval');
+        if (positionUpdateIntervalInput) {
+            positionUpdateIntervalInput.value = '5';
+        }
+        
         // Universe configuration
         const universeTypeSelect = document.getElementById('universe-type');
         if (universeTypeSelect) {
@@ -1820,7 +1825,7 @@ class EnhancedTradingDashboard {
             : document.getElementById('live-strategy-type').value;
         
         // Get configuration based on symbol mode
-        let symbols, positionSize, maxPositions;
+        let symbols, positionSize, maxPositions, positionUpdateInterval;
         
         if (this.liveTrading.symbolMode === 'universe') {
             // Universe trading configuration
@@ -1829,6 +1834,7 @@ class EnhancedTradingDashboard {
             const universeMaxSize = universeMaxSizeInput ? parseInt(universeMaxSizeInput) : null;
             const universePositionSize = parseFloat(document.getElementById('universe-position-size').value) || 2.0;
             const universeMaxPositions = parseInt(document.getElementById('universe-max-positions').value) || 20;
+            positionUpdateInterval = parseInt(document.getElementById('live-position-update-interval').value) || 5;
             
             if (universeType === 'custom') {
                 symbols = this.liveTrading.universe.customSymbols;
@@ -1853,6 +1859,7 @@ class EnhancedTradingDashboard {
             symbols = [symbol];
             positionSize = parseFloat(document.getElementById('live-position-size').value);
             maxPositions = parseInt(document.getElementById('live-max-positions').value);
+            positionUpdateInterval = parseInt(document.getElementById('live-position-update-interval').value) || 5;
         }
 
         // Get strategy parameters
@@ -1885,6 +1892,7 @@ class EnhancedTradingDashboard {
                     initial_balance: 10000.0,
                     max_positions: maxPositions,
                     position_size_percent: positionSize,
+                    position_update_interval: positionUpdateInterval,
                     session_id: this.sessionId,
                     immediate_start: true,
                     batch_size: 3

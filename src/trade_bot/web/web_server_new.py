@@ -312,6 +312,7 @@ async def start_async_trading(request: dict):
         initial_balance = request.get('initial_balance', 10000.0)
         max_positions = request.get('max_positions', 5)
         position_size_percent = request.get('position_size_percent', 20.0)
+        position_update_interval = request.get('position_update_interval', 5)
         session_id = request.get('session_id')
         immediate_start = request.get('immediate_start', True)
         batch_size = request.get('batch_size', 3)
@@ -345,6 +346,7 @@ async def start_async_trading(request: dict):
             'strategy_params': strategy_params,
             'position_size_percent': position_size_percent,
             'max_positions': max_positions,
+            'position_update_interval': position_update_interval,
             'initial_balance': initial_balance
         })
         
