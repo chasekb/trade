@@ -1234,9 +1234,45 @@
 
                 <!-- Open Positions -->
                 <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
-                        <i class="fas fa-list mr-2"></i>Open Positions
-                    </h3>
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">
+                            <i class="fas fa-list mr-2"></i>Open Positions
+                        </h3>
+                        <div class="flex items-center space-x-2">
+                            <button id="refresh-positions" class="text-gray-400 hover:text-gray-600 transition-colors">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Pagination Controls -->
+                    <div id="positions-pagination" class="flex justify-between items-center mb-4">
+                        <div class="flex items-center space-x-2">
+                            <button id="positions-first-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-double-left"></i>
+                            </button>
+                            <button id="positions-prev-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-left"></i>
+                            </button>
+                            <span id="positions-page-info" class="px-3 py-1 text-sm text-gray-700">Page 1 of 1</span>
+                            <button id="positions-next-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-right"></i>
+                            </button>
+                            <button id="positions-last-page" class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-angle-double-right"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label for="positions-per-page" class="text-sm text-gray-500">Per page:</label>
+                            <select id="positions-per-page" class="text-sm border border-gray-300 rounded px-2 py-1">
+                                <option value="5">5</option>
+                                <option value="10" selected>10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                    </div>
+                    
                     <div id="open-positions-table" class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -1256,6 +1292,11 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    
+                    <!-- Positions Info -->
+                    <div id="positions-info" class="mt-2 text-sm text-gray-600 text-center">
+                        No open positions
                     </div>
                 </div>
 

@@ -120,6 +120,14 @@ class EnhancedTradingDashboard {
             totalPages: 1,
             totalSignals: 0
         };
+        
+        // Open positions pagination state
+        this.positionsPagination = {
+            currentPage: 1,
+            perPage: 10,
+            totalPages: 1,
+            totalPositions: 0
+        };
     }
 
     getOrCreateSessionId() {
@@ -547,6 +555,9 @@ class EnhancedTradingDashboard {
         
         // Setup order book signals pagination
         this.setupOrderBookSignalsPagination();
+        
+        // Setup positions pagination
+        this.setupPositionsPagination();
         
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
@@ -2203,34 +2214,56 @@ class EnhancedTradingDashboard {
     }
 
     updateOpenPositions(positions) {
-        // Update the open positions display
+        // Update the open positions display with pagination
         const tbody = document.getElementById('positions-tbody');
         if (!tbody) return;
 
         if (!positions || positions.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No open positions</td></tr>';
+            this.updatePositionsPagination(0);
             return;
         }
 
-        tbody.innerHTML = positions.map(position => `
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${position.symbol}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.side}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.quantity.toFixed(6)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.entry_price.toFixed(2)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.current_price.toFixed(2)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm ${position.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
-                    ${position.unrealized_pnl >= 0 ? '+' : ''}$${position.unrealized_pnl.toFixed(2)}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <button onclick="dashboard.closePosition('${position.symbol}')" 
-                            class="text-red-600 hover:text-red-900">Close</button>
-                </td>
-            </tr>
-        `).join('');
+        // Update pagination state
+        this.positionsPagination.totalPositions = positions.length;
+        this.positionsPagination.totalPages = Math.ceil(positions.length / this.positionsPagination.perPage);
+        
+        // Ensure current page is valid
+        if (this.positionsPagination.currentPage > this.positionsPagination.totalPages) {
+            this.positionsPagination.currentPage = Math.max(1, this.positionsPagination.totalPages);
+        }
+
+        // Calculate pagination slice
+        const startIndex = (this.positionsPagination.currentPage - 1) * this.positionsPagination.perPage;
+        const endIndex = startIndex + this.positionsPagination.perPage;
+        const paginatedPositions = positions.slice(startIndex, endIndex);
+
+        if (paginatedPositions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No positions on this page</td></tr>';
+        } else {
+            tbody.innerHTML = paginatedPositions.map(position => `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${position.symbol}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.side}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${position.quantity.toFixed(6)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.entry_price.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${position.current_price.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${position.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        ${position.unrealized_pnl >= 0 ? '+' : ''}$${position.unrealized_pnl.toFixed(2)}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button onclick="dashboard.closePosition('${position.symbol}')" 
+                                class="text-red-600 hover:text-red-900">Close</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Update pagination controls
+        this.updatePositionsPagination(positions.length);
 
         // Also log for debugging
-        this.logTradingEvent(`Updated ${positions.length} open positions`);
+        this.logTradingEvent(`Updated ${positions.length} open positions (showing ${paginatedPositions.length} on page ${this.positionsPagination.currentPage})`);
     }
 
     updateRecentTrades(trades) {
@@ -2544,6 +2577,96 @@ class EnhancedTradingDashboard {
         if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
         if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
         if (lastPageBtn) lastPageBtn.disabled = currentPage >= totalPages;
+    }
+
+    // Open Positions Pagination Methods
+    updatePositionsPagination(totalPositions) {
+        const { currentPage, totalPages } = this.positionsPagination;
+        
+        // Update page info
+        const pageInfoElement = document.getElementById('positions-page-info');
+        if (pageInfoElement) {
+            pageInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        
+        // Update button states
+        const firstPageBtn = document.getElementById('positions-first-page');
+        const prevPageBtn = document.getElementById('positions-prev-page');
+        const nextPageBtn = document.getElementById('positions-next-page');
+        const lastPageBtn = document.getElementById('positions-last-page');
+        
+        if (firstPageBtn) firstPageBtn.disabled = currentPage <= 1;
+        if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
+        if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
+        if (lastPageBtn) lastPageBtn.disabled = currentPage >= totalPages;
+        
+        // Update positions info
+        const positionsInfoElement = document.getElementById('positions-info');
+        if (positionsInfoElement) {
+            if (totalPositions === 0) {
+                positionsInfoElement.textContent = 'No open positions';
+            } else {
+                const startIndex = (currentPage - 1) * this.positionsPagination.perPage + 1;
+                const endIndex = Math.min(currentPage * this.positionsPagination.perPage, totalPositions);
+                positionsInfoElement.textContent = `Showing ${startIndex}-${endIndex} of ${totalPositions} positions`;
+            }
+        }
+    }
+
+    setupPositionsPagination() {
+        // First page button
+        const firstPageBtn = document.getElementById('positions-first-page');
+        if (firstPageBtn) {
+            firstPageBtn.addEventListener('click', () => {
+                this.positionsPagination.currentPage = 1;
+                this.updateOpenPositions(this.liveTrading.positions);
+            });
+        }
+        
+        // Previous page button
+        const prevPageBtn = document.getElementById('positions-prev-page');
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener('click', () => {
+                this.positionsPagination.currentPage = Math.max(1, this.positionsPagination.currentPage - 1);
+                this.updateOpenPositions(this.liveTrading.positions);
+            });
+        }
+        
+        // Next page button
+        const nextPageBtn = document.getElementById('positions-next-page');
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener('click', () => {
+                this.positionsPagination.currentPage = Math.min(this.positionsPagination.totalPages, this.positionsPagination.currentPage + 1);
+                this.updateOpenPositions(this.liveTrading.positions);
+            });
+        }
+        
+        // Last page button
+        const lastPageBtn = document.getElementById('positions-last-page');
+        if (lastPageBtn) {
+            lastPageBtn.addEventListener('click', () => {
+                this.positionsPagination.currentPage = this.positionsPagination.totalPages;
+                this.updateOpenPositions(this.liveTrading.positions);
+            });
+        }
+        
+        // Per page selector
+        const perPageSelect = document.getElementById('positions-per-page');
+        if (perPageSelect) {
+            perPageSelect.addEventListener('change', (e) => {
+                this.positionsPagination.perPage = parseInt(e.target.value);
+                this.positionsPagination.currentPage = 1; // Reset to first page
+                this.updateOpenPositions(this.liveTrading.positions);
+            });
+        }
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-positions');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.updateOpenPositions(this.liveTrading.positions);
+            });
+        }
     }
 
     updateOrderBookSignalsPaginationControls() {
