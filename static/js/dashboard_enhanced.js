@@ -255,12 +255,22 @@ class EnhancedTradingDashboard {
         this.liveTrading.isActive = sessionData.is_active || false;
         this.liveTrading.mode = sessionData.trading_mode || 'simulated';
         this.liveTrading.symbolMode = sessionData.symbol_mode || 'single';
-        this.liveTrading.strategy = sessionData.strategy_type ? {
-            type: sessionData.strategy_type,
+        
+        // Create strategy object with symbols from session data
+        this.liveTrading.strategy = {
+            type: sessionData.strategy_type || null,
             params: sessionData.strategy_params || {},
             symbols: sessionData.symbols || []
-        } : null;
-        this.liveTrading.universe = sessionData.universe_config || this.liveTrading.universe;
+        };
+        
+        // Set universe symbols for universe mode
+        if (sessionData.symbol_mode === 'universe') {
+            this.liveTrading.universe = {
+                ...this.liveTrading.universe,
+                symbols: sessionData.symbols || []
+            };
+        }
+        
         this.liveTrading.portfolio = sessionData.portfolio_state || this.liveTrading.portfolio;
         this.liveTrading.positions = sessionData.positions || [];
         this.liveTrading.history = sessionData.recent_trades || [];
@@ -306,10 +316,14 @@ class EnhancedTradingDashboard {
             }
             
             this.startPortfolioStatusUpdates();
-            // Only load order book signals if trading is actually active (not just restored)
+            
+            // Load order book signals if trading is active
             if (this.liveTrading.isActive) {
-                this.loadOrderBookSignals();
-                this.startOrderBookAutoRefresh();
+                // Add a small delay to ensure all state is properly set
+                setTimeout(async () => {
+                    await this.loadOrderBookSignals();
+                    this.startOrderBookAutoRefresh();
+                }, 100);
             }
         }
     }
@@ -881,7 +895,17 @@ class EnhancedTradingDashboard {
             }
 
             // Get symbols from current trading strategy (for async trading) or form (for regular trading)
-            const selectedSymbols = this.liveTrading.strategy?.symbols || this.getSelectedSymbols();
+            let selectedSymbols = this.liveTrading.strategy?.symbols;
+            
+            // If no symbols in strategy, try to get from universe or form
+            if (!selectedSymbols || selectedSymbols.length === 0) {
+                selectedSymbols = this.getSelectedSymbols();
+            }
+            
+            // Debug logging
+            console.log('loadOrderBookSignals - selectedSymbols:', selectedSymbols);
+            console.log('loadOrderBookSignals - strategy:', this.liveTrading.strategy);
+            console.log('loadOrderBookSignals - isActive:', this.liveTrading.isActive);
             
             // If no symbols are selected, show appropriate message
             if (!selectedSymbols || selectedSymbols.length === 0) {
