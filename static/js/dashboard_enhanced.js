@@ -5649,11 +5649,11 @@ class EnhancedTradingDashboard {
             
             // Update pagination info
             const totalPages = Math.ceil(data.total_count / perPage);
-            document.getElementById('page-info').textContent = `Page ${page} of ${totalPages}`;
+            document.getElementById('trading-history-page-info').textContent = `Page ${page} of ${totalPages}`;
             
             // Update pagination buttons
-            document.getElementById('prev-page').disabled = page <= 1;
-            document.getElementById('next-page').disabled = page >= totalPages;
+            document.getElementById('trading-history-prev-page').disabled = page <= 1;
+            document.getElementById('trading-history-next-page').disabled = page >= totalPages;
             
             // Populate table
             this.populateTradingHistoryTable(data.trades);
@@ -5664,7 +5664,7 @@ class EnhancedTradingDashboard {
     }
 
     populateTradingHistoryTable(trades) {
-        const tbody = document.getElementById('history-table-body');
+        const tbody = document.getElementById('trading-history-table-body');
         tbody.innerHTML = '';
         
         if (!trades || trades.length === 0) {
@@ -5838,26 +5838,26 @@ class EnhancedTradingDashboard {
 
     setupTradingHistoryEventListeners() {
         // Refresh button
-        document.getElementById('refresh-history')?.addEventListener('click', () => {
+        document.getElementById('refresh-trading-history')?.addEventListener('click', () => {
             this.loadTradingHistory();
         });
         
         // Export button
-        document.getElementById('export-history')?.addEventListener('click', () => {
+        document.getElementById('export-trading-history')?.addEventListener('click', () => {
             this.exportTradingHistory();
         });
         
         // Pagination controls
-        document.getElementById('prev-page')?.addEventListener('click', () => {
-            const currentPage = parseInt(document.getElementById('page-info').textContent.split(' ')[1]);
+        document.getElementById('trading-history-prev-page')?.addEventListener('click', () => {
+            const currentPage = parseInt(document.getElementById('trading-history-page-info').textContent.split(' ')[1]);
             const perPage = parseInt(document.getElementById('history-per-page').value);
             if (currentPage > 1) {
                 this.loadTradingHistoryTable(currentPage - 1, perPage);
             }
         });
         
-        document.getElementById('next-page')?.addEventListener('click', () => {
-            const pageInfo = document.getElementById('page-info').textContent;
+        document.getElementById('trading-history-next-page')?.addEventListener('click', () => {
+            const pageInfo = document.getElementById('trading-history-page-info').textContent;
             const currentPage = parseInt(pageInfo.split(' ')[1]);
             const totalPages = parseInt(pageInfo.split(' ')[3]);
             const perPage = parseInt(document.getElementById('history-per-page').value);
