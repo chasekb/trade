@@ -195,11 +195,16 @@ class DataHandlers:
             active_signals = len([s for s in signals if s.get('signal_generated', False)])
             avg_strength = sum(s.get('signal_strength', 0) for s in signals) / len(signals) if signals else 0
             
+            # Get cumulative total signals processed from simulated trading manager
+            total_analyzed = 0
+            if self.simulated_trading_manager and hasattr(self.simulated_trading_manager, 'get_total_signals_processed'):
+                total_analyzed = self.simulated_trading_manager.get_total_signals_processed()
+            
             return {
                 "signals": paginated_signals,
                 "trading_active": trading_active,
                 "message": "Order book signals generated successfully",
-                "total_analyzed": total_signals,
+                "total_analyzed": total_analyzed,
                 "active_signals": active_signals,
                 "average_strength": avg_strength,
                 "last_updated": datetime.now().isoformat(),

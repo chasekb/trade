@@ -96,6 +96,9 @@ class SimulatedTradingManager:
         self.symbols_to_trade: List[str] = []
         self.last_signal_check = None
         
+        # Signal tracking
+        self.total_signals_processed = 0
+        
         # Strategy information
         self.strategy_type = None
         self.strategy_params = {}
@@ -362,7 +365,10 @@ class SimulatedTradingManager:
         # Enforce max positions limit before processing signals
         self._enforce_max_positions_limit()
         
-        logger.info(f"Processing {len(signals)} signals. Trading symbols: {self.symbols_to_trade}")
+        # Update total signals processed counter
+        self.total_signals_processed += len(signals)
+        
+        logger.info(f"Processing {len(signals)} signals. Total processed: {self.total_signals_processed}. Trading symbols: {self.symbols_to_trade}")
         
         executed_trades = []
         closed_positions = []
@@ -627,7 +633,12 @@ class SimulatedTradingManager:
         self.trade_counter = 0
         self.peak_value = self.initial_balance
         self.max_drawdown = 0.0
+        self.total_signals_processed = 0
         logger.info("Portfolio reset to initial state")
+    
+    def get_total_signals_processed(self) -> int:
+        """Get total number of signals processed since trading started."""
+        return self.total_signals_processed
     
     def add_symbols(self, new_symbols: List[str]) -> None:
         """Add new symbols to the trading list."""
