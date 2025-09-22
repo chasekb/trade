@@ -103,15 +103,51 @@ class ProductFetcher:
         
         return sorted(meme_pairs)
     
+    def get_products_by_quote_currency(self, quote_currency: str) -> List[str]:
+        """Get all products for a specific quote currency."""
+        if not self.products_cache:
+            return []
+        
+        products = []
+        for product in self.products_cache:
+            if (product.get('status') == 'online' and 
+                not product.get('trading_disabled', False) and
+                product.get('quote_currency') == quote_currency):
+                products.append(product['id'])
+        
+        return sorted(products)
+    
+    def get_all_products(self) -> List[str]:
+        """Get all available product IDs."""
+        if not self.products_cache:
+            return []
+        
+        all_products = []
+        for product in self.products_cache:
+            if product.get('status') == 'online' and not product.get('trading_disabled', False):
+                all_products.append(product['id'])
+        
+        return sorted(all_products)
+    
     def get_products_by_category(self) -> Dict[str, List[str]]:
         """Get products organized by category."""
-        return {
+        categories = {
             'major': self.get_major_pairs(),
             'stablecoins': self.get_stablecoin_pairs(),
             'dex_tokens': self.get_dex_tokens(),
             'meme_tokens': self.get_meme_tokens(),
-            'all_usd': self.get_usd_pairs()
+            'all_usd': self.get_usd_pairs(),
+            'all_products': self.get_all_products()
         }
+        
+        # Add dynamic categories for each quote currency
+        quote_currencies = ['USD', 'USDT', 'EUR', 'BTC', 'GBP', 'USDC', 'ETH', 'DAI']
+        for currency in quote_currencies:
+            products = self.get_products_by_quote_currency(currency)
+            if products:
+                categories[f'all_{currency.lower()}'] = products
+        
+        return categories
     
     def save_products_to_file(self, filename: str = "available_products.json"):
         """Save products to a JSON file."""

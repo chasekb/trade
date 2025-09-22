@@ -1499,6 +1499,30 @@ class EnhancedTradingDashboard {
                     case 'all_usd':
                         symbols = categories.all_usd || [];
                         break;
+                    case 'all_usdt':
+                        symbols = categories.all_usdt || [];
+                        break;
+                    case 'all_eur':
+                        symbols = categories.all_eur || [];
+                        break;
+                    case 'all_btc':
+                        symbols = categories.all_btc || [];
+                        break;
+                    case 'all_gbp':
+                        symbols = categories.all_gbp || [];
+                        break;
+                    case 'all_usdc':
+                        symbols = categories.all_usdc || [];
+                        break;
+                    case 'all_eth':
+                        symbols = categories.all_eth || [];
+                        break;
+                    case 'all_dai':
+                        symbols = categories.all_dai || [];
+                        break;
+                    case 'all_products':
+                        symbols = categories.all_products || [];
+                        break;
                 }
                 
                 // Limit symbols based on max size (if specified)

@@ -531,8 +531,12 @@ async def get_trading_state():
 @app.post("/api/data/save-session")
 async def save_session_state(request: dict):
     """Save trading session state."""
+    print(f"DEBUG: save_session_state endpoint called with request: {request}")
     check_handlers_ready("data_handlers", data_handlers)
-    return await data_handlers.save_session_state(request)
+    print(f"DEBUG: data_handlers is ready, calling save_session_state")
+    result = await data_handlers.save_session_state(request)
+    print(f"DEBUG: save_session_state result: {result}")
+    return result
 
 @app.post("/api/data/restore-trading")
 async def restore_simulated_trading(request: dict):
