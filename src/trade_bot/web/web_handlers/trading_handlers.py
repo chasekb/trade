@@ -214,8 +214,12 @@ class TradingHandlers:
             initial_balance = request_data.get('initial_balance', 10000.0)
             
             # Update simulated trading manager with new parameters
-            self.simulated_trading_manager.initial_balance = initial_balance
-            self.simulated_trading_manager.cash_balance = initial_balance
+            # Only update initial_balance if it's different from current balance
+            if self.simulated_trading_manager.initial_balance != initial_balance:
+                self.simulated_trading_manager.initial_balance = initial_balance
+                # Only reset cash_balance if we're starting fresh (no existing trades)
+                if len(self.simulated_trading_manager.trades) == 0:
+                    self.simulated_trading_manager.cash_balance = initial_balance
             
             # Update position update interval
             self.simulated_trading_manager.position_update_interval = position_update_interval

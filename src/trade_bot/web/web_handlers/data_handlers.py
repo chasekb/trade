@@ -336,8 +336,29 @@ class DataHandlers:
             }
             
             # Save to database
+            print(f"DEBUG: Attempting to save session {session_id} with data: {session_data}")
             logger.info(f"Attempting to save session {session_id} with data: {session_data}")
-            success = self.database_manager.save_trading_session(session_id, session_data)
+            try:
+                # Test database connection first
+                print("DEBUG: Testing database connection...")
+                logger.info("Testing database connection...")
+                test_result = self.database_manager.get_cache_stats()
+                print(f"DEBUG: Database connection test result: {test_result}")
+                logger.info(f"Database connection test result: {test_result}")
+                
+                success = self.database_manager.save_trading_session(session_id, session_data)
+                print(f"DEBUG: Database save result: {success}")
+                logger.info(f"Database save result: {success}")
+                if not success:
+                    print(f"DEBUG: Database save returned False for session {session_id}")
+                    logger.error(f"Database save returned False for session {session_id}")
+            except Exception as db_error:
+                print(f"DEBUG: Database save exception: {db_error}")
+                logger.error(f"Database save exception: {db_error}")
+                import traceback
+                print(f"DEBUG: Traceback: {traceback.format_exc()}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                return {"error": f"Database save failed: {str(db_error)}"}
             
             if success:
                 logger.info(f"Saved trading session {session_id} with {len(session_data['positions'])} positions and {len(session_data['recent_trades'])} trades")
