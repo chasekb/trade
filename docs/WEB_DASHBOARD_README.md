@@ -28,6 +28,14 @@ A comprehensive web-based trading dashboard that displays real-time data, histor
 - Trade statistics
 - Performance comparison
 
+### 🔄 Live Trading
+- Simulated trading with real-time order book signals
+- Async trading with progressive symbol loading
+- Live order book analysis (squeeze, imbalance, large trades)
+- Real-time portfolio tracking
+- Position management and trade execution
+- Session state persistence and restoration
+
 ## 🚀 Quick Start
 
 ### 1. Install Dependencies
@@ -48,6 +56,40 @@ TRADING_PRODUCT_ID=BTC-USD
 ```bash
 uv run python web_dashboard.py
 ```
+
+## 🔄 Live Trading Guide
+
+### Starting Live Trading
+1. Navigate to the **Live Trading** tab
+2. Select **Simulated Trading** mode
+3. Choose your trading strategy (SMA, Order Book, etc.)
+4. Configure strategy parameters
+5. Click **Start Trading**
+
+### Async Trading Process
+When you start trading, the system uses **async trading** with progressive symbol loading:
+- Initial symbols start trading immediately
+- Remaining symbols load in the background
+- Trading becomes fully active once loading completes
+- Order book signals become available after trading is active
+
+### Live Order Book Signals
+The live order book signals widget provides real-time analysis:
+- **Squeeze Analysis**: Detects price compression patterns
+- **Imbalance Analysis**: Identifies bid/ask volume imbalances
+- **Large Trade Analysis**: Monitors significant trade activity
+- **Signal Strength**: Rates trading opportunities
+
+### Portfolio Management
+- Real-time portfolio value tracking
+- Open positions monitoring
+- Trade history and performance metrics
+- Automatic position sizing and risk management
+
+### Session Management
+- Trading sessions are automatically saved
+- Session state can be restored on page reload
+- Portfolio and position data persist across sessions
 
 ### 4. Access the Dashboard
 Open your browser and navigate to:
