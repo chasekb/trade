@@ -79,9 +79,6 @@ class EnhancedTradingDashboard {
         this.resetBacktestingInputs();
         this.resetLiveTradingInputs();
         
-        // Session management
-        this.sessionId = this.getOrCreateSessionId();
-        this.autoSaveInterval = null;
         
         // Trading stats
         this.tradingStats = {
@@ -97,9 +94,6 @@ class EnhancedTradingDashboard {
             avgLoss: 0,
             tradesToday: 0,
             totalVolume: 0,
-            sessionStartTime: null,
-            sessionTrades: 0,
-            sessionPnl: 0,
             lastTradeTime: null
         };
         this.statsUpdateInterval = null;
@@ -132,203 +126,11 @@ class EnhancedTradingDashboard {
         };
     }
 
-    getOrCreateSessionId() {
-        // Try to get existing session ID from localStorage
-        let sessionId = localStorage.getItem('trading_session_id');
-        if (!sessionId) {
-            // Create new session ID
-            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('trading_session_id', sessionId);
-        }
-        return sessionId;
-    }
 
-    async checkAndRestoreSession() {
-        try {
-            // Check if there's an active session
-            const response = await fetch('/api/session/active');
-            const data = await response.json();
-            
-            if (data.sessions && data.sessions.length > 0) {
-                // Find our session or use the most recent one
-                let sessionToRestore = data.sessions.find(s => s.session_id === this.sessionId);
-                if (!sessionToRestore) {
-                    sessionToRestore = data.sessions[0]; // Use most recent
-                    this.sessionId = sessionToRestore.session_id;
-                    localStorage.setItem('trading_session_id', this.sessionId);
-                }
-                
-                // Load session data
-                await this.loadSessionData(this.sessionId);
-            }
-        } catch (error) {
-            console.error('Error checking for existing session:', error);
-        }
-    }
 
-    async loadSessionData(sessionId) {
-        try {
-            const response = await fetch(`/api/data/load-session/${sessionId}`);
-            const data = await response.json();
-            
-            if (data.state) {
-                await this.restoreTradingState(data.state);
-                this.logTradingEvent(`Restored session: ${sessionId}`);
-            }
-        } catch (error) {
-            console.error('Error loading session data:', error);
-        }
-    }
 
-    async saveSessionState() {
-        try {
-            const sessionData = {
-                is_active: this.liveTrading.isActive,
-                trading_mode: this.liveTrading.mode,
-                symbol_mode: this.liveTrading.symbolMode,
-                strategy_type: this.liveTrading.strategy?.type,
-                strategy_params: this.liveTrading.strategy?.params || {},
-                symbols: this.liveTrading.strategy?.symbols || [],
-                universe_config: this.liveTrading.universe,
-                portfolio_state: this.liveTrading.portfolio,
-                positions: this.liveTrading.positions,
-                recent_trades: this.liveTrading.history
-            };
 
-            const response = await fetch('/api/session/save', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                    session_data: sessionData
-                })
-            });
 
-            const result = await response.json();
-            if (result.status === 'saved') {
-                console.log('Session state saved successfully');
-            }
-        } catch (error) {
-            console.error('Error saving session state:', error);
-        }
-    }
-
-    async saveDashboardState() {
-        try {
-            const stateData = {
-                current_symbol: this.currentSymbol,
-                current_timeframe: this.currentCandlePeriod,
-                chart_settings: {
-                    yAxisRange: this.currentYAxisRange,
-                    layout: this.currentLayout
-                },
-                ui_preferences: {
-                    percentageTimeframe: this.percentageTimeframe,
-                    subscriptions: this.subscriptions
-                }
-            };
-
-            const response = await fetch('/api/session/save-dashboard', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                    state_data: stateData
-                })
-            });
-
-            const result = await response.json();
-            if (result.status === 'saved') {
-                console.log('Dashboard state saved successfully');
-            }
-        } catch (error) {
-            console.error('Error saving dashboard state:', error);
-        }
-    }
-
-    async restoreTradingState(sessionData) {
-        if (!sessionData) return;
-
-        // Restore trading state
-        this.liveTrading.isActive = sessionData.is_active || false;
-        this.liveTrading.mode = sessionData.trading_mode || 'simulated';
-        this.liveTrading.symbolMode = sessionData.symbol_mode || 'single';
-        
-        // Create strategy object with symbols from session data
-        this.liveTrading.strategy = {
-            type: sessionData.strategy_type || null,
-            params: sessionData.strategy_params || {},
-            symbols: sessionData.symbols || []
-        };
-        
-        // Set universe symbols for universe mode
-        if (sessionData.symbol_mode === 'universe') {
-            this.liveTrading.universe = {
-                ...this.liveTrading.universe,
-                symbols: sessionData.symbols || []
-            };
-        }
-        
-        this.liveTrading.portfolio = sessionData.portfolio_state || this.liveTrading.portfolio;
-        this.liveTrading.positions = sessionData.positions || [];
-        this.liveTrading.history = sessionData.recent_trades || [];
-
-        // Update UI
-        this.updateTradingControls();
-        this.updateTradingStatus(this.liveTrading.isActive ? 'active' : 'stopped');
-        
-        // Update positions and history tables
-        this.updateOpenPositions(this.liveTrading.positions);
-        this.updateRecentTrades(this.liveTrading.history);
-
-        // If trading is active, restore the backend state
-        if (this.liveTrading.isActive) {
-            try {
-                const response = await fetch('/api/data/restore-trading', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        session_id: this.sessionId
-                    })
-                });
-
-                const data = await response.json();
-                if (data.status === 'restored') {
-                    // Update with restored data
-                    this.liveTrading.portfolio = data.portfolio;
-                    this.liveTrading.positions = data.positions;
-                    this.liveTrading.history = data.recent_trades;
-                    
-                    // Update UI with restored data
-                    this.updateOpenPositions(this.liveTrading.positions);
-                    this.updateRecentTrades(this.liveTrading.history);
-                    
-                    this.logTradingEvent(`Restored trading session with ${data.positions.length} positions and $${data.portfolio.cash_balance?.toFixed(2) || '0.00'} balance`);
-                } else {
-                    this.logTradingEvent(`Failed to restore trading session: ${data.error}`);
-                }
-            } catch (error) {
-                this.logTradingEvent(`Error restoring trading session: ${error.message}`);
-            }
-            
-            this.startPortfolioStatusUpdates();
-            
-            // Load order book signals if trading is active
-            if (this.liveTrading.isActive) {
-                // Add a small delay to ensure all state is properly set
-                setTimeout(async () => {
-                    await this.loadOrderBookSignals();
-                    this.startOrderBookAutoRefresh();
-                }, 100);
-            }
-        }
-    }
 
     // Trading Stats Methods
     
@@ -342,15 +144,6 @@ class EnhancedTradingDashboard {
                 this.updateTradingStats(data.stats);
             }
             
-            // Also load session-specific stats if we have a session
-            if (this.sessionId) {
-                const sessionResponse = await fetch(`/api/trades/session/${this.sessionId}`);
-                const sessionData = await sessionResponse.json();
-                
-                if (sessionData.status === 'success') {
-                    this.updateSessionStats(sessionData.trades);
-                }
-            }
             
         } catch (error) {
             console.error('Error loading trading stats:', error);
@@ -377,26 +170,6 @@ class EnhancedTradingDashboard {
         this.updateTradingStatsUI();
     }
     
-    updateSessionStats(trades) {
-        if (!trades) return;
-        
-        // Calculate session stats
-        const today = new Date().toDateString();
-        const sessionTrades = trades.filter(trade => {
-            const tradeDate = new Date(trade.timestamp).toDateString();
-            return tradeDate === today;
-        });
-        
-        this.tradingStats.sessionTrades = sessionTrades.length;
-        this.tradingStats.sessionPnl = sessionTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
-        
-        if (trades.length > 0) {
-            this.tradingStats.lastTradeTime = new Date(trades[0].timestamp).toLocaleTimeString();
-        }
-        
-        // Update UI
-        this.updateTradingStatsUI();
-    }
     
     updateTradingStatsUI() {
         // Performance Metrics
@@ -421,9 +194,7 @@ class EnhancedTradingDashboard {
         this.updateElement('avg-win', `$${this.tradingStats.avgWin.toFixed(2)}`);
         this.updateElement('avg-loss', `$${this.tradingStats.avgLoss.toFixed(2)}`);
         
-        // Session Info
-        this.updateElement('session-trades', this.tradingStats.sessionTrades.toString());
-        this.updateElement('session-pnl', `$${this.tradingStats.sessionPnl.toFixed(2)}`);
+        // Last Trade Time
         this.updateElement('last-trade-time', this.tradingStats.lastTradeTime || 'Never');
         
         // Update position value
@@ -462,10 +233,6 @@ class EnhancedTradingDashboard {
             await this.loadTradingStats();
         }, 30000);
         
-        // Update session duration every second
-        this.sessionDurationInterval = setInterval(() => {
-            this.updateSessionDuration();
-        }, 1000);
     }
     
     stopTradingStatsUpdates() {
@@ -473,24 +240,8 @@ class EnhancedTradingDashboard {
             clearInterval(this.statsUpdateInterval);
             this.statsUpdateInterval = null;
         }
-        if (this.sessionDurationInterval) {
-            clearInterval(this.sessionDurationInterval);
-            this.sessionDurationInterval = null;
-        }
     }
     
-    updateSessionDuration() {
-        if (this.tradingStats.sessionStartTime) {
-            const now = new Date();
-            const duration = now - this.tradingStats.sessionStartTime;
-            const hours = Math.floor(duration / 3600000);
-            const minutes = Math.floor((duration % 3600000) / 60000);
-            const seconds = Math.floor((duration % 60000) / 1000);
-            
-            const durationStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            this.updateElement('session-duration', durationStr);
-        }
-    }
     
     // Strategy Configuration Hide/Show Methods
     
@@ -545,20 +296,7 @@ class EnhancedTradingDashboard {
         localStorage.setItem('strategy_config_hidden', this.strategyConfigHidden.toString());
     }
 
-    startAutoSave() {
-        // Save session state every 30 seconds
-        this.autoSaveInterval = setInterval(() => {
-            this.saveSessionState();
-            this.saveDashboardState();
-        }, 30000);
-    }
 
-    stopAutoSave() {
-        if (this.autoSaveInterval) {
-            clearInterval(this.autoSaveInterval);
-            this.autoSaveInterval = null;
-        }
-    }
 
     init() {
         this.connectWebSocket();
@@ -588,8 +326,6 @@ class EnhancedTradingDashboard {
             // Load initial paginated trading history
             this.loadPaginatedTradingHistory();
             
-            // Check for existing session and restore state
-            this.checkAndRestoreSession();
             
             // Restore strategy configuration visibility state
             this.restoreStrategyConfigState();
@@ -1984,7 +1720,6 @@ class EnhancedTradingDashboard {
                     max_positions: maxPositions,
                     position_size_percent: positionSize,
                     position_update_interval: positionUpdateInterval,
-                    session_id: this.sessionId,
                     immediate_start: true,
                     batch_size: 3
                 })
@@ -2044,9 +1779,6 @@ class EnhancedTradingDashboard {
                 // Start periodic portfolio status updates
                 this.startPortfolioStatusUpdates();
                 
-                // Start auto-save and save initial state
-                this.startAutoSave();
-                await this.saveSessionState();
                 
                 // Start trading stats updates
                 this.startTradingStatsUpdates();
@@ -2113,9 +1845,6 @@ class EnhancedTradingDashboard {
         this.updateTradingStatus('stopped');
         this.logTradingEvent('Trading stopped');
         
-        // Stop auto-save and save final state
-        this.stopAutoSave();
-        await this.saveSessionState();
         
         // Stop trading stats updates
         this.stopTradingStatsUpdates();
@@ -2453,15 +2182,10 @@ class EnhancedTradingDashboard {
     // Paginated Trading History Methods
     async loadPaginatedTradingHistory(page = 1, perPage = 10) {
         try {
-            const sessionId = this.liveTrading.strategy?.sessionId || this.sessionId;
             const params = new URLSearchParams({
                 page: page.toString(),
                 per_page: perPage.toString()
             });
-            
-            if (sessionId) {
-                params.append('session_id', sessionId);
-            }
             
             const response = await fetch(`/api/trades/paginated?${params}`);
             const data = await response.json();
@@ -2644,15 +2368,10 @@ class EnhancedTradingDashboard {
     // Paginated Order Book Signals Methods
     async loadPaginatedOrderBookSignals(page = 1, perPage = 10) {
         try {
-            const sessionId = this.liveTrading.strategy?.sessionId || this.sessionId;
             const params = new URLSearchParams({
                 page: page.toString(),
                 per_page: perPage.toString()
             });
-            
-            if (sessionId) {
-                params.append('session_id', sessionId);
-            }
             
             const response = await fetch(`/api/orderbook/signals/paginated?${params}`);
             const data = await response.json();
@@ -5252,35 +4971,6 @@ class EnhancedTradingDashboard {
             });
         }
         
-        // Then, try to load recent trades from the session
-        if (this.sessionId) {
-            try {
-                const response = await fetch(`/api/trades/session/${this.sessionId}`);
-                const data = await response.json();
-                
-                if (data.status === 'success' && data.trades && data.trades.length > 0) {
-                    // Add separator if we have both events and trades
-                    if (logEvents.length > 0) {
-                        const separator = document.createElement('div');
-                        separator.className = 'text-gray-500 text-sm my-2';
-                        separator.innerHTML = '--- Recent trades ---';
-                        logContainer.appendChild(separator);
-                    }
-                    
-                    // Add recent trades to log
-                    const recentTrades = data.trades.slice(0, 10); // Show last 10 trades
-                    recentTrades.reverse().forEach(trade => {
-                        const timestamp = new Date(trade.timestamp).toLocaleTimeString();
-                        const logEntry = document.createElement('div');
-                        logEntry.className = 'text-blue-400';
-                        logEntry.innerHTML = `[${timestamp}] Trade: ${trade.action} ${trade.quantity} ${trade.symbol} at $${trade.price}`;
-                        logContainer.appendChild(logEntry);
-                    });
-                }
-            } catch (error) {
-                console.error('Error restoring trading log from session:', error);
-            }
-        }
         
         // If no data to restore, show placeholder
         if (logContainer.children.length === 0) {
