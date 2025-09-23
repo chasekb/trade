@@ -724,6 +724,7 @@ class EnhancedTradingDashboard {
         document.getElementById('tab-real-live-trading')?.addEventListener('click', async () => {
             this.switchTab('real-live-trading');
             await this.loadRealLiveTradingData();
+            await this.loadLiveTradingProducts();
         });
 
         // Trading mode selection
@@ -744,6 +745,27 @@ class EnhancedTradingDashboard {
                     this.loadOrderBookSignals();
                 }
             });
+        });
+        
+        // Live trading symbol mode selection
+        document.querySelectorAll('input[name="live-trading-symbol-mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.updateLiveSymbolModeUI();
+            });
+        });
+        
+        // Live trading strategy presets
+        document.getElementById('live-preset-conservative')?.addEventListener('click', () => {
+            this.applyLiveStrategyPreset('conservative');
+        });
+        document.getElementById('live-preset-balanced')?.addEventListener('click', () => {
+            this.applyLiveStrategyPreset('balanced');
+        });
+        document.getElementById('live-preset-aggressive')?.addEventListener('click', () => {
+            this.applyLiveStrategyPreset('aggressive');
+        });
+        document.getElementById('live-preset-scalping')?.addEventListener('click', () => {
+            this.applyLiveStrategyPreset('scalping');
         });
 
         // Universe type selection
@@ -5006,6 +5028,209 @@ class EnhancedTradingDashboard {
             logElement.scrollTop = logElement.scrollHeight;
         }
         console.log(`🔴 Live Trading: ${message}`);
+    }
+    
+    updateLiveSymbolModeUI() {
+        const singleSymbolMode = document.getElementById('live-single-symbol-mode');
+        const universeMode = document.getElementById('live-universe-mode');
+        const singleConfig = document.getElementById('live-single-symbol-config');
+        const universeConfig = document.getElementById('live-universe-config');
+        
+        if (singleSymbolMode && singleSymbolMode.checked) {
+            if (singleConfig) singleConfig.classList.remove('hidden');
+            if (universeConfig) universeConfig.classList.add('hidden');
+        } else if (universeMode && universeMode.checked) {
+            if (singleConfig) singleConfig.classList.add('hidden');
+            if (universeConfig) universeConfig.classList.remove('hidden');
+        }
+    }
+    
+    async loadLiveTradingProducts() {
+        try {
+            const response = await fetch('/api/products');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading products for live trading:', data.error);
+                return;
+            }
+            
+            // Populate live trading symbol selector
+            const symbolSelect = document.getElementById('live-trading-symbol');
+            if (symbolSelect && data.products) {
+                symbolSelect.innerHTML = '';
+                
+                // Add major pairs first
+                const majorPairs = ['BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 'DOT-USD'];
+                majorPairs.forEach(symbol => {
+                    if (data.products.includes(symbol)) {
+                        const option = document.createElement('option');
+                        option.value = symbol;
+                        option.textContent = symbol;
+                        symbolSelect.appendChild(option);
+                    }
+                });
+                
+                // Add separator
+                const separator = document.createElement('option');
+                separator.disabled = true;
+                separator.textContent = '───────────────';
+                symbolSelect.appendChild(separator);
+                
+                // Add all other products
+                data.products
+                    .filter(symbol => !majorPairs.includes(symbol))
+                    .sort()
+                    .forEach(symbol => {
+                        const option = document.createElement('option');
+                        option.value = symbol;
+                        option.textContent = symbol;
+                        symbolSelect.appendChild(option);
+                    });
+            }
+            
+            console.log(`📊 Loaded ${data.products?.length || 0} products for live trading`);
+            
+        } catch (error) {
+            console.error('Error loading live trading products:', error);
+        }
+    }
+    
+    applyLiveStrategyPreset(presetType) {
+        const presets = {
+            conservative: {
+                strategy_type: 'sma',
+                position_size: 2,
+                max_positions: 2,
+                spread_threshold: 0.05,
+                volume_threshold: 2000,
+                large_trade_threshold: 20000,
+                period: 20,
+                threshold: 0.3,
+                risk_level: 'low',
+                stop_loss: 3
+            },
+            balanced: {
+                strategy_type: 'orderbook',
+                position_size: 5,
+                max_positions: 3,
+                spread_threshold: 0.1,
+                volume_threshold: 1000,
+                large_trade_threshold: 10000,
+                period: 14,
+                threshold: 0.5,
+                risk_level: 'medium',
+                stop_loss: 5
+            },
+            aggressive: {
+                strategy_type: 'rsi',
+                position_size: 10,
+                max_positions: 5,
+                spread_threshold: 0.2,
+                volume_threshold: 500,
+                large_trade_threshold: 5000,
+                period: 10,
+                threshold: 0.7,
+                risk_level: 'high',
+                stop_loss: 8
+            },
+            scalping: {
+                strategy_type: 'orderbook',
+                position_size: 3,
+                max_positions: 8,
+                spread_threshold: 0.02,
+                volume_threshold: 5000,
+                large_trade_threshold: 50000,
+                period: 5,
+                threshold: 0.8,
+                risk_level: 'high',
+                stop_loss: 2
+            }
+        };
+        
+        const preset = presets[presetType];
+        if (!preset) return;
+        
+        // Apply preset values to form elements
+        const elements = {
+            'live-strategy-type': preset.strategy_type,
+            'live-position-size': preset.position_size,
+            'live-max-positions': preset.max_positions,
+            'live-param-spread_threshold': preset.spread_threshold,
+            'live-param-volume_threshold': preset.volume_threshold,
+            'live-param-large_trade_threshold': preset.large_trade_threshold,
+            'live-param-period': preset.period,
+            'live-param-threshold': preset.threshold,
+            'live-param-risk_level': preset.risk_level,
+            'live-param-stop_loss': preset.stop_loss
+        };
+        
+        Object.entries(elements).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.value = value;
+            }
+        });
+        
+        // Apply universe preset values if universe mode is selected
+        const universeElements = {
+            'live-universe-strategy-type': preset.strategy_type,
+            'live-universe-position-size': Math.min(preset.position_size, 2),
+            'live-universe-max-positions': Math.min(preset.max_positions * 2, 20)
+        };
+        
+        Object.entries(universeElements).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.value = value;
+            }
+        });
+        
+        this.logLiveTradingEvent(`Applied ${presetType} strategy preset`);
+        console.log(`🎯 Applied ${presetType} strategy preset to live trading configuration`);
+    }
+    
+    getLiveTradingConfiguration() {
+        const singleSymbolMode = document.getElementById('live-single-symbol-mode');
+        const isSingleMode = singleSymbolMode && singleSymbolMode.checked;
+        
+        const config = {
+            symbol_mode: isSingleMode ? 'single' : 'universe',
+            strategy_type: isSingleMode ? 
+                document.getElementById('live-strategy-type')?.value || 'orderbook' :
+                document.getElementById('live-universe-strategy-type')?.value || 'orderbook',
+            position_size: isSingleMode ?
+                parseFloat(document.getElementById('live-position-size')?.value || 5) :
+                parseFloat(document.getElementById('live-universe-position-size')?.value || 1),
+            max_positions: isSingleMode ?
+                parseInt(document.getElementById('live-max-positions')?.value || 3) :
+                parseInt(document.getElementById('live-universe-max-positions')?.value || 10),
+            symbols: isSingleMode ? 
+                [document.getElementById('live-trading-symbol')?.value || 'BTC-USD'] :
+                this.getSelectedUniverseSymbols(),
+            strategy_params: {
+                spread_threshold: parseFloat(document.getElementById('live-param-spread_threshold')?.value || 0.1),
+                volume_threshold: parseInt(document.getElementById('live-param-volume_threshold')?.value || 1000),
+                large_trade_threshold: parseInt(document.getElementById('live-param-large_trade_threshold')?.value || 10000),
+                period: parseInt(document.getElementById('live-param-period')?.value || 14),
+                threshold: parseFloat(document.getElementById('live-param-threshold')?.value || 0.5),
+                data_analysis_mode: document.getElementById('live-param-data_analysis_mode')?.value || 'recent',
+                recent_data_limit: parseInt(document.getElementById('live-param-recent_data_limit')?.value || 100),
+                risk_level: document.getElementById('live-param-risk_level')?.value || 'medium',
+                stop_loss: parseFloat(document.getElementById('live-param-stop_loss')?.value || 5)
+            }
+        };
+        
+        return config;
+    }
+    
+    getSelectedUniverseSymbols() {
+        const universeType = document.getElementById('live-universe-type')?.value;
+        if (!universeType) return [];
+        
+        // This would typically fetch symbols from the backend based on universe type
+        // For now, return a placeholder
+        return [];
     }
     
     async restoreTradingLog() {

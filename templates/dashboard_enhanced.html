@@ -1557,6 +1557,218 @@
                     </div>
                 </div>
 
+                <!-- Live Trading Strategy Configuration -->
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200 mb-8">
+                    <h3 class="text-lg font-semibold text-blue-800 mb-4">
+                        <i class="fas fa-cogs mr-2"></i>Live Trading Strategy Configuration
+                    </h3>
+                    
+                    <!-- Trading Mode Selection -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Trading Mode</label>
+                        <div class="flex space-x-6">
+                            <div class="flex items-center">
+                                <input type="radio" id="live-single-symbol-mode" name="live-trading-symbol-mode" value="single" checked class="text-blue-600 focus:ring-blue-500">
+                                <label for="live-single-symbol-mode" class="ml-2 text-sm font-medium text-gray-700">
+                                    <i class="fas fa-coins mr-1"></i>Single Symbol
+                                </label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="live-universe-mode" name="live-trading-symbol-mode" value="universe" class="text-purple-600 focus:ring-purple-500">
+                                <label for="live-universe-mode" class="ml-2 text-sm font-medium text-gray-700">
+                                    <i class="fas fa-globe mr-1"></i>Universe Trading
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Single Symbol Configuration -->
+                    <div id="live-single-symbol-config" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Trading Symbol</label>
+                            <select id="live-trading-symbol" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="BTC-USD" selected>BTC-USD</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
+                            <select id="live-strategy-type" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="sma">Simple Moving Average</option>
+                                <option value="ema">Exponential Moving Average</option>
+                                <option value="rsi">RSI</option>
+                                <option value="bollinger">Bollinger Bands</option>
+                                <option value="macd">MACD</option>
+                                <option value="stochastic">Stochastic</option>
+                                <option value="fibonacci">Fibonacci Retracement</option>
+                                <option value="orderbook">Order Book Analysis</option>
+                                <option value="dca">Dollar Cost Averaging</option>
+                                <option value="buyandhold">Buy and Hold</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Position Size (%)</label>
+                            <input type="number" id="live-position-size" value="5" min="0.1" max="100" step="0.1" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Max Positions</label>
+                            <input type="number" id="live-max-positions" value="3" min="1" max="10" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Position Update Interval (seconds)</label>
+                            <input type="number" id="live-position-update-interval" value="5" min="1" max="300" 
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                   placeholder="How often to update position prices">
+                            <p class="text-xs text-gray-500 mt-1">How frequently to update position prices (1-300 seconds)</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Universe Trading Configuration -->
+                    <div id="live-universe-config" class="hidden">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Universe Type</label>
+                                <select id="live-universe-type" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                    <option value="all_products">All Products (468 symbols) - Complete List</option>
+                                    <option value="all_usd">All USD Pairs (324 symbols) - Recommended</option>
+                                    <option value="all_eur">All EUR Pairs (40 symbols)</option>
+                                    <option value="all_usdt">All USDT Pairs (35 symbols)</option>
+                                    <option value="all_btc">All BTC Pairs (30 symbols)</option>
+                                    <option value="all_gbp">All GBP Pairs (29 symbols)</option>
+                                    <option value="major">Major Pairs (24 symbols)</option>
+                                    <option value="dex_tokens">DEX Tokens (9 symbols)</option>
+                                    <option value="meme_tokens">Meme Tokens (8 symbols)</option>
+                                    <option value="all_eth">All ETH Pairs (7 symbols)</option>
+                                    <option value="all_usdc">All USDC Pairs (2 symbols)</option>
+                                    <option value="stablecoins">Stablecoins (2 symbols)</option>
+                                    <option value="all_dai">All DAI Pairs (1 symbol)</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
+                                <select id="live-universe-strategy-type" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                    <option value="orderbook">Order Book Analysis</option>
+                                    <option value="sma">Simple Moving Average</option>
+                                    <option value="ema">Exponential Moving Average</option>
+                                    <option value="rsi">RSI</option>
+                                    <option value="bollinger">Bollinger Bands</option>
+                                    <option value="macd">MACD</option>
+                                    <option value="stochastic">Stochastic</option>
+                                    <option value="fibonacci">Fibonacci Retracement</option>
+                                    <option value="dca">Dollar Cost Averaging</option>
+                                    <option value="buyandhold">Buy and Hold</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Position Size (%)</label>
+                                <input type="number" id="live-universe-position-size" value="1" min="0.1" max="10" step="0.1" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Max Positions</label>
+                                <input type="number" id="live-universe-max-positions" value="10" min="1" max="50" 
+                                       class="w-full border border-gray-300 rounded-md px-3 py-2">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Strategy Parameters -->
+                    <div id="live-strategy-params" class="mt-6">
+                        <h4 class="text-md font-semibold text-gray-700 mb-3">Strategy Parameters</h4>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            <!-- Order Book Strategy Parameters -->
+                            <div id="live-orderbook-params" class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Spread Threshold (%)</label>
+                                    <input type="number" id="live-param-spread_threshold" value="0.1" min="0.01" max="5" step="0.01" 
+                                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Volume Threshold</label>
+                                    <input type="number" id="live-param-volume_threshold" value="1000" min="100" max="100000" step="100" 
+                                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Large Trade Threshold</label>
+                                    <input type="number" id="live-param-large_trade_threshold" value="10000" min="1000" max="1000000" step="1000" 
+                                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                </div>
+                            </div>
+                            
+                            <!-- Technical Analysis Parameters -->
+                            <div id="live-technical-params" class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Period</label>
+                                    <input type="number" id="live-param-period" value="14" min="5" max="100" step="1" 
+                                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Threshold</label>
+                                    <input type="number" id="live-param-threshold" value="0.5" min="0.1" max="2" step="0.1" 
+                                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Data Analysis Mode</label>
+                                    <select id="live-param-data_analysis_mode" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                        <option value="recent">Recent Data</option>
+                                        <option value="historical">Historical Data</option>
+                                        <option value="both">Both</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Additional Parameters -->
+                            <div id="live-additional-params" class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Recent Data Limit</label>
+                                    <input type="number" id="live-param-recent_data_limit" value="100" min="10" max="1000" step="10" 
+                                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
+                                    <select id="live-param-risk_level" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                        <option value="low">Low Risk</option>
+                                        <option value="medium" selected>Medium Risk</option>
+                                        <option value="high">High Risk</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Stop Loss (%)</label>
+                                    <input type="number" id="live-param-stop_loss" value="5" min="1" max="20" step="0.5" 
+                                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Strategy Presets -->
+                    <div class="mt-6">
+                        <h4 class="text-md font-semibold text-gray-700 mb-3">Strategy Presets</h4>
+                        <div class="flex flex-wrap gap-2">
+                            <button id="live-preset-conservative" class="bg-green-100 hover:bg-green-200 text-green-800 px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                                Conservative
+                            </button>
+                            <button id="live-preset-balanced" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                                Balanced
+                            </button>
+                            <button id="live-preset-aggressive" class="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                                Aggressive
+                            </button>
+                            <button id="live-preset-scalping" class="bg-purple-100 hover:bg-purple-200 text-purple-800 px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                                Scalping
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Live Portfolio Status -->
                 <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6 border border-green-200 mb-8">
                     <h3 class="text-lg font-semibold text-green-800 mb-4">
