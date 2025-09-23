@@ -138,6 +138,9 @@
                         <i class="fas fa-calculator mr-2"></i>Backtesting
                     </button>
                     <button id="tab-live-trading" class="tab-button py-4 px-1 border-b-2 border-transparent text-white text-opacity-80 hover:text-white hover:text-opacity-100 font-medium text-sm">
+                        <i class="fas fa-flask mr-2"></i>Simulated Trading
+                    </button>
+                    <button id="tab-real-live-trading" class="tab-button py-4 px-1 border-b-2 border-transparent text-white text-opacity-80 hover:text-white hover:text-opacity-100 font-medium text-sm">
                         <i class="fas fa-chart-line mr-2"></i>Live Trading
                     </button>
                     <button id="tab-trading-history" class="tab-button py-4 px-1 border-b-2 border-transparent text-white text-opacity-80 hover:text-white hover:text-opacity-100 font-medium text-sm">
@@ -957,13 +960,13 @@
             </div>
         </div>
 
-        <!-- Live Trading Tab -->
+        <!-- Simulated Trading Tab -->
         <div id="content-live-trading" class="tab-content hidden">
             <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
                 <h2 class="text-xl font-bold text-gray-800 mb-4">
-                    <i class="fas fa-chart-line mr-2"></i>Live Trading
+                    <i class="fas fa-flask mr-2"></i>Simulated Trading
                 </h2>
-                <p class="text-gray-600 mb-6">Execute live trades using your backtested strategies with real-time market data.</p>
+                <p class="text-gray-600 mb-6">Test your trading strategies with virtual money using real-time market data.</p>
                 
                 <!-- Trading Mode Selection -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -980,13 +983,13 @@
                             </div>
                             <p class="text-xs text-gray-600 ml-6">Test strategies with virtual money - no real trades executed</p>
                             
-                            <div class="flex items-center space-x-3">
-                                <input type="radio" id="live-mode" name="trading-mode" value="live" class="text-red-600 focus:ring-red-500">
-                                <label for="live-mode" class="text-sm font-medium text-gray-700">
-                                    <i class="fas fa-exclamation-triangle mr-1"></i>Live Trading
-                                </label>
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
+                                <div class="flex items-center">
+                                    <i class="fas fa-info-circle text-yellow-600 mr-2"></i>
+                                    <span class="text-sm text-yellow-800 font-medium">Live Trading Available</span>
+                                </div>
+                                <p class="text-xs text-yellow-700 mt-1">For real trading with actual money, use the "Live Trading" tab.</p>
                             </div>
-                            <p class="text-xs text-gray-600 ml-6">Execute real trades with actual money - USE WITH CAUTION</p>
                         </div>
                     </div>
                     
@@ -1010,6 +1013,10 @@
                             <div class="flex justify-between">
                                 <span class="text-sm text-gray-600">P&L (24h):</span>
                                 <span id="daily-pnl" class="text-sm font-semibold text-gray-600">$0.00</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600">Data Source:</span>
+                                <span id="portfolio-data-source" class="text-xs text-gray-500">simulated</span>
                             </div>
                         </div>
                     </div>
@@ -1238,10 +1245,10 @@
                     </div>
                 </div>
 
-                <!-- Live Trading Log -->
+                <!-- Simulated Trading Log -->
                 <div class="bg-gray-900 text-green-400 rounded-lg p-6 mb-8">
                     <h3 class="text-lg font-semibold text-green-300 mb-4">
-                        <i class="fas fa-terminal mr-2"></i>Live Trading Log
+                        <i class="fas fa-terminal mr-2"></i>Simulated Trading Log
                     </h3>
                     <div id="trading-log" class="h-64 overflow-y-auto font-mono text-sm space-y-1">
                         <div class="text-gray-500">Trading log will appear here...</div>
@@ -1521,6 +1528,208 @@
             </div>
         </div>
 
+        <!-- Live Trading Tab -->
+        <div id="content-real-live-trading" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-chart-line mr-2"></i>Live Trading
+                </h2>
+                <p class="text-gray-600 mb-6">Execute real trades with actual money using Coinbase Advanced Trade API.</p>
+                
+                <!-- API Connection Status -->
+                <div class="bg-gradient-to-r from-red-50 to-orange-50 rounded-lg p-6 border border-red-200 mb-8">
+                    <h3 class="text-lg font-semibold text-red-800 mb-4">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>API Connection Status
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Coinbase API Status:</span>
+                            <span id="coinbase-api-status" class="text-sm font-semibold text-gray-600">Checking...</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Account Access:</span>
+                            <span id="account-access-status" class="text-sm font-semibold text-gray-600">Checking...</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Trading Permissions:</span>
+                            <span id="trading-permissions-status" class="text-sm font-semibold text-gray-600">Checking...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Portfolio Status -->
+                <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6 border border-green-200 mb-8">
+                    <h3 class="text-lg font-semibold text-green-800 mb-4">
+                        <i class="fas fa-wallet mr-2"></i>Live Portfolio Status
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Total Balance:</span>
+                            <span id="live-total-balance" class="text-sm font-semibold text-green-600">$0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Available Balance:</span>
+                            <span id="live-available-balance" class="text-sm font-semibold text-green-600">$0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Active Positions:</span>
+                            <span id="live-active-positions" class="text-sm font-semibold text-blue-600">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">24h P&L:</span>
+                            <span id="live-daily-pnl" class="text-sm font-semibold text-gray-600">$0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Data Source:</span>
+                            <span id="live-data-source" class="text-xs text-green-600">Coinbase API</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Trading Controls -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-play-pause mr-2"></i>Live Trading Controls
+                    </h3>
+                    
+                    <div class="flex flex-wrap gap-4 items-center">
+                        <button id="start-live-trading" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-md font-medium transition-colors" disabled>
+                            <i class="fas fa-play mr-2"></i>Start Live Trading
+                        </button>
+                        <button id="stop-live-trading" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-md font-medium transition-colors" disabled>
+                            <i class="fas fa-stop mr-2"></i>Stop Live Trading
+                        </button>
+                        <button id="emergency-stop-live" class="bg-red-800 hover:bg-red-900 text-white px-6 py-2 rounded-md font-medium transition-colors">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>Emergency Stop
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <div id="live-trading-status-indicator" class="w-3 h-3 bg-gray-400 rounded-full"></div>
+                            <span id="live-trading-status-text" class="text-sm text-gray-600">Stopped</span>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            Last Update: <span id="last-live-trading-update">Never</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Trading Log -->
+                <div class="bg-gray-900 text-red-400 rounded-lg p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-red-300 mb-4">
+                        <i class="fas fa-terminal mr-2"></i>Live Trading Log
+                    </h3>
+                    <div id="live-trading-log" class="h-64 overflow-y-auto font-mono text-sm space-y-1">
+                        <div class="text-gray-500">Live trading log will appear here...</div>
+                    </div>
+                </div>
+
+                <!-- Live Order Book Signals -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-chart-bar mr-2"></i>Live Order Book Signals
+                    </h3>
+                    <div class="mb-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm text-gray-600">Signals Status:</span>
+                            <span id="live-signals-status" class="text-sm font-semibold text-gray-600">Inactive</span>
+                        </div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm text-gray-600">Active Signals:</span>
+                            <span id="live-active-signals" class="text-sm font-semibold text-blue-600">0</span>
+                        </div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm text-gray-600">Last Update:</span>
+                            <span id="live-signals-last-update" class="text-sm text-gray-500">Never</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bid Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ask Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Spread</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volume</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Squeeze Analysis</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Imbalance Analysis</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Large Trade Analysis</th>
+                                </tr>
+                            </thead>
+                            <tbody id="live-orderbook-signals-table-body" class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="8" class="px-6 py-4 text-center text-gray-500">
+                                        No live trading signals available. Start live trading to see signals.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Live Positions -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-chart-pie mr-2"></i>Live Positions
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Side</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P&L</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="live-positions-tbody" class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="7" class="px-6 py-4 text-center text-gray-500">
+                                        No live positions. Start live trading to see positions.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Live Trading History -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-history mr-2"></i>Live Trading History
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Side</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fee</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="live-trading-history-tbody" class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="7" class="px-6 py-4 text-center text-gray-500">
+                                        No live trading history. Start live trading to see history.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Trading History Tab -->
         <div id="content-trading-history" class="tab-content hidden">
             <!-- Trading Metrics Overview -->
@@ -1794,6 +2003,6 @@
         </div>
     </div>
 
-    <script src="/static/js/dashboard_enhanced.js"></script>
+    <script src="/static/js/dashboard_enhanced.js?v=20250923-debug"></script>
 </body>
 </html>

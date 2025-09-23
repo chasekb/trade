@@ -56,6 +56,20 @@ async def run_frontend_tests(headless=True):
         logger.error(f"❌ Frontend tests failed: {e}")
         return []
 
+async def run_frontend_validation_tests(headless=True):
+    """Run enhanced frontend validation tests."""
+    logger.info("🚀 Running frontend validation tests...")
+    
+    try:
+        from test_live_trading_frontend_validation import LiveTradingFrontendValidationTest
+        
+        test_suite = LiveTradingFrontendValidationTest(headless=headless)
+        success = await test_suite.run_all_tests()
+        return success
+    except Exception as e:
+        logger.error(f"❌ Frontend validation tests failed: {e}")
+        return False
+
 def check_dependencies():
     """Check if required dependencies are installed."""
     logger.info("🔍 Checking dependencies...")
@@ -195,6 +209,7 @@ async def main():
     parser = argparse.ArgumentParser(description='Run live trading comprehensive tests')
     parser.add_argument('--api-only', action='store_true', help='Run only API tests')
     parser.add_argument('--frontend-only', action='store_true', help='Run only frontend tests')
+    parser.add_argument('--frontend-validation-only', action='store_true', help='Run only frontend validation tests')
     parser.add_argument('--headless', action='store_true', default=True, help='Run frontend tests in headless mode')
     parser.add_argument('--no-headless', action='store_true', help='Run frontend tests with visible browser')
     parser.add_argument('--open-browser', action='store_true', help='Open frontend test page in browser')
@@ -226,13 +241,23 @@ async def main():
     frontend_results = []
     
     # Run API tests
-    if not args.frontend_only:
+    if not args.frontend_only and not args.frontend_validation_only:
         api_results = await run_api_tests()
     
     # Run frontend tests
-    if not args.api_only:
+    if not args.api_only and not args.frontend_validation_only:
         headless_mode = args.headless and not args.no_headless
         frontend_results = await run_frontend_tests(headless=headless_mode)
+    
+    # Run frontend validation tests
+    if not args.api_only:
+        headless_mode = args.headless and not args.no_headless
+        logger.info("🔍 Running enhanced frontend validation tests...")
+        validation_success = await run_frontend_validation_tests(headless=headless_mode)
+        if validation_success:
+            logger.info("✅ Frontend validation tests passed")
+        else:
+            logger.error("❌ Frontend validation tests failed")
     
     # Generate combined report
     if api_results or frontend_results:

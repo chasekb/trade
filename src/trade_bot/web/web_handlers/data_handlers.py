@@ -11,13 +11,14 @@ logger = logging.getLogger(__name__)
 class DataHandlers:
     """Handles data-related functionality for the trading web server."""
     
-    def __init__(self, config, data_provider, cached_data_provider, database_manager, simulated_trading_manager=None, trading_handlers=None):
+    def __init__(self, config, data_provider, cached_data_provider, database_manager, simulated_trading_manager=None, trading_handlers=None, trading_state=None):
         self.config = config
         self.data_provider = data_provider
         self.cached_data_provider = cached_data_provider
         self.database_manager = database_manager
         self.simulated_trading_manager = simulated_trading_manager
         self.trading_handlers = trading_handlers
+        self.trading_state = trading_state
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -34,10 +35,17 @@ class DataHandlers:
             if not symbols:
                 return {"error": "No symbols provided"}
             
-            # Check if trading is active
+            # Check if trading is active (either simulated trading or async trading)
             trading_active = False
             if self.simulated_trading_manager:
                 trading_active = self.simulated_trading_manager.is_trading
+            
+            # Also check if async trading is active
+            if not trading_active and self.trading_state:
+                async_trading_active = self.trading_state.get("is_trading", False)
+                if async_trading_active:
+                    trading_active = True
+                    logger.info("Async trading is active, enabling order book signals")
             
             # Only return signals if trading is actually active
             if not trading_active:

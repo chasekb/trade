@@ -23,6 +23,7 @@ from ..web.web_handlers import (
     APIHandlers, DashboardHandlers, BacktestHandlers, 
     TradingHandlers, WebSocketHandlers, DataHandlers
 )
+from ..web.web_handlers.live_portfolio_handlers import LivePortfolioHandlers
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -96,6 +97,7 @@ backtest_handlers = None
 trading_handlers = None
 websocket_handlers = None
 data_handlers = None
+live_portfolio_handlers = None
 
 # FastAPI app
 app = FastAPI(title="Trading Dashboard API", version="1.0.0")
@@ -117,7 +119,7 @@ async def startup_event():
     """Initialize the application on startup."""
     global data_handler, simulated_trading_manager, database_manager, websocket_client
     global api_handlers, dashboard_handlers, backtest_handlers, trading_handlers
-    global websocket_handlers, data_handlers, websocket_manager
+    global websocket_handlers, data_handlers, websocket_manager, live_portfolio_handlers
     
     try:
         # Initialize configuration
@@ -146,7 +148,9 @@ async def startup_event():
         backtest_handlers = BacktestHandlers(config, database_manager)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager)
         websocket_handlers = WebSocketHandlers(websocket_manager)
-        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers)
+        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, trading_state)
+        live_portfolio_handlers = LivePortfolioHandlers(config)
+        logger.info(f"✅ Live portfolio handlers initialized: {live_portfolio_handlers is not None}")
         
         # Start WebSocket client
         # Note: WebSocket client will be started when needed
@@ -645,6 +649,25 @@ async def get_trading_metrics():
     """Get comprehensive trading metrics."""
     check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.get_trading_metrics()
+
+# Live Portfolio Endpoints
+@app.get("/api/live-portfolio/status")
+async def get_live_portfolio_status():
+    """Get live portfolio status from Coinbase API."""
+    check_handlers_ready("live_portfolio_handlers", live_portfolio_handlers)
+    return await live_portfolio_handlers.get_live_portfolio_status()
+
+@app.get("/api/live-portfolio/summary")
+async def get_live_portfolio_summary():
+    """Get live portfolio summary formatted for frontend."""
+    check_handlers_ready("live_portfolio_handlers", live_portfolio_handlers)
+    return await live_portfolio_handlers.get_portfolio_summary_for_frontend()
+
+@app.get("/api/live-portfolio/accounts")
+async def get_live_portfolio_accounts(account_uuid: str = None):
+    """Get live portfolio account details."""
+    check_handlers_ready("live_portfolio_handlers", live_portfolio_handlers)
+    return await live_portfolio_handlers.get_account_details(account_uuid)
 
 @app.get("/api/candles")
 async def get_candles(product_id: str, granularity: int, days: int = 7):

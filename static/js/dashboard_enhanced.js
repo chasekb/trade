@@ -1,5 +1,7 @@
 /** Enhanced Trading Dashboard JavaScript with Full Subscription Support */
 
+console.log('🚀 Enhanced Trading Dashboard JavaScript loaded - Version 20250923-debug');
+
 class EnhancedTradingDashboard {
     constructor() {
         this.ws = null;
@@ -718,6 +720,11 @@ class EnhancedTradingDashboard {
             await this.loadLiveTradingProducts();
             // loadLiveTradingData() will be called by switchTab()
         });
+        
+        document.getElementById('tab-real-live-trading')?.addEventListener('click', async () => {
+            this.switchTab('real-live-trading');
+            await this.loadRealLiveTradingData();
+        });
 
         // Trading mode selection
         document.querySelectorAll('input[name="trading-mode"]').forEach(radio => {
@@ -881,8 +888,11 @@ class EnhancedTradingDashboard {
 
     async loadOrderBookSignals(page = 1, perPage = 10) {
         try {
+            console.log('loadOrderBookSignals called - isActive:', this.liveTrading.isActive);
+            
             // Check if trading is active
             if (!this.liveTrading.isActive) {
+                console.log('Trading not active, showing empty state');
                 this.updateOrderBookSignalsTable([]);
                 this.updateOrderBookStatistics({
                     total_analyzed: 0,
@@ -925,8 +935,10 @@ class EnhancedTradingDashboard {
             const symbolsParam = selectedSymbols.join(',');
             apiUrl += `?symbols=${encodeURIComponent(symbolsParam)}&page=${page}&per_page=${perPage}`;
             
+            console.log('🌐 Calling order book signals API:', apiUrl);
             const response = await fetch(apiUrl);
             const data = await response.json();
+            console.log('🌐 Order book signals API response:', data);
             
             if (data.error) {
                 console.error('Error loading order book signals:', data.error);
@@ -1253,8 +1265,10 @@ class EnhancedTradingDashboard {
             clearInterval(this.orderBookRefreshInterval);
         }
         
+        console.log('Starting frequent refresh (every 5 seconds)');
         // Start more frequent refresh during async loading - every 5 seconds
         this.orderBookRefreshInterval = setInterval(async () => {
+            console.log('Frequent refresh triggered');
             await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
         }, 5000);
     }
@@ -1979,9 +1993,12 @@ class EnhancedTradingDashboard {
                 this.updateTradingStatus('active');
                 
                 // Start loading order book signals immediately when trading starts
+                console.log('Starting order book signals loading...');
                 await this.loadOrderBookSignals();
+                console.log('Order book signals loaded, starting frequent refresh...');
                 // Start frequent order book signals refresh for async loading
                 this.startOrderBookFrequentRefresh();
+                console.log('Frequent refresh started');
                 
                 // Show loading progress
                 this.updateLoadingProgress(data.loading_progress);
@@ -2209,38 +2226,75 @@ class EnhancedTradingDashboard {
     }
 
     updatePortfolioStatus(portfolioData) {
+        // Handle different data structures for live vs simulated trading
+        let cashBalance, totalValue, totalPnl, openPositions, dataSource;
+        
+        if (this.liveTrading.mode === 'live') {
+            // Live trading data from Coinbase API
+            cashBalance = portfolioData.cash_balance || 0;
+            totalValue = portfolioData.total_value || 0;
+            totalPnl = portfolioData.total_pnl || 0;
+            openPositions = portfolioData.total_accounts || 0; // Use account count as position count
+            dataSource = portfolioData.data_source || 'coinbase_api';
+            
+            console.log(`💰 Live portfolio data: $${totalValue.toFixed(2)} total, $${cashBalance.toFixed(2)} cash, ${openPositions} accounts (${dataSource})`);
+        } else {
+            // Simulated trading data
+            cashBalance = portfolioData.cash_balance || 0;
+            totalValue = portfolioData.total_value || 0;
+            totalPnl = portfolioData.total_pnl || 0;
+            openPositions = portfolioData.positions ? Object.keys(portfolioData.positions).length : 0;
+            dataSource = 'simulated';
+        }
+
         // Update available balance
         const availableBalance = document.getElementById('available-balance');
-        if (availableBalance && portfolioData.cash_balance !== undefined) {
-            availableBalance.textContent = `$${portfolioData.cash_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        if (availableBalance && cashBalance !== undefined) {
+            availableBalance.textContent = `$${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
 
         // Update total value
-        const totalValue = document.getElementById('total-value');
-        if (totalValue && portfolioData.total_value !== undefined) {
-            totalValue.textContent = `$${portfolioData.total_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const totalValueElement = document.getElementById('total-value');
+        if (totalValueElement && totalValue !== undefined) {
+            totalValueElement.textContent = `$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
 
         // Update open positions count
-        const openPositions = document.getElementById('open-positions');
-        if (openPositions) {
-            // Count open positions from the positions object
-            const positionsCount = portfolioData.positions ? Object.keys(portfolioData.positions).length : 0;
-            openPositions.textContent = positionsCount;
+        const openPositionsElement = document.getElementById('open-positions');
+        if (openPositionsElement) {
+            openPositionsElement.textContent = openPositions;
         }
 
         // Update daily P&L
         const dailyPnl = document.getElementById('daily-pnl');
-        if (dailyPnl && portfolioData.total_pnl !== undefined) {
-            const pnlValue = portfolioData.total_pnl;
+        if (dailyPnl && totalPnl !== undefined) {
+            const pnlValue = totalPnl;
             dailyPnl.textContent = `${pnlValue >= 0 ? '+' : ''}$${pnlValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             dailyPnl.className = `text-sm font-semibold ${pnlValue >= 0 ? 'text-green-600' : 'text-red-600'}`;
+        }
+
+        // Add data source indicator for live trading
+        if (this.liveTrading.mode === 'live') {
+            const dataSourceElement = document.getElementById('portfolio-data-source');
+            if (dataSourceElement) {
+                dataSourceElement.textContent = `Data: ${dataSource}`;
+                dataSourceElement.className = `text-xs ${dataSource === 'coinbase_api' ? 'text-green-600' : 'text-yellow-600'}`;
+            }
         }
     }
 
     async updateTradingStatusFromAPI() {
         try {
-            const response = await fetch('/api/simulated-trading/status');
+            // Choose API endpoint based on trading mode
+            let apiEndpoint;
+            if (this.liveTrading.mode === 'live') {
+                apiEndpoint = '/api/live-portfolio/summary';
+            } else {
+                apiEndpoint = '/api/simulated-trading/status';
+            }
+            
+            console.log(`📊 Fetching trading status from: ${apiEndpoint} (mode: ${this.liveTrading.mode})`);
+            const response = await fetch(apiEndpoint);
             const data = await response.json();
             
             if (data.error) {
@@ -4739,8 +4793,8 @@ class EnhancedTradingDashboard {
             buttonElement.classList.remove('border-transparent', 'text-white', 'text-opacity-80');
         }
         
-        // Stop order book auto-refresh when leaving live trading tab
-        if (tabName !== 'live-trading') {
+        // Stop order book auto-refresh when leaving live trading tabs
+        if (tabName !== 'live-trading' && tabName !== 'real-live-trading') {
             this.stopOrderBookAutoRefresh();
         }
         
@@ -4754,6 +4808,8 @@ class EnhancedTradingDashboard {
             this.loadBacktestHistory();
         } else if (tabName === 'live-trading') {
             this.loadLiveTradingData();
+        } else if (tabName === 'real-live-trading') {
+            this.loadRealLiveTradingData();
         } else if (tabName === 'trading-history') {
             this.loadTradingHistory();
         }
@@ -4766,11 +4822,40 @@ class EnhancedTradingDashboard {
     }
     
     async loadLiveTradingData() {
-        // Only load order book signals if trading is active
-        if (this.liveTrading.isActive) {
+        console.log('📊 loadLiveTradingData called - Version 20250923-debug');
+        // Check if trading is active locally or on the server
+        let tradingActive = this.liveTrading.isActive;
+        
+        // If not active locally, check server status
+        if (!tradingActive) {
+            console.log('🔍 Trading not active locally, checking server status...');
+            try {
+                const response = await fetch('/api/simulated-trading/status');
+                const data = await response.json();
+                tradingActive = data.is_trading || false;
+                console.log('🔍 Server trading status:', tradingActive, data);
+                
+                // Update local state if server shows trading is active
+                if (tradingActive && !this.liveTrading.isActive) {
+                    console.log('🔄 Updating local state to active');
+                    this.liveTrading.isActive = true;
+                    this.updateTradingControls();
+                    this.updateTradingStatus('active');
+                }
+            } catch (error) {
+                console.error('Error checking trading status:', error);
+            }
+        } else {
+            console.log('✅ Trading already active locally');
+        }
+        
+        if (tradingActive) {
+            console.log('🚀 Trading is active, loading order book signals...');
             await this.loadOrderBookSignals();
+            console.log('🚀 Starting auto refresh...');
             this.startOrderBookAutoRefresh();
         } else {
+            console.log('❌ Trading not active, showing empty state');
             // Show empty state when trading is not active
             this.updateOrderBookSignalsTable([]);
             this.updateOrderBookStatistics({
@@ -4787,6 +4872,140 @@ class EnhancedTradingDashboard {
         
         // Restore trading log from session if available
         await this.restoreTradingLog();
+    }
+    
+    async loadRealLiveTradingData() {
+        console.log('🚀 loadRealLiveTradingData called - Loading live trading data from Coinbase API');
+        
+        try {
+            // Check API connection status
+            await this.checkCoinbaseAPIStatus();
+            
+            // Load live portfolio data
+            await this.loadLivePortfolioData();
+            
+            // Load live trading status
+            await this.loadLiveTradingStatus();
+            
+        } catch (error) {
+            console.error('Error loading real live trading data:', error);
+            this.logLiveTradingEvent(`Error loading live trading data: ${error.message}`);
+        }
+    }
+    
+    async checkCoinbaseAPIStatus() {
+        try {
+            const response = await fetch('/api/live-portfolio/status');
+            const data = await response.json();
+            
+            // Update API status indicators
+            const apiStatus = document.getElementById('coinbase-api-status');
+            const accountStatus = document.getElementById('account-access-status');
+            const tradingStatus = document.getElementById('trading-permissions-status');
+            
+            if (data.error) {
+                if (apiStatus) apiStatus.textContent = 'Error';
+                if (accountStatus) accountStatus.textContent = 'No Access';
+                if (tradingStatus) tradingStatus.textContent = 'No Permissions';
+                
+                apiStatus.className = 'text-sm font-semibold text-red-600';
+                accountStatus.className = 'text-sm font-semibold text-red-600';
+                tradingStatus.className = 'text-sm font-semibold text-red-600';
+            } else {
+                if (apiStatus) apiStatus.textContent = 'Connected';
+                if (accountStatus) accountStatus.textContent = 'Access Granted';
+                if (tradingStatus) tradingStatus.textContent = 'Permissions OK';
+                
+                apiStatus.className = 'text-sm font-semibold text-green-600';
+                accountStatus.className = 'text-sm font-semibold text-green-600';
+                tradingStatus.className = 'text-sm font-semibold text-green-600';
+            }
+            
+        } catch (error) {
+            console.error('Error checking Coinbase API status:', error);
+            const apiStatus = document.getElementById('coinbase-api-status');
+            if (apiStatus) {
+                apiStatus.textContent = 'Connection Failed';
+                apiStatus.className = 'text-sm font-semibold text-red-600';
+            }
+        }
+    }
+    
+    async loadLivePortfolioData() {
+        try {
+            const response = await fetch('/api/live-portfolio/summary');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading live portfolio:', data.error);
+                return;
+            }
+            
+            // Update live portfolio display
+            this.updateLivePortfolioDisplay(data.portfolio);
+            
+        } catch (error) {
+            console.error('Error loading live portfolio data:', error);
+        }
+    }
+    
+    updateLivePortfolioDisplay(portfolio) {
+        const totalBalance = document.getElementById('live-total-balance');
+        const availableBalance = document.getElementById('live-available-balance');
+        const activePositions = document.getElementById('live-active-positions');
+        const dailyPnl = document.getElementById('live-daily-pnl');
+        const dataSource = document.getElementById('live-data-source');
+        
+        if (totalBalance) {
+            totalBalance.textContent = `$${portfolio.total_value?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`;
+        }
+        
+        if (availableBalance) {
+            availableBalance.textContent = `$${portfolio.cash_balance?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`;
+        }
+        
+        if (activePositions) {
+            activePositions.textContent = portfolio.total_accounts || 0;
+        }
+        
+        if (dailyPnl) {
+            const pnlValue = portfolio.total_pnl || 0;
+            dailyPnl.textContent = `${pnlValue >= 0 ? '+' : ''}$${pnlValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            dailyPnl.className = `text-sm font-semibold ${pnlValue >= 0 ? 'text-green-600' : 'text-red-600'}`;
+        }
+        
+        if (dataSource) {
+            dataSource.textContent = portfolio.data_source || 'coinbase_api';
+            dataSource.className = `text-xs text-green-600`;
+        }
+        
+        console.log(`💰 Live portfolio updated: $${portfolio.total_value?.toFixed(2) || '0.00'} total, $${portfolio.cash_balance?.toFixed(2) || '0.00'} cash`);
+    }
+    
+    async loadLiveTradingStatus() {
+        // This will be implemented to check if live trading is active
+        // For now, just update the status indicator
+        const statusIndicator = document.getElementById('live-trading-status-indicator');
+        const statusText = document.getElementById('live-trading-status-text');
+        
+        if (statusIndicator) {
+            statusIndicator.className = 'w-3 h-3 bg-gray-400 rounded-full';
+        }
+        if (statusText) {
+            statusText.textContent = 'Stopped';
+        }
+    }
+    
+    logLiveTradingEvent(message) {
+        const logElement = document.getElementById('live-trading-log');
+        if (logElement) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        console.log(`🔴 Live Trading: ${message}`);
     }
     
     async restoreTradingLog() {
