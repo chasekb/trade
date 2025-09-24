@@ -42,6 +42,9 @@ class CoinbasePortfolio:
     accounts: List[CoinbaseAccount]
     last_updated: datetime
     error: Optional[str] = None
+    available_balance_usd: Optional[float] = None
+    total_unrealized_pnl: Optional[float] = None
+    portfolio_breakdown: Optional[Dict[str, Any]] = None
 
 class CoinbasePortfolioHandler:
     """Handles Coinbase Advanced Trade API portfolio data using official REST client."""
@@ -125,40 +128,65 @@ class CoinbasePortfolioHandler:
                     error="No Coinbase API credentials configured. Please configure API credentials for live trading."
                 )
             
-            # Get all accounts using REST client
-            accounts = await self.get_accounts()
-            
-            if not accounts:
+            # Get portfolio breakdown for accurate data
+            portfolios = self.rest_client.get_portfolios()
+            if not portfolios.portfolios:
                 return CoinbasePortfolio(
                     total_balance_usd=0.0,
                     total_balance_btc=0.0,
                     accounts=[],
                     last_updated=datetime.now(),
-                    error="No accounts found or API error"
+                    error="No portfolios found"
                 )
             
-            # Calculate total balances
-            total_usd = 0.0
-            total_btc = 0.0
+            # Use the first portfolio (usually "Default")
+            portfolio_uuid = portfolios.portfolios[0].uuid
+            breakdown = self.rest_client.get_portfolio_breakdown(portfolio_uuid)
             
-            for account in accounts:
-                if account.currency == 'USD':
-                    total_usd += account.total_balance
-                elif account.currency == 'BTC':
-                    total_btc += account.total_balance
-                elif account.currency != 'USD' and account.currency != 'BTC':
-                    # For other currencies, we'd need to convert to USD/BTC
-                    # For now, just add the raw balance
-                    total_usd += account.total_balance * 0.01  # Placeholder conversion
+            # Extract portfolio data
+            portfolio_balances = breakdown.breakdown['portfolio_balances']
+            spot_positions = breakdown.breakdown['spot_positions']
+            
+            # Get total balance in USD
+            total_balance_usd = float(portfolio_balances['total_balance']['value'])
+            
+            # Calculate available balance (cash + available to trade)
+            total_cash_balance = float(portfolio_balances['total_cash_equivalent_balance']['value'])
+            available_balance = total_cash_balance
+            
+            # Calculate 24h P&L (sum of unrealized P&L for all positions)
+            total_unrealized_pnl = 0.0
+            for position in spot_positions:
+                # Handle both dict and object access
+                if hasattr(position, 'unrealized_pnl'):
+                    total_unrealized_pnl += position.unrealized_pnl
+                elif isinstance(position, dict):
+                    total_unrealized_pnl += position.get('unrealized_pnl', 0.0)
+            
+            # Get BTC balance specifically
+            btc_balance = 0.0
+            for position in spot_positions:
+                # Handle both dict and object access
+                asset = position.asset if hasattr(position, 'asset') else position.get('asset', '')
+                if asset == 'BTC':
+                    btc_balance = position.total_balance_crypto if hasattr(position, 'total_balance_crypto') else position.get('total_balance_crypto', 0.0)
+                    break
+            
+            # Get all accounts for compatibility
+            accounts = await self.get_accounts()
             
             portfolio = CoinbasePortfolio(
-                total_balance_usd=total_usd,
-                total_balance_btc=total_btc,
+                total_balance_usd=total_balance_usd,
+                total_balance_btc=btc_balance,
                 accounts=accounts,
-                last_updated=datetime.now()
+                last_updated=datetime.now(),
+                # Add new fields for accurate portfolio data
+                available_balance_usd=available_balance,
+                total_unrealized_pnl=total_unrealized_pnl,
+                portfolio_breakdown=breakdown.breakdown
             )
             
-            logger.info(f"Portfolio summary: ${total_usd:.2f} USD, {total_btc:.8f} BTC")
+            logger.info(f"Portfolio summary: ${total_balance_usd:.2f} USD, {btc_balance:.8f} BTC, P&L: ${total_unrealized_pnl:.2f}")
             return portfolio
             
         except Exception as e:
@@ -176,6 +204,8 @@ class CoinbasePortfolioHandler:
         return {
             "total_balance_usd": portfolio.total_balance_usd,
             "total_balance_btc": portfolio.total_balance_btc,
+            "available_balance_usd": portfolio.available_balance_usd,
+            "total_unrealized_pnl": portfolio.total_unrealized_pnl,
             "accounts": [
                 {
                     "uuid": account.uuid,
@@ -183,7 +213,9 @@ class CoinbasePortfolioHandler:
                     "currency": account.currency,
                     "available_balance": account.available_balance,
                     "hold": account.hold,
-                    "total_balance": account.total_balance
+                    "total_balance": account.total_balance,
+                    "available_balance_obj": account.available_balance_obj,
+                    "hold_obj": account.hold_obj
                 }
                 for account in portfolio.accounts
             ],

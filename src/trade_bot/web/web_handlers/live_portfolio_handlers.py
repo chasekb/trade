@@ -153,12 +153,12 @@ class LivePortfolioHandlers:
         try:
             portfolio_data = await self.get_live_portfolio_status()
             
-            # Format for frontend compatibility
+            # Format for frontend compatibility using accurate Coinbase API data
             frontend_data = {
                 "portfolio": {
-                    "cash_balance": portfolio_data.get("total_balance_usd", 0.0),
+                    "cash_balance": portfolio_data.get("available_balance_usd", portfolio_data.get("total_balance_usd", 0.0)),
                     "total_value": portfolio_data.get("total_balance_usd", 0.0),
-                    "total_pnl": 0.0,  # Would need historical data to calculate
+                    "total_pnl": portfolio_data.get("total_unrealized_pnl", 0.0),  # Real 24h P&L from Coinbase
                     "total_fees": 0.0,  # Would need trade history
                     "max_drawdown": 0.0,  # Would need historical data
                     "win_rate": 0.0,  # Would need trade history
