@@ -319,6 +319,9 @@ class EnhancedTradingDashboard {
         // Setup strategy config toggle
         this.setupStrategyConfigToggle();
         
+        // Setup test API status button
+        this.setupTestAPIStatusButton();
+        
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
             this.loadAvailableProducts();
@@ -4703,6 +4706,7 @@ class EnhancedTradingDashboard {
     
     async loadRealLiveTradingData() {
         console.log('🚀 loadRealLiveTradingData called - Loading live trading data from Coinbase API');
+        console.log('🚀 Current tab:', this.currentTab);
         
         try {
             // Check API connection status
@@ -4723,16 +4727,41 @@ class EnhancedTradingDashboard {
     async checkCoinbaseAPIStatus() {
         try {
             console.log('🔍 Checking Coinbase API status...');
+            console.log('🔍 Making request to: /api/live-portfolio/status');
+            
             const response = await fetch('/api/live-portfolio/status');
+            console.log('🔍 Response status:', response.status);
+            console.log('🔍 Response ok:', response.ok);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             const data = await response.json();
             console.log('🔍 API status response:', data);
+            console.log('🔍 has_credentials:', data.has_credentials);
+            console.log('🔍 error:', data.error);
+            console.log('🔍 setup_required:', data.setup_required);
             
             // Update API status indicators
             const apiStatus = document.getElementById('coinbase-api-status');
             const accountStatus = document.getElementById('account-access-status');
             const tradingStatus = document.getElementById('trading-permissions-status');
             
-            if (data.error || data.setup_required || !data.has_credentials) {
+            console.log('🔍 DOM elements found:');
+            console.log('🔍 apiStatus:', apiStatus);
+            console.log('🔍 accountStatus:', accountStatus);
+            console.log('🔍 tradingStatus:', tradingStatus);
+            
+            const hasError = data.error || data.setup_required || !data.has_credentials;
+            console.log('🔍 Condition check:');
+            console.log('🔍 data.error:', data.error);
+            console.log('🔍 data.setup_required:', data.setup_required);
+            console.log('🔍 !data.has_credentials:', !data.has_credentials);
+            console.log('🔍 hasError:', hasError);
+            
+            if (hasError) {
+                console.log('🔍 Setting error status');
                 if (apiStatus) apiStatus.textContent = 'Credentials Required';
                 if (accountStatus) accountStatus.textContent = 'Not Configured';
                 if (tradingStatus) tradingStatus.textContent = 'Setup Required';
@@ -4744,6 +4773,7 @@ class EnhancedTradingDashboard {
                 // Show setup message
                 this.showCredentialSetupMessage(data.setup_message || data.error || 'API credentials not configured');
             } else {
+                console.log('🔍 Setting success status');
                 if (apiStatus) apiStatus.textContent = 'Connected';
                 if (accountStatus) accountStatus.textContent = 'Access Granted';
                 if (tradingStatus) tradingStatus.textContent = 'Permissions OK';
@@ -4921,6 +4951,16 @@ class EnhancedTradingDashboard {
                     toggleIcon.className = 'fas fa-chevron-up mr-1';
                     toggleText.textContent = 'Show Configuration';
                 }
+            });
+        }
+    }
+    
+    setupTestAPIStatusButton() {
+        const testButton = document.getElementById('test-api-status');
+        if (testButton) {
+            testButton.addEventListener('click', async () => {
+                console.log('🧪 Test API Status button clicked');
+                await this.checkCoinbaseAPIStatus();
             });
         }
     }
