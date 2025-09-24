@@ -453,7 +453,8 @@ class EnhancedTradingDashboard {
                 totalValue: 10000,
                 openPositions: 0,
                 dailyPnL: 0
-            }
+            },
+            sessionId: null
         };
         
         // Setup live trading event listeners
@@ -1829,6 +1830,9 @@ class EnhancedTradingDashboard {
             const data = await response.json();
 
             if (data.status === 'started') {
+                // Store session ID for database queries
+                this.liveTrading.sessionId = data.session_id;
+                
                 // Initialize strategy with async loading info
                 this.liveTrading.strategy = {
                     type: strategyType,
@@ -2291,6 +2295,11 @@ class EnhancedTradingDashboard {
                 page: page.toString(),
                 per_page: perPage.toString()
             });
+            
+            // Add session ID if available for simulated trading
+            if (this.liveTrading.mode === 'simulated' && this.liveTrading.sessionId) {
+                params.append('session_id', this.liveTrading.sessionId);
+            }
             
             const response = await fetch(`/api/trades/paginated?${params}`);
             const data = await response.json();

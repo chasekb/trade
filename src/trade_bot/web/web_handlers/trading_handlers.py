@@ -242,6 +242,14 @@ class TradingHandlers:
             position_update_interval = request_data.get('position_update_interval', 5)
             initial_balance = request_data.get('initial_balance', 10000.0)
             
+            # Generate session ID for this trading session
+            import uuid
+            from datetime import datetime
+            session_id = f"sim_{uuid.uuid4().hex[:8]}_{int(datetime.now().timestamp())}"
+            
+            # Set session info for database logging
+            self.simulated_trading_manager.set_session_info(self.database_manager, session_id)
+            
             # Update simulated trading manager with new parameters
             # Only update initial_balance if it's different from current balance
             if self.simulated_trading_manager.initial_balance != initial_balance:
@@ -262,6 +270,7 @@ class TradingHandlers:
             
             return {
                 "status": "started",
+                "session_id": session_id,
                 "symbols": symbols,
                 "strategy_type": strategy_type,
                 "position_size_percent": position_size_percent,
