@@ -45,6 +45,7 @@ class CoinbasePortfolio:
     available_balance_usd: Optional[float] = None
     total_unrealized_pnl: Optional[float] = None
     portfolio_breakdown: Optional[Dict[str, Any]] = None
+    active_positions: Optional[List[Dict[str, Any]]] = None
 
 class CoinbasePortfolioHandler:
     """Handles Coinbase Advanced Trade API portfolio data using official REST client."""
@@ -175,6 +176,36 @@ class CoinbasePortfolioHandler:
             # Get all accounts for compatibility
             accounts = await self.get_accounts()
             
+            # Extract active positions (non-zero balances)
+            active_positions = []
+            for position in spot_positions:
+                # Handle both dict and object access
+                if hasattr(position, 'total_balance_crypto'):
+                    balance_crypto = position.total_balance_crypto
+                    balance_fiat = position.total_balance_fiat
+                    asset = position.asset
+                    unrealized_pnl = position.unrealized_pnl
+                    allocation = position.allocation
+                elif isinstance(position, dict):
+                    balance_crypto = position.get('total_balance_crypto', 0.0)
+                    balance_fiat = position.get('total_balance_fiat', 0.0)
+                    asset = position.get('asset', '')
+                    unrealized_pnl = position.get('unrealized_pnl', 0.0)
+                    allocation = position.get('allocation', 0.0)
+                else:
+                    continue
+                
+                # Only include positions with non-zero balance
+                if balance_crypto > 0 or balance_fiat > 0:
+                    active_positions.append({
+                        'asset': asset,
+                        'balance_crypto': balance_crypto,
+                        'balance_fiat': balance_fiat,
+                        'unrealized_pnl': unrealized_pnl,
+                        'allocation': allocation,
+                        'is_cash': asset in ['USD', 'USDC']
+                    })
+            
             portfolio = CoinbasePortfolio(
                 total_balance_usd=total_balance_usd,
                 total_balance_btc=btc_balance,
@@ -183,7 +214,8 @@ class CoinbasePortfolioHandler:
                 # Add new fields for accurate portfolio data
                 available_balance_usd=available_balance,
                 total_unrealized_pnl=total_unrealized_pnl,
-                portfolio_breakdown=breakdown.breakdown
+                portfolio_breakdown=breakdown.breakdown,
+                active_positions=active_positions
             )
             
             logger.info(f"Portfolio summary: ${total_balance_usd:.2f} USD, {btc_balance:.8f} BTC, P&L: ${total_unrealized_pnl:.2f}")
@@ -206,6 +238,7 @@ class CoinbasePortfolioHandler:
             "total_balance_btc": portfolio.total_balance_btc,
             "available_balance_usd": portfolio.available_balance_usd,
             "total_unrealized_pnl": portfolio.total_unrealized_pnl,
+            "active_positions": portfolio.active_positions or [],
             "accounts": [
                 {
                     "uuid": account.uuid,

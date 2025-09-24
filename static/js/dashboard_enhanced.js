@@ -316,6 +316,9 @@ class EnhancedTradingDashboard {
         // Setup accounts list toggle
         this.setupAccountsListToggle();
         
+        // Setup positions list toggle
+        this.setupPositionsListToggle();
+        
         // Setup strategy config toggle
         this.setupStrategyConfigToggle();
         
@@ -4835,6 +4838,17 @@ class EnhancedTradingDashboard {
                 console.log('🔍 No accounts data or not an array');
             }
             
+            // Update portfolio positions
+            console.log('🔍 loadLivePortfolioData - data.active_positions_data:', data.active_positions_data);
+            console.log('🔍 loadLivePortfolioData - data.active_positions_data length:', data.active_positions_data?.length);
+            
+            if (data.active_positions_data && Array.isArray(data.active_positions_data)) {
+                console.log('🔍 Calling updatePortfolioPositions with', data.active_positions_data.length, 'positions');
+                this.updatePortfolioPositions(data.active_positions_data);
+            } else {
+                console.log('🔍 No active positions data or not an array');
+            }
+            
         } catch (error) {
             console.error('Error loading live portfolio data:', error);
             this.showCredentialSetupMessage('Failed to load portfolio data. Please check your credentials.');
@@ -4857,7 +4871,7 @@ class EnhancedTradingDashboard {
         }
         
         if (activePositions) {
-            activePositions.textContent = portfolio.total_accounts || 0;
+            activePositions.textContent = portfolio.active_positions || 0;
         }
         
         if (dailyPnl) {
@@ -4937,6 +4951,69 @@ class EnhancedTradingDashboard {
         }
     }
     
+    updatePortfolioPositions(positions) {
+        console.log('🔍 updatePortfolioPositions called with:', positions);
+        console.log('🔍 updatePortfolioPositions - positions length:', positions?.length);
+        
+        const positionsCount = document.getElementById('positions-count');
+        const positionsList = document.getElementById('positions-list');
+        
+        console.log('🔍 updatePortfolioPositions - DOM elements:');
+        console.log('🔍 positionsCount:', positionsCount);
+        console.log('🔍 positionsList:', positionsList);
+        
+        if (positionsCount) {
+            positionsCount.textContent = positions.length;
+            console.log('🔍 Updated positions count to:', positions.length);
+        } else {
+            console.log('🔍 positionsCount element not found');
+        }
+        
+        if (positionsList) {
+            positionsList.innerHTML = '';
+            
+            positions.forEach(position => {
+                const positionItem = document.createElement('div');
+                positionItem.className = 'bg-white rounded-lg p-3 border border-gray-200 hover:border-blue-300 transition-colors';
+                
+                const pnlValue = position.unrealized_pnl || 0;
+                const allocation = (position.allocation || 0) * 100; // Convert to percentage
+                const isPositive = pnlValue >= 0;
+                
+                positionItem.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-medium text-gray-800">${position.asset}</span>
+                                <span class="text-xs ${position.is_cash ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'} px-2 py-1 rounded">
+                                    ${position.is_cash ? 'Cash' : 'Crypto'}
+                                </span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">${allocation.toFixed(2)}% of portfolio</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm font-semibold text-gray-800">
+                                $${position.balance_fiat?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                ${position.balance_crypto?.toLocaleString('en-US', { minimumFractionDigits: 8, maximumFractionDigits: 8 }) || '0.00000000'} ${position.asset}
+                            </div>
+                            <div class="text-xs ${isPositive ? 'text-green-600' : 'text-red-600'} font-medium">
+                                ${isPositive ? '+' : ''}$${pnlValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                positionsList.appendChild(positionItem);
+            });
+            
+            console.log('🔍 Updated positions list with', positions.length, 'positions');
+        } else {
+            console.log('🔍 positionsList element not found');
+        }
+    }
+    
     setupAccountsListToggle() {
         const toggleButton = document.getElementById('toggle-accounts-list');
         const accountsContainer = document.getElementById('accounts-list-container');
@@ -4955,6 +5032,29 @@ class EnhancedTradingDashboard {
                     accountsContainer.classList.add('hidden');
                     toggleIcon.className = 'fas fa-chevron-down mr-1';
                     toggleText.textContent = 'Show Accounts';
+                }
+            });
+        }
+    }
+    
+    setupPositionsListToggle() {
+        const toggleButton = document.getElementById('toggle-positions-list');
+        const positionsContainer = document.getElementById('positions-list-container');
+        const toggleIcon = document.getElementById('positions-toggle-icon');
+        const toggleText = document.getElementById('positions-toggle-text');
+        
+        if (toggleButton && positionsContainer && toggleIcon && toggleText) {
+            toggleButton.addEventListener('click', () => {
+                const isHidden = positionsContainer.classList.contains('hidden');
+                
+                if (isHidden) {
+                    positionsContainer.classList.remove('hidden');
+                    toggleIcon.className = 'fas fa-chevron-up mr-1';
+                    toggleText.textContent = 'Hide Positions';
+                } else {
+                    positionsContainer.classList.add('hidden');
+                    toggleIcon.className = 'fas fa-chevron-down mr-1';
+                    toggleText.textContent = 'Show Positions';
                 }
             });
         }

@@ -68,13 +68,16 @@ class LivePortfolioHandlers:
             portfolio_dict = self.coinbase_portfolio_handler.portfolio_to_dict(portfolio)
             
             # Add additional computed fields
+            active_positions = portfolio.active_positions or []
             portfolio_dict.update({
                 "is_live_trading": True,
                 "data_source": "coinbase_api" if self.coinbase_portfolio_handler.has_credentials else "mock_data",
                 "total_accounts": len(portfolio.accounts),
+                "active_positions": len(active_positions),
                 "usd_accounts": len([acc for acc in portfolio.accounts if acc.currency == "USD"]),
                 "crypto_accounts": len([acc for acc in portfolio.accounts if acc.currency != "USD"]),
-                "accounts": portfolio.accounts  # Keep original account objects
+                "accounts": portfolio.accounts,  # Keep original account objects
+                "active_positions_data": active_positions  # Add active positions data
             })
             
             # Cache the result
@@ -166,9 +169,11 @@ class LivePortfolioHandlers:
                     "winning_trades": 0,  # Would need trade history
                     "btc_balance": portfolio_data.get("total_balance_btc", 0.0),
                     "total_accounts": portfolio_data.get("total_accounts", 0),
+                    "active_positions": portfolio_data.get("active_positions", 0),
                     "data_source": portfolio_data.get("data_source", "unknown")
                 },
                 "accounts": self._format_accounts_for_frontend(portfolio_data.get("accounts", [])),
+                "active_positions_data": portfolio_data.get("active_positions_data", []),
                 "is_live_trading": portfolio_data.get("is_live_trading", False),
                 "last_updated": portfolio_data.get("last_updated"),
                 "error": portfolio_data.get("error"),
