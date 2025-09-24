@@ -670,8 +670,29 @@ class EnhancedTradingDashboard {
                 selectedSymbols = this.getSelectedSymbols();
             }
             
+            // Ensure symbols are strings, not objects
+            if (selectedSymbols && selectedSymbols.length > 0) {
+                selectedSymbols = selectedSymbols.map(symbol => {
+                    if (typeof symbol === 'string') {
+                        return symbol;
+                    } else if (symbol && typeof symbol === 'object' && symbol.symbol) {
+                        return symbol.symbol;
+                    } else if (symbol && typeof symbol === 'object' && symbol.id) {
+                        return symbol.id;
+                    } else {
+                        return String(symbol);
+                    }
+                }).filter(symbol => symbol && symbol.trim() !== '');
+            }
+            
             // Debug logging
             console.log('loadOrderBookSignals - selectedSymbols:', selectedSymbols);
+            console.log('loadOrderBookSignals - selectedSymbols type:', typeof selectedSymbols);
+            console.log('loadOrderBookSignals - selectedSymbols length:', selectedSymbols?.length);
+            if (selectedSymbols && selectedSymbols.length > 0) {
+                console.log('loadOrderBookSignals - first symbol:', selectedSymbols[0]);
+                console.log('loadOrderBookSignals - first symbol type:', typeof selectedSymbols[0]);
+            }
             console.log('loadOrderBookSignals - strategy:', this.liveTrading.strategy);
             console.log('loadOrderBookSignals - isActive:', this.liveTrading.isActive);
             console.log('loadOrderBookSignals - asyncLoading:', this.liveTrading.asyncLoading);
@@ -679,6 +700,7 @@ class EnhancedTradingDashboard {
             
             // If no symbols are selected, show appropriate message
             if (!selectedSymbols || selectedSymbols.length === 0) {
+                console.log('⚠️ No symbols selected, showing empty state');
                 this.updateOrderBookSignalsTable([]);
                 this.updateOrderBookStatistics({
                     total_analyzed: 0,
@@ -689,6 +711,31 @@ class EnhancedTradingDashboard {
                 });
                 return;
             }
+            
+            // Final validation - ensure all symbols are valid strings
+            const validSymbols = selectedSymbols.filter(symbol => {
+                const isValid = typeof symbol === 'string' && symbol.trim() !== '' && !symbol.includes('object');
+                if (!isValid) {
+                    console.warn('⚠️ Invalid symbol detected:', symbol, 'type:', typeof symbol);
+                }
+                return isValid;
+            });
+            
+            if (validSymbols.length === 0) {
+                console.log('⚠️ No valid symbols after filtering, showing empty state');
+                this.updateOrderBookSignalsTable([]);
+                this.updateOrderBookStatistics({
+                    total_analyzed: 0,
+                    active_signals: 0,
+                    last_updated: new Date().toISOString(),
+                    average_strength: 0,
+                    message: "No valid symbols available. Please refresh the page and try again."
+                });
+                return;
+            }
+            
+            // Use valid symbols
+            selectedSymbols = validSymbols;
             
             // Build API URL with symbols and pagination parameters
             let apiUrl = '/api/orderbook/live-signals';
@@ -1032,7 +1079,7 @@ class EnhancedTradingDashboard {
             
             // Only refresh if trading is active
             if (this.liveTrading.isActive) {
-                await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
+            await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
                 
                 // Also update portfolio status during frequent refresh
                 await this.updateTradingStatusFromAPI();

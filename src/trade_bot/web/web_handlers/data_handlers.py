@@ -64,15 +64,39 @@ class DataHandlers:
                     }
                 }
             
+            # Handle case where symbols might be malformed (e.g., "[object Object]")
+            if symbols == "[object Object]" or symbols == "%5Bobject%20Object%5D":
+                logger.warning("Received malformed symbols '[object Object]', returning empty signals")
+                return {
+                    "signals": [],
+                    "trading_active": False,
+                    "message": "Invalid symbols provided. Please refresh the page and try again.",
+                    "pagination": {
+                        "current_page": page,
+                        "per_page": per_page,
+                        "total_signals": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False
+                    }
+                }
+            
             symbol_list = [s.strip() for s in symbols.split(',')]
+            
+            # Debug logging to see what symbols we're processing
+            logger.info(f"Processing symbols for order book signals: {symbol_list}")
             
             # Fetch real orderbook data from Coinbase API
             signals = []
             for symbol in symbol_list:
                 try:
+                    # Ensure symbol is a string and log it
+                    symbol_str = str(symbol).strip()
+                    logger.info(f"Fetching order book for {symbol_str} (level 2)")
+                    
                     # Create a data provider instance for this symbol
                     from ...data.data_provider import CoinbaseDataProvider
-                    symbol_provider = CoinbaseDataProvider(symbol)
+                    symbol_provider = CoinbaseDataProvider(symbol_str)
                     
                     # Fetch live orderbook data (using level 2 for comprehensive signal analysis)
                     orderbook_data = await symbol_provider.get_order_book(level=2)
