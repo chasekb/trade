@@ -4988,6 +4988,21 @@ class EnhancedTradingDashboard {
         }
     }
     
+    showCredentialSetupMessage(message) {
+        const setupMessageElement = document.getElementById('coinbase-credential-setup-message');
+        if (setupMessageElement) {
+            setupMessageElement.textContent = message;
+            setupMessageElement.classList.remove('hidden');
+        }
+    }
+
+    hideCredentialSetupMessage() {
+        const setupMessageElement = document.getElementById('coinbase-credential-setup-message');
+        if (setupMessageElement) {
+            setupMessageElement.classList.add('hidden');
+        }
+    }
+    
     async loadLiveTradingStatus() {
         // This will be implemented to check if live trading is active
         // For now, just update the status indicator
