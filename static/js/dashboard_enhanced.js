@@ -313,6 +313,9 @@ class EnhancedTradingDashboard {
         // Setup positions pagination
         this.setupPositionsPagination();
         
+        // Setup accounts list toggle
+        this.setupAccountsListToggle();
+        
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
             this.loadAvailableProducts();
@@ -4815,7 +4818,78 @@ class EnhancedTradingDashboard {
             dataSource.className = `text-xs text-green-600`;
         }
         
+        // Update accounts list if available
+        if (portfolio.accounts && Array.isArray(portfolio.accounts)) {
+            this.updateAccountsList(portfolio.accounts);
+        }
+        
         console.log(`💰 Live portfolio updated: $${portfolio.total_value?.toFixed(2) || '0.00'} total, $${portfolio.cash_balance?.toFixed(2) || '0.00'} cash`);
+    }
+    
+    updateAccountsList(accounts) {
+        const accountsCount = document.getElementById('accounts-count');
+        const accountsList = document.getElementById('accounts-list');
+        
+        if (accountsCount) {
+            accountsCount.textContent = accounts.length;
+        }
+        
+        if (accountsList) {
+            accountsList.innerHTML = '';
+            
+            accounts.forEach(account => {
+                const accountItem = document.createElement('div');
+                accountItem.className = 'bg-white rounded-lg p-3 border border-gray-200 hover:border-blue-300 transition-colors';
+                
+                const balance = account.total_balance || 0;
+                const availableBalance = account.available_balance || 0;
+                const holdBalance = account.hold || 0;
+                
+                accountItem.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-medium text-gray-800">${account.name}</span>
+                                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">${account.currency}</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">${account.uuid}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm font-semibold text-gray-800">${balance.toLocaleString('en-US', { minimumFractionDigits: 8, maximumFractionDigits: 8 })}</div>
+                            <div class="text-xs text-gray-500">
+                                Available: ${availableBalance.toLocaleString('en-US', { minimumFractionDigits: 8, maximumFractionDigits: 8 })} | 
+                                Hold: ${holdBalance.toLocaleString('en-US', { minimumFractionDigits: 8, maximumFractionDigits: 8 })}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                accountsList.appendChild(accountItem);
+            });
+        }
+    }
+    
+    setupAccountsListToggle() {
+        const toggleButton = document.getElementById('toggle-accounts-list');
+        const accountsContainer = document.getElementById('accounts-list-container');
+        const toggleIcon = document.getElementById('accounts-toggle-icon');
+        const toggleText = document.getElementById('accounts-toggle-text');
+        
+        if (toggleButton && accountsContainer && toggleIcon && toggleText) {
+            toggleButton.addEventListener('click', () => {
+                const isHidden = accountsContainer.classList.contains('hidden');
+                
+                if (isHidden) {
+                    accountsContainer.classList.remove('hidden');
+                    toggleIcon.className = 'fas fa-chevron-up mr-1';
+                    toggleText.textContent = 'Hide Accounts';
+                } else {
+                    accountsContainer.classList.add('hidden');
+                    toggleIcon.className = 'fas fa-chevron-down mr-1';
+                    toggleText.textContent = 'Show Accounts';
+                }
+            });
+        }
     }
     
     async loadLiveTradingStatus() {

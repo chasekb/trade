@@ -1790,6 +1790,28 @@
                     </div>
                 </div>
 
+                <!-- Live Trading Accounts List -->
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200 mb-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-blue-800">
+                            <i class="fas fa-list mr-2"></i>Coinbase Accounts
+                        </h3>
+                        <button id="toggle-accounts-list" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                            <i class="fas fa-chevron-down mr-1" id="accounts-toggle-icon"></i>
+                            <span id="accounts-toggle-text">Show Accounts</span>
+                        </button>
+                    </div>
+                    
+                    <div id="accounts-list-container" class="hidden">
+                        <div class="text-sm text-gray-600 mb-3">
+                            <span id="accounts-count">0</span> accounts found
+                        </div>
+                        <div id="accounts-list" class="space-y-2 max-h-64 overflow-y-auto">
+                            <!-- Accounts will be populated here -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Live Trading Controls -->
                 <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4">
@@ -2207,6 +2229,6 @@
         </div>
     </div>
 
-    <script src="/static/js/dashboard_enhanced.js?v=20250923-debug"></script>
+    <script src="/static/js/dashboard_enhanced.js?v=20250924-accounts"></script>
 </body>
 </html>
