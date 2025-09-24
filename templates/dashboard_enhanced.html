@@ -1551,9 +1551,17 @@
 
                 <!-- Live Trading Strategy Configuration -->
                 <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200 mb-8">
-                    <h3 class="text-lg font-semibold text-blue-800 mb-4">
-                        <i class="fas fa-cogs mr-2"></i>Live Trading Strategy Configuration
-                    </h3>
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-blue-800">
+                            <i class="fas fa-cogs mr-2"></i>Live Trading Strategy Configuration
+                        </h3>
+                        <button id="toggle-strategy-config" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                            <i class="fas fa-chevron-down mr-1" id="strategy-config-toggle-icon"></i>
+                            <span id="strategy-config-toggle-text">Hide Configuration</span>
+                        </button>
+                    </div>
+                    
+                    <div id="strategy-config-container">
                     
                     <!-- Trading Mode Selection -->
                     <div class="mb-6">
@@ -1758,6 +1766,7 @@
                                 Scalping
                             </button>
                         </div>
+                    </div>
                     </div>
                 </div>
 
@@ -2229,6 +2238,6 @@
         </div>
     </div>
 
-    <script src="/static/js/dashboard_enhanced.js?v=20250924-accounts"></script>
+    <script src="/static/js/dashboard_enhanced.js?v=20250924-fixes"></script>
 </body>
 </html>

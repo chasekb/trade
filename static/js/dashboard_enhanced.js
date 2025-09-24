@@ -316,6 +316,9 @@ class EnhancedTradingDashboard {
         // Setup accounts list toggle
         this.setupAccountsListToggle();
         
+        // Setup strategy config toggle
+        this.setupStrategyConfigToggle();
+        
         // Load data after a short delay to ensure DOM is ready
         setTimeout(() => {
             this.loadAvailableProducts();
@@ -4719,15 +4722,17 @@ class EnhancedTradingDashboard {
     
     async checkCoinbaseAPIStatus() {
         try {
+            console.log('🔍 Checking Coinbase API status...');
             const response = await fetch('/api/live-portfolio/status');
             const data = await response.json();
+            console.log('🔍 API status response:', data);
             
             // Update API status indicators
             const apiStatus = document.getElementById('coinbase-api-status');
             const accountStatus = document.getElementById('account-access-status');
             const tradingStatus = document.getElementById('trading-permissions-status');
             
-            if (data.error || data.setup_required) {
+            if (data.error || data.setup_required || !data.has_credentials) {
                 if (apiStatus) apiStatus.textContent = 'Credentials Required';
                 if (accountStatus) accountStatus.textContent = 'Not Configured';
                 if (tradingStatus) tradingStatus.textContent = 'Setup Required';
@@ -4737,7 +4742,7 @@ class EnhancedTradingDashboard {
                 tradingStatus.className = 'text-sm font-semibold text-red-600';
                 
                 // Show setup message
-                this.showCredentialSetupMessage(data.setup_message || data.error);
+                this.showCredentialSetupMessage(data.setup_message || data.error || 'API credentials not configured');
             } else {
                 if (apiStatus) apiStatus.textContent = 'Connected';
                 if (accountStatus) accountStatus.textContent = 'Access Granted';
@@ -4781,6 +4786,11 @@ class EnhancedTradingDashboard {
             
             // Update live portfolio display
             this.updateLivePortfolioDisplay(data.portfolio);
+            
+            // Update accounts list with the accounts data
+            if (data.accounts && Array.isArray(data.accounts)) {
+                this.updateAccountsList(data.accounts);
+            }
             
         } catch (error) {
             console.error('Error loading live portfolio data:', error);
@@ -4887,6 +4897,29 @@ class EnhancedTradingDashboard {
                     accountsContainer.classList.add('hidden');
                     toggleIcon.className = 'fas fa-chevron-down mr-1';
                     toggleText.textContent = 'Show Accounts';
+                }
+            });
+        }
+    }
+    
+    setupStrategyConfigToggle() {
+        const toggleButton = document.getElementById('toggle-strategy-config');
+        const strategyContainer = document.getElementById('strategy-config-container');
+        const toggleIcon = document.getElementById('strategy-config-toggle-icon');
+        const toggleText = document.getElementById('strategy-config-toggle-text');
+        
+        if (toggleButton && strategyContainer && toggleIcon && toggleText) {
+            toggleButton.addEventListener('click', () => {
+                const isHidden = strategyContainer.classList.contains('hidden');
+                
+                if (isHidden) {
+                    strategyContainer.classList.remove('hidden');
+                    toggleIcon.className = 'fas fa-chevron-down mr-1';
+                    toggleText.textContent = 'Hide Configuration';
+                } else {
+                    strategyContainer.classList.add('hidden');
+                    toggleIcon.className = 'fas fa-chevron-up mr-1';
+                    toggleText.textContent = 'Show Configuration';
                 }
             });
         }
