@@ -674,6 +674,8 @@ class EnhancedTradingDashboard {
             console.log('loadOrderBookSignals - selectedSymbols:', selectedSymbols);
             console.log('loadOrderBookSignals - strategy:', this.liveTrading.strategy);
             console.log('loadOrderBookSignals - isActive:', this.liveTrading.isActive);
+            console.log('loadOrderBookSignals - asyncLoading:', this.liveTrading.asyncLoading);
+            console.log('loadOrderBookSignals - symbolsLoaded:', this.liveTrading.symbolsLoaded);
             
             // If no symbols are selected, show appropriate message
             if (!selectedSymbols || selectedSymbols.length === 0) {
@@ -1023,11 +1025,21 @@ class EnhancedTradingDashboard {
             clearInterval(this.orderBookRefreshInterval);
         }
         
-        console.log('Starting frequent refresh (every 5 seconds)');
+        console.log('🔄 Starting frequent refresh (every 5 seconds) for async loading');
         // Start more frequent refresh during async loading - every 5 seconds
         this.orderBookRefreshInterval = setInterval(async () => {
-            console.log('Frequent refresh triggered');
-            await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
+            console.log('🔄 Frequent refresh triggered - asyncLoading:', this.liveTrading.asyncLoading);
+            
+            // Only refresh if trading is active
+            if (this.liveTrading.isActive) {
+                await this.loadOrderBookSignals(this.orderBookSignalsPagination.currentPage, this.orderBookSignalsPagination.perPage);
+                
+                // Also update portfolio status during frequent refresh
+                await this.updateTradingStatusFromAPI();
+            } else {
+                console.log('⚠️ Trading not active, stopping frequent refresh');
+                this.stopOrderBookAutoRefresh();
+            }
         }, 5000);
     }
 
@@ -1646,6 +1658,13 @@ class EnhancedTradingDashboard {
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
+        // Initialize trading state for async loading workflow
+        this.liveTrading.asyncLoading = true;
+        this.liveTrading.symbolsLoaded = false;
+        this.liveTrading.tradingStarted = false;
+        this.liveTrading.positionsCreated = false;
+        this.liveTrading.historyPopulated = false;
+
         // Get strategy type based on symbol mode
         const strategyType = this.liveTrading.symbolMode === 'universe' 
             ? document.getElementById('universe-strategy-type').value
@@ -1749,18 +1768,22 @@ class EnhancedTradingDashboard {
                 this.updateTradingControls();
                 this.updateTradingStatus('active');
                 
-                // Start loading order book signals immediately when trading starts
-                console.log('Starting order book signals loading...');
+                // Start asynchronous loading workflow
+                console.log('🚀 Starting asynchronous trading workflow...');
+                
+                // 1) Start loading order book signals immediately (async loading)
+                console.log('📊 Starting order book signals loading...');
                 await this.loadOrderBookSignals();
-                console.log('Order book signals loaded, starting frequent refresh...');
+                console.log('✅ Order book signals loaded, starting frequent refresh...');
+                
                 // Start frequent order book signals refresh for async loading
                 this.startOrderBookFrequentRefresh();
-                console.log('Frequent refresh started');
+                console.log('🔄 Frequent refresh started');
                 
                 // Show loading progress
                 this.updateLoadingProgress(data.loading_progress);
                 
-                // Start monitoring loading progress
+                // Start monitoring loading progress with enhanced workflow
                 this.startLoadingProgressMonitoring();
                 
                 // Update portfolio status immediately
@@ -4506,7 +4529,7 @@ class EnhancedTradingDashboard {
         return Math.abs(worstStreak);
     }
 
-    switchTab(tabName) {
+    async switchTab(tabName) {
         // Hide all tab contents
         document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.add('hidden');
@@ -4534,9 +4557,19 @@ class EnhancedTradingDashboard {
             buttonElement.classList.remove('border-transparent', 'text-white', 'text-opacity-80');
         }
         
-        // Stop order book auto-refresh when leaving live trading tabs
+        // Enhanced tab switching: ensure trading continues when switching tabs
         if (tabName !== 'live-trading' && tabName !== 'real-live-trading') {
+            // Only stop order book auto-refresh if trading is not active
+            if (!this.liveTrading.isActive) {
             this.stopOrderBookAutoRefresh();
+            } else {
+                // Trading is active - keep it running but reduce refresh frequency
+                console.log('🔄 Trading active - maintaining background operations while on other tab');
+            }
+        } else if (tabName === 'live-trading' && this.liveTrading.isActive) {
+            // Returning to live trading tab - ensure all widgets are refreshed
+            console.log('🔄 Returning to live trading tab - refreshing all widgets...');
+            await this.refreshTradingWidgets();
         }
         
         // Load data for specific tabs if needed
@@ -5649,20 +5682,38 @@ class EnhancedTradingDashboard {
                     if (this.liveTrading.strategy && data.current_symbols) {
                         this.liveTrading.strategy.symbols = data.current_symbols;
                         this.liveTrading.strategy.loadingProgress = data.loading_progress;
+                        
+                        // Mark symbols as loaded when we have symbols
+                        if (data.current_symbols && data.current_symbols.length > 0) {
+                            this.liveTrading.symbolsLoaded = true;
+                            console.log('✅ Symbols loaded:', data.current_symbols.length);
+                        }
                     }
                     
-                    // Update portfolio status to refresh open positions and trading history
-                    await this.updateTradingStatusFromAPI();
-                    
-                    // Reload order book signals continuously during loading (only if trading is active)
-                    if (this.liveTrading.isActive) {
+                    // Enhanced workflow based on loading status
                         if (data.loading_progress.status === 'loading') {
-                            // Refresh orderbook signals every time we check loading progress
+                        // During loading: refresh order book signals and portfolio status
+                        if (this.liveTrading.isActive) {
                             await this.loadOrderBookSignals();
-                        } else if (data.loading_progress.status === 'complete') {
-                            // Switch back to normal refresh rate when loading is complete
-                            this.startOrderBookAutoRefresh();
+                            await this.updateTradingStatusFromAPI();
                         }
+                        } else if (data.loading_progress.status === 'complete') {
+                        // Loading complete: implement full trading workflow
+                        console.log('🎯 All symbols loaded, starting full trading workflow...');
+                        this.liveTrading.symbolsLoaded = true;
+                        this.liveTrading.tradingStarted = true;
+                        
+                        // Switch to normal refresh rate
+                            this.startOrderBookAutoRefresh();
+                        
+                        // Ensure all widgets are populated in correct order
+                        await this.executeTradingWorkflow();
+                        
+                        // Mark loading as complete
+                        this.liveTrading.asyncLoading = false;
+                        clearInterval(this.loadingProgressInterval);
+                        
+                        this.logTradingEvent('🎉 All symbols loaded and trading workflow complete!');
                     }
                 }
             } catch (error) {
@@ -5675,6 +5726,75 @@ class EnhancedTradingDashboard {
         if (this.loadingProgressInterval) {
             clearInterval(this.loadingProgressInterval);
             this.loadingProgressInterval = null;
+        }
+    }
+
+    // Enhanced Trading Workflow - ensures proper sequence of widget population
+    async executeTradingWorkflow() {
+        console.log('🔄 Executing enhanced trading workflow...');
+        
+        try {
+            // Step 1: Ensure order book signals are loaded and refreshed
+            console.log('📊 Step 1: Loading order book signals...');
+            await this.loadOrderBookSignals();
+            
+            // Step 2: Update portfolio status to get latest positions and trades
+            console.log('💰 Step 2: Updating portfolio status...');
+            await this.updateTradingStatusFromAPI();
+            
+            // Step 3: Ensure open positions widget is populated
+            console.log('📈 Step 3: Populating open positions...');
+            if (this.liveTrading.positions && this.liveTrading.positions.length > 0) {
+                this.liveTrading.positionsCreated = true;
+                this.updateOpenPositions(this.liveTrading.positions);
+                console.log('✅ Open positions populated:', this.liveTrading.positions.length);
+            }
+            
+            // Step 4: Ensure trading history is populated
+            console.log('📋 Step 4: Populating trading history...');
+            if (this.liveTrading.history && this.liveTrading.history.length > 0) {
+                this.liveTrading.historyPopulated = true;
+                this.updateRecentTrades(this.liveTrading.history);
+                console.log('✅ Trading history populated:', this.liveTrading.history.length);
+            }
+            
+            // Step 5: Start regular refresh of all widgets
+            console.log('🔄 Step 5: Starting regular refresh cycle...');
+            this.startOrderBookAutoRefresh();
+            this.startPortfolioStatusUpdates();
+            
+            console.log('🎉 Trading workflow execution complete!');
+            
+        } catch (error) {
+            console.error('❌ Error in trading workflow execution:', error);
+            this.logTradingEvent(`Error in trading workflow: ${error.message}`);
+        }
+    }
+
+    // Refresh all trading widgets when returning to live trading tab
+    async refreshTradingWidgets() {
+        console.log('🔄 Refreshing all trading widgets...');
+        
+        try {
+            // Refresh order book signals
+            await this.loadOrderBookSignals();
+            
+            // Refresh portfolio status and positions
+            await this.updateTradingStatusFromAPI();
+            
+            // Refresh trading history
+            await this.loadTradingHistory();
+            
+            // Ensure auto-refresh is running
+            if (this.liveTrading.isActive) {
+                this.startOrderBookAutoRefresh();
+                this.startPortfolioStatusUpdates();
+            }
+            
+            console.log('✅ All trading widgets refreshed');
+            
+        } catch (error) {
+            console.error('❌ Error refreshing trading widgets:', error);
         }
     }
 
