@@ -4707,13 +4707,16 @@ class EnhancedTradingDashboard {
     async loadRealLiveTradingData() {
         console.log('🚀 loadRealLiveTradingData called - Loading live trading data from Coinbase API');
         console.log('🚀 Current tab:', this.currentTab);
+        console.log('🚀 About to call checkCoinbaseAPIStatus');
         
         try {
             // Check API connection status
             await this.checkCoinbaseAPIStatus();
             
             // Load live portfolio data
+            console.log('🚀 About to call loadLivePortfolioData');
             await this.loadLivePortfolioData();
+            console.log('🚀 loadLivePortfolioData completed');
             
             // Load live trading status
             await this.loadLiveTradingStatus();
@@ -4798,9 +4801,12 @@ class EnhancedTradingDashboard {
     }
     
     async loadLivePortfolioData() {
+        console.log('🔍 loadLivePortfolioData called');
         try {
+            console.log('🔍 Making request to /api/live-portfolio/summary');
             const response = await fetch('/api/live-portfolio/summary');
             const data = await response.json();
+            console.log('🔍 loadLivePortfolioData response:', data);
             
             if (data.error || data.setup_required) {
                 console.error('Error loading live portfolio:', data.error);
@@ -4818,8 +4824,15 @@ class EnhancedTradingDashboard {
             this.updateLivePortfolioDisplay(data.portfolio);
             
             // Update accounts list with the accounts data
+            console.log('🔍 loadLivePortfolioData - data.accounts:', data.accounts);
+            console.log('🔍 loadLivePortfolioData - data.accounts length:', data.accounts?.length);
+            console.log('🔍 loadLivePortfolioData - data.accounts is array:', Array.isArray(data.accounts));
+            
             if (data.accounts && Array.isArray(data.accounts)) {
+                console.log('🔍 Calling updateAccountsList with', data.accounts.length, 'accounts');
                 this.updateAccountsList(data.accounts);
+            } else {
+                console.log('🔍 No accounts data or not an array');
             }
             
         } catch (error) {
@@ -4867,11 +4880,21 @@ class EnhancedTradingDashboard {
     }
     
     updateAccountsList(accounts) {
+        console.log('🔍 updateAccountsList called with:', accounts);
+        console.log('🔍 updateAccountsList - accounts length:', accounts?.length);
+        
         const accountsCount = document.getElementById('accounts-count');
         const accountsList = document.getElementById('accounts-list');
         
+        console.log('🔍 updateAccountsList - DOM elements:');
+        console.log('🔍 accountsCount:', accountsCount);
+        console.log('🔍 accountsList:', accountsList);
+        
         if (accountsCount) {
             accountsCount.textContent = accounts.length;
+            console.log('🔍 Updated accounts count to:', accounts.length);
+        } else {
+            console.log('🔍 accountsCount element not found');
         }
         
         if (accountsList) {
