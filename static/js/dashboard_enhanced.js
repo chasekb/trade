@@ -758,6 +758,8 @@ class EnhancedTradingDashboard {
             const response = await fetch(apiUrl);
             const data = await response.json();
             console.log('🌐 Order book signals API response:', data);
+            console.log('🌐 Response status:', response.status);
+            console.log('🌐 Signals in response:', data.signals?.length || 0);
             
             if (data.error) {
                 console.error('Error loading order book signals:', data.error);
@@ -790,9 +792,11 @@ class EnhancedTradingDashboard {
                 };
             }
             
+            console.log('📊 About to update order book signals table with:', data.signals?.length || 0, 'signals');
             this.updateOrderBookSignalsTable(data.signals);
             this.updateOrderBookStatistics(data);
             this.updateOrderBookPaginationControls();
+            console.log('📊 Order book signals table update completed');
             
             // Process signals for trading if trading is active
             if (this.liveTrading.isActive && data.signals && data.signals.length > 0) {
@@ -857,6 +861,9 @@ class EnhancedTradingDashboard {
         console.log('🔍 orderbook-signals-table element:', tableBody);
         if (!tableBody) {
             console.log('❌ orderbook-signals-table element not found!');
+            // Try to find the element in all tabs
+            const allTableBodies = document.querySelectorAll('tbody[id*="orderbook"]');
+            console.log('🔍 All orderbook table bodies found:', allTableBodies);
             return;
         }
         
