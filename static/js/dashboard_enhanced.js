@@ -879,29 +879,30 @@ class EnhancedTradingDashboard {
         }
         
         tableBody.innerHTML = signals.map(signal => {
-            // Determine signal class based on signal and data status
-            let signalClass = 'text-gray-600 bg-gray-50';
-            if (signal.data_status === 'sufficient') {
-                signalClass = signal.signal === 'buy' ? 'text-green-600 bg-green-50' : 
-                             signal.signal === 'sell' ? 'text-red-600 bg-red-50' : 
-                             'text-gray-600 bg-gray-50';
-            } else if (signal.data_status === 'insufficient') {
-                signalClass = 'text-yellow-600 bg-yellow-50';
-            } else {
-                signalClass = 'text-gray-400 bg-gray-100';
-            }
-            
-            const strengthColor = signal.signal_strength >= 0.7 ? 'text-green-600' : 
-                                 signal.signal_strength >= 0.4 ? 'text-yellow-600' : 
-                                 'text-red-600';
-            
-            // Get criteria analysis
-            const criteria = signal.criteria_analysis || {};
-            const squeeze = criteria.bid_ask_squeeze || {};
-            const imbalanceBuy = criteria.volume_imbalance_buy || {};
-            const imbalanceSell = criteria.volume_imbalance_sell || {};
-            const largeTradeBuy = criteria.large_trade_buy || {};
-            const largeTradeSell = criteria.large_trade_sell || {};
+            try {
+                // Determine signal class based on signal and data status
+                let signalClass = 'text-gray-600 bg-gray-50';
+                if (signal.data_status === 'sufficient') {
+                    signalClass = signal.signal === 'buy' ? 'text-green-600 bg-green-50' : 
+                                 signal.signal === 'sell' ? 'text-red-600 bg-red-50' : 
+                                 'text-gray-600 bg-gray-50';
+                } else if (signal.data_status === 'insufficient') {
+                    signalClass = 'text-yellow-600 bg-yellow-50';
+                } else {
+                    signalClass = 'text-gray-400 bg-gray-100';
+                }
+                
+                const strengthColor = (signal.signal_strength || 0) >= 0.7 ? 'text-green-600' : 
+                                     (signal.signal_strength || 0) >= 0.4 ? 'text-yellow-600' : 
+                                     'text-red-600';
+                
+                // Get criteria analysis with safe defaults
+                const criteria = signal.criteria_analysis || {};
+                const squeeze = criteria.bid_ask_squeeze || { enabled: false, meets_criteria: false, delta_to_threshold: 0, threshold_spread: 0 };
+                const imbalanceBuy = criteria.volume_imbalance_buy || { enabled: false, meets_criteria: false, delta_to_threshold: 0, threshold: 0 };
+                const imbalanceSell = criteria.volume_imbalance_sell || { enabled: false, meets_criteria: false, delta_to_threshold: 0, threshold: 0 };
+                const largeTradeBuy = criteria.large_trade_buy || { enabled: false, meets_criteria: false, delta_to_threshold: 0, large_trades_count: 0 };
+                const largeTradeSell = criteria.large_trade_sell || { enabled: false, meets_criteria: false, delta_to_threshold: 0, large_trades_count: 0 };
             
             // Helper function to get status color
             const getStatusColor = (meets, enabled) => {
@@ -972,10 +973,10 @@ class EnhancedTradingDashboard {
                                 <span class="${getStatusColor(squeeze.meets_criteria, squeeze.enabled)}">
                                     ${squeeze.enabled ? (squeeze.meets_criteria ? '✓' : '✗') : '○'}
                                 </span>
-                                <span class="text-gray-600">${squeeze.enabled ? squeeze.delta_to_threshold.toFixed(2) : 'N/A'}</span>
+                                <span class="text-gray-600">${squeeze.enabled ? (squeeze.delta_to_threshold || 0).toFixed(2) : 'N/A'}</span>
                             </div>
                             <div class="text-gray-500 text-xs mt-1">
-                                ${squeeze.enabled ? `T: ${squeeze.threshold_spread.toFixed(4)}` : 'No data'}
+                                ${squeeze.enabled ? `T: ${(squeeze.threshold_spread || 0).toFixed(4)}` : 'No data'}
                             </div>
                         </div>
                     </td>
@@ -985,10 +986,10 @@ class EnhancedTradingDashboard {
                                 <span class="${getStatusColor(imbalanceBuy.meets_criteria, imbalanceBuy.enabled)}">
                                     ${imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? '✓' : '✗') : '○'}
                                 </span>
-                                <span class="text-gray-600">${imbalanceBuy.enabled ? imbalanceBuy.delta_to_threshold.toFixed(2) : 'N/A'}</span>
+                                <span class="text-gray-600">${imbalanceBuy.enabled ? (imbalanceBuy.delta_to_threshold || 0).toFixed(2) : 'N/A'}</span>
                             </div>
                             <div class="text-gray-500 text-xs mt-1">
-                                ${imbalanceBuy.enabled ? `T: ${imbalanceBuy.threshold.toFixed(2)}` : 'No data'}
+                                ${imbalanceBuy.enabled ? `T: ${(imbalanceBuy.threshold || 0).toFixed(2)}` : 'No data'}
                             </div>
                         </div>
                     </td>
@@ -998,7 +999,7 @@ class EnhancedTradingDashboard {
                                 <span class="${getStatusColor(largeTradeBuy.meets_criteria, largeTradeBuy.enabled)}">
                                     ${largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? '✓' : '✗') : '○'}
                                 </span>
-                                <span class="text-gray-600">${largeTradeBuy.enabled ? largeTradeBuy.delta_to_threshold.toFixed(2) : 'N/A'}</span>
+                                <span class="text-gray-600">${largeTradeBuy.enabled ? (largeTradeBuy.delta_to_threshold || 0).toFixed(2) : 'N/A'}</span>
                             </div>
                             <div class="text-gray-500 text-xs mt-1">
                                 ${largeTradeBuy.enabled ? `Trades: ${largeTradeBuy.large_trades_count}` : 'No data'}
@@ -1006,10 +1007,10 @@ class EnhancedTradingDashboard {
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${signal.spread.toFixed(4)}%</div>
+                        <div class="text-sm text-gray-900">${(signal.spread || 0).toFixed(4)}%</div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${signal.volume.toFixed(2)}</div>
+                        <div class="text-sm text-gray-900">${(signal.volume || 0).toFixed(2)}</div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <button onclick="this.nextElementSibling.classList.toggle('hidden')" 
@@ -1032,6 +1033,16 @@ class EnhancedTradingDashboard {
                     </td>
                 </tr>
             `;
+            } catch (error) {
+                console.error('Error rendering signal row:', error, signal);
+                return `
+                    <tr class="bg-red-50">
+                        <td colspan="11" class="px-6 py-4 text-center text-red-600">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>Error rendering signal: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
         }).join('');
     }
 
