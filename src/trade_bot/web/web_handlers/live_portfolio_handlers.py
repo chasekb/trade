@@ -7,7 +7,7 @@ This module handles live trading portfolio data from Coinbase API.
 import logging
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import HTTPException
 
 from ...data.coinbase_portfolio_handler import CoinbasePortfolioHandler
@@ -73,7 +73,8 @@ class LivePortfolioHandlers:
                 "data_source": "coinbase_api" if self.coinbase_portfolio_handler.has_credentials else "mock_data",
                 "total_accounts": len(portfolio.accounts),
                 "usd_accounts": len([acc for acc in portfolio.accounts if acc.currency == "USD"]),
-                "crypto_accounts": len([acc for acc in portfolio.accounts if acc.currency != "USD"])
+                "crypto_accounts": len([acc for acc in portfolio.accounts if acc.currency != "USD"]),
+                "accounts": portfolio.accounts  # Keep original account objects
             })
             
             # Cache the result
@@ -167,7 +168,7 @@ class LivePortfolioHandlers:
                     "total_accounts": portfolio_data.get("total_accounts", 0),
                     "data_source": portfolio_data.get("data_source", "unknown")
                 },
-                "accounts": portfolio_data.get("accounts", []),
+                "accounts": self._format_accounts_for_frontend(portfolio_data.get("accounts", [])),
                 "is_live_trading": portfolio_data.get("is_live_trading", False),
                 "last_updated": portfolio_data.get("last_updated"),
                 "error": portfolio_data.get("error"),
@@ -181,3 +182,20 @@ class LivePortfolioHandlers:
         except Exception as e:
             logger.error(f"Error formatting portfolio for frontend: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+    
+    def _format_accounts_for_frontend(self, accounts) -> List[Dict[str, Any]]:
+        """Format accounts with nested balance objects for frontend."""
+        formatted_accounts = []
+        for account in accounts:
+            account_dict = {
+                "uuid": account.uuid,
+                "name": account.name,
+                "currency": account.currency,
+                "available_balance": account.available_balance,
+                "hold": account.hold,
+                "total_balance": account.total_balance,
+                "available_balance_obj": account.available_balance_obj,
+                "hold_obj": account.hold_obj
+            }
+            formatted_accounts.append(account_dict)
+        return formatted_accounts

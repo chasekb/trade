@@ -611,8 +611,7 @@ async def get_trades_stats():
 async def get_trades_paginated(page: int = 1, per_page: int = 10, session_id: str = None):
     """Get paginated trades."""
     check_handlers_ready("trading_handlers", trading_handlers)
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_live_trading_history()
+    return await trading_handlers.get_paginated_trading_history(page=page, per_page=per_page)
 
 @app.get("/api/session/active")
 async def get_active_session():

@@ -22,9 +22,17 @@ class CoinbaseAccount:
     uuid: str
     name: str
     currency: str
-    available_balance: Dict[str, str]  # {"value": "1000.00", "currency": "USD"}
-    hold: Dict[str, str]
-    total_balance: Dict[str, str]
+    available_balance: float
+    hold: float
+    total_balance: float
+    available_balance_obj: Dict[str, str] = None
+    hold_obj: Dict[str, str] = None
+    
+    def __post_init__(self):
+        if self.available_balance_obj is None:
+            self.available_balance_obj = {"value": str(self.available_balance), "currency": self.currency}
+        if self.hold_obj is None:
+            self.hold_obj = {"value": str(self.hold), "currency": self.currency}
 
 @dataclass
 class CoinbasePortfolio:
@@ -76,18 +84,24 @@ class CoinbasePortfolioHandler:
             
             accounts = []
             for account_data in accounts_response.accounts:
-                # Calculate total balance from available + hold
-                available_balance = float(account_data.available_balance.value) if hasattr(account_data.available_balance, 'value') else 0.0
-                hold_balance = float(account_data.hold.value) if hasattr(account_data.hold, 'value') else 0.0
-                total_balance = available_balance + hold_balance
+                # Use the raw REST response structure directly
+                available_balance_obj = account_data.available_balance if isinstance(account_data.available_balance, dict) else {"value": "0", "currency": account_data.currency}
+                hold_obj = account_data.hold if isinstance(account_data.hold, dict) else {"value": "0", "currency": account_data.currency}
+                
+                # Calculate numeric values for compatibility
+                available_balance_value = float(available_balance_obj['value']) if 'value' in available_balance_obj else 0.0
+                hold_balance_value = float(hold_obj['value']) if 'value' in hold_obj else 0.0
+                total_balance = available_balance_value + hold_balance_value
                 
                 account = CoinbaseAccount(
                     uuid=account_data.uuid,
                     name=account_data.name,
                     currency=account_data.currency,
-                    available_balance=available_balance,
-                    hold=hold_balance,
-                    total_balance=total_balance
+                    available_balance=available_balance_value,
+                    hold=hold_balance_value,
+                    total_balance=total_balance,
+                    available_balance_obj=available_balance_obj,
+                    hold_obj=hold_obj
                 )
                 accounts.append(account)
             

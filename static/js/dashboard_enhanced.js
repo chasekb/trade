@@ -4905,8 +4905,13 @@ class EnhancedTradingDashboard {
                 accountItem.className = 'bg-white rounded-lg p-3 border border-gray-200 hover:border-blue-300 transition-colors';
                 
                 const balance = account.total_balance || 0;
-                const availableBalance = account.available_balance || 0;
-                const holdBalance = account.hold || 0;
+                // Use nested structure from available_balance_obj and hold_obj
+                const availableBalance = (account.available_balance_obj && account.available_balance_obj.value) 
+                    ? parseFloat(account.available_balance_obj.value) 
+                    : (account.available_balance || 0);
+                const holdBalance = (account.hold_obj && account.hold_obj.value) 
+                    ? parseFloat(account.hold_obj.value) 
+                    : (account.hold || 0);
                 
                 accountItem.innerHTML = `
                     <div class="flex justify-between items-start">

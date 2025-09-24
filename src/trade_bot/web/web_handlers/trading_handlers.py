@@ -83,6 +83,35 @@ class TradingHandlers:
             logger.error(f"Error getting live trading history: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
+    async def get_paginated_trading_history(self, page: int = 1, per_page: int = 10) -> Dict[str, Any]:
+        """Get paginated trading history."""
+        try:
+            # Get all trades from database
+            all_trades = self.database_manager.get_all_trades(limit=1000, offset=0)
+            total_trades = len(all_trades)
+            total_pages = (total_trades + per_page - 1) // per_page  # Ceiling division
+            
+            # Calculate offset for pagination
+            offset = (page - 1) * per_page
+            
+            # Get trades for current page
+            page_trades = all_trades[offset:offset + per_page]
+            
+            return {
+                "trades": page_trades,
+                "pagination": {
+                    "current_page": page,
+                    "per_page": per_page,
+                    "total_pages": total_pages,
+                    "total_trades": total_trades,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting paginated trading history: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
     async def get_all_trading_history(self, limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
         """Get all trading history from database."""
         try:
