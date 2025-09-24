@@ -5,6 +5,7 @@ This module handles live trading portfolio data from Coinbase API.
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import HTTPException
@@ -18,13 +19,48 @@ class LivePortfolioHandlers:
     
     def __init__(self, config, coinbase_portfolio_handler: CoinbasePortfolioHandler = None):
         self.config = config
+        
+        # Try to get credentials from config, with fallback to environment variables
+        api_key = getattr(config, 'api_key', None) or os.getenv('COINBASE_API_KEY', '')
+        api_secret = getattr(config, 'api_secret', None) or os.getenv('COINBASE_API_SECRET', '')
+        passphrase = getattr(config, 'passphrase', None) or os.getenv('COINBASE_PASSPHRASE', '')
+        
         self.coinbase_portfolio_handler = coinbase_portfolio_handler or CoinbasePortfolioHandler(
-            api_key=getattr(config, 'api_key', None),
-            api_secret=getattr(config, 'api_secret', None),
-            passphrase=getattr(config, 'passphrase', None)
+            api_key=api_key,
+            api_secret=api_secret,
+            passphrase=passphrase
         )
         self.last_portfolio_update = None
         self.cached_portfolio = None
+        
+        # Log credential status
+        if self.coinbase_portfolio_handler.has_credentials:
+            logger.info("✅ Live portfolio handlers initialized with Coinbase API credentials")
+        else:
+            logger.warning("⚠️ Live portfolio handlers initialized without Coinbase API credentials - using mock data")
+    
+    def _get_mock_portfolio_data(self) -> Dict[str, Any]:
+        """Get mock portfolio data when credentials are not available."""
+        return {
+            "total_balance_usd": 0.0,
+            "total_balance_btc": 0.0,
+            "accounts": [],
+            "last_updated": datetime.now().isoformat(),
+            "error": "No Coinbase API credentials configured. Please set COINBASE_API_KEY, COINBASE_API_SECRET, and COINBASE_PASSPHRASE environment variables.",
+            "has_credentials": False,
+            "is_live_trading": False,
+            "data_source": "mock_data",
+            "total_accounts": 0,
+            "usd_accounts": 0,
+            "crypto_accounts": 0,
+            "cash_balance": 0.0,
+            "total_value": 0.0,
+            "total_pnl": 0.0,
+            "active_positions": 0,
+            "daily_pnl": 0.0,
+            "setup_required": True,
+            "setup_message": "To use live trading, please configure your Coinbase API credentials in the environment variables."
+        }
     
     async def get_live_portfolio_status(self) -> Dict[str, Any]:
         """Get live portfolio status from Coinbase API."""
@@ -34,6 +70,11 @@ class LivePortfolioHandlers:
                 (datetime.now() - self.last_portfolio_update).seconds < 30):
                 logger.debug("Using cached portfolio data")
                 return self.cached_portfolio
+            
+            # Check if we have credentials before making API calls
+            if not self.coinbase_portfolio_handler.has_credentials:
+                logger.warning("No Coinbase API credentials available - returning mock data")
+                return self._get_mock_portfolio_data()
             
             # Fetch fresh portfolio data from Coinbase API
             portfolio = await self.coinbase_portfolio_handler.get_portfolio_summary()
@@ -64,6 +105,18 @@ class LivePortfolioHandlers:
     async def get_account_details(self, account_uuid: str = None) -> Dict[str, Any]:
         """Get detailed account information."""
         try:
+            # Check if we have credentials before making API calls
+            if not self.coinbase_portfolio_handler.has_credentials:
+                logger.warning("No Coinbase API credentials available - returning empty account data")
+                return {
+                    "accounts": [],
+                    "is_live_trading": False,
+                    "data_source": "mock_data",
+                    "error": "No Coinbase API credentials configured",
+                    "has_credentials": False,
+                    "setup_required": True
+                }
+            
             accounts = await self.coinbase_portfolio_handler.get_accounts()
             
             if account_uuid:
@@ -128,9 +181,12 @@ class LivePortfolioHandlers:
                     "data_source": portfolio_data.get("data_source", "unknown")
                 },
                 "accounts": portfolio_data.get("accounts", []),
-                "is_live_trading": True,
+                "is_live_trading": portfolio_data.get("is_live_trading", False),
                 "last_updated": portfolio_data.get("last_updated"),
-                "error": portfolio_data.get("error")
+                "error": portfolio_data.get("error"),
+                "has_credentials": portfolio_data.get("has_credentials", False),
+                "setup_required": portfolio_data.get("setup_required", False),
+                "setup_message": portfolio_data.get("setup_message", "")
             }
             
             return frontend_data
