@@ -4972,7 +4972,10 @@ class EnhancedTradingDashboard {
         if (positionsList) {
             positionsList.innerHTML = '';
             
-            positions.forEach(position => {
+            // Sort positions by allocation percentage (descending)
+            const sortedPositions = [...positions].sort((a, b) => (b.allocation || 0) - (a.allocation || 0));
+            
+            sortedPositions.forEach(position => {
                 const positionItem = document.createElement('div');
                 positionItem.className = 'bg-white rounded-lg p-3 border border-gray-200 hover:border-blue-300 transition-colors';
                 
