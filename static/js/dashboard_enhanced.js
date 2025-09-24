@@ -852,8 +852,13 @@ class EnhancedTradingDashboard {
     }
 
     updateOrderBookSignalsTable(signals) {
+        console.log('🔍 updateOrderBookSignalsTable called with signals:', signals);
         const tableBody = document.getElementById('orderbook-signals-table');
-        if (!tableBody) return;
+        console.log('🔍 orderbook-signals-table element:', tableBody);
+        if (!tableBody) {
+            console.log('❌ orderbook-signals-table element not found!');
+            return;
+        }
         
         if (signals.length === 0) {
             tableBody.innerHTML = `
