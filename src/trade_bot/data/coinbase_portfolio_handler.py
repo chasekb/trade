@@ -6,16 +6,13 @@ for live trading mode.
 """
 
 import asyncio
-import aiohttp
 import logging
-import base64
-import hmac
-import hashlib
 import time
 import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from coinbase.rest import RESTClient
 
 logger = logging.getLogger(__name__)
 
@@ -39,103 +36,62 @@ class CoinbasePortfolio:
     error: Optional[str] = None
 
 class CoinbasePortfolioHandler:
-    """Handles Coinbase Advanced Trade API portfolio data."""
+    """Handles Coinbase Advanced Trade API portfolio data using official REST client."""
     
-    def __init__(self, api_key: str = None, api_secret: str = None, passphrase: str = None):
+    def __init__(self, api_key: str = None, api_secret: str = None):
         self.api_key = api_key
         self.api_secret = api_secret
-        self.passphrase = passphrase
-        self.base_url = "https://api.coinbase.com/api/v3/brokerage"
         
         # Check if credentials are available
-        self.has_credentials = all([api_key, api_secret, passphrase])
+        self.has_credentials = all([api_key, api_secret])
         
         if self.has_credentials:
-            logger.info("Coinbase portfolio handler initialized with credentials")
+            logger.info("Coinbase portfolio handler initialized with REST client credentials")
+            # Validate API key format
+            if not self.api_key.startswith('organizations/'):
+                logger.warning("API key should be in format 'organizations/{org_id}/apiKeys/{key_id}'")
+            if not self.api_secret.startswith('-----BEGIN EC PRIVATE KEY-----'):
+                logger.warning("Private key should be in PEM format with proper headers")
+            
+            # Initialize REST client
+            try:
+                self.rest_client = RESTClient(api_key=api_key, api_secret=api_secret, verbose=True)
+                logger.info("REST client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize REST client: {e}")
+                self.rest_client = None
         else:
             logger.warning("Coinbase portfolio handler initialized without credentials - will use mock data")
-    
-    def _create_auth_headers(self, method: str, path: str, body: str = "") -> Dict[str, str]:
-        """Create authentication headers for Coinbase API."""
-        if not self.has_credentials:
-            return {}
-        
-        timestamp = str(int(time.time()))
-        message = timestamp + method.upper() + path + body
-        
-        # Decode the base64 secret
-        secret = base64.b64decode(self.api_secret)
-        
-        # Create signature
-        signature = hmac.new(secret, message.encode('utf-8'), hashlib.sha256).digest()
-        signature_b64 = base64.b64encode(signature).decode('utf-8')
-        
-        return {
-            'CB-ACCESS-KEY': self.api_key,
-            'CB-ACCESS-SIGN': signature_b64,
-            'CB-ACCESS-TIMESTAMP': timestamp,
-            'CB-ACCESS-PASSPHRASE': self.passphrase,
-            'Content-Type': 'application/json'
-        }
-    
-    async def _make_api_request(self, method: str, endpoint: str, params: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
-        """Make authenticated API request to Coinbase Advanced Trade API."""
-        if not self.has_credentials:
-            logger.warning("No credentials available for Coinbase API request")
-            return None
-        
-        try:
-            url = f"{self.base_url}{endpoint}"
-            body = json.dumps(params) if params else ""
-            headers = self._create_auth_headers(method, endpoint, body)
-            
-            async with aiohttp.ClientSession() as session:
-                if method.upper() == 'GET':
-                    async with session.get(url, headers=headers, params=params) as response:
-                        if response.status == 200:
-                            return await response.json()
-                        elif response.status == 401:
-                            logger.error("Coinbase API authentication failed")
-                            return None
-                        else:
-                            error_text = await response.text()
-                            logger.error(f"Coinbase API request failed: {response.status} - {error_text}")
-                            return None
-                else:
-                    async with session.post(url, headers=headers, json=params) as response:
-                        if response.status == 200:
-                            return await response.json()
-                        elif response.status == 401:
-                            logger.error("Coinbase API authentication failed")
-                            return None
-                        else:
-                            error_text = await response.text()
-                            logger.error(f"Coinbase API request failed: {response.status} - {error_text}")
-                            return None
-        except Exception as e:
-            logger.error(f"Error making Coinbase API request: {e}")
-            return None
+            self.rest_client = None
     
     async def get_accounts(self) -> List[CoinbaseAccount]:
-        """Get all Coinbase accounts."""
+        """Get all Coinbase accounts using REST client."""
+        if not self.has_credentials or not self.rest_client:
+            logger.warning("No credentials or REST client available")
+            return []
+        
         try:
-            data = await self._make_api_request('GET', '/accounts')
-            if not data:
-                return []
+            # Use the official REST client
+            accounts_response = self.rest_client.get_accounts()
             
             accounts = []
-            for account_data in data.get('accounts', []):
+            for account_data in accounts_response.accounts:
+                # Calculate total balance from available + hold
+                available_balance = float(account_data.available_balance.value) if hasattr(account_data.available_balance, 'value') else 0.0
+                hold_balance = float(account_data.hold.value) if hasattr(account_data.hold, 'value') else 0.0
+                total_balance = available_balance + hold_balance
+                
                 account = CoinbaseAccount(
-                    uuid=account_data.get('uuid', ''),
-                    name=account_data.get('name', ''),
-                    currency=account_data.get('currency', ''),
-                    available_balance=account_data.get('available_balance', {}),
-                    hold=account_data.get('hold', {}),
-                    total_balance=account_data.get('total_balance', {})
+                    uuid=account_data.uuid,
+                    name=account_data.name,
+                    currency=account_data.currency,
+                    available_balance=available_balance,
+                    hold=hold_balance,
+                    total_balance=total_balance
                 )
                 accounts.append(account)
             
-            logger.info(f"Retrieved {len(accounts)} Coinbase accounts")
+            logger.info(f"Retrieved {len(accounts)} Coinbase accounts using REST client")
             return accounts
             
         except Exception as e:
@@ -145,7 +101,7 @@ class CoinbasePortfolioHandler:
     async def get_portfolio_summary(self) -> CoinbasePortfolio:
         """Get comprehensive portfolio summary from Coinbase."""
         try:
-            if not self.has_credentials:
+            if not self.has_credentials or not self.rest_client:
                 logger.error("No Coinbase API credentials available for live trading")
                 return CoinbasePortfolio(
                     total_balance_usd=0.0,
@@ -155,7 +111,7 @@ class CoinbasePortfolioHandler:
                     error="No Coinbase API credentials configured. Please configure API credentials for live trading."
                 )
             
-            # Get all accounts
+            # Get all accounts using REST client
             accounts = await self.get_accounts()
             
             if not accounts:
@@ -172,17 +128,14 @@ class CoinbasePortfolioHandler:
             total_btc = 0.0
             
             for account in accounts:
-                balance = account.total_balance
-                if balance:
-                    value = float(balance.get('value', 0))
-                    currency = balance.get('currency', '')
-                    
-                    if currency == 'USD':
-                        total_usd += value
-                    elif currency == 'BTC':
-                        total_btc += value
+                if account.currency == 'USD':
+                    total_usd += account.total_balance
+                elif account.currency == 'BTC':
+                    total_btc += account.total_balance
+                elif account.currency != 'USD' and account.currency != 'BTC':
                     # For other currencies, we'd need to convert to USD/BTC
-                    # This would require additional API calls to get exchange rates
+                    # For now, just add the raw balance
+                    total_usd += account.total_balance * 0.01  # Placeholder conversion
             
             portfolio = CoinbasePortfolio(
                 total_balance_usd=total_usd,

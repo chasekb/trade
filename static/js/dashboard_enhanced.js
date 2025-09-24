@@ -4724,14 +4724,17 @@ class EnhancedTradingDashboard {
             const accountStatus = document.getElementById('account-access-status');
             const tradingStatus = document.getElementById('trading-permissions-status');
             
-            if (data.error) {
-                if (apiStatus) apiStatus.textContent = 'Error';
-                if (accountStatus) accountStatus.textContent = 'No Access';
-                if (tradingStatus) tradingStatus.textContent = 'No Permissions';
+            if (data.error || data.setup_required) {
+                if (apiStatus) apiStatus.textContent = 'Credentials Required';
+                if (accountStatus) accountStatus.textContent = 'Not Configured';
+                if (tradingStatus) tradingStatus.textContent = 'Setup Required';
                 
                 apiStatus.className = 'text-sm font-semibold text-red-600';
                 accountStatus.className = 'text-sm font-semibold text-red-600';
                 tradingStatus.className = 'text-sm font-semibold text-red-600';
+                
+                // Show setup message
+                this.showCredentialSetupMessage(data.setup_message || data.error);
             } else {
                 if (apiStatus) apiStatus.textContent = 'Connected';
                 if (accountStatus) accountStatus.textContent = 'Access Granted';
@@ -4740,6 +4743,9 @@ class EnhancedTradingDashboard {
                 apiStatus.className = 'text-sm font-semibold text-green-600';
                 accountStatus.className = 'text-sm font-semibold text-green-600';
                 tradingStatus.className = 'text-sm font-semibold text-green-600';
+                
+                // Hide setup message if it exists
+                this.hideCredentialSetupMessage();
             }
             
         } catch (error) {
@@ -4749,6 +4755,7 @@ class EnhancedTradingDashboard {
                 apiStatus.textContent = 'Connection Failed';
                 apiStatus.className = 'text-sm font-semibold text-red-600';
             }
+            this.showCredentialSetupMessage('Failed to connect to Coinbase API. Please check your credentials.');
         }
     }
     
@@ -4757,8 +4764,15 @@ class EnhancedTradingDashboard {
             const response = await fetch('/api/live-portfolio/summary');
             const data = await response.json();
             
-            if (data.error) {
+            if (data.error || data.setup_required) {
                 console.error('Error loading live portfolio:', data.error);
+                this.showCredentialSetupMessage(data.setup_message || data.error);
+                this.updateLivePortfolioDisplay({
+                    total_value: 0,
+                    cash_balance: 0,
+                    total_accounts: 0,
+                    data_source: 'error'
+                });
                 return;
             }
             
@@ -4767,6 +4781,7 @@ class EnhancedTradingDashboard {
             
         } catch (error) {
             console.error('Error loading live portfolio data:', error);
+            this.showCredentialSetupMessage('Failed to load portfolio data. Please check your credentials.');
         }
     }
     
