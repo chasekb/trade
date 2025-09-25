@@ -9,8 +9,10 @@ A comprehensive Python trading bot built with `coinbase-advanced-py` featuring r
 - **Intelligent Trading Strategies** (Simple Moving Average with Golden Cross/Death Cross)
 - **Risk Management** with stop-loss and take-profit mechanisms
 - **Data Storage** with CSV export for analysis
-- **Simulated Trading** with live portfolio management
+- **Simulated Trading** with live portfolio management and session-based tracking
 - **Order Book Analysis** with real-time signal generation
+- **Session Management** with isolated trading history per session
+- **Trade Classification** with simulated vs live trade tracking
 
 ### 📊 Web Dashboard
 - **Real-time Data Visualization** with live price updates
@@ -99,23 +101,32 @@ uv run python scripts/backtest_comprehensive.py
 ## 📊 Project Statistics
 
 ### Code Metrics
-- **Total Lines of Code**: ~44,000+ lines
-- **Python Files**: 23,887 lines (71 files)
-- **JavaScript Files**: 5,274 lines (3 files)
-- **HTML Templates**: 3,638 lines (6 files)
-- **Documentation**: 2,754 lines (22 files)
-- **Configuration**: 10,500+ lines (JSON, TOML, etc.)
+- **Total Lines of Code**: ~51,000+ lines
+- **Python Files**: 35,136 lines (143 files)
+- **JavaScript Files**: 7,275 lines (3 files)
+- **HTML Templates**: 5,287 lines (7 files)
+- **Documentation**: 3,609 lines (22 files)
+- **Configuration**: 41 files (JSON, TOML, YAML, etc.)
 
 ### Largest Components
-1. **`dashboard_enhanced.js`** - 4,633 lines (Frontend dashboard)
-2. **`trading_strategy.py`** - 3,440 lines (Trading strategies)
-3. **`web_server.py`** - 2,048 lines (FastAPI backend)
-4. **`dashboard_enhanced.html`** - 1,462 lines (UI templates)
-5. **`database_manager.py`** - 819 lines (Data persistence)
+1. **`dashboard_enhanced.js`** - 6,634 lines (Frontend dashboard)
+2. **`web_server.py`** - 2,480 lines (FastAPI backend)
+3. **`dashboard_enhanced.html`** - 2,250 lines (UI templates)
+4. **`database_manager.py`** - 1,207 lines (Data persistence)
+5. **`web_server_new.py`** - 737 lines (Enhanced web server)
+6. **`simulated_trading_manager.py`** - 707 lines (Trading simulation)
+7. **`data_handlers.py`** - 673 lines (Data processing)
 
 ## 🆕 Recent Updates
 
-### Latest Features (v2.0+)
+### Latest Features (v2.1.0 - 2025-09-24)
+- **Session-Based Trading History**: Trading history now only displays trades from current session
+- **Open Positions Count Fix**: Portfolio status widget correctly decreases when positions are closed
+- **Trade Classification**: Added `trade_type` field to distinguish simulated vs live trades
+- **Database Schema Updates**: Enhanced database with session filtering and trade classification
+- **Position Management**: Improved simulated trading position management and cleanup
+
+### Previous Features (v2.0+)
 - **Trading Statistics Widget**: Comprehensive real-time metrics dashboard
 - **Strategy Configuration Hide/Show**: Cleaner interface during active trading
 - **Session State Persistence**: Maintains trading state across page refreshes
