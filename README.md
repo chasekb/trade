@@ -310,44 +310,94 @@ uv run python -m pytest --cov=src/trade_bot
 
 ## 📈 API Endpoints
 
-### Web Dashboard API
+### 🏠 Web Dashboard API
 - `GET /` - Main dashboard page
-- `GET /api/real-time-data` - Current market data
-- `GET /api/historical-data` - Historical OHLCV data
-- `POST /api/run-backtest` - Execute backtest
-- `GET /api/trading-metrics` - Performance metrics
+- `GET /favicon.ico` - Favicon
 - `WebSocket /ws` - Real-time data stream
 
-### Live Trading API
-- `POST /api/simulated-trading/start` - Start simulated trading
-- `POST /api/simulated-trading/stop` - Stop simulated trading
-- `GET /api/simulated-trading/status` - Get trading status
-- `GET /api/portfolio/status` - Get portfolio information
-- `GET /api/positions` - Get open positions
-- `GET /api/trades/recent` - Get recent trades
+### 📊 Market Data API
+- `GET /api/real-time-data` - Current market data
+- `GET /api/historical-data` - Historical OHLCV data
+- `GET /api/candles` - Candlestick data
+- `GET /api/symbols` - Available trading symbols
+- `GET /api/products` - Available products
+- `GET /api/channels` - Available WebSocket channels
 
-### Trading Statistics API
+### 🤖 Trading API
+- `POST /api/trading/live/start` - Start live trading
+- `POST /api/trading/live/stop` - Stop live trading
+- `GET /api/trading/live/positions` - Get live positions
+- `POST /api/trading/live/close-position` - Close live position
+- `GET /api/trading/live/history` - Get live trading history
+
+### 🎮 Simulated Trading API
+- `POST /api/trading/simulated/start` - Start simulated trading
+- `POST /api/async-trading/start` - Start async trading session
+- `POST /api/trading/simulated/stop` - Stop simulated trading
+- `GET /api/trading/simulated/status` - Get simulated trading status
+- `GET /api/simulated-trading/status` - Alternative status endpoint
+- `POST /api/trading/simulated/process-signals` - Process trading signals
+- `POST /api/trading/simulated/reset` - Reset simulated trading
+- `POST /api/trading/simulated/add-symbols` - Add symbols to trading
+- `GET /api/async-trading/loading-status` - Get loading status
+
+### 📈 Trading Statistics API
 - `GET /api/trades/stats` - Comprehensive trading statistics
+- `GET /api/trades/paginated` - Paginated trading history (supports session filtering)
 - `GET /api/trades/session/{session_id}` - Session-specific trades
-- `GET /api/trades/symbol/{symbol}` - Symbol-specific trades
-- `GET /api/trades/recent` - Recent trades across all sessions
+- `GET /api/trading/history/all` - All trading history
+- `GET /api/trading/metrics` - Trading performance metrics
 
-### Order Book API
+### 💼 Portfolio Management API
+- `GET /api/live-portfolio/status` - Live portfolio status
+- `GET /api/live-portfolio/summary` - Portfolio summary
+- `GET /api/live-portfolio/accounts` - Portfolio accounts
+
+### 📊 Order Book Analysis API
 - `GET /api/orderbook/live-signals` - Live order book signals
-- `GET /api/orderbook/signals/paginated` - Paginated order book signals with time
-- `GET /api/orderbook/signals/{symbol}` - Symbol-specific signals
+- `GET /api/data/orderbook-signals` - Order book signals (alternative)
+- `GET /api/data/cache-stats` - Cache statistics
 
-### Session Management API
-- `POST /api/session/save` - Save trading session state
-- `GET /api/session/load/{session_id}` - Load trading session state
-- `POST /api/session/save-dashboard` - Save dashboard UI state
-- `GET /api/session/load-dashboard/{session_id}` - Load dashboard UI state
-- `GET /api/session/active` - Get active trading sessions
-- `POST /api/session/deactivate/{session_id}` - Deactivate session
+### 🔄 WebSocket Management API
+- `GET /api/websocket/subscriptions` - Get active subscriptions
+- `POST /api/websocket/subscribe` - Subscribe to channel
+- `POST /api/websocket/unsubscribe` - Unsubscribe from channel
+- `GET /api/websocket/status` - WebSocket connection status
+- `POST /api/websocket/toggle` - Toggle real-time data
+- `GET /api/subscriptions` - Alternative subscriptions endpoint
+- `GET /api/realtime-status` - Alternative real-time status
 
-### Health Check
+### 🧪 Backtesting API
+- `POST /api/backtest` - Execute backtest
+- `GET /api/backtest/results` - Get backtest results
+- `GET /api/backtest/history` - Get backtest history
+- `GET /api/backtest/{backtest_id}` - Get specific backtest
+- `GET /api/backtest/stats` - Get backtest statistics
+- `DELETE /api/backtest/{backtest_id}` - Delete backtest
+- `GET /api/backtest/filters` - Get backtest filters
+
+### 💾 Session Management API
+- `GET /api/session/active` - Get active sessions
+- `POST /api/session/save` - Save trading session
+- `POST /api/session/save-dashboard` - Save dashboard state
+- `GET /api/data/load-session/{session_id}` - Load session state
+- `GET /api/data/load-dashboard/{session_id}` - Load dashboard state
+- `POST /api/data/save-session` - Save session data
+- `POST /api/data/restore-trading` - Restore trading state
+- `POST /api/data/save-dashboard` - Save dashboard data
+
+### 📊 Data Management API
+- `GET /api/data/load-universe` - Load universe data
+- `GET /api/data/load-symbols` - Load symbols data
+- `GET /api/data/loading-status` - Get loading status
+- `POST /api/data/load-symbols` - Load remaining symbols
+- `GET /api/data/trading-state` - Get trading state
+- `GET /api/metrics/trading` - Trading metrics
+- `GET /api/metrics/data-summary` - Data summary metrics
+- `GET /api/data-summary` - Alternative data summary
+
+### 🏥 Health & Status API
 - `GET /api/health` - Server health status
-- `GET /api/realtime-status` - Real-time data collection status
 
 ## 🔧 Configuration Options
 

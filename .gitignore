@@ -55,7 +55,9 @@ test_outputs/
 # API Keys (never commit these)
 .env.local
 .env.production
-.env.staging*.db
+.env.staging
+.env copy
+*.db
 trading_cache.db
 backtests.db
 rules/
