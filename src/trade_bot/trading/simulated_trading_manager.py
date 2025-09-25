@@ -218,7 +218,8 @@ class SimulatedTradingManager:
                     'pnl': trade.pnl,
                     'fees': trade.fees,
                     'strategy_type': self.strategy_type,
-                    'strategy_params': self.strategy_params
+                    'strategy_params': self.strategy_params,
+                    'trade_type': 'simulated'
                 }
                 self.db_manager.save_trade(trade_data)
             except Exception as e:
@@ -605,6 +606,8 @@ class SimulatedTradingManager:
         """Close a position."""
         if symbol in self.positions:
             self.positions[symbol].status = 'closed'
+            # Remove the position from the active positions dictionary
+            del self.positions[symbol]
             logger.info(f"Closed position for {symbol}: {reason}")
     
     def get_open_positions(self) -> List[Dict[str, Any]]:

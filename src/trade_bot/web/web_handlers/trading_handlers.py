@@ -83,11 +83,15 @@ class TradingHandlers:
             logger.error(f"Error getting live trading history: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    async def get_paginated_trading_history(self, page: int = 1, per_page: int = 10) -> Dict[str, Any]:
-        """Get paginated trading history."""
+    async def get_paginated_trading_history(self, page: int = 1, per_page: int = 10, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get paginated trading history, optionally filtered by session_id."""
         try:
-            # Get all trades from database
-            all_trades = self.database_manager.get_all_trades(limit=1000, offset=0)
+            # Get trades from database, filtered by session_id if provided
+            if session_id:
+                all_trades = self.database_manager.get_trades_by_session(session_id)
+            else:
+                all_trades = self.database_manager.get_all_trades(limit=1000, offset=0)
+            
             total_trades = len(all_trades)
             total_pages = (total_trades + per_page - 1) // per_page  # Ceiling division
             
