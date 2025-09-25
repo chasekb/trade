@@ -97,6 +97,18 @@ class EnhancedTradingDashboard {
             lastTradeTime: null
         };
         this.statsUpdateInterval = null;
+
+        // Simulated trading stats
+        this.simulatedTradingStats = {
+            totalPnl: 0,
+            totalTrades: 0,
+            activePositions: 0,
+            totalValue: 0,
+            cashBalance: 0,
+            maxDrawdown: 0,
+            winRate: 0,
+            totalFees: 0
+        };
         
         // Strategy configuration visibility state
         this.strategyConfigHidden = false;
@@ -213,6 +225,69 @@ class EnhancedTradingDashboard {
         // Update win rate change (simplified)
         const winRateChange = this.tradingStats.winRate > 50 ? '+' : '';
         this.updateElement('win-rate-change', `${winRateChange}${(this.tradingStats.winRate - 50).toFixed(2)}%`);
+    }
+
+    // Simulated Trading Statistics Functions
+    async loadSimulatedTradingStats() {
+        try {
+            // Load stats from simulated trading API
+            const response = await fetch('/api/simulated-trading/status');
+            const data = await response.json();
+            
+            if (data.portfolio) {
+                this.updateSimulatedTradingStats(data.portfolio);
+            }
+        } catch (error) {
+            console.error('Error loading simulated trading stats:', error);
+        }
+    }
+    
+    updateSimulatedTradingStats(portfolioData) {
+        if (!portfolioData) return;
+        
+        // Update simulated trading stats
+        this.simulatedTradingStats = {
+            totalPnl: portfolioData.total_pnl || 0,
+            totalTrades: portfolioData.total_trades || 0,
+            activePositions: Object.keys(portfolioData.positions || {}).length,
+            totalValue: portfolioData.total_value || 0,
+            cashBalance: portfolioData.cash_balance || 0,
+            maxDrawdown: portfolioData.max_drawdown || 0,
+            winRate: portfolioData.win_rate || 0,
+            totalFees: portfolioData.total_fees || 0
+        };
+        
+        // Update UI
+        this.updateSimulatedTradingStatsUI();
+    }
+    
+    updateSimulatedTradingStatsUI() {
+        // Performance Metrics
+        this.updateElement('simulated-total-pnl', `$${this.simulatedTradingStats.totalPnl.toFixed(2)}`);
+        this.updateElement('simulated-win-rate', `${this.simulatedTradingStats.winRate.toFixed(2)}%`);
+        this.updateElement('simulated-total-trades', this.simulatedTradingStats.totalTrades.toString());
+        this.updateElement('simulated-active-positions', this.simulatedTradingStats.activePositions.toString());
+        
+        // Risk Metrics
+        this.updateElement('simulated-max-drawdown', `${this.simulatedTradingStats.maxDrawdown.toFixed(2)}%`);
+        this.updateElement('simulated-sharpe-ratio', '0.00'); // Calculate if needed
+        this.updateElement('simulated-risk-adjusted-return', '0.00%'); // Calculate if needed
+        
+        // Trading Activity
+        this.updateElement('simulated-trades-today-count', this.simulatedTradingStats.totalTrades.toString());
+        this.updateElement('simulated-avg-trade-size', `$${(this.simulatedTradingStats.totalValue / Math.max(this.simulatedTradingStats.totalTrades, 1)).toFixed(2)}`);
+        this.updateElement('simulated-total-volume', `$${this.simulatedTradingStats.totalValue.toFixed(2)}`);
+        
+        // Performance Trends (simplified for now)
+        this.updateElement('simulated-best-trade', `$${Math.max(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
+        this.updateElement('simulated-worst-trade', `$${Math.min(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
+        this.updateElement('simulated-avg-win', `$${Math.max(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
+        this.updateElement('simulated-avg-loss', `$${Math.min(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
+        
+        // Trading Activity Info
+        this.updateElement('simulated-last-trade-time', 'Active Session');
+        this.updateElement('simulated-active-positions-count', this.simulatedTradingStats.activePositions.toString());
+        this.updateElement('simulated-position-value', `$${this.simulatedTradingStats.totalValue.toFixed(2)} value`);
     }
     
     updateElement(id, value) {
@@ -594,9 +669,9 @@ class EnhancedTradingDashboard {
             }
         });
         
-        // Trading stats refresh button
-        document.getElementById('refresh-trading-stats')?.addEventListener('click', async () => {
-            await this.loadTradingStats();
+        // Simulated trading stats refresh button
+        document.getElementById('refresh-simulated-trading-stats')?.addEventListener('click', async () => {
+            await this.loadSimulatedTradingStats();
         });
         
         // Strategy configuration hide/show buttons
@@ -881,24 +956,24 @@ class EnhancedTradingDashboard {
         
         tableBody.innerHTML = signals.map(signal => {
             try {
-                // Determine signal class based on signal and data status
-                let signalClass = 'text-gray-600 bg-gray-50';
-                if (signal.data_status === 'sufficient') {
-                    signalClass = signal.signal === 'buy' ? 'text-green-600 bg-green-50' : 
-                                 signal.signal === 'sell' ? 'text-red-600 bg-red-50' : 
-                                 'text-gray-600 bg-gray-50';
-                } else if (signal.data_status === 'insufficient') {
-                    signalClass = 'text-yellow-600 bg-yellow-50';
-                } else {
-                    signalClass = 'text-gray-400 bg-gray-100';
-                }
-                
+            // Determine signal class based on signal and data status
+            let signalClass = 'text-gray-600 bg-gray-50';
+            if (signal.data_status === 'sufficient') {
+                signalClass = signal.signal === 'buy' ? 'text-green-600 bg-green-50' : 
+                             signal.signal === 'sell' ? 'text-red-600 bg-red-50' : 
+                             'text-gray-600 bg-gray-50';
+            } else if (signal.data_status === 'insufficient') {
+                signalClass = 'text-yellow-600 bg-yellow-50';
+            } else {
+                signalClass = 'text-gray-400 bg-gray-100';
+            }
+            
                 const strengthColor = (signal.signal_strength || 0) >= 0.7 ? 'text-green-600' : 
                                      (signal.signal_strength || 0) >= 0.4 ? 'text-yellow-600' : 
-                                     'text-red-600';
-                
+                                 'text-red-600';
+            
                 // Get criteria analysis with safe defaults
-                const criteria = signal.criteria_analysis || {};
+            const criteria = signal.criteria_analysis || {};
                 const squeeze = criteria.bid_ask_squeeze || { enabled: false, meets_criteria: false, delta_to_threshold: 0, threshold_spread: 0 };
                 const imbalanceBuy = criteria.volume_imbalance_buy || { enabled: false, meets_criteria: false, delta_to_threshold: 0, threshold: 0 };
                 const imbalanceSell = criteria.volume_imbalance_sell || { enabled: false, meets_criteria: false, delta_to_threshold: 0, threshold: 0 };
@@ -2105,6 +2180,9 @@ class EnhancedTradingDashboard {
             totalPnl = portfolioData.total_pnl || 0;
             openPositions = portfolioData.positions ? Object.keys(portfolioData.positions).length : 0;
             dataSource = 'simulated';
+            
+            // Update simulated trading statistics
+            this.updateSimulatedTradingStats(portfolioData);
         }
 
         // Update available balance

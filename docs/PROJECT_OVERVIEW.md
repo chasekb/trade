@@ -9,6 +9,9 @@ This is a comprehensive Python trading bot built with `coinbase-advanced-py` tha
 - **Modern Web Dashboard** with interactive charts
 - **Risk Management** with stop-loss and take-profit
 - **Performance Analytics** with detailed metrics
+- **Session-Based Trading** with isolated trading history per session
+- **Simulated Trading** with live portfolio management
+- **Trade Classification** with simulated vs live trade tracking
 
 ## 🏗️ Architecture
 
@@ -141,7 +144,29 @@ uv run python scripts/backtest.py
 uv run python scripts/backtest_comprehensive.py
 ```
 
-### 4. Testing
+### 4. Simulated Trading
+
+```bash
+# Start simulated trading session
+curl -X POST "http://localhost:8001/api/async-trading/start" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbols": ["BTC-USD", "ETH-USD"],
+    "strategy_type": "orderbook",
+    "strategy_params": {},
+    "initial_balance": 10000.0,
+    "max_positions": 3,
+    "position_size_percent": 20.0
+  }'
+
+# Get trading history for specific session
+curl "http://localhost:8001/api/trades/paginated?session_id=sim_abc123_1234567890&page=1&limit=10"
+
+# Get simulated trading status
+curl "http://localhost:8001/api/simulated-trading/status"
+```
+
+### 5. Testing
 
 ```bash
 # Run all tests

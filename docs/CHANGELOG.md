@@ -1,5 +1,35 @@
 # 📝 Changelog
 
+## [2.1.0] - 2025-09-24
+
+### 🔧 Simulated Trading Improvements
+
+#### Session Management
+- ✅ **Session-Based Trading History** - Trading history now only displays trades from the current trading session
+- ✅ **Session ID Filtering** - API endpoints support filtering trades by session ID
+- ✅ **Clean Session Management** - Removed unnecessary session saving/restoring for trading history
+
+#### Database Enhancements
+- ✅ **Trade Type Classification** - Added `trade_type` field to distinguish simulated vs live trades
+- ✅ **Simulated Trade Marking** - All simulated trades are now properly marked as 'simulated' in database
+- ✅ **Database Schema Update** - Added `trade_type` column to `individual_trades` table
+
+#### Portfolio Status Fixes
+- ✅ **Open Positions Count Fix** - Portfolio status widget now correctly decreases when positions are closed
+- ✅ **Position Management** - Closed positions are properly removed from active positions dictionary
+- ✅ **Real-time Updates** - Portfolio status accurately reflects current open positions
+
+#### API Improvements
+- ✅ **Enhanced Pagination** - Trading history API supports session-based filtering
+- ✅ **Better Data Structure** - Improved trade data structure with trade type information
+- ✅ **Consistent Session Tracking** - All simulated trades properly associated with session IDs
+
+### 🐛 Bug Fixes
+- Fixed open positions count not decreasing when positions are closed
+- Fixed trading history showing all trades instead of current session trades
+- Fixed simulated trades not being properly marked in database
+- Improved position management in simulated trading manager
+
 ## [2.0.0] - 2025-09-13
 
 ### 🚀 Major Features Added
