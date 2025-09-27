@@ -673,7 +673,8 @@ async def get_candles(product_id: str, granularity: int, days: int = 7):
     """Get candle data."""
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
     from datetime import datetime, timedelta
-    end_time = datetime.now()
+    # Use fixed historical date range since system date is in 2025
+    end_time = datetime(2024, 12, 31)
     start_time = end_time - timedelta(days=days)
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_candles_data(

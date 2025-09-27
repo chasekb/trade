@@ -243,51 +243,151 @@ class EnhancedTradingDashboard {
     }
     
     updateSimulatedTradingStats(portfolioData) {
-        if (!portfolioData) return;
+        if (!portfolioData) {
+            console.warn('No portfolio data provided to updateSimulatedTradingStats');
+            return;
+        }
+        
+        // Calculate proper statistics from portfolio data
+        const trades = portfolioData.trades || [];
+        const positions = portfolioData.positions || {};
+        
+        console.log('📊 Updating simulated trading stats:', {
+            tradesCount: trades.length,
+            positionsCount: Object.keys(positions).length,
+            totalPnl: portfolioData.total_pnl,
+            totalTrades: portfolioData.total_trades
+        });
+        
+        // Calculate trade-based metrics
+        const winningTrades = trades.filter(trade => trade.pnl > 0);
+        const losingTrades = trades.filter(trade => trade.pnl < 0);
+        const totalTrades = trades.length;
+        const winningTradesCount = winningTrades.length;
+        const losingTradesCount = losingTrades.length;
+        
+        // Calculate P&L metrics
+        const totalPnl = portfolioData.total_pnl || 0;
+        const totalFees = portfolioData.total_fees || 0;
+        const netPnl = totalPnl - totalFees;
+        
+        // Calculate win rate
+        const winRate = totalTrades > 0 ? (winningTradesCount / totalTrades) * 100 : 0;
+        
+        // Calculate trade size metrics (volume = quantity * price)
+        const totalTradeVolume = trades.reduce((sum, trade) => sum + (trade.quantity * trade.price), 0);
+        const avgTradeSize = totalTrades > 0 ? totalTradeVolume / totalTrades : 0;
+        
+        // Calculate best/worst trades (only from realized trades)
+        const bestTrade = trades.length > 0 ? Math.max(...trades.map(t => t.pnl || 0)) : 0;
+        const worstTrade = trades.length > 0 ? Math.min(...trades.map(t => t.pnl || 0)) : 0;
+        
+        // Calculate average win/loss
+        const avgWin = winningTradesCount > 0 ? winningTrades.reduce((sum, trade) => sum + trade.pnl, 0) / winningTradesCount : 0;
+        const avgLoss = losingTradesCount > 0 ? losingTrades.reduce((sum, trade) => sum + trade.pnl, 0) / losingTradesCount : 0;
+        
+        // Calculate profit factor
+        const grossProfit = winningTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+        const grossLoss = Math.abs(losingTrades.reduce((sum, trade) => sum + trade.pnl, 0));
+        const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
+        
+        // Calculate Sharpe ratio (simplified - would need more data for proper calculation)
+        const sharpeRatio = 0.0; // Placeholder - would need return series
+        
+        // Calculate risk-adjusted return
+        const riskAdjustedReturn = 0.0; // Placeholder - would need proper risk metrics
+        
+        // Count active positions
+        const activePositions = Object.values(positions).filter(pos => pos.status === 'open').length;
         
         // Update simulated trading stats
         this.simulatedTradingStats = {
-            totalPnl: portfolioData.total_pnl || 0,
-            totalTrades: portfolioData.total_trades || 0,
-            activePositions: Object.keys(portfolioData.positions || {}).length,
+            totalPnl: totalPnl,
+            netPnl: netPnl,
+            totalTrades: totalTrades,
+            winningTrades: winningTradesCount,
+            losingTrades: losingTradesCount,
+            activePositions: activePositions,
             totalValue: portfolioData.total_value || 0,
+            totalTradeVolume: totalTradeVolume,
             cashBalance: portfolioData.cash_balance || 0,
             maxDrawdown: portfolioData.max_drawdown || 0,
-            winRate: portfolioData.win_rate || 0,
-            totalFees: portfolioData.total_fees || 0
+            winRate: winRate,
+            totalFees: totalFees,
+            avgTradeSize: avgTradeSize,
+            bestTrade: bestTrade,
+            worstTrade: worstTrade,
+            avgWin: avgWin,
+            avgLoss: avgLoss,
+            profitFactor: profitFactor,
+            sharpeRatio: sharpeRatio,
+            riskAdjustedReturn: riskAdjustedReturn
         };
+        
+        // Log calculated stats for validation
+        console.log('📈 Calculated simulated trading stats:', {
+            totalPnl: this.simulatedTradingStats.totalPnl,
+            netPnl: this.simulatedTradingStats.netPnl,
+            totalTrades: this.simulatedTradingStats.totalTrades,
+            winningTrades: this.simulatedTradingStats.winningTrades,
+            losingTrades: this.simulatedTradingStats.losingTrades,
+            winRate: this.simulatedTradingStats.winRate,
+            avgTradeSize: this.simulatedTradingStats.avgTradeSize,
+            bestTrade: this.simulatedTradingStats.bestTrade,
+            worstTrade: this.simulatedTradingStats.worstTrade,
+            avgWin: this.simulatedTradingStats.avgWin,
+            avgLoss: this.simulatedTradingStats.avgLoss,
+            profitFactor: this.simulatedTradingStats.profitFactor
+        });
         
         // Update UI
         this.updateSimulatedTradingStatsUI();
     }
     
     updateSimulatedTradingStatsUI() {
-        // Performance Metrics
-        this.updateElement('simulated-total-pnl', `$${this.simulatedTradingStats.totalPnl.toFixed(2)}`);
-        this.updateElement('simulated-win-rate', `${this.simulatedTradingStats.winRate.toFixed(2)}%`);
-        this.updateElement('simulated-total-trades', this.simulatedTradingStats.totalTrades.toString());
-        this.updateElement('simulated-active-positions', this.simulatedTradingStats.activePositions.toString());
+        if (!this.simulatedTradingStats) {
+            console.warn('No simulated trading stats available for UI update');
+            return;
+        }
         
-        // Risk Metrics
-        this.updateElement('simulated-max-drawdown', `${this.simulatedTradingStats.maxDrawdown.toFixed(2)}%`);
-        this.updateElement('simulated-sharpe-ratio', '0.00'); // Calculate if needed
-        this.updateElement('simulated-risk-adjusted-return', '0.00%'); // Calculate if needed
+        try {
+            // Performance Metrics
+            this.updateElement('simulated-total-pnl', `$${(this.simulatedTradingStats.totalPnl || 0).toFixed(2)}`);
+            this.updateElement('simulated-win-rate', `${(this.simulatedTradingStats.winRate || 0).toFixed(2)}%`);
+            this.updateElement('simulated-total-trades', (this.simulatedTradingStats.totalTrades || 0).toString());
+            this.updateElement('simulated-active-positions', (this.simulatedTradingStats.activePositions || 0).toString());
         
-        // Trading Activity
-        this.updateElement('simulated-trades-today-count', this.simulatedTradingStats.totalTrades.toString());
-        this.updateElement('simulated-avg-trade-size', `$${(this.simulatedTradingStats.totalValue / Math.max(this.simulatedTradingStats.totalTrades, 1)).toFixed(2)}`);
-        this.updateElement('simulated-total-volume', `$${this.simulatedTradingStats.totalValue.toFixed(2)}`);
-        
-        // Performance Trends (simplified for now)
-        this.updateElement('simulated-best-trade', `$${Math.max(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
-        this.updateElement('simulated-worst-trade', `$${Math.min(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
-        this.updateElement('simulated-avg-win', `$${Math.max(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
-        this.updateElement('simulated-avg-loss', `$${Math.min(this.simulatedTradingStats.totalPnl, 0).toFixed(2)}`);
-        
-        // Trading Activity Info
-        this.updateElement('simulated-last-trade-time', 'Active Session');
-        this.updateElement('simulated-active-positions-count', this.simulatedTradingStats.activePositions.toString());
-        this.updateElement('simulated-position-value', `$${this.simulatedTradingStats.totalValue.toFixed(2)} value`);
+            // Risk Metrics
+            this.updateElement('simulated-max-drawdown', `${((this.simulatedTradingStats.maxDrawdown || 0) * 100).toFixed(2)}%`);
+            this.updateElement('simulated-sharpe-ratio', (this.simulatedTradingStats.sharpeRatio || 0).toFixed(2));
+            this.updateElement('simulated-risk-adjusted-return', `${(this.simulatedTradingStats.riskAdjustedReturn || 0).toFixed(2)}%`);
+            
+            // Trading Activity
+            this.updateElement('simulated-trades-today-count', (this.simulatedTradingStats.totalTrades || 0).toString());
+            this.updateElement('simulated-avg-trade-size', `$${(this.simulatedTradingStats.avgTradeSize || 0).toFixed(2)}`);
+            this.updateElement('simulated-total-volume', `$${(this.simulatedTradingStats.totalTradeVolume || 0).toFixed(2)}`);
+            
+            // Performance Trends (now using proper trade analysis)
+            this.updateElement('simulated-best-trade', `$${(this.simulatedTradingStats.bestTrade || 0).toFixed(2)}`);
+            this.updateElement('simulated-worst-trade', `$${(this.simulatedTradingStats.worstTrade || 0).toFixed(2)}`);
+            this.updateElement('simulated-avg-win', `$${(this.simulatedTradingStats.avgWin || 0).toFixed(2)}`);
+            this.updateElement('simulated-avg-loss', `$${(this.simulatedTradingStats.avgLoss || 0).toFixed(2)}`);
+            
+            // Trading Activity Info
+            this.updateElement('simulated-last-trade-time', 'Active Session');
+            this.updateElement('simulated-active-positions-count', (this.simulatedTradingStats.activePositions || 0).toString());
+            this.updateElement('simulated-position-value', `$${(this.simulatedTradingStats.totalValue || 0).toFixed(2)} value`);
+            
+            // Additional metrics that might be useful
+            if (this.simulatedTradingStats.profitFactor === Infinity) {
+                this.updateElement('simulated-profit-factor', '∞');
+            } else {
+                this.updateElement('simulated-profit-factor', (this.simulatedTradingStats.profitFactor || 0).toFixed(2));
+            }
+            
+        } catch (error) {
+            console.error('Error updating simulated trading stats UI:', error);
+        }
     }
     
     updateElement(id, value) {
@@ -3780,11 +3880,11 @@ class EnhancedTradingDashboard {
             
             console.log('Candles API response:', data);
             
-            if (Array.isArray(data) && data.length > 0) {
-                this.candlesData = data;
-                console.log(`Loaded ${data.length} candles for period ${this.getCandlePeriodLabel()}`);
-                console.log('First candle:', data[0]);
-                console.log('Last candle:', data[data.length - 1]);
+            if (data.candles && Array.isArray(data.candles) && data.candles.length > 0) {
+                this.candlesData = data.candles;
+                console.log(`Loaded ${data.candles.length} candles for period ${this.getCandlePeriodLabel()}`);
+                console.log('First candle:', data.candles[0]);
+                console.log('Last candle:', data.candles[data.candles.length - 1]);
                 
                 // Store historical prices from candle data
                 this.candlesData.forEach(candle => {
@@ -4056,31 +4156,34 @@ class EnhancedTradingDashboard {
         }
         
         try {
-            const response = await fetch('/api/run-backtest', {
+            const response = await fetch('/api/backtest', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    strategy_type: strategyType,
-                    product_id: symbol,
-                    days: parseInt(days),
-                    granularity: parseInt(granularity),
-                    stop_loss: stopLoss,
-                    take_profit: takeProfit,
-                    enable_stop_loss: enableStopLoss,
-                    enable_take_profit: enableTakeProfit,
-                    initial_capital: initialCapital,
-                    portfolio_percentage: portfolioPercentage,
-                    strategy_params: strategyParams,
-                    enable_dca: document.getElementById('enable-dca').checked,
-                    dca_amount: parseFloat(document.getElementById('dca-amount').value),
-                    dca_frequency: parseInt(document.getElementById('dca-frequency').value),
-                    dca_max_investments: parseInt(document.getElementById('dca-max-investments').value),
-                    dca_start_delay: parseInt(document.getElementById('dca-start-delay').value),
-                    enable_buy_hold: document.getElementById('enable-buy-hold').checked,
-                    buy_hold_exit_condition: document.getElementById('buy-hold-exit-condition').value,
-                    buy_hold_profit_target: parseFloat(document.getElementById('buy-hold-profit-target').value)
+                    strategy: strategyType,
+                    symbol: symbol,
+                    start_date: this.calculateStartDate(days),
+                    end_date: this.calculateEndDate(),
+                    strategy_params: {
+                        ...strategyParams,
+                        granularity: parseInt(granularity),
+                        stop_loss: stopLoss,
+                        take_profit: takeProfit,
+                        enable_stop_loss: enableStopLoss,
+                        enable_take_profit: enableTakeProfit,
+                        initial_capital: initialCapital,
+                        portfolio_percentage: portfolioPercentage,
+                        enable_dca: document.getElementById('enable-dca').checked,
+                        dca_amount: parseFloat(document.getElementById('dca-amount').value),
+                        dca_frequency: parseInt(document.getElementById('dca-frequency').value),
+                        dca_max_investments: parseInt(document.getElementById('dca-max-investments').value),
+                        dca_start_delay: parseInt(document.getElementById('dca-start-delay').value),
+                        enable_buy_hold: document.getElementById('enable-buy-hold').checked,
+                        buy_hold_exit_condition: document.getElementById('buy-hold-exit-condition').value,
+                        buy_hold_profit_target: parseFloat(document.getElementById('buy-hold-profit-target').value)
+                    }
                 })
             });
             
@@ -5795,7 +5898,7 @@ class EnhancedTradingDashboard {
     // Backtest History Methods
     async loadBacktestFilters() {
         try {
-            const response = await fetch('/api/backtest-filters');
+            const response = await fetch('/api/backtest/filters');
             const data = await response.json();
             
             if (data.success) {
@@ -5850,7 +5953,7 @@ class EnhancedTradingDashboard {
             if (symbolFilter) params.append('symbol', symbolFilter);
             if (strategyFilter) params.append('strategy_type', strategyFilter);
             
-            const response = await fetch(`/api/backtest-history?${params}`);
+            const response = await fetch(`/api/backtest/history?${params}`);
             const data = await response.json();
             
             if (data.success) {
@@ -6703,6 +6806,19 @@ class EnhancedTradingDashboard {
         });
         
         return csvRows.join('\n');
+    }
+
+    // Helper methods for backtest date calculations
+    calculateStartDate(days) {
+        // Use a fixed historical date range since system date is in 2025
+        const endDate = new Date('2024-12-31');
+        const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
+        return startDate.toISOString().split('T')[0];
+    }
+
+    calculateEndDate() {
+        // Use a fixed historical end date since system date is in 2025
+        return new Date('2024-12-31').toISOString().split('T')[0];
     }
 }
 

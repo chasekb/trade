@@ -71,7 +71,7 @@ class LivePortfolioHandlers:
             active_positions = portfolio.active_positions or []
             portfolio_dict.update({
                 "is_live_trading": True,
-                "data_source": "coinbase_api" if self.coinbase_portfolio_handler.has_credentials else "mock_data",
+                "data_source": "coinbase_api",
                 "total_accounts": len(portfolio.accounts),
                 "active_positions": len(active_positions),
                 "usd_accounts": len([acc for acc in portfolio.accounts if acc.currency == "USD"]),
@@ -126,7 +126,7 @@ class LivePortfolioHandlers:
                         "total_balance": account.total_balance
                     },
                     "is_live_trading": True,
-                    "data_source": "coinbase_api" if self.coinbase_portfolio_handler.has_credentials else "mock_data"
+                    "data_source": "coinbase_api"
                 }
             else:
                 # Return all accounts
@@ -144,7 +144,7 @@ class LivePortfolioHandlers:
                     ],
                     "total_accounts": len(accounts),
                     "is_live_trading": True,
-                    "data_source": "coinbase_api" if self.coinbase_portfolio_handler.has_credentials else "mock_data"
+                    "data_source": "coinbase_api"
                 }
                 
         except Exception as e:

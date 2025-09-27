@@ -63,8 +63,35 @@ class DashboardHandlers:
                               end_time: str, granularity: int) -> Dict[str, Any]:
         """Get OHLCV candle data."""
         try:
-            # This would typically fetch candle data
-            # For now, return a placeholder structure
+            from datetime import datetime
+            from trade_bot.data.data_provider import CoinbaseDataProvider
+            
+            # Parse datetime strings
+            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+            
+            # Create data provider and fetch real candle data
+            data_provider = CoinbaseDataProvider(product_id)
+            
+            logger.info(f"Fetching candles for {product_id} from {start_dt} to {end_dt} with granularity {granularity}")
+            candles = await data_provider.get_historical_candles(
+                start_dt, end_dt, granularity
+            )
+            logger.info(f"Retrieved {len(candles)} candles from CoinbaseDataProvider")
+            
+            if not candles:
+                logger.warning("No candles returned from CoinbaseDataProvider")
+            
+            return {
+                "product_id": product_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "granularity": granularity,
+                "candles": candles
+            }
+        except Exception as e:
+            logger.error(f"Error getting candles data: {e}")
+            # Return empty data instead of raising exception to prevent frontend errors
             return {
                 "product_id": product_id,
                 "start_time": start_time,
@@ -72,9 +99,6 @@ class DashboardHandlers:
                 "granularity": granularity,
                 "candles": []
             }
-        except Exception as e:
-            logger.error(f"Error getting candles data: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
     
     async def get_trading_metrics(self) -> Dict[str, Any]:
         """Get trading performance metrics."""

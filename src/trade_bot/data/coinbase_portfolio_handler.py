@@ -73,7 +73,7 @@ class CoinbasePortfolioHandler:
                 logger.error(f"Failed to initialize REST client: {e}")
                 self.rest_client = None
         else:
-            logger.warning("Coinbase portfolio handler initialized without credentials - will use mock data")
+            logger.warning("Coinbase portfolio handler initialized without credentials - API calls will fail")
             self.rest_client = None
     
     async def get_accounts(self) -> List[CoinbaseAccount]:

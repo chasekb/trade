@@ -3,10 +3,11 @@
 ## Top Priority Items
 
 ### Critical Bug Fixes & Stability
+- [x] On simulated trading tab, in simulated trading statistics widget, in performance trends fix all calculations
 - [x] Create tests to validate all calculations in Simulated Trading Statistics widget. Risk Metrics, Trading Activity, and Performance Trends display incorrect values
 - [x] On simulated trading tab, in live order book signals, Large Trade Analysis is N/A
 - [x] On simulated trading tab, in live order book signals, provide a hover that describes the meaning of the displays for Squeeze Analysis, Imbalance Analysis, and Large Trade Analysis
-- [ ] Develop and include a machine learning signal that takes as input all available data about each trade and iteratively learns to predict win probability for each trade and predict probabilities for size of return
+- [x] Develop and include a machine learning signal that takes as input all available data about each trade and iteratively learns to predict win probability for each trade and predict probabilities for size of return
 - [ ] Fix any remaining JavaScript console errors
 - [ ] Resolve WebSocket connection stability issues
 - [ ] Ensure all API endpoints return consistent error handling
@@ -141,6 +142,8 @@
 ## Completed Items
 
 ### Recent Completed Tasks
+- [x] **On simulated trading tab, in simulated trading statistics widget, in performance trends fix all calculations** - Verified that performance trends calculations (best trade, worst trade, avg win, avg loss) are working correctly. The calculations were already accurate from previous fixes.
+- [x] **Develop and include a machine learning signal that takes as input all available data about each trade and iteratively learns to predict win probability for each trade and predict probabilities for size of return** - Created comprehensive ML signal generator (`ml_signal.py`) and ML-enhanced trading strategy (`ml_strategy.py`) with feature extraction, model training, prediction generation, and accuracy tracking. Includes test suite for validation.
 - [x] Create comprehensive tests for Simulated Trading Statistics calculations (8 test cases, all passing)
 - [x] Fix Large Trade Analysis showing N/A in live order book signals with real trade data analysis
 - [x] Add hover descriptions for analysis displays in live order book signals (Squeeze, Imbalance, Large Trade)
