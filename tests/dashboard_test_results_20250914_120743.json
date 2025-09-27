@@ -1,0 +1,251 @@
+{
+  "total_tests": 7,
+  "passed_tests": 4,
+  "failed_tests": 3,
+  "success_rate": 57.14285714285714,
+  "duration_seconds": 4.975112199783325,
+  "test_results": {
+    "Server Connectivity": true,
+    "Data Summary Endpoint": false,
+    "Backtest Filters Endpoint": true,
+    "Backtest Execution": true,
+    "WebSocket Connectivity": true,
+    "Data Consistency": false,
+    "Error Handling": false
+  },
+  "detailed_results": [
+    {
+      "test_name": "Server Connectivity",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Server response: 200",
+      "timestamp": "2025-09-14T12:07:38.167714"
+    },
+    {
+      "test_name": "Trading Metrics Endpoint",
+      "expected": "Status 200",
+      "actual": "Status 500",
+      "passed": false,
+      "details": "Endpoint not accessible",
+      "timestamp": "2025-09-14T12:07:38.175850"
+    },
+    {
+      "test_name": "Backtest Filters Structure",
+      "expected": [
+        "symbols",
+        "strategies"
+      ],
+      "actual": [
+        "success",
+        "symbols",
+        "strategies"
+      ],
+      "passed": true,
+      "details": "Keys present: True",
+      "timestamp": "2025-09-14T12:07:38.231421"
+    },
+    {
+      "test_name": "Symbols Available",
+      "expected": "Non-empty list",
+      "actual": "List with 4 items",
+      "passed": true,
+      "details": "Symbols: ['ADA-USD', 'BTC-USD', 'ETH-USD', 'SOL-USD']",
+      "timestamp": "2025-09-14T12:07:38.231508"
+    },
+    {
+      "test_name": "Strategies Available",
+      "expected": "Non-empty list",
+      "actual": "List with 8 items",
+      "passed": true,
+      "details": "Strategies: ['atr', 'bollinger', 'ema', 'fibonacci', 'orderbook', 'rsi', 'sma', 'stochastic']",
+      "timestamp": "2025-09-14T12:07:38.231574"
+    },
+    {
+      "test_name": "Backtest Result Structure - SMA Strategy",
+      "expected": [
+        "total_trades",
+        "total_signals",
+        "start_date",
+        "end_date",
+        "total_return",
+        "win_rate"
+      ],
+      "actual": [
+        "total_trades",
+        "winning_trades",
+        "losing_trades",
+        "win_rate",
+        "total_return",
+        "max_drawdown",
+        "sharpe_ratio",
+        "profit_factor",
+        "avg_win",
+        "avg_loss",
+        "largest_win",
+        "largest_loss",
+        "total_fees",
+        "net_profit",
+        "start_date",
+        "end_date",
+        "initial_balance",
+        "final_balance",
+        "total_signals",
+        "signals_by_type",
+        "signal_rate",
+        "no_signal_count"
+      ],
+      "passed": true,
+      "details": "Missing: set()",
+      "timestamp": "2025-09-14T12:07:38.464736"
+    },
+    {
+      "test_name": "Backtest Result Types - SMA Strategy",
+      "expected": "All correct types",
+      "actual": "4/4 correct",
+      "passed": true,
+      "details": "Type validation: [True, True, True, True]",
+      "timestamp": "2025-09-14T12:07:38.464843"
+    },
+    {
+      "test_name": "Backtest Result Structure - RSI Strategy",
+      "expected": [
+        "total_trades",
+        "total_signals",
+        "start_date",
+        "end_date",
+        "total_return",
+        "win_rate"
+      ],
+      "actual": [
+        "total_trades",
+        "winning_trades",
+        "losing_trades",
+        "win_rate",
+        "total_return",
+        "max_drawdown",
+        "sharpe_ratio",
+        "profit_factor",
+        "avg_win",
+        "avg_loss",
+        "largest_win",
+        "largest_loss",
+        "total_fees",
+        "net_profit",
+        "start_date",
+        "end_date",
+        "initial_balance",
+        "final_balance",
+        "total_signals",
+        "signals_by_type",
+        "signal_rate",
+        "no_signal_count"
+      ],
+      "passed": true,
+      "details": "Missing: set()",
+      "timestamp": "2025-09-14T12:07:38.827157"
+    },
+    {
+      "test_name": "Backtest Result Types - RSI Strategy",
+      "expected": "All correct types",
+      "actual": "4/4 correct",
+      "passed": true,
+      "details": "Type validation: [True, True, True, True]",
+      "timestamp": "2025-09-14T12:07:38.827272"
+    },
+    {
+      "test_name": "Backtest Result Structure - Fibonacci Strategy",
+      "expected": [
+        "total_trades",
+        "total_signals",
+        "start_date",
+        "end_date",
+        "total_return",
+        "win_rate"
+      ],
+      "actual": [
+        "total_trades",
+        "winning_trades",
+        "losing_trades",
+        "win_rate",
+        "total_return",
+        "max_drawdown",
+        "sharpe_ratio",
+        "profit_factor",
+        "avg_win",
+        "avg_loss",
+        "largest_win",
+        "largest_loss",
+        "total_fees",
+        "net_profit",
+        "start_date",
+        "end_date",
+        "initial_balance",
+        "final_balance",
+        "total_signals",
+        "signals_by_type",
+        "signal_rate",
+        "no_signal_count"
+      ],
+      "passed": true,
+      "details": "Missing: set()",
+      "timestamp": "2025-09-14T12:07:39.470010"
+    },
+    {
+      "test_name": "Backtest Result Types - Fibonacci Strategy",
+      "expected": "All correct types",
+      "actual": "4/4 correct",
+      "passed": true,
+      "details": "Type validation: [True, True, True, True]",
+      "timestamp": "2025-09-14T12:07:39.470176"
+    },
+    {
+      "test_name": "WebSocket Connection",
+      "expected": "Connected",
+      "actual": "Connected",
+      "passed": true,
+      "details": "WebSocket connection established",
+      "timestamp": "2025-09-14T12:07:39.506340"
+    },
+    {
+      "test_name": "WebSocket Message Format",
+      "expected": "Valid JSON with 'type' field",
+      "actual": "Valid JSON: real_time_data",
+      "passed": true,
+      "details": "Message type: real_time_data",
+      "timestamp": "2025-09-14T12:07:40.009822"
+    },
+    {
+      "test_name": "WebSocket Messages",
+      "expected": "At least 1 message",
+      "actual": "1 messages",
+      "passed": true,
+      "details": "Received 1 messages in 5 seconds",
+      "timestamp": "2025-09-14T12:07:41.011195"
+    },
+    {
+      "test_name": "Data Consistency",
+      "expected": "Multiple responses",
+      "actual": "Only 0 responses",
+      "passed": false,
+      "details": "Insufficient responses for consistency test",
+      "timestamp": "2025-09-14T12:07:42.523274"
+    },
+    {
+      "test_name": "Invalid Backtest Request",
+      "expected": 422,
+      "actual": 200,
+      "passed": false,
+      "details": "Response: 200",
+      "timestamp": "2025-09-14T12:07:43.131742"
+    },
+    {
+      "test_name": "Non-existent Endpoint",
+      "expected": 404,
+      "actual": 404,
+      "passed": true,
+      "details": "Response: 404",
+      "timestamp": "2025-09-14T12:07:43.133106"
+    }
+  ]
+}

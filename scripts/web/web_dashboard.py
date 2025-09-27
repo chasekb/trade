@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+Web Dashboard Server
+
+Starts the FastAPI web server for the trading bot dashboard.
+"""
 """Launch the trading dashboard web server."""
 
 import asyncio

@@ -1,481 +1,177 @@
-# 🚀 Advanced Trading Bot with Web Dashboard
+# Trading Bot - Advanced Trading System
 
-A comprehensive Python trading bot built with `coinbase-advanced-py` featuring real-time data streaming, advanced backtesting, and a modern web dashboard.
+A comprehensive trading bot system with web dashboard, backtesting, and live trading capabilities.
 
-## ✨ Features
-
-### 🤖 Core Trading Bot
-- **Real-time WebSocket Integration** with Coinbase Advanced Trading API
-- **Intelligent Trading Strategies** (Simple Moving Average with Golden Cross/Death Cross)
-- **Risk Management** with stop-loss and take-profit mechanisms
-- **Data Storage** with CSV export for analysis
-- **Simulated Trading** with live portfolio management and session-based tracking
-- **Order Book Analysis** with real-time signal generation
-- **Session Management** with isolated trading history per session
-- **Trade Classification** with simulated vs live trade tracking
-
-### 📊 Web Dashboard
-- **Real-time Data Visualization** with live price updates
-- **Interactive Charts** using Plotly.js
-- **Historical Data Analysis** with multiple timeframes
-- **Responsive Design** with Tailwind CSS
-- **WebSocket Integration** for live data streaming
-- **Live Trading Interface** with position management
-- **Trading Statistics Widget** with comprehensive metrics
-- **Strategy Configuration** with hide/show functionality
-
-### 🧮 Advanced Backtesting
-- **Real Historical Data** from Coinbase API
-- **Multiple Strategy Testing** with parameter optimization
-- **Performance Metrics** (ROI, Sharpe ratio, max drawdown)
-- **CSV Export** for detailed analysis
-- **Comprehensive Reporting** with best strategy identification
-
-### 🔧 Technical Features
-- **Asynchronous Architecture** with asyncio
-- **Comprehensive Testing** with pytest
-- **Modern Python** with type hints and dataclasses
-- **Dependency Management** with uv
-- **Git Integration** with proper version control
-- **Database Persistence** with SQLite
-- **Session Management** with state restoration
-- **Rate Limiting** and error handling
-
-## 🚀 Quick Start
-
-### 1. Installation
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd trade
-
-# Install dependencies
-uv sync
-```
-
-### 2. Configuration
-
-Create a `.env` file with your Coinbase credentials:
-
-```env
-COINBASE_API_KEY=your_api_key
-COINBASE_API_SECRET=your_api_secret
-COINBASE_PASSPHRASE=your_passphrase
-TRADING_PRODUCT_ID=BTC-USD
-MAX_POSITION_SIZE=1000.0
-STOP_LOSS_PERCENTAGE=0.02
-TAKE_PROFIT_PERCENTAGE=0.04
-TRADING_FEE_PERCENTAGE=0.001
-```
-
-### 3. Run the Trading Bot
-
-```bash
-# Start the trading bot
-uv run python main.py
-
-# Or run with specific configuration
-uv run python main.py --product ETH-USD --max-position 2000
-```
-
-### 4. Launch Web Dashboard
-
-```bash
-# Start the web dashboard
-uv run python scripts/web_dashboard.py
-
-# Access at http://localhost:8001
-```
-
-### 5. Run Backtests
-
-```bash
-# Simple backtest
-uv run python scripts/backtest.py
-
-# Comprehensive backtest with multiple strategies
-uv run python scripts/backtest_comprehensive.py
-```
-
-## 📊 Project Statistics
-
-### Code Metrics
-- **Total Lines of Code**: ~51,000+ lines
-- **Python Files**: 35,136 lines (143 files)
-- **JavaScript Files**: 7,275 lines (3 files)
-- **HTML Templates**: 5,287 lines (7 files)
-- **Documentation**: 3,609 lines (22 files)
-- **Configuration**: 41 files (JSON, TOML, YAML, etc.)
-
-### Largest Components
-1. **`dashboard_enhanced.js`** - 6,634 lines (Frontend dashboard)
-2. **`web_server.py`** - 2,480 lines (FastAPI backend)
-3. **`dashboard_enhanced.html`** - 2,250 lines (UI templates)
-4. **`database_manager.py`** - 1,207 lines (Data persistence)
-5. **`web_server_new.py`** - 737 lines (Enhanced web server)
-6. **`simulated_trading_manager.py`** - 707 lines (Trading simulation)
-7. **`data_handlers.py`** - 673 lines (Data processing)
-
-## 🆕 Recent Updates
-
-### Latest Features (v2.1.0 - 2025-09-24)
-- **Session-Based Trading History**: Trading history now only displays trades from current session
-- **Open Positions Count Fix**: Portfolio status widget correctly decreases when positions are closed
-- **Trade Classification**: Added `trade_type` field to distinguish simulated vs live trades
-- **Database Schema Updates**: Enhanced database with session filtering and trade classification
-- **Position Management**: Improved simulated trading position management and cleanup
-
-### Previous Features (v2.0+)
-- **Trading Statistics Widget**: Comprehensive real-time metrics dashboard
-- **Strategy Configuration Hide/Show**: Cleaner interface during active trading
-- **Session State Persistence**: Maintains trading state across page refreshes
-- **Individual Trade Logging**: Detailed trade history in SQLite database
-- **Order Book Signal Generation**: Real-time trading signals from market data
-- **Enhanced WebSocket Management**: Improved connection stability and error handling
-- **Live Trading Interface**: Complete simulated trading with position management
-- **Order Book Signals Pagination**: Historical signal analysis with time display
-- **Complete Analysis Calculations**: Squeeze, Imbalance, and Large Trade analysis
-- **Strategy Information Tracking**: Trade history includes strategy type and parameters
-
-### Technical Improvements
-- **Database Integration**: SQLite for persistent data storage
-- **API Enhancements**: Comprehensive REST endpoints for trading data
-- **Frontend Optimization**: Real-time updates and responsive design
-- **Error Handling**: Robust error management and recovery
-- **Performance**: Optimized data processing and caching
-
-## 📁 Project Structure
+## 🏗️ Project Structure
 
 ```
 trade/
-├── src/trade_bot/           # Core trading bot modules (23,887 lines)
-│   ├── __init__.py
-│   ├── config.py            # Configuration management
-│   ├── trading_bot.py       # Main trading bot class
-│   ├── trading_strategy.py  # Trading strategies (3,440 lines)
-│   ├── websocket_client.py  # WebSocket client
-│   ├── data_handler.py      # Data storage and management
-│   ├── data_provider.py     # Historical data provider
-│   ├── backtester.py        # Backtesting engine
-│   ├── web_server.py        # FastAPI web server (2,048 lines)
-│   ├── database_manager.py  # SQLite database operations (819 lines)
-│   ├── simulated_trading_manager.py  # Live trading simulation
-│   └── orderbook_analyzer.py # Order book signal generation
-├── scripts/                 # Executable scripts
-│   ├── web_dashboard.py     # Web dashboard launcher
-│   ├── backtest.py          # Simple backtesting
-│   └── backtest_comprehensive.py  # Advanced backtesting
-├── tests/                   # Comprehensive test suite
-│   ├── test_*.py            # Unit and integration tests
-│   ├── dashboard_test_suite.py  # Dashboard testing (866 lines)
-│   ├── integration_tests/   # Integration test suite
-│   └── fallback_tests/      # Fallback testing scenarios
-├── templates/               # Web dashboard templates (3,638 lines)
-│   ├── dashboard.html       # Basic dashboard
-│   └── dashboard_enhanced.html  # Enhanced dashboard (1,462 lines)
-├── static/                  # Static web assets (5,274 lines)
-│   ├── js/
-│   │   ├── dashboard.js     # Basic dashboard logic
-│   │   └── dashboard_enhanced.js  # Enhanced dashboard (4,633 lines)
-│   └── css/                 # Styling files
-├── docs/                    # Documentation (2,754 lines)
-│   ├── WEB_DASHBOARD_README.md
-│   ├── PROJECT_OVERVIEW.md
-│   ├── CHANGELOG.md
-│   └── *.md
-├── outputs/                 # Generated data and results
-├── test_outputs/           # Test-generated outputs
-├── rules/                  # Development rules and guidelines
-├── main.py                 # Main entry point
-├── pyproject.toml         # Project configuration
-├── requirements.txt       # Python dependencies
-├── trading_cache.db       # SQLite database for persistence
-└── backtests.db          # Backtest results database
+├── main.py                     # Main entry point
+├── README.md                   # This file
+├── TODO.md                     # Project tasks and roadmap
+│
+├── config/                     # Configuration files
+│   ├── pyproject.toml         # Python project configuration
+│   ├── requirements.txt       # Python dependencies
+│   ├── uv.lock               # UV lock file
+│   ├── package.json          # Node.js dependencies
+│   ├── package-lock.json     # Node.js lock file
+│   ├── playwright.config.ts  # Playwright configuration
+│   └── vercel.json           # Vercel deployment config
+│
+├── src/                       # Source code
+│   └── trade_bot/            # Main application package
+│       ├── core/             # Core functionality
+│       ├── data/             # Data handling and providers
+│       ├── database/         # Database management
+│       ├── trading/          # Trading strategies and execution
+│       └── web/              # Web dashboard and API
+│
+├── scripts/                   # Executable scripts
+│   ├── backtest/             # Backtesting scripts
+│   ├── web/                  # Web server scripts
+│   └── utilities/            # Utility scripts
+│
+├── tests/                     # Test suite
+│   ├── unit/                 # Unit tests
+│   ├── integration/          # Integration tests
+│   └── e2e/                  # End-to-end tests
+│
+├── data/                      # Data storage
+│   ├── databases/            # SQLite databases
+│   ├── outputs/              # Generated output files
+│   └── cache/                # Cached data and node_modules
+│
+├── docs/                      # Documentation
+│   ├── examples/             # Example code and tutorials
+│   ├── CHANGELOG.md          # Version history
+│   ├── PROJECT_OVERVIEW.md   # Project overview
+│   ├── spec.md               # Technical specifications
+│   ├── TEST_RESULTS.md       # Test results
+│   ├── WEB_DASHBOARD_README.md # Web dashboard documentation
+│   └── WEBSOCKET_SUBSCRIPTIONS.md # WebSocket documentation
+│
+├── static/                    # Static web assets
+│   ├── css/                  # Stylesheets
+│   └── js/                   # JavaScript files
+│
+├── templates/                 # HTML templates
+│   ├── dashboard.html        # Basic dashboard
+│   └── dashboard_enhanced.html # Enhanced dashboard
+│
+└── rules/                     # Development rules and guidelines
+    ├── 01-core.md
+    ├── 02-request.md
+    └── ... (other rule files)
 ```
 
-## 🎯 Usage Examples
+## 🚀 Quick Start
 
-### Basic Trading Bot
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- UV package manager
 
-```python
-from src.trade_bot.trading_bot import TradingBot
-from src.trade_bot.config import TradingConfig
+### Installation
+```bash
+# Install Python dependencies
+uv sync
 
-# Load configuration
-config = TradingConfig.from_env()
-
-# Create and run trading bot
-bot = TradingBot(config)
-await bot.run()
+# Install Node.js dependencies
+npm install --prefix data/cache
 ```
 
-### Web Dashboard
+### Running the Application
 
-```python
-# Start the web server
-from src.trade_bot.web_server import app
-import uvicorn
-
-uvicorn.run(app, host="0.0.0.0", port=8001)
+#### Web Dashboard
+```bash
+python main.py web
+# or
+uv run python main.py web
 ```
 
-### Backtesting
+#### Backtesting
+```bash
+# Basic backtest
+python main.py backtest
 
-```python
-from src.trade_bot.backtester import Backtester
-from src.trade_bot.trading_strategy import SimpleMovingAverageStrategy
-
-# Create backtester
-backtester = Backtester(
-    config=config,
-    strategy_class=SimpleMovingAverageStrategy,
-    strategy_params={'short_window': 5, 'long_window': 20}
-)
-
-# Run backtest
-result = await backtester.run_backtest(historical_data)
+# Comprehensive backtest
+python main.py backtest --comprehensive
 ```
 
-## 📊 Web Dashboard Features
+#### Data Collection
+```bash
+python main.py data
+```
 
-### Real-time Data
-- Live price updates via WebSocket
-- 24-hour volume and price changes
-- Connection status monitoring
+#### Live Trading
+```bash
+python main.py live
+```
 
-### Historical Analysis
-- Interactive candlestick charts
-- Multiple timeframes (3, 7, 14, 30 days)
-- Zoom and pan functionality
+## 📊 Features
 
-### Backtesting Interface
-- Easy parameter configuration
-- Real-time backtest execution
-- Results visualization
-- Performance comparison
+- **Web Dashboard**: Real-time trading dashboard with candlestick charts
+- **Backtesting**: Historical strategy testing with comprehensive metrics
+- **Data Providers**: Coinbase Pro API integration for real market data
+- **Trading Strategies**: Multiple built-in strategies (RSI, MACD, Bollinger Bands, etc.)
+- **Simulated Trading**: Paper trading with realistic execution simulation
+- **WebSocket Integration**: Real-time data streaming
+- **Database Storage**: SQLite for persistent data storage
 
-### Trading Metrics
-- ROI calculations
-- Win rate analysis
-- Trade statistics
-- Best strategy identification
+## 🔧 Configuration
 
-### Live Trading Interface
-- **Real-time Portfolio Management** with position tracking
-- **Trading Statistics Widget** with comprehensive metrics
-- **Order Book Signal Generation** for market analysis
-- **Session State Persistence** across page refreshes
-- **Strategy Configuration** with hide/show functionality
-- **Live P&L Tracking** with real-time updates
-- **Paginated Order Book Signals** with historical analysis
-- **Complete Market Analysis** with Squeeze, Imbalance, and Large Trade detection
-- **Strategy Information Tracking** in trade history
-- **Time-based Signal Display** with detailed timestamps
-
-## 📊 Order Book Analysis
-
-### Real-time Signal Generation
-- **Bid-Ask Squeeze Detection**: Identifies when spread is 50% below historical average
-- **Volume Imbalance Analysis**: Detects buy/sell pressure from order book depth
-- **Large Trade Analysis**: Identifies significant volume transactions above threshold
-- **Signal Strength Calculation**: Dynamic strength based on market conditions
-
-### Historical Analysis
-- **Paginated Signal History**: Navigate through all historical signals
-- **Time-based Display**: Each signal shows precise generation timestamp
-- **Comprehensive Metadata**: Spread, imbalance, volume, and analysis data
-- **Session Filtering**: View signals for specific trading sessions
-- **Symbol Filtering**: Focus on specific trading pairs
-
-### Analysis Components
-- **Squeeze Analysis**: Current vs historical spread comparison with thresholds
-- **Imbalance Analysis**: Buy/sell volume imbalance with configurable thresholds
-- **Large Trade Analysis**: Trade flow pressure analysis with volume thresholds
-- **Real-time Updates**: Live analysis during active trading sessions
+Configuration files are located in the `config/` directory:
+- `pyproject.toml`: Python project settings
+- `requirements.txt`: Python dependencies
+- `package.json`: Node.js dependencies
+- `playwright.config.ts`: E2E testing configuration
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests
-uv run python -m pytest
+# Run unit tests
+python -m pytest tests/unit/
 
-# Run specific test categories
-uv run python -m pytest tests/test_backtester.py
-uv run python -m pytest tests/test_data_provider.py
+# Run integration tests
+python -m pytest tests/integration/
 
-# Run with coverage
-uv run python -m pytest --cov=src/trade_bot
+# Run E2E tests
+npx playwright test
 ```
 
-## 📈 API Endpoints
+## 📈 Data Management
 
-### 🏠 Web Dashboard API
-- `GET /` - Main dashboard page
-- `GET /favicon.ico` - Favicon
-- `WebSocket /ws` - Real-time data stream
+- **Databases**: Stored in `data/databases/`
+- **Outputs**: Generated files in `data/outputs/`
+- **Cache**: Temporary data in `data/cache/`
 
-### 📊 Market Data API
-- `GET /api/real-time-data` - Current market data
-- `GET /api/historical-data` - Historical OHLCV data
-- `GET /api/candles` - Candlestick data
-- `GET /api/symbols` - Available trading symbols
-- `GET /api/products` - Available products
-- `GET /api/channels` - Available WebSocket channels
+## 🌐 Web Dashboard
 
-### 🤖 Trading API
-- `POST /api/trading/live/start` - Start live trading
-- `POST /api/trading/live/stop` - Stop live trading
-- `GET /api/trading/live/positions` - Get live positions
-- `POST /api/trading/live/close-position` - Close live position
-- `GET /api/trading/live/history` - Get live trading history
-
-### 🎮 Simulated Trading API
-- `POST /api/trading/simulated/start` - Start simulated trading
-- `POST /api/async-trading/start` - Start async trading session
-- `POST /api/trading/simulated/stop` - Stop simulated trading
-- `GET /api/trading/simulated/status` - Get simulated trading status
-- `GET /api/simulated-trading/status` - Alternative status endpoint
-- `POST /api/trading/simulated/process-signals` - Process trading signals
-- `POST /api/trading/simulated/reset` - Reset simulated trading
-- `POST /api/trading/simulated/add-symbols` - Add symbols to trading
-- `GET /api/async-trading/loading-status` - Get loading status
-
-### 📈 Trading Statistics API
-- `GET /api/trades/stats` - Comprehensive trading statistics
-- `GET /api/trades/paginated` - Paginated trading history (supports session filtering)
-- `GET /api/trades/session/{session_id}` - Session-specific trades
-- `GET /api/trading/history/all` - All trading history
-- `GET /api/trading/metrics` - Trading performance metrics
-
-### 💼 Portfolio Management API
-- `GET /api/live-portfolio/status` - Live portfolio status
-- `GET /api/live-portfolio/summary` - Portfolio summary
-- `GET /api/live-portfolio/accounts` - Portfolio accounts
-
-### 📊 Order Book Analysis API
-- `GET /api/orderbook/live-signals` - Live order book signals
-- `GET /api/data/orderbook-signals` - Order book signals (alternative)
-- `GET /api/data/cache-stats` - Cache statistics
-
-### 🔄 WebSocket Management API
-- `GET /api/websocket/subscriptions` - Get active subscriptions
-- `POST /api/websocket/subscribe` - Subscribe to channel
-- `POST /api/websocket/unsubscribe` - Unsubscribe from channel
-- `GET /api/websocket/status` - WebSocket connection status
-- `POST /api/websocket/toggle` - Toggle real-time data
-- `GET /api/subscriptions` - Alternative subscriptions endpoint
-- `GET /api/realtime-status` - Alternative real-time status
-
-### 🧪 Backtesting API
-- `POST /api/backtest` - Execute backtest
-- `GET /api/backtest/results` - Get backtest results
-- `GET /api/backtest/history` - Get backtest history
-- `GET /api/backtest/{backtest_id}` - Get specific backtest
-- `GET /api/backtest/stats` - Get backtest statistics
-- `DELETE /api/backtest/{backtest_id}` - Delete backtest
-- `GET /api/backtest/filters` - Get backtest filters
-
-### 💾 Session Management API
-- `GET /api/session/active` - Get active sessions
-- `POST /api/session/save` - Save trading session
-- `POST /api/session/save-dashboard` - Save dashboard state
-- `GET /api/data/load-session/{session_id}` - Load session state
-- `GET /api/data/load-dashboard/{session_id}` - Load dashboard state
-- `POST /api/data/save-session` - Save session data
-- `POST /api/data/restore-trading` - Restore trading state
-- `POST /api/data/save-dashboard` - Save dashboard data
-
-### 📊 Data Management API
-- `GET /api/data/load-universe` - Load universe data
-- `GET /api/data/load-symbols` - Load symbols data
-- `GET /api/data/loading-status` - Get loading status
-- `POST /api/data/load-symbols` - Load remaining symbols
-- `GET /api/data/trading-state` - Get trading state
-- `GET /api/metrics/trading` - Trading metrics
-- `GET /api/metrics/data-summary` - Data summary metrics
-- `GET /api/data-summary` - Alternative data summary
-
-### 🏥 Health & Status API
-- `GET /api/health` - Server health status
-
-## 🔧 Configuration Options
-
-### Environment Variables
-- `COINBASE_API_KEY` - Coinbase API key
-- `COINBASE_API_SECRET` - Coinbase API secret
-- `COINBASE_PASSPHRASE` - Coinbase passphrase
-- `TRADING_PRODUCT_ID` - Trading pair (default: BTC-USD)
-- `MAX_POSITION_SIZE` - Maximum position size (default: 1000.0)
-- `STOP_LOSS_PERCENTAGE` - Stop loss percentage (default: 0.02)
-- `TAKE_PROFIT_PERCENTAGE` - Take profit percentage (default: 0.04)
-- `TRADING_FEE_PERCENTAGE` - Trading fee percentage (default: 0.001)
-
-### Trading Strategy Parameters
-- `short_window` - Short moving average window (default: 5)
-- `long_window` - Long moving average window (default: 20)
-
-## 🚀 Deployment
-
-### Local Development
+Access the web dashboard at `http://localhost:8001` after running:
 ```bash
-# Start trading bot
-uv run python main.py
-
-# Start web dashboard
-uv run python scripts/web_dashboard.py
+python main.py web
 ```
 
-### Production
-```bash
-# Run with production settings
-uv run python main.py --log-level INFO
-uv run python scripts/web_dashboard.py --host 0.0.0.0 --port 8000
-```
+Features:
+- Real-time price charts
+- Trading strategy configuration
+- Backtest results visualization
+- Live trading interface
+- Data feed monitoring
 
-## 📊 Performance Metrics
+## 📚 Documentation
 
-The backtesting system provides comprehensive metrics:
-- **Total Return** - Overall percentage return
-- **Win Rate** - Percentage of profitable trades
-- **Sharpe Ratio** - Risk-adjusted return
-- **Max Drawdown** - Maximum peak-to-trough decline
-- **Profit Factor** - Ratio of gross profit to gross loss
-- **Average Win/Loss** - Average profit/loss per trade
-
-## 🔒 Security
-
-- Environment variable configuration
-- No hardcoded API keys
-- Secure WebSocket connections
-- Input validation and sanitization
+Detailed documentation is available in the `docs/` directory:
+- [Project Overview](docs/PROJECT_OVERVIEW.md)
+- [Web Dashboard Guide](docs/WEB_DASHBOARD_README.md)
+- [WebSocket Subscriptions](docs/WEBSOCKET_SUBSCRIPTIONS.md)
+- [Test Results](docs/TEST_RESULTS.md)
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+Please read the development rules in the `rules/` directory before contributing.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For issues and questions:
-1. Check the documentation in `docs/`
-2. Review the test examples in `examples/`
-3. Open an issue on GitHub
-
-## 🎉 Success!
-
-Your trading bot is now ready with:
-- ✅ Real-time data streaming
-- ✅ Advanced backtesting capabilities
-- ✅ Modern web dashboard
-- ✅ Comprehensive testing
-- ✅ Production-ready code
-
-Happy trading! 🚀📊💰
+This project is proprietary software. All rights reserved.

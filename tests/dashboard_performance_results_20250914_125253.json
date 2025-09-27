@@ -1,0 +1,92 @@
+{
+  "test_timestamp": "2025-09-14T12:52:53.454258",
+  "total_duration_seconds": 73.92375612258911,
+  "api_endpoint_performance": {
+    "Data Summary": {
+      "avg_response_time_ms": 3.9667606353759766,
+      "min_response_time_ms": 1.155853271484375,
+      "max_response_time_ms": 13.43989372253418,
+      "median_response_time_ms": 1.889944076538086,
+      "success_rate": 100.0,
+      "total_requests": 5,
+      "successful_requests": 5
+    },
+    "Backtest Filters": {
+      "avg_response_time_ms": 88.12570571899414,
+      "min_response_time_ms": 80.72876930236816,
+      "max_response_time_ms": 96.3449478149414,
+      "median_response_time_ms": 86.74192428588867,
+      "success_rate": 100.0,
+      "total_requests": 5,
+      "successful_requests": 5
+    },
+    "Backtest History": {
+      "avg_response_time_ms": 12328.37839126587,
+      "min_response_time_ms": 11383.482933044434,
+      "max_response_time_ms": 13342.375993728638,
+      "median_response_time_ms": 12005.047798156738,
+      "success_rate": 100.0,
+      "total_requests": 5,
+      "successful_requests": 5
+    },
+    "SMA Backtest": {
+      "avg_response_time_ms": 498.03199768066406,
+      "min_response_time_ms": 282.1078300476074,
+      "max_response_time_ms": 654.4580459594727,
+      "median_response_time_ms": 584.0480327606201,
+      "success_rate": 100.0,
+      "total_requests": 5,
+      "successful_requests": 5
+    },
+    "RSI Backtest": {
+      "avg_response_time_ms": 382.6833248138428,
+      "min_response_time_ms": 277.1589756011963,
+      "max_response_time_ms": 528.8808345794678,
+      "median_response_time_ms": 368.00575256347656,
+      "success_rate": 100.0,
+      "total_requests": 5,
+      "successful_requests": 5
+    }
+  },
+  "concurrent_request_performance": {
+    "concurrent_requests": 10,
+    "total_time_ms": 15.804767608642578,
+    "successful_requests": 10,
+    "failed_requests": 0,
+    "success_rate": 100.0,
+    "avg_response_time_ms": 10.691261291503906,
+    "min_response_time_ms": 1.9288063049316406,
+    "max_response_time_ms": 14.875173568725586,
+    "requests_per_second": 632.7204706592247
+  },
+  "websocket_performance": {
+    "messages_received": 1,
+    "total_time_ms": 1207.2529792785645,
+    "avg_message_latency_ms": 185.75716018676758,
+    "min_message_latency_ms": 185.75716018676758,
+    "max_message_latency_ms": 185.75716018676758,
+    "messages_per_second": 0.8283268023886629
+  },
+  "backtest_scaling_performance": {
+    "1 Day": {
+      "response_time_ms": 906.8050384521484,
+      "response_size_bytes": 2992,
+      "status_code": 200
+    },
+    "3 Days": {
+      "response_time_ms": 587.5339508056641,
+      "response_size_bytes": 11314,
+      "status_code": 200
+    },
+    "7 Days": {
+      "response_time_ms": 502.8538703918457,
+      "response_size_bytes": 26009,
+      "status_code": 200
+    },
+    "30 Days": {
+      "response_time_ms": 1596.5118408203125,
+      "response_size_bytes": 112970,
+      "status_code": 200
+    }
+  }
+}

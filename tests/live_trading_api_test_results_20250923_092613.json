@@ -1,0 +1,973 @@
+{
+  "summary": {
+    "total_tests": 57,
+    "passed_tests": 56,
+    "failed_tests": 1,
+    "success_rate": 98.24561403508771
+  },
+  "categories": {
+    "API Health": {
+      "passed": 2,
+      "failed": 0,
+      "tests": [
+        {
+          "test_name": "API Health - Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Health endpoint should return 200",
+          "timestamp": "2025-09-23T09:25:04.281923"
+        },
+        {
+          "test_name": "API Health - Response Structure",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Health response should contain status field",
+          "timestamp": "2025-09-23T09:25:04.282896"
+        }
+      ]
+    },
+    "Products API": {
+      "passed": 9,
+      "failed": 0,
+      "tests": [
+        {
+          "test_name": "Products API - Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Products endpoint should return 200",
+          "timestamp": "2025-09-23T09:25:04.709870"
+        },
+        {
+          "test_name": "Products API - Categories Present",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Products response should contain categories",
+          "timestamp": "2025-09-23T09:25:04.719141"
+        },
+        {
+          "test_name": "Products API - major Category",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have major category",
+          "timestamp": "2025-09-23T09:25:04.719334"
+        },
+        {
+          "test_name": "Products API - stablecoins Category",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have stablecoins category",
+          "timestamp": "2025-09-23T09:25:04.719485"
+        },
+        {
+          "test_name": "Products API - dex_tokens Category",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have dex_tokens category",
+          "timestamp": "2025-09-23T09:25:04.719580"
+        },
+        {
+          "test_name": "Products API - meme_tokens Category",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have meme_tokens category",
+          "timestamp": "2025-09-23T09:25:04.719857"
+        },
+        {
+          "test_name": "Products API - all_usd Category",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have all_usd category",
+          "timestamp": "2025-09-23T09:25:04.719943"
+        },
+        {
+          "test_name": "Products API - all_products Category",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have all_products category",
+          "timestamp": "2025-09-23T09:25:04.720021"
+        },
+        {
+          "test_name": "Products API - Total Products",
+          "expected": "> 400",
+          "actual": "468",
+          "passed": true,
+          "details": "Should have more than 400 total products (found 468)",
+          "timestamp": "2025-09-23T09:25:04.720093"
+        }
+      ]
+    },
+    "Simulated Trading": {
+      "passed": 13,
+      "failed": 0,
+      "tests": [
+        {
+          "test_name": "Simulated Trading - Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Simulated trading status should return 200",
+          "timestamp": "2025-09-23T09:25:04.733393"
+        },
+        {
+          "test_name": "Simulated Trading - is_trading Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have is_trading field in response",
+          "timestamp": "2025-09-23T09:25:04.736722"
+        },
+        {
+          "test_name": "Simulated Trading - symbols Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have symbols field in response",
+          "timestamp": "2025-09-23T09:25:04.736893"
+        },
+        {
+          "test_name": "Simulated Trading - strategy_type Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have strategy_type field in response",
+          "timestamp": "2025-09-23T09:25:04.736941"
+        },
+        {
+          "test_name": "Simulated Trading - strategy_params Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have strategy_params field in response",
+          "timestamp": "2025-09-23T09:25:04.736982"
+        },
+        {
+          "test_name": "Simulated Trading - portfolio Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have portfolio field in response",
+          "timestamp": "2025-09-23T09:25:04.737022"
+        },
+        {
+          "test_name": "Simulated Trading - open_positions Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have open_positions field in response",
+          "timestamp": "2025-09-23T09:25:04.737066"
+        },
+        {
+          "test_name": "Simulated Trading - recent_trades Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Should have recent_trades field in response",
+          "timestamp": "2025-09-23T09:25:04.737108"
+        },
+        {
+          "test_name": "Simulated Trading - Portfolio cash_balance",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Portfolio should have cash_balance field",
+          "timestamp": "2025-09-23T09:25:04.737148"
+        },
+        {
+          "test_name": "Simulated Trading - Portfolio total_value",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Portfolio should have total_value field",
+          "timestamp": "2025-09-23T09:25:04.737186"
+        },
+        {
+          "test_name": "Simulated Trading - Portfolio positions",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Portfolio should have positions field",
+          "timestamp": "2025-09-23T09:25:04.737223"
+        },
+        {
+          "test_name": "Simulated Trading - Portfolio trades",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Portfolio should have trades field",
+          "timestamp": "2025-09-23T09:25:04.737259"
+        },
+        {
+          "test_name": "Simulated Trading - Portfolio total_pnl",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Portfolio should have total_pnl field",
+          "timestamp": "2025-09-23T09:25:04.737335"
+        }
+      ]
+    },
+    "Async Trading": {
+      "passed": 3,
+      "failed": 1,
+      "tests": [
+        {
+          "test_name": "Async Trading - Start Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Async trading start should return 200",
+          "timestamp": "2025-09-23T09:25:04.749757"
+        },
+        {
+          "test_name": "Async Trading - Status Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Response should contain status field",
+          "timestamp": "2025-09-23T09:25:04.750416"
+        },
+        {
+          "test_name": "Async Trading - Initial Symbols Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Response should contain initial_symbols field",
+          "timestamp": "2025-09-23T09:25:04.750546"
+        },
+        {
+          "test_name": "Async Trading - Loading Completion",
+          "expected": true,
+          "actual": false,
+          "passed": false,
+          "details": "Async trading should complete loading (waited 30s)",
+          "timestamp": "2025-09-23T09:25:34.852045"
+        }
+      ]
+    },
+    "Order Book Signals": {
+      "passed": 13,
+      "failed": 0,
+      "tests": [
+        {
+          "test_name": "Order Book Signals - Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Order book signals should return 200",
+          "timestamp": "2025-09-23T09:26:05.745085"
+        },
+        {
+          "test_name": "Order Book Signals - Signals Present",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Response should contain signals array",
+          "timestamp": "2025-09-23T09:26:05.745327"
+        },
+        {
+          "test_name": "Order Book Signals - Trading Active Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Response should contain trading_active field",
+          "timestamp": "2025-09-23T09:26:05.745364"
+        },
+        {
+          "test_name": "Order Book Signals - Signal Count",
+          "expected": "> 0",
+          "actual": 1,
+          "passed": true,
+          "details": "Should return signals (found 1)",
+          "timestamp": "2025-09-23T09:26:05.745389"
+        },
+        {
+          "test_name": "Order Book Signals - symbol Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal should have symbol field",
+          "timestamp": "2025-09-23T09:26:05.745453"
+        },
+        {
+          "test_name": "Order Book Signals - signal_type Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal should have signal_type field",
+          "timestamp": "2025-09-23T09:26:05.745472"
+        },
+        {
+          "test_name": "Order Book Signals - timestamp Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal should have timestamp field",
+          "timestamp": "2025-09-23T09:26:05.745494"
+        },
+        {
+          "test_name": "Order Book Signals - bid_price Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal field check (present: False)",
+          "timestamp": "2025-09-23T09:26:05.745514"
+        },
+        {
+          "test_name": "Order Book Signals - ask_price Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal field check (present: False)",
+          "timestamp": "2025-09-23T09:26:05.745532"
+        },
+        {
+          "test_name": "Order Book Signals - spread Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal field check (present: True)",
+          "timestamp": "2025-09-23T09:26:05.745559"
+        },
+        {
+          "test_name": "Order Book Signals - volume Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal field check (present: True)",
+          "timestamp": "2025-09-23T09:26:05.745578"
+        },
+        {
+          "test_name": "Order Book Signals - criteria_analysis Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Signal field check (present: True)",
+          "timestamp": "2025-09-23T09:26:05.745601"
+        },
+        {
+          "test_name": "Order Book Signals - Multiple Symbols",
+          "expected": "> 0",
+          "actual": 3,
+          "passed": true,
+          "details": "Should return signals for multiple symbols (found 3)",
+          "timestamp": "2025-09-23T09:26:07.004960"
+        }
+      ]
+    },
+    "Trading Session": {
+      "passed": 3,
+      "failed": 0,
+      "tests": [
+        {
+          "test_name": "Trading Session - Start Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Start trading should return 200",
+          "timestamp": "2025-09-23T09:26:07.008250"
+        },
+        {
+          "test_name": "Trading Session - Session ID",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Start trading should return session_id",
+          "timestamp": "2025-09-23T09:26:07.008479"
+        },
+        {
+          "test_name": "Trading Session - Stop Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Stop trading should return 200",
+          "timestamp": "2025-09-23T09:26:09.011798"
+        }
+      ]
+    },
+    "Session Loading": {
+      "passed": 11,
+      "failed": 0,
+      "tests": [
+        {
+          "test_name": "Session Loading - Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Load session should return 200",
+          "timestamp": "2025-09-23T09:26:11.019364"
+        },
+        {
+          "test_name": "Session Loading - Session ID",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Load session should return session_id",
+          "timestamp": "2025-09-23T09:26:11.019545"
+        },
+        {
+          "test_name": "Session Loading - State Data",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Load session should return state data",
+          "timestamp": "2025-09-23T09:26:11.019579"
+        },
+        {
+          "test_name": "Session Loading - is_active Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "State should have is_active field",
+          "timestamp": "2025-09-23T09:26:11.019600"
+        },
+        {
+          "test_name": "Session Loading - trading_mode Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "State should have trading_mode field",
+          "timestamp": "2025-09-23T09:26:11.019618"
+        },
+        {
+          "test_name": "Session Loading - symbol_mode Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "State should have symbol_mode field",
+          "timestamp": "2025-09-23T09:26:11.019635"
+        },
+        {
+          "test_name": "Session Loading - symbols Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "State should have symbols field",
+          "timestamp": "2025-09-23T09:26:11.019651"
+        },
+        {
+          "test_name": "Session Loading - portfolio_state Field",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "State should have portfolio_state field",
+          "timestamp": "2025-09-23T09:26:11.019723"
+        },
+        {
+          "test_name": "Session Loading - Restore Status Code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true,
+          "details": "Restore trading should return 200",
+          "timestamp": "2025-09-23T09:26:11.021723"
+        },
+        {
+          "test_name": "Session Loading - Restore Status",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Restore trading should return status",
+          "timestamp": "2025-09-23T09:26:11.021793"
+        },
+        {
+          "test_name": "Session Loading - Restore Success",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "Restore trading should succeed",
+          "timestamp": "2025-09-23T09:26:11.021817"
+        }
+      ]
+    },
+    "WebSocket": {
+      "passed": 2,
+      "failed": 0,
+      "tests": [
+        {
+          "test_name": "WebSocket - Connection",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "WebSocket connection should be established",
+          "timestamp": "2025-09-23T09:26:11.023654"
+        },
+        {
+          "test_name": "WebSocket - Response",
+          "expected": true,
+          "actual": true,
+          "passed": true,
+          "details": "WebSocket connection established (ping/pong timeout is acceptable)",
+          "timestamp": "2025-09-23T09:26:13.027121"
+        }
+      ]
+    }
+  },
+  "detailed_results": [
+    {
+      "test_name": "API Health - Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Health endpoint should return 200",
+      "timestamp": "2025-09-23T09:25:04.281923"
+    },
+    {
+      "test_name": "API Health - Response Structure",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Health response should contain status field",
+      "timestamp": "2025-09-23T09:25:04.282896"
+    },
+    {
+      "test_name": "Products API - Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Products endpoint should return 200",
+      "timestamp": "2025-09-23T09:25:04.709870"
+    },
+    {
+      "test_name": "Products API - Categories Present",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Products response should contain categories",
+      "timestamp": "2025-09-23T09:25:04.719141"
+    },
+    {
+      "test_name": "Products API - major Category",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have major category",
+      "timestamp": "2025-09-23T09:25:04.719334"
+    },
+    {
+      "test_name": "Products API - stablecoins Category",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have stablecoins category",
+      "timestamp": "2025-09-23T09:25:04.719485"
+    },
+    {
+      "test_name": "Products API - dex_tokens Category",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have dex_tokens category",
+      "timestamp": "2025-09-23T09:25:04.719580"
+    },
+    {
+      "test_name": "Products API - meme_tokens Category",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have meme_tokens category",
+      "timestamp": "2025-09-23T09:25:04.719857"
+    },
+    {
+      "test_name": "Products API - all_usd Category",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have all_usd category",
+      "timestamp": "2025-09-23T09:25:04.719943"
+    },
+    {
+      "test_name": "Products API - all_products Category",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have all_products category",
+      "timestamp": "2025-09-23T09:25:04.720021"
+    },
+    {
+      "test_name": "Products API - Total Products",
+      "expected": "> 400",
+      "actual": "468",
+      "passed": true,
+      "details": "Should have more than 400 total products (found 468)",
+      "timestamp": "2025-09-23T09:25:04.720093"
+    },
+    {
+      "test_name": "Simulated Trading - Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Simulated trading status should return 200",
+      "timestamp": "2025-09-23T09:25:04.733393"
+    },
+    {
+      "test_name": "Simulated Trading - is_trading Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have is_trading field in response",
+      "timestamp": "2025-09-23T09:25:04.736722"
+    },
+    {
+      "test_name": "Simulated Trading - symbols Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have symbols field in response",
+      "timestamp": "2025-09-23T09:25:04.736893"
+    },
+    {
+      "test_name": "Simulated Trading - strategy_type Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have strategy_type field in response",
+      "timestamp": "2025-09-23T09:25:04.736941"
+    },
+    {
+      "test_name": "Simulated Trading - strategy_params Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have strategy_params field in response",
+      "timestamp": "2025-09-23T09:25:04.736982"
+    },
+    {
+      "test_name": "Simulated Trading - portfolio Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have portfolio field in response",
+      "timestamp": "2025-09-23T09:25:04.737022"
+    },
+    {
+      "test_name": "Simulated Trading - open_positions Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have open_positions field in response",
+      "timestamp": "2025-09-23T09:25:04.737066"
+    },
+    {
+      "test_name": "Simulated Trading - recent_trades Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Should have recent_trades field in response",
+      "timestamp": "2025-09-23T09:25:04.737108"
+    },
+    {
+      "test_name": "Simulated Trading - Portfolio cash_balance",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Portfolio should have cash_balance field",
+      "timestamp": "2025-09-23T09:25:04.737148"
+    },
+    {
+      "test_name": "Simulated Trading - Portfolio total_value",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Portfolio should have total_value field",
+      "timestamp": "2025-09-23T09:25:04.737186"
+    },
+    {
+      "test_name": "Simulated Trading - Portfolio positions",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Portfolio should have positions field",
+      "timestamp": "2025-09-23T09:25:04.737223"
+    },
+    {
+      "test_name": "Simulated Trading - Portfolio trades",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Portfolio should have trades field",
+      "timestamp": "2025-09-23T09:25:04.737259"
+    },
+    {
+      "test_name": "Simulated Trading - Portfolio total_pnl",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Portfolio should have total_pnl field",
+      "timestamp": "2025-09-23T09:25:04.737335"
+    },
+    {
+      "test_name": "Async Trading - Start Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Async trading start should return 200",
+      "timestamp": "2025-09-23T09:25:04.749757"
+    },
+    {
+      "test_name": "Async Trading - Status Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Response should contain status field",
+      "timestamp": "2025-09-23T09:25:04.750416"
+    },
+    {
+      "test_name": "Async Trading - Initial Symbols Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Response should contain initial_symbols field",
+      "timestamp": "2025-09-23T09:25:04.750546"
+    },
+    {
+      "test_name": "Async Trading - Loading Completion",
+      "expected": true,
+      "actual": false,
+      "passed": false,
+      "details": "Async trading should complete loading (waited 30s)",
+      "timestamp": "2025-09-23T09:25:34.852045"
+    },
+    {
+      "test_name": "Order Book Signals - Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Order book signals should return 200",
+      "timestamp": "2025-09-23T09:26:05.745085"
+    },
+    {
+      "test_name": "Order Book Signals - Signals Present",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Response should contain signals array",
+      "timestamp": "2025-09-23T09:26:05.745327"
+    },
+    {
+      "test_name": "Order Book Signals - Trading Active Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Response should contain trading_active field",
+      "timestamp": "2025-09-23T09:26:05.745364"
+    },
+    {
+      "test_name": "Order Book Signals - Signal Count",
+      "expected": "> 0",
+      "actual": 1,
+      "passed": true,
+      "details": "Should return signals (found 1)",
+      "timestamp": "2025-09-23T09:26:05.745389"
+    },
+    {
+      "test_name": "Order Book Signals - symbol Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal should have symbol field",
+      "timestamp": "2025-09-23T09:26:05.745453"
+    },
+    {
+      "test_name": "Order Book Signals - signal_type Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal should have signal_type field",
+      "timestamp": "2025-09-23T09:26:05.745472"
+    },
+    {
+      "test_name": "Order Book Signals - timestamp Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal should have timestamp field",
+      "timestamp": "2025-09-23T09:26:05.745494"
+    },
+    {
+      "test_name": "Order Book Signals - bid_price Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal field check (present: False)",
+      "timestamp": "2025-09-23T09:26:05.745514"
+    },
+    {
+      "test_name": "Order Book Signals - ask_price Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal field check (present: False)",
+      "timestamp": "2025-09-23T09:26:05.745532"
+    },
+    {
+      "test_name": "Order Book Signals - spread Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal field check (present: True)",
+      "timestamp": "2025-09-23T09:26:05.745559"
+    },
+    {
+      "test_name": "Order Book Signals - volume Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal field check (present: True)",
+      "timestamp": "2025-09-23T09:26:05.745578"
+    },
+    {
+      "test_name": "Order Book Signals - criteria_analysis Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Signal field check (present: True)",
+      "timestamp": "2025-09-23T09:26:05.745601"
+    },
+    {
+      "test_name": "Order Book Signals - Multiple Symbols",
+      "expected": "> 0",
+      "actual": 3,
+      "passed": true,
+      "details": "Should return signals for multiple symbols (found 3)",
+      "timestamp": "2025-09-23T09:26:07.004960"
+    },
+    {
+      "test_name": "Trading Session - Start Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Start trading should return 200",
+      "timestamp": "2025-09-23T09:26:07.008250"
+    },
+    {
+      "test_name": "Trading Session - Session ID",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Start trading should return session_id",
+      "timestamp": "2025-09-23T09:26:07.008479"
+    },
+    {
+      "test_name": "Trading Session - Stop Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Stop trading should return 200",
+      "timestamp": "2025-09-23T09:26:09.011798"
+    },
+    {
+      "test_name": "Session Loading - Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Load session should return 200",
+      "timestamp": "2025-09-23T09:26:11.019364"
+    },
+    {
+      "test_name": "Session Loading - Session ID",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Load session should return session_id",
+      "timestamp": "2025-09-23T09:26:11.019545"
+    },
+    {
+      "test_name": "Session Loading - State Data",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Load session should return state data",
+      "timestamp": "2025-09-23T09:26:11.019579"
+    },
+    {
+      "test_name": "Session Loading - is_active Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "State should have is_active field",
+      "timestamp": "2025-09-23T09:26:11.019600"
+    },
+    {
+      "test_name": "Session Loading - trading_mode Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "State should have trading_mode field",
+      "timestamp": "2025-09-23T09:26:11.019618"
+    },
+    {
+      "test_name": "Session Loading - symbol_mode Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "State should have symbol_mode field",
+      "timestamp": "2025-09-23T09:26:11.019635"
+    },
+    {
+      "test_name": "Session Loading - symbols Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "State should have symbols field",
+      "timestamp": "2025-09-23T09:26:11.019651"
+    },
+    {
+      "test_name": "Session Loading - portfolio_state Field",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "State should have portfolio_state field",
+      "timestamp": "2025-09-23T09:26:11.019723"
+    },
+    {
+      "test_name": "Session Loading - Restore Status Code",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "Restore trading should return 200",
+      "timestamp": "2025-09-23T09:26:11.021723"
+    },
+    {
+      "test_name": "Session Loading - Restore Status",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Restore trading should return status",
+      "timestamp": "2025-09-23T09:26:11.021793"
+    },
+    {
+      "test_name": "Session Loading - Restore Success",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "Restore trading should succeed",
+      "timestamp": "2025-09-23T09:26:11.021817"
+    },
+    {
+      "test_name": "WebSocket - Connection",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "WebSocket connection should be established",
+      "timestamp": "2025-09-23T09:26:11.023654"
+    },
+    {
+      "test_name": "WebSocket - Response",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "WebSocket connection established (ping/pong timeout is acceptable)",
+      "timestamp": "2025-09-23T09:26:13.027121"
+    }
+  ],
+  "timestamp": "2025-09-23T09:26:13.030285"
+}

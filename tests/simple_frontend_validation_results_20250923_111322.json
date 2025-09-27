@@ -1,0 +1,155 @@
+{
+  "summary": {
+    "total_tests": 18,
+    "passed_tests": 16,
+    "failed_tests": 2,
+    "success_rate": 88.88888888888889
+  },
+  "test_results": [
+    {
+      "test_name": "Frontend HTML - Live Trading Tab",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "HTML should contain live trading tab element",
+      "timestamp": "2025-09-23T11:13:22.311814"
+    },
+    {
+      "test_name": "Frontend HTML - Order Book Table",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "HTML should contain order book signals table",
+      "timestamp": "2025-09-23T11:13:22.311882"
+    },
+    {
+      "test_name": "Frontend HTML - JavaScript File",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "HTML should reference dashboard_enhanced.js",
+      "timestamp": "2025-09-23T11:13:22.311915"
+    },
+    {
+      "test_name": "Frontend HTML - Cache Busting",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "HTML should have cache-busting version parameter",
+      "timestamp": "2025-09-23T11:13:22.312107"
+    },
+    {
+      "test_name": "JavaScript - Debug Log Present",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "JavaScript should contain debug log message",
+      "timestamp": "2025-09-23T11:13:22.318540"
+    },
+    {
+      "test_name": "JavaScript - Load Function Present",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "JavaScript should contain loadLiveTradingData function",
+      "timestamp": "2025-09-23T11:13:22.318582"
+    },
+    {
+      "test_name": "JavaScript - Order Book Function Present",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "JavaScript should contain loadOrderBookSignals function",
+      "timestamp": "2025-09-23T11:13:22.318606"
+    },
+    {
+      "test_name": "JavaScript - Recent Version",
+      "expected": true,
+      "actual": true,
+      "passed": true,
+      "details": "JavaScript should contain recent version (20250923)",
+      "timestamp": "2025-09-23T11:13:22.318626"
+    },
+    {
+      "test_name": "API Endpoint - /api/simulated-trading/status",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "API endpoint should be accessible (status: 200)",
+      "timestamp": "2025-09-23T11:13:22.319386"
+    },
+    {
+      "test_name": "API Response - /api/simulated-trading/status JSON",
+      "expected": "Valid JSON",
+      "actual": "Valid JSON",
+      "passed": true,
+      "details": "API endpoint returns valid JSON",
+      "timestamp": "2025-09-23T11:13:22.319525"
+    },
+    {
+      "test_name": "API Endpoint - /api/orderbook/live-signals?symbols=BTC-USD",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "API endpoint should be accessible (status: 200)",
+      "timestamp": "2025-09-23T11:13:22.320298"
+    },
+    {
+      "test_name": "API Response - /api/orderbook/live-signals?symbols=BTC-USD JSON",
+      "expected": "Valid JSON",
+      "actual": "Valid JSON",
+      "passed": true,
+      "details": "API endpoint returns valid JSON",
+      "timestamp": "2025-09-23T11:13:22.320424"
+    },
+    {
+      "test_name": "API Endpoint - /api/async-trading/loading-status",
+      "expected": 200,
+      "actual": 200,
+      "passed": true,
+      "details": "API endpoint should be accessible (status: 200)",
+      "timestamp": "2025-09-23T11:13:22.320966"
+    },
+    {
+      "test_name": "API Response - /api/async-trading/loading-status JSON",
+      "expected": "Valid JSON",
+      "actual": "Valid JSON",
+      "passed": true,
+      "details": "API endpoint returns valid JSON",
+      "timestamp": "2025-09-23T11:13:22.321067"
+    },
+    {
+      "test_name": "Backend-Frontend Sync - Trading Status",
+      "expected": "Valid response",
+      "actual": "Valid response",
+      "passed": true,
+      "details": "Backend trading status: False",
+      "timestamp": "2025-09-23T11:13:22.321727"
+    },
+    {
+      "test_name": "Backend-Frontend Sync - Symbols",
+      "expected": "> 0",
+      "actual": 0,
+      "passed": false,
+      "details": "Backend should have symbols (found 0)",
+      "timestamp": "2025-09-23T11:13:22.321751"
+    },
+    {
+      "test_name": "Async Trading - Loading Status",
+      "expected": "Valid response",
+      "actual": "Valid response",
+      "passed": true,
+      "details": "Async trading loading: False, progress: 0%",
+      "timestamp": "2025-09-23T11:13:22.322299"
+    },
+    {
+      "test_name": "Async Trading - Trading Active After Loading",
+      "expected": true,
+      "actual": false,
+      "passed": false,
+      "details": "Trading should be active after async loading (found: False)",
+      "timestamp": "2025-09-23T11:13:22.322910"
+    }
+  ],
+  "timestamp": "2025-09-23T11:13:22.323161"
+}
