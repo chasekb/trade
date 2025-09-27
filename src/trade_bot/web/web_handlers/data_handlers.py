@@ -150,10 +150,65 @@ class DataHandlers:
                         imbalance_delta_buy = volume_imbalance - imbalance_threshold if volume_imbalance > 0 else 0
                         imbalance_delta_sell = abs(volume_imbalance) - imbalance_threshold if volume_imbalance < 0 else 0
                         
-                        # Large Trade Analysis (simplified - would need trade data)
-                        large_trade_meets_buy = False  # Would need actual trade data
-                        large_trade_meets_sell = False  # Would need actual trade data
-                        large_trade_count = 0  # Would need actual trade data
+                        # Large Trade Analysis - get recent trade data
+                        large_trade_meets_buy = False
+                        large_trade_meets_sell = False
+                        large_trade_count = 0
+                        large_trade_analysis = "No recent trades"
+                        large_trades = []  # Initialize empty list
+                        
+                        try:
+                            # Get recent trades for this symbol
+                            recent_trades = await self.data_handler.get_recent_trades(symbol, limit=50)
+                            if recent_trades:
+                                # Analyze trades for large trade patterns
+                                buy_volume = 0.0
+                                sell_volume = 0.0
+                                
+                                for trade in recent_trades:
+                                    try:
+                                        trade_size = float(trade.get('size', 0))
+                                        trade_price = float(trade.get('price', 0))
+                                        trade_value = trade_size * trade_price
+                                        trade_side = trade.get('side', '')
+                                        
+                                        if trade_value >= large_trade_threshold:
+                                            large_trades.append({
+                                                'side': trade_side,
+                                                'value': trade_value,
+                                                'size': trade_size,
+                                                'price': trade_price
+                                            })
+                                        
+                                        # Track buy/sell volumes
+                                        if trade_side == 'buy':
+                                            buy_volume += trade_value
+                                        elif trade_side == 'sell':
+                                            sell_volume += trade_value
+                                            
+                                    except (ValueError, TypeError):
+                                        continue
+                                
+                                # Calculate large trade metrics
+                                large_trade_count = len(large_trades)
+                                large_buy_trades = [t for t in large_trades if t['side'] == 'buy']
+                                large_sell_trades = [t for t in large_trades if t['side'] == 'sell']
+                                
+                                # Determine if large trade criteria are met
+                                large_trade_meets_buy = len(large_buy_trades) >= 2  # At least 2 large buy trades
+                                large_trade_meets_sell = len(large_sell_trades) >= 2  # At least 2 large sell trades
+                                
+                                # Calculate large trade pressure
+                                total_volume = buy_volume + sell_volume
+                                if total_volume > 0:
+                                    large_trade_pressure = (sum(t['value'] for t in large_trades) / total_volume) * 100
+                                    large_trade_analysis = f"Large trades: {large_trade_count} ({large_trade_pressure:.1f}% of volume)"
+                                else:
+                                    large_trade_analysis = f"Large trades: {large_trade_count}"
+                                    
+                        except Exception as e:
+                            logger.warning(f"Error analyzing large trades for {symbol}: {e}")
+                            large_trade_analysis = "Analysis error"
                         
                         signals.append({
                             "symbol": symbol,
@@ -199,22 +254,22 @@ class DataHandlers:
                                     "ask_volume": ask_volume
                                 },
                                 "large_trade_buy": {
-                                    "enabled": False,  # Disabled until trade data is available
+                                    "enabled": True,
                                     "meets_criteria": large_trade_meets_buy,
-                                    "delta_to_threshold": 0,
-                                    "analysis": "Trade data not available",
+                                    "delta_to_threshold": len([t for t in large_trades if t['side'] == 'buy']) - 2 if large_trades else 0,
+                                    "analysis": large_trade_analysis,
                                     "threshold": large_trade_threshold,
-                                    "current_value": 0,
-                                    "large_trades_count": large_trade_count
+                                    "current_value": len([t for t in large_trades if t['side'] == 'buy']) if large_trades else 0,
+                                    "large_trades_count": len([t for t in large_trades if t['side'] == 'buy']) if large_trades else 0
                                 },
                                 "large_trade_sell": {
-                                    "enabled": False,  # Disabled until trade data is available
+                                    "enabled": True,
                                     "meets_criteria": large_trade_meets_sell,
-                                    "delta_to_threshold": 0,
-                                    "analysis": "Trade data not available",
+                                    "delta_to_threshold": len([t for t in large_trades if t['side'] == 'sell']) - 2 if large_trades else 0,
+                                    "analysis": large_trade_analysis,
                                     "threshold": large_trade_threshold,
-                                    "current_value": 0,
-                                    "large_trades_count": large_trade_count
+                                    "current_value": len([t for t in large_trades if t['side'] == 'sell']) if large_trades else 0,
+                                    "large_trades_count": len([t for t in large_trades if t['side'] == 'sell']) if large_trades else 0
                                 }
                             }
                         })

@@ -1044,7 +1044,7 @@ class EnhancedTradingDashboard {
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-xs">
+                        <div class="text-xs" title="Bid-Ask Squeeze: ${squeeze.enabled ? (squeeze.meets_criteria ? 'Tight spread detected - high liquidity' : 'Wide spread - low liquidity') : 'No data available'}">
                             <div class="flex items-center space-x-1">
                                 <span class="${getStatusColor(squeeze.meets_criteria, squeeze.enabled)}">
                                     ${squeeze.enabled ? (squeeze.meets_criteria ? '✓' : '✗') : '○'}
@@ -1057,7 +1057,7 @@ class EnhancedTradingDashboard {
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-xs">
+                        <div class="text-xs" title="Volume Imbalance: ${imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? 'Buy pressure detected - more buy volume than sell' : 'Balanced or sell pressure - normal volume distribution') : 'No data available'}">
                             <div class="flex items-center space-x-1">
                                 <span class="${getStatusColor(imbalanceBuy.meets_criteria, imbalanceBuy.enabled)}">
                                     ${imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? '✓' : '✗') : '○'}
@@ -1070,7 +1070,7 @@ class EnhancedTradingDashboard {
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-xs">
+                        <div class="text-xs" title="Large Trade Analysis: ${largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? 'Multiple large trades detected - potential institutional activity' : 'Normal trade sizes - no significant large trades') : 'No trade data available'}">
                             <div class="flex items-center space-x-1">
                                 <span class="${getStatusColor(largeTradeBuy.meets_criteria, largeTradeBuy.enabled)}">
                                     ${largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? '✓' : '✗') : '○'}
