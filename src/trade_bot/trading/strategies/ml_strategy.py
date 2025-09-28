@@ -8,8 +8,9 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from .base import BaseStrategy
+from .base import BaseStrategy, TradeSignal
 from .ml_signal import MLSignalGenerator, MLSignalResult
+from ...core.config import TradingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,9 @@ logger = logging.getLogger(__name__)
 class MLStrategy(BaseStrategy):
     """Trading strategy enhanced with machine learning predictions."""
     
-    def __init__(self, name: str = "ML Strategy", **kwargs):
-        super().__init__(name, **kwargs)
+    def __init__(self, config: TradingConfig, name: str = "ML Strategy", **kwargs):
+        super().__init__(config)
+        self.name = name
         
         # ML components
         self.ml_generator = MLSignalGenerator()
@@ -42,8 +44,11 @@ class MLStrategy(BaseStrategy):
         
         logger.info(f"ML Strategy initialized with ML enabled: {self.ml_enabled}")
     
-    def generate_signal(self, current_price: float, timestamp: datetime, 
-                       is_end_of_period: bool = False) -> str:
+    def get_strategy_name(self) -> str:
+        """Get the name of this strategy."""
+        return self.name
+    
+    def generate_signal(self, current_price: float, timestamp: datetime) -> Optional[TradeSignal]:
         """Generate trading signal using ML predictions and traditional analysis."""
         try:
             # Get traditional technical analysis
@@ -66,22 +71,35 @@ class MLStrategy(BaseStrategy):
                     'signal': final_signal
                 })
             
-            return final_signal
+            # Create TradeSignal object
+            return TradeSignal(
+                action=final_signal,
+                price=current_price,
+                quantity=0.0,  # Will be calculated by trading manager
+                timestamp=timestamp,
+                reason=f"ML Strategy: {final_signal}"
+            )
             
         except Exception as e:
             logger.error(f"Error generating ML strategy signal: {e}")
-            return "hold"
+            return TradeSignal(
+                action="hold",
+                price=current_price,
+                quantity=0.0,
+                timestamp=timestamp,
+                reason=f"ML Strategy Error: {str(e)}"
+            )
     
     def _get_traditional_signal(self, current_price: float) -> str:
         """Get traditional technical analysis signal."""
         try:
-            if len(self.prices) < self.ma_long:
+            if len(self.price_history) < self.ma_long:
                 return "hold"
             
             # Calculate technical indicators
-            rsi = self._calculate_rsi(self.prices[-14:])
-            ma_short = sum(self.prices[-self.ma_short:]) / self.ma_short
-            ma_long = sum(self.prices[-self.ma_long:]) / self.ma_long
+            rsi = self._calculate_rsi(self.price_history[-14:])
+            ma_short = sum(self.price_history[-self.ma_short:]) / self.ma_short
+            ma_long = sum(self.price_history[-self.ma_long:]) / self.ma_long
             
             # RSI signals
             rsi_signal = "hold"

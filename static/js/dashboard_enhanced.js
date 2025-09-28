@@ -1046,7 +1046,7 @@ class EnhancedTradingDashboard {
         if (signals.length === 0) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="11" class="px-6 py-4 text-center text-gray-500">
+                    <td colspan="14" class="px-6 py-4 text-center text-gray-500">
                         <i class="fas fa-exclamation-triangle mr-2"></i>No order book signals available
                     </td>
                 </tr>
@@ -1183,6 +1183,45 @@ class EnhancedTradingDashboard {
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-xs" title="ML Win Probability: ${signal.ml_analysis?.ml_enabled ? `Machine learning prediction: ${(signal.ml_analysis.win_probability * 100).toFixed(1)}% chance of success` : 'ML model not trained or enabled'}">
+                            <div class="flex items-center space-x-1">
+                                <span class="${signal.ml_analysis?.ml_enabled ? (signal.ml_analysis.win_probability >= 0.6 ? 'text-green-600' : signal.ml_analysis.win_probability >= 0.4 ? 'text-yellow-600' : 'text-red-600') : 'text-gray-400'}">
+                                    ${signal.ml_analysis?.ml_enabled ? '🤖' : '○'}
+                                </span>
+                                <span class="text-gray-600">${signal.ml_analysis?.ml_enabled ? (signal.ml_analysis.win_probability * 100).toFixed(1) + '%' : 'N/A'}</span>
+                            </div>
+                            <div class="text-gray-500 text-xs mt-1">
+                                ${signal.ml_analysis?.ml_enabled ? `Conf: ${(signal.ml_analysis.confidence * 100).toFixed(0)}%` : 'No ML'}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-xs" title="ML Expected Return: ${signal.ml_analysis?.ml_enabled ? `Machine learning prediction: ${(signal.ml_analysis.expected_return * 100).toFixed(2)}% expected return` : 'ML model not trained or enabled'}">
+                            <div class="flex items-center space-x-1">
+                                <span class="${signal.ml_analysis?.ml_enabled ? (signal.ml_analysis.expected_return >= 0.01 ? 'text-green-600' : signal.ml_analysis.expected_return >= 0.005 ? 'text-yellow-600' : 'text-red-600') : 'text-gray-400'}">
+                                    ${signal.ml_analysis?.ml_enabled ? '📈' : '○'}
+                                </span>
+                                <span class="text-gray-600">${signal.ml_analysis?.ml_enabled ? (signal.ml_analysis.expected_return * 100).toFixed(2) + '%' : 'N/A'}</span>
+                            </div>
+                            <div class="text-gray-500 text-xs mt-1">
+                                ${signal.ml_analysis?.ml_enabled ? `Model: ${signal.ml_analysis.model_version}` : 'No ML'}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-xs" title="ML Confidence: ${signal.ml_analysis?.ml_enabled ? `Model confidence level: ${(signal.ml_analysis.confidence * 100).toFixed(1)}%` : 'ML model not trained or enabled'}">
+                            <div class="flex items-center space-x-1">
+                                <span class="${signal.ml_analysis?.ml_enabled ? (signal.ml_analysis.confidence >= 0.7 ? 'text-green-600' : signal.ml_analysis.confidence >= 0.4 ? 'text-yellow-600' : 'text-red-600') : 'text-gray-400'}">
+                                    ${signal.ml_analysis?.ml_enabled ? '🎯' : '○'}
+                                </span>
+                                <span class="text-gray-600">${signal.ml_analysis?.ml_enabled ? (signal.ml_analysis.confidence * 100).toFixed(0) + '%' : 'N/A'}</span>
+                            </div>
+                            <div class="text-gray-500 text-xs mt-1">
+                                ${signal.ml_analysis?.ml_enabled ? `Features: ${signal.ml_analysis.features_used?.length || 0}` : 'No ML'}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
                         <div class="text-sm text-gray-900">${(signal.spread || 0).toFixed(4)}%</div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
@@ -1204,6 +1243,22 @@ class EnhancedTradingDashboard {
                                     <div><strong>Large Trade Buy:</strong> ${largeTradeBuy.analysis || 'N/A'}</div>
                                     <div><strong>Large Trade Sell:</strong> ${largeTradeSell.analysis || 'N/A'}</div>
                                 </div>
+                                ${signal.ml_analysis?.ml_enabled ? `
+                                <div class="border-t pt-2">
+                                    <div class="font-semibold text-blue-600">🤖 Machine Learning Analysis</div>
+                                    <div><strong>Win Probability:</strong> ${(signal.ml_analysis.win_probability * 100).toFixed(1)}%</div>
+                                    <div><strong>Expected Return:</strong> ${(signal.ml_analysis.expected_return * 100).toFixed(2)}%</div>
+                                    <div><strong>Confidence:</strong> ${(signal.ml_analysis.confidence * 100).toFixed(1)}%</div>
+                                    <div><strong>Model Version:</strong> ${signal.ml_analysis.model_version}</div>
+                                    <div><strong>Features Used:</strong> ${signal.ml_analysis.features_used?.length || 0} features</div>
+                                    <div><strong>Prediction Time:</strong> ${new Date(signal.ml_analysis.prediction_timestamp).toLocaleString()}</div>
+                                </div>
+                                ` : `
+                                <div class="border-t pt-2">
+                                    <div class="font-semibold text-gray-500">🤖 Machine Learning Analysis</div>
+                                    <div class="text-gray-500">ML model not trained or enabled</div>
+                                </div>
+                                `}
                             </div>
                         </div>
                     </td>
@@ -1213,7 +1268,7 @@ class EnhancedTradingDashboard {
                 console.error('Error rendering signal row:', error, signal);
                 return `
                     <tr class="bg-red-50">
-                        <td colspan="11" class="px-6 py-4 text-center text-red-600">
+                        <td colspan="14" class="px-6 py-4 text-center text-red-600">
                             <i class="fas fa-exclamation-triangle mr-2"></i>Error rendering signal: ${error.message}
                         </td>
                     </tr>

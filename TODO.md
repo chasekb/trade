@@ -3,6 +3,11 @@
 ## Top Priority Items
 
 ### Critical Bug Fixes & Stability
+- [x] **ML signal integration into the live orderbook signals endpoint for the simulated trading tab**
+  - [x] a) Import the MLStrategy class
+  - [x] b) Add ML signal generation alongside the OrderBookStrategy
+  - [x] c) Combine both signal types in the response
+  - [x] d) Update the frontend to display ML signal information
 - [x] On simulated trading tab, in simulated trading statistics widget, in performance trends fix all calculations
 - [x] Create tests to validate all calculations in Simulated Trading Statistics widget. Risk Metrics, Trading Activity, and Performance Trends display incorrect values
 - [x] On simulated trading tab, in live order book signals, Large Trade Analysis is N/A

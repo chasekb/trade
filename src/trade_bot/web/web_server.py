@@ -22,6 +22,7 @@ from ..data.cached_data_provider import CachedDataProvider
 from ..data.product_fetcher import ProductFetcher
 from ..backtest.backtester import Backtester
 from ..trading.trading_strategy import SimpleMovingAverageStrategy, BollingerBandsStrategy, RSIStrategy, EMAStrategy, MACDStrategy, StochasticStrategy, DCAStrategy, BuyAndHoldStrategy, ATRStrategy, FibonacciRetracementStrategy, OrderBookStrategy
+from ..trading.strategies.ml_strategy import MLStrategy
 from ..database.database import BacktestDatabase
 from ..database.database_manager import DatabaseManager
 import math
@@ -1466,6 +1467,16 @@ async def get_live_orderbook_signals(symbols: str = None):
             sampling_ratio=strategy_params.get("sampling_ratio", 0.1)
         )
         
+        # Create ML strategy for enhanced signal generation
+        ml_strategy = MLStrategy(
+            config=config,
+            name="ML Strategy",
+            min_win_probability=strategy_params.get("min_win_probability", 0.6),
+            min_expected_return=strategy_params.get("min_expected_return", 0.01),
+            min_confidence=strategy_params.get("min_confidence", 0.3),
+            max_risk_per_trade=strategy_params.get("max_risk_per_trade", 0.02)
+        )
+        
         live_signals = []
         
         logger.info(f"Analyzing {len(symbols_to_analyze)} symbols: {symbols_to_analyze[:5]}...")
@@ -1588,6 +1599,49 @@ async def get_live_orderbook_signals(symbols: str = None):
                     ob_summary = strategy.get_order_book_summary()
                     stats = strategy.get_signal_stats()
                     
+                    # Generate ML signal
+                    ml_signal_data = None
+                    ml_analysis = {
+                        'win_probability': 0.0,
+                        'expected_return': 0.0,
+                        'confidence': 0.0,
+                        'features_used': [],
+                        'model_version': '1.0.0',
+                        'prediction_timestamp': datetime.now().isoformat(),
+                        'ml_enabled': False
+                    }
+                    
+                    try:
+                        if ml_strategy.ml_enabled and ml_strategy.ml_generator.is_trained:
+                            logger.info(f"Generating ML signal for {symbol}")
+                            # Prepare data for ML analysis
+                            orderbook_data = order_book if order_book else {}
+                            trades_data = trades if trades else []
+                            
+                            # Generate ML signal
+                            ml_signal_data = ml_strategy.ml_generator.generate_signal(
+                                trades=trades_data,
+                                orderbook_data=orderbook_data,
+                                current_price=current_price,
+                                symbol=symbol
+                            )
+                            
+                            ml_analysis = {
+                                'win_probability': ml_signal_data.win_probability,
+                                'expected_return': ml_signal_data.expected_return,
+                                'confidence': ml_signal_data.confidence,
+                                'features_used': ml_signal_data.features_used,
+                                'model_version': ml_signal_data.model_version,
+                                'prediction_timestamp': ml_signal_data.prediction_timestamp.isoformat(),
+                                'ml_enabled': True
+                            }
+                            logger.info(f"ML signal generated for {symbol}: win_prob={ml_signal_data.win_probability:.3f}, expected_return={ml_signal_data.expected_return:.3f}")
+                        else:
+                            logger.info(f"ML signal not available for {symbol}: enabled={ml_strategy.ml_enabled}, trained={ml_strategy.ml_generator.is_trained}")
+                    except Exception as e:
+                        logger.error(f"Error generating ML signal for {symbol}: {e}")
+                        # Continue without ML signal
+                    
                     # Calculate signal strength based on closest criteria
                     criteria = detailed_analysis['criteria_analysis']
                     max_delta = 0.0
@@ -1637,6 +1691,7 @@ async def get_live_orderbook_signals(symbols: str = None):
                     'total_signals': int(stats.get('total_signals', 0)),
                     'signal_rate': round(float(stats.get('signal_rate', 0.0)), 2),
                     'data_status': data_status,
+                    'ml_analysis': ml_analysis,
                     'timestamp': datetime.now().isoformat()
                 })
                 
