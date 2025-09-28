@@ -15,7 +15,7 @@ import os
 # Add the src directory to the path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from trade_bot.simulated_trading_manager import SimulatedTradingManager, Position, Trade, Portfolio
+from src.trade_bot.trading.simulated_trading_manager import SimulatedTradingManager, Position, Trade, Portfolio
 
 
 class TestSimulatedTradingManager:

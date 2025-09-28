@@ -13,9 +13,9 @@ load_dotenv()
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from trade_bot.config import TradingConfig
-from trade_bot.trading_strategy import SimpleMovingAverageStrategy
-from trade_bot.data_handler import DataHandler
+from src.trade_bot.config import TradingConfig
+from src.trade_bot.trading_strategy import SimpleMovingAverageStrategy
+from src.trade_bot.data_handler import DataHandler
 import websockets
 
 

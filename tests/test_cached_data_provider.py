@@ -16,9 +16,9 @@ from typing import Dict, List, Any
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from trade_bot.cached_data_provider import CachedDataProvider
-from trade_bot.database_manager import DatabaseManager
-from trade_bot.config import TradingConfig
+from src.trade_bot.cached_data_provider import CachedDataProvider
+from src.trade_bot.database_manager import DatabaseManager
+from src.trade_bot.config import TradingConfig
 
 class CachedDataProviderTester:
     """Test suite for cached data provider."""

@@ -3,6 +3,18 @@
 ## Top Priority Items
 
 ### Critical Bug Fixes & Stability
+- [ ] **Fix remaining test import errors and ensure all tests can run successfully**
+  - [ ] a) Resolve remaining 20 test collection errors
+  - [ ] b) Fix any missing module imports in test files
+  - [ ] c) Ensure all test dependencies are properly configured
+  - [ ] d) Verify all tests can be executed with `uv run python -m pytest tests/`
+  - [ ] e) Run full test suite to ensure no regressions
+- [x] **On simulated trading tab, when start trading is pressed and trades are executed, no trade information is written to database**
+  - [ ] a) Investigate why trades are not being saved to individual_trades table
+  - [ ] b) Verify database connection and session setup in simulated trading flow
+  - [ ] c) Check if _save_trade_to_db method is being called correctly
+  - [ ] d) Ensure db_manager and session_id are properly initialized
+  - [ ] e) Test and verify trades are written to trading_cache.db after fix
 - [x] **ML signal integration into the live orderbook signals endpoint for the simulated trading tab**
   - [x] a) Import the MLStrategy class
   - [x] b) Add ML signal generation alongside the OrderBookStrategy

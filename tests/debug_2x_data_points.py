@@ -15,9 +15,9 @@ from typing import List, Dict, Any
 # Add the src directory to the path
 sys.path.insert(0, 'src')
 
-from trade_bot.trading_strategy import SimpleMovingAverageStrategy, TradingConfig
-from trade_bot.backtester import Backtester
-from trade_bot.data_provider import CoinbaseDataProvider
+from src.trade_bot.trading_strategy import SimpleMovingAverageStrategy, TradingConfig
+from src.trade_bot.backtester import Backtester
+from src.trade_bot.data_provider import CoinbaseDataProvider
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

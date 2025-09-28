@@ -637,8 +637,8 @@ class DatabaseManager:
                 cursor.execute("""
                     INSERT OR REPLACE INTO individual_trades 
                     (trade_id, session_id, symbol, side, quantity, price, 
-                     timestamp, reason, pnl, fees, strategy_type, strategy_params, trade_type)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     timestamp, reason, pnl, fees, strategy_type, strategy_params)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     trade_data.get('trade_id'),
                     trade_data.get('session_id'),
@@ -651,8 +651,7 @@ class DatabaseManager:
                     trade_data.get('pnl', 0.0),
                     trade_data.get('fees', 0.0),
                     trade_data.get('strategy_type'),
-                    strategy_params,
-                    trade_data.get('trade_type', 'simulated')
+                    strategy_params
                 ))
                 conn.commit()
             
@@ -670,7 +669,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT trade_id, symbol, side, quantity, price, timestamp, 
-                           reason, pnl, fees, strategy_type, strategy_params, trade_type, created_at
+                           reason, pnl, fees, strategy_type, strategy_params, created_at
                     FROM individual_trades 
                     WHERE session_id = ?
                     ORDER BY timestamp DESC
@@ -701,8 +700,7 @@ class DatabaseManager:
                         'fees': row[8],
                         'strategy_type': row[9],
                         'strategy_params': strategy_params,
-                        'trade_type': row[11],
-                        'created_at': row[12]
+                        'created_at': row[11]
                     })
                 
                 return trades

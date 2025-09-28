@@ -1612,13 +1612,13 @@ async def get_live_orderbook_signals(symbols: str = None):
                     }
                     
                     try:
-                        if ml_strategy.ml_enabled and ml_strategy.ml_generator.is_trained:
+                        if ml_strategy.ml_enabled:
                             logger.info(f"Generating ML signal for {symbol}")
                             # Prepare data for ML analysis
                             orderbook_data = order_book if order_book else {}
                             trades_data = trades if trades else []
                             
-                            # Generate ML signal
+                            # Generate ML signal (will return default values if not trained)
                             ml_signal_data = ml_strategy.ml_generator.generate_signal(
                                 trades=trades_data,
                                 orderbook_data=orderbook_data,
@@ -1633,11 +1633,12 @@ async def get_live_orderbook_signals(symbols: str = None):
                                 'features_used': ml_signal_data.features_used,
                                 'model_version': ml_signal_data.model_version,
                                 'prediction_timestamp': ml_signal_data.prediction_timestamp.isoformat(),
-                                'ml_enabled': True
+                                'ml_enabled': True,
+                                'model_trained': ml_strategy.ml_generator.is_trained
                             }
-                            logger.info(f"ML signal generated for {symbol}: win_prob={ml_signal_data.win_probability:.3f}, expected_return={ml_signal_data.expected_return:.3f}")
+                            logger.info(f"ML signal generated for {symbol}: win_prob={ml_signal_data.win_probability:.3f}, expected_return={ml_signal_data.expected_return:.3f}, trained={ml_strategy.ml_generator.is_trained}")
                         else:
-                            logger.info(f"ML signal not available for {symbol}: enabled={ml_strategy.ml_enabled}, trained={ml_strategy.ml_generator.is_trained}")
+                            logger.info(f"ML signal disabled for {symbol}")
                     except Exception as e:
                         logger.error(f"Error generating ML signal for {symbol}: {e}")
                         # Continue without ML signal

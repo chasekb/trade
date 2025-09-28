@@ -9,10 +9,10 @@ from datetime import datetime
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from trade_bot.trading.simulated_components.trade_executor import SimulatedTradeExecutor
-from trade_bot.trading.simulated_components.portfolio import Portfolio
-from trade_bot.trading.simulated_components.position import Position
-from trade_bot.trading.simulated_components.trade import Trade
+from src.trade_bot.trading.simulated_components.trade_executor import SimulatedTradeExecutor
+from src.trade_bot.trading.simulated_components.portfolio import Portfolio
+from src.trade_bot.trading.simulated_components.position import Position
+from src.trade_bot.trading.simulated_components.trade import Trade
 
 
 class TestSimulatedTradingStats:

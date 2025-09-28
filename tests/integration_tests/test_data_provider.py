@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, AsyncMock
 
-from trade_bot.data_provider import CoinbaseDataProvider, MockDataProvider
+from src.trade_bot.data_provider import CoinbaseDataProvider, MockDataProvider
 
 
 class TestCoinbaseDataProvider:

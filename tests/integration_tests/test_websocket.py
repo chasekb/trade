@@ -12,8 +12,8 @@ load_dotenv()
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from trade_bot.config import TradingConfig
-from trade_bot.websocket_client import WebSocketClient
+from src.trade_bot.config import TradingConfig
+from src.trade_bot.websocket_client import WebSocketClient
 
 
 def setup_logging():

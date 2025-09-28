@@ -5,9 +5,9 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
-from trade_bot.config import TradingConfig
-from trade_bot.backtester import Backtester, BacktestResult
-from trade_bot.trading_strategy import SimpleMovingAverageStrategy, TradeSignal
+from src.trade_bot.config import TradingConfig
+from src.trade_bot.backtester import Backtester, BacktestResult
+from src.trade_bot.trading_strategy import SimpleMovingAverageStrategy, TradeSignal
 
 
 class TestBacktester:

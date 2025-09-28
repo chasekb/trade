@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from trade_bot.trading.simulated_trading_manager import SimulatedTradingManager, Trade, Position
+from src.trade_bot.trading.simulated_trading_manager import SimulatedTradingManager, Trade, Position
 
 
 class TestSimulatedStatsValidation:
