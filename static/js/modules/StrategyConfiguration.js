@@ -99,9 +99,16 @@ export class StrategyConfiguration {
     }
 
     loadStrategyParameters(strategyType) {
+        console.log('StrategyConfiguration.loadStrategyParameters called with:', strategyType);
+        
         const paramsContainer = document.getElementById('live-strategy-params');
-        if (!paramsContainer) return;
+        if (!paramsContainer) {
+            console.warn('Strategy parameters container not found: #live-strategy-params');
+            return;
+        }
 
+        console.log('Loading strategy parameters for:', strategyType);
+        
         // Clear existing parameters
         paramsContainer.innerHTML = '';
 
@@ -177,6 +184,8 @@ export class StrategyConfiguration {
                 });
             }
         }
+        
+        console.log('Strategy parameters loaded successfully for:', strategyType);
     }
 
     applyLiveOrderBookPreset(presetName) {

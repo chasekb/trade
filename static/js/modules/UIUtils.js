@@ -37,13 +37,19 @@ export class UIUtils {
     }
 
     updateSymbolModeUI() {
+        console.log('updateSymbolModeUI called');
         const symbolMode = this.dashboard.liveTrading.symbolMode;
+        console.log('Current symbolMode:', symbolMode);
         const singleConfig = document.getElementById('single-symbol-config');
         const universeConfig = document.getElementById('universe-config');
         const singleStrategy = document.getElementById('single-strategy');
         const universeStrategy = document.getElementById('universe-strategy');
         
+        console.log('singleConfig element:', singleConfig);
+        console.log('universeConfig element:', universeConfig);
+        
         if (symbolMode === 'universe') {
+            console.log('Setting universe mode UI');
             if (singleConfig) singleConfig.style.display = 'none';
             if (universeConfig) universeConfig.style.display = 'block';
             if (singleStrategy && universeStrategy) {
@@ -51,6 +57,7 @@ export class UIUtils {
                 universeStrategy.style.display = 'block';
             }
         } else {
+            console.log('Setting single symbol mode UI');
             if (singleConfig) singleConfig.style.display = 'block';
             if (universeConfig) universeConfig.style.display = 'none';
             if (singleStrategy && universeStrategy) {
@@ -62,6 +69,8 @@ export class UIUtils {
 
     updateUniverseTypeUI() {
         const universeType = document.getElementById('universe-type')?.value;
+        console.log('updateUniverseTypeUI called with universeType:', universeType);
+        
         const customSymbolsConfig = document.getElementById('custom-symbols-config');
         const customSymbolsInput = document.getElementById('custom-symbols-input');
         
@@ -78,6 +87,7 @@ export class UIUtils {
     }
 
     async loadUniverseSymbols(universeType) {
+        console.log('loadUniverseSymbols called with universeType:', universeType);
         try {
             const response = await fetch('/api/products');
             const data = await response.json();
@@ -119,6 +129,7 @@ export class UIUtils {
                         symbols = [];
                 }
                 
+                console.log('Loaded symbols for', universeType, ':', symbols.length, 'symbols');
                 this.updateUniversePreview(symbols);
             }
         } catch (error) {
@@ -127,8 +138,12 @@ export class UIUtils {
     }
 
     updateUniversePreview(symbols) {
+        console.log('updateUniversePreview called with symbols:', symbols.length, 'symbols');
         const universeSymbols = document.getElementById('universe-symbols');
         const universeCount = document.getElementById('universe-count');
+        
+        console.log('universe-symbols element:', universeSymbols);
+        console.log('universe-count element:', universeCount);
         
         if (universeSymbols) {
             if (symbols.length === 0) {

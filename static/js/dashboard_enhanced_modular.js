@@ -213,6 +213,9 @@ class EnhancedTradingDashboard {
                 // Initialize universe selection
                 this.uiUtils.updateUniverseTypeUI();
 
+                // Strategy parameters will be loaded when Live Trading tab is first activated
+                // This is because the tab content is not in DOM until activated
+
                 // Start trading stats updates with throttling
                 this.tradingStats.startTradingStatsUpdates();
             } catch (error) {
@@ -234,6 +237,40 @@ class EnhancedTradingDashboard {
         } catch (error) {
             console.error('Error loading initial data batch:', error);
         }
+    }
+
+    loadInitialStrategyParameters() {
+        // Use a more robust approach to ensure DOM elements are available
+        const waitForElement = (selector, maxAttempts = 20, interval = 50) => {
+            return new Promise((resolve, reject) => {
+                let attempts = 0;
+                const checkElement = () => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        resolve(element);
+                    } else if (attempts < maxAttempts) {
+                        attempts++;
+                        setTimeout(checkElement, interval);
+                    } else {
+                        reject(new Error(`Element ${selector} not found after ${maxAttempts} attempts`));
+                    }
+                };
+                checkElement();
+            });
+        };
+
+        // Wait for the strategy type select element to be available
+        waitForElement('#live-strategy-type')
+            .then((strategySelect) => {
+                const initialStrategyType = strategySelect.value || 'orderbook';
+                console.log('Loading initial strategy parameters for:', initialStrategyType);
+                this.strategyConfig.loadStrategyParameters(initialStrategyType);
+            })
+            .catch((error) => {
+                console.warn('Strategy type element not found, using default:', error.message);
+                // Fallback: load with default strategy type
+                this.strategyConfig.loadStrategyParameters('orderbook');
+            });
     }
 
     setupAccountsListToggle() {
@@ -360,6 +397,8 @@ class EnhancedTradingDashboard {
         // Load data for specific tabs
         if (tabName === 'live-trading') {
             this.liveTrading.loadLiveTradingData();
+            // Load strategy parameters when Live Trading tab is first activated
+            this.loadInitialStrategyParameters();
         } else if (tabName === 'trading-history') {
             this.pagination.loadTradingHistory();
         } else if (tabName === 'orderbook-signals') {
