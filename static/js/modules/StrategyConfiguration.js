@@ -182,6 +182,9 @@ export class StrategyConfiguration {
                 presetSelect.addEventListener('change', (e) => {
                     this.applyLiveOrderBookPreset(e.target.value);
                 });
+                
+                // Apply the default aggressive preset on initial load
+                this.applyLiveOrderBookPreset('aggressive');
             }
         }
         
