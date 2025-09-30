@@ -49,7 +49,7 @@ class DataHandlers:
             
             # Only return signals if trading is actually active
             if not trading_active:
-                logger.info("Trading not active, returning empty signals")
+                logger.debug("Trading not active, returning empty signals")
                 return {
                     "signals": [],
                     "trading_active": False,
