@@ -82,8 +82,35 @@ export class UIUtils {
             if (customSymbolsInput) customSymbolsInput.required = false;
         }
         
+        // Update max universe size based on selected type
+        this.updateMaxUniverseSize(universeType);
+        
         // Load universe symbols
         this.loadUniverseSymbols(universeType);
+    }
+
+    updateMaxUniverseSize(universeType) {
+        const maxSizeInput = document.getElementById('universe-max-size');
+        if (!maxSizeInput) return;
+
+        // Set max universe size based on universe type
+        const sizeMap = {
+            'all_products': 468,
+            'all_usd': 324,
+            'all_eur': 40,
+            'all_usdt': 35,
+            'all_btc': 30,
+            'major': 7,
+            'minor': 21,
+            'crypto': 35,
+            'custom': 50 // Default for custom
+        };
+
+        const maxSize = sizeMap[universeType] || 50;
+        maxSizeInput.value = maxSize;
+        maxSizeInput.max = maxSize;
+        
+        console.log(`Updated max universe size to ${maxSize} for universe type: ${universeType}`);
     }
 
     async loadUniverseSymbols(universeType) {

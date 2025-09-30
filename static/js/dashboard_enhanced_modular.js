@@ -154,12 +154,11 @@ class EnhancedTradingDashboard {
             'trading-symbol-mode': 'single',
             'live-trading-symbol-mode': 'single',
             'live-strategy-type': 'orderbook',
-            'universe-strategy-type': 'orderbook',
             'universe-type': 'all_usd',
             'live-trading-symbol': 'BTC-USD',
-            'universe-max-size': '50',
+            'universe-max-size': '324', // Default to all USD pairs count
             'universe-position-size': '1.0',
-            'universe-max-positions': '10'
+            'universe-max-positions': '95'
         };
 
         Object.entries(defaults).forEach(([id, value]) => {
@@ -362,10 +361,7 @@ class EnhancedTradingDashboard {
             this.strategyConfig.loadStrategyParameters(e.target.value);
         });
 
-        // Universe strategy type change listener
-        document.getElementById('universe-strategy-type')?.addEventListener('change', (e) => {
-            this.strategyConfig.loadStrategyParameters(e.target.value);
-        });
+        // Note: Universe strategy type is now handled by the main live-strategy-type selector
     }
 
     // Tab switching functionality
