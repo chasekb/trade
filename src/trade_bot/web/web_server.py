@@ -529,7 +529,7 @@ async def get_historical_data(
     cache_key = f"{product_id}_{days}_{granularity}"
     
     if cache_key not in historical_data_cache:
-        data_provider = CachedDataProvider(product_id)
+        data_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
         end_time = datetime.now()
         start_time = end_time - timedelta(days=days)
         
@@ -584,7 +584,7 @@ async def get_candles_data(
     cache_key = f"candles_{product_id}_{days}_{granularity}"
     
     if cache_key not in historical_data_cache:
-        data_provider = CachedDataProvider(product_id)
+        data_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
         end_time = datetime.now()
         
         # For recent data, try smaller chunks to avoid rate limits
@@ -637,7 +637,7 @@ async def run_backtest(request: BacktestRequest):
     
     try:
         # Get historical data
-        data_provider = CachedDataProvider(product_id)
+        data_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
         end_time = datetime.now()
         start_time = end_time - timedelta(days=request.days)
         
@@ -1349,7 +1349,7 @@ async def get_cache_stats():
     """Get cache performance statistics."""
     try:
         # Create a temporary data provider to get cache stats
-        temp_provider = CachedDataProvider(config)
+        temp_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
         stats = temp_provider.get_cache_stats()
         return {
             "status": "success",

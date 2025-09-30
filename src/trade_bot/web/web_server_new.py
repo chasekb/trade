@@ -151,7 +151,7 @@ async def startup_event():
         
         # Initialize core components
         data_provider = CoinbaseDataProvider(config)
-        cached_data_provider = CachedDataProvider(config)
+        cached_data_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
         product_fetcher = ProductFetcher()
         database_manager = DatabaseManager()
         simulated_trading_manager = SimulatedTradingManager(
