@@ -142,7 +142,7 @@ export class DataManager {
 
     async loadTradingHistory(page = 1, limit = 50) {
         try {
-            const url = `/api/trades/history?page=${page}&limit=${limit}`;
+            const url = `/api/trades/paginated?page=${page}&per_page=${limit}`;
             const data = await this.fetchData(url);
             return data;
         } catch (error) {
@@ -153,7 +153,7 @@ export class DataManager {
 
     async loadOrderBookHistory(page = 1, limit = 50) {
         try {
-            const url = `/api/orderbook/history?page=${page}&limit=${limit}`;
+            const url = `/api/orderbook/live-signals?page=${page}&per_page=${limit}`;
             const data = await this.fetchData(url);
             return data;
         } catch (error) {
@@ -164,7 +164,7 @@ export class DataManager {
 
     async loadPositions(page = 1, limit = 50) {
         try {
-            const url = `/api/positions?page=${page}&limit=${limit}`;
+            const url = `/api/trading/live/positions?page=${page}&limit=${limit}`;
             const data = await this.fetchData(url);
             return data;
         } catch (error) {
@@ -175,7 +175,7 @@ export class DataManager {
 
     async loadBacktestHistory(page = 1, limit = 50) {
         try {
-            const url = `/api/backtests/history?page=${page}&limit=${limit}`;
+            const url = `/api/backtest/history?limit=${limit}&offset=${(page - 1) * limit}`;
             const data = await this.fetchData(url);
             return data;
         } catch (error) {
