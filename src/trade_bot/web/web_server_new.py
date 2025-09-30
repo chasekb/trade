@@ -7,8 +7,11 @@ from fastapi import FastAPI, Request, WebSocket, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
+import time
 
 from ..core.config import TradingConfig
 from ..data.data_provider import CoinbaseDataProvider
@@ -99,8 +102,25 @@ websocket_handlers = None
 data_handlers = None
 live_portfolio_handlers = None
 
-# FastAPI app
-app = FastAPI(title="Trading Dashboard API", version="1.0.0")
+# FastAPI app with performance optimizations
+app = FastAPI(
+    title="Trading Dashboard API", 
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# Add compression middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Add CORS middleware for better performance
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Helper function to check if handlers are ready
 def check_handlers_ready(handlers_name: str, handlers):
@@ -108,8 +128,8 @@ def check_handlers_ready(handlers_name: str, handlers):
     if handlers is None:
         raise HTTPException(status_code=503, detail=f"Server not ready - {handlers_name} not initialized")
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files with optimized settings
+app.mount("/static", StaticFiles(directory="static", html=True), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="templates")
@@ -170,6 +190,29 @@ async def get_dashboard(request: Request):
     """Serve the main dashboard page."""
     check_handlers_ready("dashboard_handlers", dashboard_handlers)
     return await dashboard_handlers.get_dashboard(request)
+
+@app.get("/modular", response_class=HTMLResponse)
+async def get_modular_dashboard(request: Request):
+    """Serve the modular dashboard page with caching headers."""
+    from fastapi.responses import FileResponse
+    from fastapi.responses import Response
+    
+    response = FileResponse(
+        "static/dashboard_enhanced_modular.html",
+        media_type="text/html",
+        headers={
+            "Cache-Control": "public, max-age=300",  # 5 minutes
+            "ETag": f"modular-{int(time.time())}",
+            "Last-Modified": time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime())
+        }
+    )
+    return response
+
+@app.get("/modular-dashboard", response_class=HTMLResponse)
+async def get_modular_dashboard_alt(request: Request):
+    """Serve the modular dashboard page (alternative route)."""
+    from fastapi.responses import FileResponse
+    return FileResponse("static/dashboard_enhanced_modular.html")
 
 @app.get("/favicon.ico")
 async def favicon():

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Manages SQLite database for caching trading data."""
     
-    def __init__(self, db_path: str = "trading_cache.db"):
+    def __init__(self, db_path: str = "data/databases/trading_cache.db"):
         self.db_path = db_path
         self.init_database()
     

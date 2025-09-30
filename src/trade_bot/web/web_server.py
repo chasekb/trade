@@ -127,7 +127,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize database
 backtest_db = BacktestDatabase()
-db_manager = DatabaseManager("trading_cache.db")
+db_manager = DatabaseManager("data/databases/trading_cache.db")
 
 # Global variables for data storage
 real_time_data: Dict[str, Dict] = {}
@@ -1191,7 +1191,7 @@ async def start_live_trading(request: dict):
                     return {"error": f"Unknown strategy type: {strategy_type}"}
                 
                 # Create data provider for universe selection
-                data_provider = CachedDataProvider(config, "trading_cache.db")
+                data_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
                 
                 # Create universe selector
                 selector = UniverseSelector(

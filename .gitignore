@@ -47,12 +47,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-data/cache/node_modules/
-data/outputs/*.csv
-data/outputs/*.json
-data/databases/*.db
-data/databases/*.sqlite
-data/databases/*.sqlite3
+data/
 
 # Logs
 *.log

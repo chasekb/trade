@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class BacktestDatabase:
     """Database manager for backtest results storage."""
     
-    def __init__(self, db_path: str = "backtests.db"):
+    def __init__(self, db_path: str = "data/databases/backtests.db"):
         self.db_path = db_path
         self.init_database()
     

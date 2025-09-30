@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Modular database manager using component architecture."""
     
-    def __init__(self, db_path: str = "trading_cache.db"):
+    def __init__(self, db_path: str = "data/databases/trading_cache.db"):
         self.db_path = db_path
         self.cache_manager = CacheManager(db_path)
         self.session_manager = SessionManager(db_path)
