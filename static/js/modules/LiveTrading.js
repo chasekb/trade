@@ -139,13 +139,7 @@ export class LiveTrading {
             });
         }
 
-        // Universe strategy type change
-        const universeStrategyTypeSelect = document.getElementById('universe-strategy-type');
-        if (universeStrategyTypeSelect) {
-            universeStrategyTypeSelect.addEventListener('change', (e) => {
-                this.dashboard.strategyConfig.loadStrategyParameters(e.target.value);
-            });
-        }
+        // Note: Universe strategy type is now handled by the main live-strategy-type selector
 
         // Order Book preset selection handler
         const presetSelect = document.getElementById('live-orderbook-preset');
@@ -159,16 +153,26 @@ export class LiveTrading {
         const startButton = document.getElementById('start-trading');
         const stopButton = document.getElementById('stop-trading');
         
+        console.log('Setting up trading controls:', { startButton, stopButton });
+        
         if (startButton) {
-            startButton.addEventListener('click', () => {
+            startButton.addEventListener('click', (e) => {
+                console.log('Start trading button clicked');
+                e.preventDefault();
                 this.startTrading();
             });
+        } else {
+            console.warn('Start trading button not found');
         }
 
         if (stopButton) {
-            stopButton.addEventListener('click', () => {
+            stopButton.addEventListener('click', (e) => {
+                console.log('Stop trading button clicked');
+                e.preventDefault();
                 this.stopTrading();
             });
+        } else {
+            console.warn('Stop trading button not found');
         }
 
         // Order book signals refresh button
@@ -544,9 +548,12 @@ export class LiveTrading {
     }
 
     async startTrading() {
-        const mode = this.liveTrading.mode;
+        console.log('startTrading called');
+        const mode = this.mode;
         const strategy = document.getElementById('live-strategy-type')?.value;
         const symbols = await this.getSelectedSymbols();
+        
+        console.log('Trading parameters:', { mode, strategy, symbols });
         
         if (!strategy || !symbols || symbols.length === 0) {
             this.dashboard.uiUtils.showMessage('Please select a strategy and symbols', 'error');
