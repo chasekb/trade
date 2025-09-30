@@ -186,7 +186,10 @@ export class DataManager {
 
     async startTrading(mode, strategy, symbols, parameters) {
         try {
-            const response = await this.fetchData('/api/trading/start', {
+            // Use the correct endpoint based on trading mode
+            const endpoint = mode === 'live' ? '/api/trading/live/start' : '/api/trading/simulated/start';
+            
+            const response = await this.fetchData(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -207,7 +210,8 @@ export class DataManager {
 
     async stopTrading() {
         try {
-            const response = await this.fetchData('/api/trading/stop', {
+            // Use simulated trading stop endpoint (since we're primarily using simulated mode)
+            const response = await this.fetchData('/api/trading/simulated/stop', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
