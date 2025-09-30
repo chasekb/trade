@@ -32,20 +32,39 @@ export class LiveTrading {
         const modeRadios = document.querySelectorAll('input[name="trading-mode"]');
         modeRadios.forEach(radio => {
             radio.addEventListener('change', (e) => {
-                this.liveTrading.mode = e.target.value;
+                this.dashboard.liveTrading.mode = e.target.value;
                 this.dashboard.uiUtils.updateTradingModeUI();
             });
         });
 
         // Symbol trading mode selection
         const symbolModeRadios = document.querySelectorAll('input[name="trading-symbol-mode"]');
+        console.log('Found symbol mode radios:', symbolModeRadios.length);
         symbolModeRadios.forEach(radio => {
             radio.addEventListener('change', (e) => {
-                this.liveTrading.symbolMode = e.target.value;
+                console.log('Symbol mode changed to:', e.target.value);
+                console.log('Dashboard object:', this.dashboard);
+                console.log('Dashboard liveTrading object:', this.dashboard.liveTrading);
+                
+                // Ensure the liveTrading object exists
+                if (!this.dashboard.liveTrading) {
+                    console.error('Dashboard liveTrading object is undefined, initializing...');
+                    this.dashboard.liveTrading = {
+                        isActive: false,
+                        mode: 'simulated',
+                        symbolMode: 'single',
+                        strategy: null,
+                        symbols: [],
+                        positions: []
+                    };
+                }
+                
+                this.dashboard.liveTrading.symbolMode = e.target.value;
+                console.log('Updated symbolMode to:', this.dashboard.liveTrading.symbolMode);
                 this.dashboard.uiUtils.updateSymbolModeUI();
                 
                 // Only refresh order book signals if trading is active
-                if (this.liveTrading.isActive) {
+                if (this.isActive) {
                     this.loadLiveTradingData();
                 }
             });
@@ -55,7 +74,7 @@ export class LiveTrading {
         const liveSymbolModeRadios = document.querySelectorAll('input[name="live-trading-symbol-mode"]');
         liveSymbolModeRadios.forEach(radio => {
             radio.addEventListener('change', (e) => {
-                this.liveTrading.symbolMode = e.target.value;
+                this.dashboard.liveTrading.symbolMode = e.target.value;
                 this.dashboard.uiUtils.updateSymbolModeUI();
             });
         });
