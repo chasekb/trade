@@ -291,7 +291,40 @@ export class LiveTrading {
     }
 
     async loadLiveTradingData() {
-        if (!this.isActive) {
+        // Check if trading is active locally or on the server
+        let tradingActive = this.isActive;
+        
+        // If not active locally, check server status
+        if (!tradingActive) {
+            console.log('🔍 Trading not active locally, checking server status...');
+            try {
+                const response = await fetch('/api/simulated-trading/status');
+                const data = await response.json();
+                tradingActive = data.is_trading || false;
+                console.log('🔍 Server trading status:', tradingActive, data);
+                
+                // Update local state if server shows trading is active
+                if (tradingActive && !this.isActive) {
+                    console.log('🔄 Updating local state to active');
+                    this.isActive = true;
+                    this.dashboard.liveTrading.isActive = true;
+                }
+            } catch (error) {
+                console.error('Error checking trading status:', error);
+            }
+        }
+        
+        if (!tradingActive) {
+            console.log('❌ Trading not active, showing empty state');
+            // Show empty state when trading is not active
+            this.updateOrderBookSignalsTable([]);
+            this.updateOrderBookStatistics({
+                total_analyzed: 0,
+                active_signals: 0,
+                last_updated: new Date().toISOString(),
+                average_strength: 0,
+                message: "Trading is not active. Configure your strategy and start trading to see live signals."
+            });
             return;
         }
 
@@ -378,12 +411,36 @@ export class LiveTrading {
             // Update order book statistics
             this.updateOrderBookStatistics(data);
 
+            // Load additional trading data
+            await this.loadAdditionalTradingData();
+
             // Auto-refresh if trading is active
             if (this.isActive) {
                 this.startOrderBookFrequentRefresh();
             }
         } catch (error) {
             console.error('Error loading live trading data:', error);
+        }
+    }
+
+    async loadAdditionalTradingData() {
+        try {
+            // Load trading stats
+            await this.dashboard.tradingStats.loadTradingStats();
+            
+            // Load simulated trading stats
+            await this.dashboard.simulatedTrading.loadSimulatedTradingStats();
+            
+            // Load trading history
+            await this.dashboard.pagination.loadTradingHistory();
+            
+            // Load open positions
+            await this.dashboard.pagination.loadPositions();
+            
+            // Load order book signals (refresh)
+            await this.dashboard.pagination.loadOrderBookSignals();
+        } catch (error) {
+            console.error('Error loading additional trading data:', error);
         }
     }
 
@@ -583,6 +640,9 @@ export class LiveTrading {
                 this.dashboard.strategyConfig.autoHideStrategyOnTradingStart();
                 
                 this.dashboard.uiUtils.showMessage('Trading started successfully', 'success');
+                
+                // Load live trading data immediately after starting
+                await this.loadLiveTradingData();
                 
                 // Start auto-refresh
                 this.startOrderBookFrequentRefresh();
