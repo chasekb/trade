@@ -1,182 +1,318 @@
-# TODO List
+# Dashboard Enhanced to Modular Migration TODO
 
-## Top Priority Items
+## Overview
+Complete migration from `dashboard_enhanced` to `dashboard_enhanced_modular` while preserving all functionality. The modular version provides better maintainability, testability, and follows Single Responsibility Principle.
 
-### Critical Bug Fixes & Stability
-- [ ] **Fix remaining test import errors and ensure all tests can run successfully**
-  - [ ] a) Resolve remaining 20 test collection errors
-  - [ ] b) Fix any missing module imports in test files
-  - [ ] c) Ensure all test dependencies are properly configured
-  - [ ] d) Verify all tests can be executed with `uv run python -m pytest tests/`
-  - [ ] e) Run full test suite to ensure no regressions
-- [x] **On simulated trading tab, when start trading is pressed and trades are executed, no trade information is written to database**
-  - [x] a) Investigate why trades are not being saved to individual_trades table
-  - [x] b) Verify database connection and session setup in simulated trading flow
-  - [x] c) Check if _save_trade_to_db method is being called correctly
-  - [x] d) Ensure db_manager and session_id are properly initialized
-  - [x] e) Test and verify trades are written to trading_cache.db after fix
-- [x] **ML signal integration into the live orderbook signals endpoint for the simulated trading tab**
-  - [x] a) Import the MLStrategy class
-  - [x] b) Add ML signal generation alongside the OrderBookStrategy
-  - [x] c) Combine both signal types in the response
-  - [x] d) Update the frontend to display ML signal information
-- [x] On simulated trading tab, in simulated trading statistics widget, in performance trends fix all calculations
-- [x] Create tests to validate all calculations in Simulated Trading Statistics widget. Risk Metrics, Trading Activity, and Performance Trends display incorrect values
-- [x] On simulated trading tab, in live order book signals, Large Trade Analysis is N/A
-- [x] On simulated trading tab, in live order book signals, provide a hover that describes the meaning of the displays for Squeeze Analysis, Imbalance Analysis, and Large Trade Analysis
-- [x] Develop and include a machine learning signal that takes as input all available data about each trade and iteratively learns to predict win probability for each trade and predict probabilities for size of return
-- [ ] Fix any remaining JavaScript console errors
-- [ ] Resolve WebSocket connection stability issues
-- [ ] Ensure all API endpoints return consistent error handling
-- [ ] Fix any memory leaks in long-running sessions
-- [ ] Resolve database connection timeout issues
+## Current Status Analysis
 
-### Essential User Experience
-- [ ] Add loading states for all async operations
-- [ ] Implement proper error messages for failed operations
-- [ ] Add confirmation dialogs for destructive actions
-- [ ] Ensure all forms have proper validation
-- [ ] Add keyboard navigation support
+### ✅ Completed Components
+- **HTML Structure**: Both versions have identical HTML structure
+- **CSS Styling**: Complete styling migration with enhanced modular styles
+- **Module Architecture**: 9 core modules implemented
+- **Basic Functionality**: Core dashboard orchestration working
 
-### Core Trading Functionality
-- [ ] Implement proper position sizing validation
-- [ ] Add trade execution confirmation system
-- [ ] Ensure accurate P&L calculations
-- [ ] Implement proper risk management checks
-- [ ] Add trade execution logging and audit trail
+### ⚠️ Missing/Incomplete Components
 
-## High Priority Items
+## Phase 1: Core Functionality Migration
 
-### Frontend/UI Improvements
-- [ ] Add dark mode toggle to the dashboard
-- [ ] Implement responsive design for mobile devices
-- [ ] Add keyboard shortcuts for common actions
-- [ ] Create user preferences/settings panel
-- [ ] Add data export functionality (CSV, JSON)
+### 1.1 WebSocket Integration
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic WebSocket connection in `RealTimeData.js`
+- **Missing**: 
+  - [ ] Complete WebSocket subscription management
+  - [ ] Symbol-specific subscriptions
+  - [ ] Reconnection logic with exponential backoff
+  - [ ] Message handling for all data types (ticker, orderbook, trades)
+  - [ ] Error handling and connection status management
 
-### Trading Features
-- [ ] Implement advanced order types (stop-loss, take-profit)
-- [ ] Add portfolio rebalancing functionality
-- [ ] Create custom trading strategies builder
-- [ ] Implement backtesting with multiple timeframes
-- [ ] Add paper trading mode with real-time data
+**Files to Update**:
+- `static/js/modules/RealTimeData.js`
+- `static/js/modules/LiveTrading.js`
 
-### Data & Analytics
-- [ ] Add more technical indicators (RSI, MACD, Bollinger Bands)
-- [ ] Implement portfolio performance analytics
-- [ ] Create risk management tools
-- [ ] Add market sentiment analysis
-- [ ] Implement correlation analysis between assets
+### 1.2 Chart Management
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic chart initialization
+- **Missing**:
+  - [ ] Real-time chart updates
+  - [ ] Historical data chart integration
+  - [ ] Chart interaction handlers (zoom, pan, range selection)
+  - [ ] Multiple chart types (candlestick, line, volume)
+  - [ ] Chart state persistence
 
-### API & Integration
-- [ ] Add support for additional exchanges (Binance, Kraken)
-- [ ] Implement webhook notifications
-- [ ] Add REST API rate limiting
-- [ ] Create API key management system
-- [ ] Implement OAuth authentication
+**Files to Update**:
+- `static/js/modules/RealTimeData.js`
+- `static/js/modules/DataManager.js`
 
-### Database & Storage
-- [ ] Add data archiving for old trades
-- [ ] Implement database backup/restore
-- [ ] Add data compression for historical data
-- [ ] Create data migration tools
-- [ ] Implement database optimization
+### 1.3 Backtesting System
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic backtest execution
+- **Missing**:
+  - [ ] Complete backtest parameter handling
+  - [ ] Backtest result visualization
+  - [ ] Backtest history management
+  - [ ] Strategy parameter presets
+  - [ ] Progress tracking and cancellation
 
-### Security & Compliance
-- [ ] Add two-factor authentication
-- [ ] Implement audit logging
-- [ ] Add data encryption at rest
-- [ ] Create compliance reporting tools
-- [ ] Add IP whitelisting functionality
+**Files to Update**:
+- `static/js/modules/DataManager.js`
+- `static/js/modules/UIUtils.js`
 
-### Performance & Monitoring
-- [ ] Implement application monitoring
-- [ ] Add performance metrics dashboard
-- [ ] Create alerting system for errors
-- [ ] Implement caching strategies
-- [ ] Add load balancing support
+## Phase 2: Advanced Features Migration
 
-### Documentation & Testing
-- [ ] Create comprehensive API documentation
-- [ ] Add unit tests for all modules
-- [ ] Implement integration tests
-- [ ] Create user manual
-- [ ] Add developer documentation
+### 2.1 Strategy Configuration
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic strategy selection
+- **Missing**:
+  - [ ] Dynamic parameter loading for all strategies
+  - [ ] Strategy preset management
+  - [ ] Parameter validation
+  - [ ] Strategy-specific UI components
+  - [ ] Universe selection for multi-symbol strategies
 
-## Medium Priority Items
+**Files to Update**:
+- `static/js/modules/StrategyConfiguration.js`
+- `static/js/modules/LiveTrading.js`
 
-### User Experience
-- [ ] Add tooltips and help text
-- [ ] Implement drag-and-drop functionality
-- [ ] Create customizable dashboard layouts
-- [ ] Add search functionality across all data
-- [ ] Implement data filtering and sorting
+### 2.2 Live Trading Controls
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic start/stop functionality
+- **Missing**:
+  - [ ] Complete trading mode management (simulated vs live)
+  - [ ] Symbol universe management
+  - [ ] Position management
+  - [ ] Risk management controls
+  - [ ] Emergency stop functionality
 
-### Trading Tools
-- [ ] Add position sizing calculator
-- [ ] Create risk/reward ratio calculator
-- [ ] Implement trade journal functionality
-- [ ] Add performance comparison tools
-- [ ] Create trading calendar
+**Files to Update**:
+- `static/js/modules/LiveTrading.js`
+- `static/js/modules/SimulatedTrading.js`
 
-### Data Visualization
-- [ ] Add candlestick charts
-- [ ] Implement volume analysis charts
-- [ ] Create portfolio allocation pie charts
-- [ ] Add performance comparison charts
-- [ ] Implement heat maps for correlations
+### 2.3 Data Management
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic API calls
+- **Missing**:
+  - [ ] Complete caching system
+  - [ ] Data synchronization
+  - [ ] Error handling and retry logic
+  - [ ] Data validation
+  - [ ] Performance optimization
 
-### Automation
-- [ ] Add scheduled trading functionality
-- [ ] Implement email/SMS notifications
-- [ ] Create automated report generation
-- [ ] Add data synchronization tools
-- [ ] Implement automated testing
+**Files to Update**:
+- `static/js/modules/DataManager.js`
+- All other modules for data consistency
 
-## Low Priority Items
+## Phase 3: UI/UX Enhancements
 
-### Advanced Features
-- [ ] Add machine learning predictions
-- [ ] Implement social trading features
-- [ ] Create copy trading functionality
-- [ ] Add news sentiment analysis
-- [ ] Implement advanced charting tools
+### 3.1 User Interface Components
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic UI utilities
+- **Missing**:
+  - [ ] Complete message system (success, error, warning)
+  - [ ] Loading states and progress indicators
+  - [ ] Form validation and error display
+  - [ ] Responsive design optimizations
+  - [ ] Accessibility improvements
 
-### Integration & Extensions
-- [ ] Create browser extension
-- [ ] Add mobile app
-- [ ] Implement Slack/Discord integration
-- [ ] Add Telegram bot
-- [ ] Create WordPress plugin
+**Files to Update**:
+- `static/js/modules/UIUtils.js`
+- All modules for consistent UI behavior
 
-### Infrastructure
-- [ ] Add Docker containerization
-- [ ] Implement Kubernetes deployment
-- [ ] Add CI/CD pipeline
-- [ ] Create monitoring and alerting
-- [ ] Implement auto-scaling
+### 3.2 Performance Monitoring
+**Status**: ✅ Implemented
+- **Current**: Performance monitoring module exists
+- **Action Required**:
+  - [ ] Integrate performance monitoring across all modules
+  - [ ] Add performance metrics collection
+  - [ ] Implement performance reporting
 
-## Completed Items
+**Files to Update**:
+- `static/js/modules/PerformanceMonitor.js`
+- All modules for performance tracking
 
-### Recent Completed Tasks
-- [x] **On simulated trading tab, in simulated trading statistics widget, in performance trends fix all calculations** - Verified that performance trends calculations (best trade, worst trade, avg win, avg loss) are working correctly. The calculations were already accurate from previous fixes.
-- [x] **Develop and include a machine learning signal that takes as input all available data about each trade and iteratively learns to predict win probability for each trade and predict probabilities for size of return** - Created comprehensive ML signal generator (`ml_signal.py`) and ML-enhanced trading strategy (`ml_strategy.py`) with feature extraction, model training, prediction generation, and accuracy tracking. Includes test suite for validation.
-- [x] Create comprehensive tests for Simulated Trading Statistics calculations (8 test cases, all passing)
-- [x] Fix Large Trade Analysis showing N/A in live order book signals with real trade data analysis
-- [x] Add hover descriptions for analysis displays in live order book signals (Squeeze, Imbalance, Large Trade)
-- [x] Move trading statistics widget from dashboard tab to simulated trading tab
-- [x] Remove connections to trading statistics widget that don't connect to simulated trading session
-- [x] Ensure all positions opened/closed reflect on trading statistics widget
-- [x] Ensure trading does not begin until start trading button is pressed
-- [x] Add .env copy to .gitignore and remove from git tracking
-- [x] Update project statistics on README
-- [x] Update API Endpoints section of README
-- [x] Fix simulated trading history to only display trades from current session
-- [x] Fix open positions count accuracy in portfolio status widget
-- [x] Add trade type classification (simulated vs live)
-- [x] Implement session-based trading history filtering
-- [x] Update documentation (CHANGELOG, PROJECT_OVERVIEW, TEST_RESULTS)
+## Phase 4: Data Integration
 
----
+### 4.1 Trading Statistics
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic stats loading
+- **Missing**:
+  - [ ] Complete statistics calculation
+  - [ ] Real-time stats updates
+  - [ ] Historical stats tracking
+  - [ ] Performance metrics integration
+  - [ ] Stats visualization
 
-**Note:** This TODO list is for future reference. Work on these items will only begin when explicitly requested by the user.
+**Files to Update**:
+- `static/js/modules/TradingStats.js`
+- `static/js/modules/SimulatedTrading.js`
+
+### 4.2 Pagination System
+**Status**: ⚠️ Partially Implemented
+- **Current**: Basic pagination setup
+- **Missing**:
+  - [ ] Complete pagination for all data tables
+  - [ ] Pagination state management
+  - [ ] Page size controls
+  - [ ] Navigation controls
+  - [ ] Data refresh integration
+
+**Files to Update**:
+- `static/js/modules/Pagination.js`
+- All modules with data tables
+
+## Phase 5: Testing and Validation
+
+### 5.1 Functionality Testing
+- [ ] Test all WebSocket connections
+- [ ] Test all API endpoints
+- [ ] Test all user interactions
+- [ ] Test all data loading scenarios
+- [ ] Test error handling
+
+### 5.2 Performance Testing
+- [ ] Test memory usage
+- [ ] Test CPU usage
+- [ ] Test network efficiency
+- [ ] Test UI responsiveness
+- [ ] Test data loading performance
+
+### 5.3 Cross-browser Testing
+- [ ] Test in Chrome
+- [ ] Test in Firefox
+- [ ] Test in Safari
+- [ ] Test in Edge
+- [ ] Test mobile browsers
+
+## Phase 6: Documentation and Cleanup
+
+### 6.1 Documentation
+- [ ] Update module documentation
+- [ ] Create migration guide
+- [ ] Document API changes
+- [ ] Create troubleshooting guide
+- [ ] Update README files
+
+### 6.2 Code Cleanup
+- [ ] Remove unused code
+- [ ] Optimize imports
+- [ ] Standardize coding style
+- [ ] Add JSDoc comments
+- [ ] Implement error boundaries
+
+## Implementation Priority
+
+### High Priority (Critical Functionality)
+1. **WebSocket Integration** - Essential for real-time data
+2. **Chart Management** - Core visualization functionality
+3. **Backtesting System** - Primary feature for strategy testing
+4. **Live Trading Controls** - Core trading functionality
+
+### Medium Priority (Important Features)
+1. **Strategy Configuration** - Enhanced user experience
+2. **Data Management** - Performance and reliability
+3. **Trading Statistics** - User insights
+4. **Pagination System** - Data navigation
+
+### Low Priority (Enhancements)
+1. **UI/UX Enhancements** - User experience improvements
+2. **Performance Monitoring** - Optimization insights
+3. **Documentation** - Maintenance and support
+4. **Testing** - Quality assurance
+
+## Migration Strategy
+
+### Step 1: Core Infrastructure
+1. Complete WebSocket integration
+2. Implement complete chart management
+3. Finish backtesting system
+4. Complete live trading controls
+
+### Step 2: Feature Completion
+1. Complete strategy configuration
+2. Implement data management
+3. Finish trading statistics
+4. Complete pagination system
+
+### Step 3: Polish and Testing
+1. UI/UX enhancements
+2. Performance optimization
+3. Comprehensive testing
+4. Documentation updates
+
+## Success Criteria
+
+### Functional Requirements
+- [ ] All original dashboard_enhanced functionality preserved
+- [ ] Real-time data updates working
+- [ ] All charts rendering correctly
+- [ ] Backtesting system fully functional
+- [ ] Live trading controls working
+- [ ] All data tables loading and paginating
+
+### Performance Requirements
+- [ ] Page load time < 3 seconds
+- [ ] Real-time updates < 100ms latency
+- [ ] Memory usage < 100MB
+- [ ] CPU usage < 10% average
+- [ ] Network efficiency optimized
+
+### Quality Requirements
+- [ ] No JavaScript errors
+- [ ] All user interactions responsive
+- [ ] Error handling comprehensive
+- [ ] Code maintainable and documented
+- [ ] Cross-browser compatible
+
+## Risk Mitigation
+
+### Technical Risks
+- **WebSocket Connection Issues**: Implement robust reconnection logic
+- **Chart Performance**: Optimize chart updates and data handling
+- **Memory Leaks**: Implement proper cleanup and monitoring
+- **API Rate Limits**: Implement request throttling and caching
+
+### User Experience Risks
+- **Data Loss**: Implement data persistence and recovery
+- **UI Responsiveness**: Implement loading states and progress indicators
+- **Error Handling**: Implement comprehensive error messages and recovery
+
+## Timeline Estimate
+
+### Phase 1: Core Functionality (2-3 weeks)
+- WebSocket Integration: 1 week
+- Chart Management: 1 week
+- Backtesting System: 1 week
+- Live Trading Controls: 1 week
+
+### Phase 2: Advanced Features (2-3 weeks)
+- Strategy Configuration: 1 week
+- Data Management: 1 week
+- Trading Statistics: 1 week
+- Pagination System: 1 week
+
+### Phase 3: Polish and Testing (1-2 weeks)
+- UI/UX Enhancements: 1 week
+- Testing and Validation: 1 week
+- Documentation: 1 week
+
+**Total Estimated Time**: 5-8 weeks
+
+## Notes
+
+### Current Architecture Benefits
+- **Modular Design**: Each module has single responsibility
+- **Maintainability**: Easier to debug and modify
+- **Testability**: Modules can be tested independently
+- **Scalability**: New features can be added as modules
+- **Performance**: Optimized loading and execution
+
+### Migration Challenges
+- **Complex State Management**: Coordinating state across modules
+- **Event Handling**: Ensuring proper event propagation
+- **Data Synchronization**: Keeping data consistent across modules
+- **Error Handling**: Implementing comprehensive error boundaries
+
+### Success Metrics
+- **Functionality**: 100% feature parity with original
+- **Performance**: Improved loading and execution times
+- **Maintainability**: Reduced code complexity and improved readability
+- **User Experience**: Enhanced responsiveness and reliability
