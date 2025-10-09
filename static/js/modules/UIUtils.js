@@ -42,8 +42,6 @@ export class UIUtils {
         console.log('Current symbolMode:', symbolMode);
         const singleConfig = document.getElementById('single-symbol-config');
         const universeConfig = document.getElementById('universe-config');
-        const singleStrategy = document.getElementById('single-strategy');
-        const universeStrategy = document.getElementById('universe-strategy');
         
         console.log('singleConfig element:', singleConfig);
         console.log('universeConfig element:', universeConfig);
@@ -52,18 +50,10 @@ export class UIUtils {
             console.log('Setting universe mode UI');
             if (singleConfig) singleConfig.style.display = 'none';
             if (universeConfig) universeConfig.style.display = 'block';
-            if (singleStrategy && universeStrategy) {
-                singleStrategy.style.display = 'none';
-                universeStrategy.style.display = 'block';
-            }
         } else {
             console.log('Setting single symbol mode UI');
             if (singleConfig) singleConfig.style.display = 'block';
             if (universeConfig) universeConfig.style.display = 'none';
-            if (singleStrategy && universeStrategy) {
-                singleStrategy.style.display = 'block';
-                universeStrategy.style.display = 'none';
-            }
         }
     }
 

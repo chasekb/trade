@@ -159,7 +159,7 @@ class DataHandlers:
                         
                         try:
                             # Get recent trades for this symbol
-                            recent_trades = await self.data_provider.get_recent_trades(symbol, limit=50)
+                            recent_trades = await self.data_provider.get_recent_trades(limit=50)
                             if recent_trades:
                                 # Analyze trades for large trade patterns
                                 buy_volume = 0.0

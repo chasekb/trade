@@ -64,6 +64,10 @@ test_outputs/
 .coverage
 htmlcov/
 
+# Outputs
+outputs/
+data/outputs/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
