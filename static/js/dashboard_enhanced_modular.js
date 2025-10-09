@@ -393,6 +393,8 @@ class EnhancedTradingDashboard {
         // Load data for specific tabs
         if (tabName === 'live-trading') {
             this.liveTrading.loadLiveTradingData();
+            // Load live trading stats
+            this.liveTrading.loadLiveTradingStats();
             // Load strategy parameters when Live Trading tab is first activated
             this.loadInitialStrategyParameters();
         } else if (tabName === 'trading-history') {

@@ -191,6 +191,14 @@ export class LiveTrading {
             });
         }
 
+        // Live trading stats refresh button
+        const refreshLiveStatsButton = document.getElementById('refresh-live-trading-stats');
+        if (refreshLiveStatsButton) {
+            refreshLiveStatsButton.addEventListener('click', () => {
+                this.loadLiveTradingStats();
+            });
+        }
+
         // Strategy configuration hide/show buttons
         const hideStrategyBtn = document.getElementById('hide-strategy-config');
         const showStrategyBtn = document.getElementById('show-strategy-section');
@@ -674,6 +682,137 @@ export class LiveTrading {
         } catch (error) {
             console.error('Error stopping trading:', error);
             this.dashboard.uiUtils.showMessage('Error stopping trading: ' + error.message, 'error');
+        }
+    }
+
+    async loadLiveTradingStats() {
+        try {
+            // Load simulated trading stats (which are the same as live stats in simulated mode)
+            const response = await fetch('/api/simulated-trading/status');
+            const data = await response.json();
+            
+            if (data.portfolio) {
+                this.updateLiveTradingStats(data.portfolio);
+            } else {
+                console.error('No portfolio data received for live trading stats');
+            }
+        } catch (error) {
+            console.error('Error loading live trading stats:', error);
+        }
+    }
+
+    updateLiveTradingStats(portfolioData) {
+        if (!portfolioData) {
+            return;
+        }
+
+        // Calculate proper statistics from portfolio data (same as simulated trading)
+        const trades = portfolioData.trades || [];
+        const positions = portfolioData.positions || {};
+
+        // Calculate trade-based metrics
+        const winningTrades = trades.filter(trade => trade.pnl > 0);
+        const losingTrades = trades.filter(trade => trade.pnl < 0);
+        const totalTrades = trades.length;
+        const winningTradesCount = winningTrades.length;
+        const losingTradesCount = losingTrades.length;
+
+        // Calculate P&L metrics
+        const totalPnl = portfolioData.total_pnl || 0;
+        const totalFees = portfolioData.total_fees || 0;
+        const netPnl = totalPnl - totalFees;
+
+        // Calculate win rate
+        const winRate = totalTrades > 0 ? (winningTradesCount / totalTrades) * 100 : 0;
+
+        // Calculate trade size metrics (volume = quantity * price)
+        const totalTradeVolume = trades.reduce((sum, trade) => sum + (trade.quantity * trade.price), 0);
+        const avgTradeSize = totalTrades > 0 ? totalTradeVolume / totalTrades : 0;
+
+        // Calculate best/worst trades (only from realized trades)
+        const bestTrade = trades.length > 0 ? Math.max(...trades.map(t => t.pnl || 0)) : 0;
+        const worstTrade = trades.length > 0 ? Math.min(...trades.map(t => t.pnl || 0)) : 0;
+
+        // Calculate average win/loss
+        const avgWin = winningTradesCount > 0 ? winningTrades.reduce((sum, trade) => sum + trade.pnl, 0) / winningTradesCount : 0;
+        const avgLoss = losingTradesCount > 0 ? losingTrades.reduce((sum, trade) => sum + trade.pnl, 0) / losingTradesCount : 0;
+
+        // Calculate profit factor
+        const grossProfit = winningTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+        const grossLoss = Math.abs(losingTrades.reduce((sum, trade) => sum + trade.pnl, 0));
+        const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
+
+        // Calculate Sharpe ratio (simplified - would need more data for proper calculation)
+        const sharpeRatio = 0.0; // Placeholder - would need return series
+
+        // Calculate risk-adjusted return
+        const riskAdjustedReturn = 0.0; // Placeholder - would need proper risk metrics
+
+        // Count active positions
+        const activePositions = Object.values(positions).filter(pos => pos.status === 'open').length;
+
+        // Calculate position value
+        const positionValue = Object.values(positions).reduce((sum, pos) => {
+            if (pos.status === 'open') {
+                return sum + (pos.quantity * pos.current_price || 0);
+            }
+            return sum;
+        }, 0);
+
+        // Update live trading stats UI
+        this.updateLiveTradingStatsUI({
+            totalPnl: totalPnl,
+            totalFees: totalFees,
+            netPnl: netPnl,
+            winRate: winRate,
+            totalTrades: totalTrades,
+            winningTrades: winningTradesCount,
+            losingTrades: losingTradesCount,
+            avgWin: avgWin,
+            avgLoss: avgLoss,
+            bestTrade: bestTrade,
+            worstTrade: worstTrade,
+            profitFactor: profitFactor,
+            sharpeRatio: sharpeRatio,
+            riskAdjustedReturn: riskAdjustedReturn,
+            totalVolume: totalTradeVolume,
+            avgTradeSize: avgTradeSize,
+            activePositions: activePositions,
+            grossProfit: grossProfit,
+            grossLoss: grossLoss,
+            positionValue: positionValue
+        });
+    }
+
+    updateLiveTradingStatsUI(stats) {
+        // Update main stats
+        this.updateElement('live-total-pnl', stats.netPnl.toFixed(2));
+        this.updateElement('live-win-rate', stats.winRate.toFixed(1) + '%');
+        this.updateElement('live-total-trades', stats.totalTrades);
+        this.updateElement('live-position-value', stats.positionValue.toFixed(2));
+
+        // Performance Metrics
+        this.updateElement('live-avg-win', stats.avgWin.toFixed(2));
+        this.updateElement('live-avg-loss', stats.avgLoss.toFixed(2));
+        this.updateElement('live-best-trade', stats.bestTrade.toFixed(2));
+        this.updateElement('live-worst-trade', stats.worstTrade.toFixed(2));
+
+        // Risk Metrics
+        this.updateElement('live-profit-factor', stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2));
+        this.updateElement('live-sharpe-ratio', stats.sharpeRatio.toFixed(2));
+        this.updateElement('live-max-drawdown', '0.00%'); // Placeholder
+        this.updateElement('live-total-volume', stats.totalVolume.toFixed(2));
+
+        // Additional metrics
+        this.updateElement('live-pnl-change', '+$0.00'); // Placeholder
+        this.updateElement('live-win-rate-change', '+0%'); // Placeholder
+        this.updateElement('live-trades-today', 'Today: 0'); // Placeholder
+    }
+
+    updateElement(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
         }
     }
 }

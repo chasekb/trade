@@ -717,6 +717,25 @@
                         </select>
                     </div>
 
+                    <!-- Strategy Selection -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
+                        <select id="live-strategy-type" class="form-select w-full">
+                            <option value="orderbook">Order Book Analysis</option>
+                            <option value="sma">Simple Moving Average</option>
+                            <option value="ema">Exponential Moving Average</option>
+                            <option value="rsi">RSI</option>
+                            <option value="bollinger">Bollinger Bands</option>
+                            <option value="macd">MACD</option>
+                            <option value="stochastic">Stochastic</option>
+                            <option value="fibonacci">Fibonacci</option>
+                            <option value="atr">ATR</option>
+                            <option value="dca">DCA</option>
+                            <option value="buy_and_hold">Buy and Hold</option>
+                            <option value="ml_signal">ML Signal</option>
+                        </select>
+                    </div>
+
                     <!-- Universe Parameters -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div>
@@ -752,25 +771,6 @@
                             <span id="universe-count">0</span> symbols selected
                         </div>
                     </div>
-
-                    <!-- Strategy Selection -->
-                    <div class="mt-6">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
-                        <select id="live-strategy-type" class="form-select w-full">
-                            <option value="orderbook">Order Book Analysis</option>
-                            <option value="sma">Simple Moving Average</option>
-                            <option value="ema">Exponential Moving Average</option>
-                            <option value="rsi">RSI</option>
-                            <option value="bollinger">Bollinger Bands</option>
-                            <option value="macd">MACD</option>
-                            <option value="stochastic">Stochastic</option>
-                            <option value="fibonacci">Fibonacci</option>
-                            <option value="atr">ATR</option>
-                            <option value="dca">DCA</option>
-                            <option value="buy_and_hold">Buy and Hold</option>
-                            <option value="ml_signal">ML Signal</option>
-                        </select>
-                    </div>
                 </div>
 
                 <!-- Strategy Parameters -->
@@ -794,6 +794,124 @@
                 <button id="show-strategy-section" class="btn-primary">
                     <i class="fas fa-eye mr-1"></i>Show Strategy Configuration
                 </button>
+            </div>
+
+            <!-- Live Trading Statistics Section -->
+            <div class="card-enhanced p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Live Trading Statistics</h3>
+                    <button id="refresh-live-trading-stats" class="btn-primary">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh
+                    </button>
+                </div>
+                
+                <!-- Live Trading Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <!-- Total P&L Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-dollar-sign text-2xl text-green-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Live P&L</p>
+                                <p id="live-total-pnl" class="text-2xl font-bold text-gray-900">$0.00</p>
+                                <p id="live-pnl-change" class="text-sm text-gray-500">+$0.00</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Win Rate Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-percentage text-2xl text-blue-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Live Win Rate</p>
+                                <p id="live-win-rate" class="text-2xl font-bold text-gray-900">0%</p>
+                                <p id="live-win-rate-change" class="text-sm text-gray-500">+0%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Total Trades Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-exchange-alt text-2xl text-purple-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Live Trades</p>
+                                <p id="live-total-trades" class="text-2xl font-bold text-gray-900">0</p>
+                                <p id="live-trades-today" class="text-sm text-gray-500">Today: 0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Position Value Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-wallet text-2xl text-orange-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Live Position Value</p>
+                                <p id="live-position-value" class="text-2xl font-bold text-gray-900">$0.00</p>
+                                <p class="text-sm text-gray-500">Active Positions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Performance Metrics -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Live Performance Metrics Card -->
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Live Performance Metrics</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Average Win</span>
+                                <span id="live-avg-win" class="text-sm font-medium text-green-600">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Average Loss</span>
+                                <span id="live-avg-loss" class="text-sm font-medium text-red-600">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Best Trade</span>
+                                <span id="live-best-trade" class="text-sm font-medium text-green-600">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Worst Trade</span>
+                                <span id="live-worst-trade" class="text-sm font-medium text-red-600">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Risk Metrics Card -->
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Live Risk Metrics</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Profit Factor</span>
+                                <span id="live-profit-factor" class="text-sm font-medium text-gray-900">0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Sharpe Ratio</span>
+                                <span id="live-sharpe-ratio" class="text-sm font-medium text-gray-900">0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Max Drawdown</span>
+                                <span id="live-max-drawdown" class="text-sm font-medium text-red-600">0.00%</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Total Volume</span>
+                                <span id="live-total-volume" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Order Book Signals Section -->
