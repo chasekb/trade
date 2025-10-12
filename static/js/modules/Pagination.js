@@ -199,7 +199,8 @@ export class Pagination {
     }
 
     updateOrderBookSignalsTable(signals) {
-        const tableBody = document.getElementById('orderbook-signals-table');
+        // Use the history table within the Order Book Signals tab content
+        const tableBody = document.getElementById('orderbook-signals-history-table');
         if (!tableBody) return;
 
         tableBody.innerHTML = '';
