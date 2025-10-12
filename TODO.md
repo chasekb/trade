@@ -36,11 +36,11 @@ Scope: finalize functional transition from the monolithic `dashboard_enhanced` t
 - [x] Confirm pagination controls (`Pagination.js`) are wired to the correct IDs and endpoints.
 
 ## Phase 4 — Verification (Manual QA)
-- [ ] Overview: price/volume update live; charts render; no console errors.
-- [ ] Live Trading: start simulated session, signals load and paginate; stats refresh; stop works.
-- [ ] Backtest: run with parameters; results + equity curve populate; metrics refresh.
-- [ ] Sessions: navigation between tabs retains state; strategy config hide/show persists via localStorage.
-- [ ] Performance: verify no long tasks > 200ms for core interactions; inspect `PerformanceMonitor` logs for slow API calls.
+- [x] Overview: price/volume update live; charts render; no console errors.
+- [x] Live Trading: start simulated session, signals load and paginate; stats refresh; stop works.
+- [x] Backtest: run with parameters; results + equity curve populate; metrics refresh.
+- [x] Sessions: navigation between tabs retains state; strategy config hide/show persists via localStorage.
+- [x] Performance: verify no long tasks > 200ms for core interactions; inspect `PerformanceMonitor` logs for slow API calls.
 
 ## Phase 5 — Rollout & Cleanup
 - [ ] Default `/` cutover behind `USE_MODULAR=true`; monitor for 24–48h.
