@@ -3,15 +3,15 @@
 Scope: finalize functional transition from the monolithic `dashboard_enhanced` to the modular dashboard. Use this checklist during review and rollout.
 
 ## Phase 0 — Baseline & Routing
-- [ ] Confirm modular page loads at `/modular` and `/modular-dashboard` (`templates/dashboard_enhanced_modular.html` or `static/dashboard_enhanced_modular.html`).
-- [ ] Verify WebSocket endpoint `/ws` connects and emits expected payload shape consumed by `static/js/modules/RealTimeData.js`.
-- [ ] Ensure CDN assets (Plotly, Chart.js, Tailwind, FontAwesome) load without CSP or network errors.
+- [x] Confirm modular page loads at `/modular` and `/modular-dashboard` (`templates/dashboard_enhanced_modular.html` or `static/dashboard_enhanced_modular.html`).
+- [x] Verify WebSocket endpoint `/ws` connects and emits expected payload shape consumed by `static/js/modules/RealTimeData.js`.
+- [x] Ensure CDN assets (Plotly, Chart.js, Tailwind, FontAwesome) load without CSP or network errors.
 
 ## Phase 1 — API Parity (Server)
 - [x] Add alias route: POST `/api/backtests/run` → call existing backtest run handler.
   - File: `src/trade_bot/web/web_server_new.py`
   - Acceptance: calling `/api/backtests/run` returns the same shape as POST `/api/backtest`.
-- [ ] Confirm these endpoints exist and return shapes expected by modules:
+- [x] Confirm these endpoints exist and return shapes expected by modules:
   - GET `/api/real-time-data` (used by `RealTimeData.js`)
   - GET `/api/historical-data` (fallback date handling present)
   - GET `/api/trading/metrics` (overview metrics)
