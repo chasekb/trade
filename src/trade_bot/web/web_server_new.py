@@ -187,9 +187,16 @@ async def startup_event():
 # API Routes
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
-    """Serve the main dashboard page."""
-    check_handlers_ready("dashboard_handlers", dashboard_handlers)
-    return await dashboard_handlers.get_dashboard(request)
+    """Serve the main dashboard page (modular by default, flaggable)."""
+    # Feature flag to toggle modular dashboard
+    use_modular = os.getenv('USE_MODULAR', 'true').lower() in ('1', 'true', 'yes', 'on')
+
+    if use_modular:
+        from fastapi.responses import FileResponse
+        return FileResponse("static/dashboard_enhanced_modular.html")
+    else:
+        check_handlers_ready("dashboard_handlers", dashboard_handlers)
+        return await dashboard_handlers.get_dashboard(request)
 
 @app.get("/modular", response_class=HTMLResponse)
 async def get_modular_dashboard(request: Request):
@@ -213,6 +220,12 @@ async def get_modular_dashboard_alt(request: Request):
     """Serve the modular dashboard page (alternative route)."""
     from fastapi.responses import FileResponse
     return FileResponse("static/dashboard_enhanced_modular.html")
+
+@app.get("/legacy", response_class=HTMLResponse)
+async def get_legacy_dashboard(request: Request):
+    """Serve the legacy enhanced dashboard page."""
+    check_handlers_ready("dashboard_handlers", dashboard_handlers)
+    return await dashboard_handlers.get_dashboard(request)
 
 @app.get("/favicon.ico")
 async def favicon():
@@ -270,6 +283,13 @@ async def health_check():
 @app.post("/api/backtest")
 async def run_backtest(request: BacktestRequest):
     """Run a backtest with the specified parameters."""
+    check_handlers_ready("backtest_handlers", backtest_handlers)
+    return await backtest_handlers.run_backtest(request.dict())
+
+# Parity alias for modular frontend
+@app.post("/api/backtests/run")
+async def run_backtests_alias(request: BacktestRequest):
+    """Alias endpoint to run a backtest (parity with modular client)."""
     check_handlers_ready("backtest_handlers", backtest_handlers)
     return await backtest_handlers.run_backtest(request.dict())
 
