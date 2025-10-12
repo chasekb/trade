@@ -30,10 +30,10 @@ Scope: finalize functional transition from the monolithic `dashboard_enhanced` t
 - [x] Introduce feature flag `USE_MODULAR` (env) to toggle between templates during staged rollout.
 
 ## Phase 3 — Frontend Adjustments (if needed)
-- [ ] `DataManager.runBacktest`: ensure it hits POST `/api/backtests/run` (or keep `/api/backtest` if parity alias added).
+- [x] `DataManager.runBacktest`: ensure it hits POST `/api/backtests/run` (or keep `/api/backtest` if parity alias added).
   - File: `static/js/modules/DataManager.js`
-- [ ] Validate DOM IDs used by modules exist in `dashboard_enhanced_modular.html` (tabs, tables, buttons, charts).
-- [ ] Confirm pagination controls (`Pagination.js`) are wired to the correct IDs and endpoints.
+- [x] Validate DOM IDs used by modules exist in `dashboard_enhanced_modular.html` (tabs, tables, buttons, charts).
+- [x] Confirm pagination controls (`Pagination.js`) are wired to the correct IDs and endpoints.
 
 ## Phase 4 — Verification (Manual QA)
 - [ ] Overview: price/volume update live; charts render; no console errors.
