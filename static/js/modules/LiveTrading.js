@@ -638,7 +638,7 @@ export class LiveTrading {
         try {
             const response = await this.dashboard.dataManager.startTrading(mode, strategy, symbols, parameters);
             
-            if (response && response.status === 'success') {
+            if (response && (response.status === 'success' || response.status === 'started')) {
                 this.isActive = true;
                 this.mode = mode;
                 this.strategy = strategy;
@@ -655,7 +655,8 @@ export class LiveTrading {
                 // Start auto-refresh
                 this.startOrderBookFrequentRefresh();
             } else {
-                this.dashboard.uiUtils.showMessage('Failed to start trading: ' + (response?.error || 'Unknown error'), 'error');
+                const errDetail = response?.error || response?.detail || response?.message || 'Unknown error';
+                this.dashboard.uiUtils.showMessage('Failed to start trading: ' + errDetail, 'error');
             }
         } catch (error) {
             console.error('Error starting trading:', error);

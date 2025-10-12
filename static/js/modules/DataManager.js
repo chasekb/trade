@@ -195,10 +195,11 @@ export class DataManager {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
+                    // Align with backend expectations
                     mode,
-                    strategy,
                     symbols,
-                    parameters
+                    strategy_type: strategy,
+                    strategy_params: parameters
                 })
             });
             return response;
