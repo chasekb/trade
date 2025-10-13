@@ -11,8 +11,8 @@ import logging
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add project src to path (project_root/src)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 import uvicorn
 from trade_bot.web.web_server_new import app
