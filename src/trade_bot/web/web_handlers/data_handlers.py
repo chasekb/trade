@@ -82,6 +82,11 @@ class DataHandlers:
                 }
             
             symbol_list = [s.strip() for s in symbols.split(',')]
+            # Cap symbols to avoid heavy requests in universe mode
+            max_symbols = 50
+            if len(symbol_list) > max_symbols:
+                logger.info(f"Capping symbols from {len(symbol_list)} to {max_symbols} to avoid timeouts")
+                symbol_list = symbol_list[:max_symbols]
             
             # Debug logging to see what symbols we're processing
             logger.info(f"Processing symbols for order book signals: {symbol_list}")
