@@ -156,7 +156,7 @@ class EnhancedTradingDashboard {
             'live-strategy-type': 'orderbook',
             'universe-type': 'all_usd',
             'live-trading-symbol': 'BTC-USD',
-            'universe-max-size': '324', // Default to all USD pairs count
+            'universe-max-size': '50', // Safer default to avoid heavy initial requests
             'universe-position-size': '1.0',
             'universe-max-positions': '95'
         };

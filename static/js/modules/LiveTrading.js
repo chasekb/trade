@@ -94,7 +94,7 @@ export class LiveTrading {
                 this.dashboard.uiUtils.updateUniverseTypeUI();
                 
                 // Only refresh order book signals if trading is active
-                if (this.liveTrading.isActive) {
+                if (this.isActive) {
                     this.loadLiveTradingData();
                 }
             });
@@ -105,7 +105,7 @@ export class LiveTrading {
         if (singleSymbolSelect) {
             singleSymbolSelect.addEventListener('change', (e) => {
                 // Only refresh order book signals if trading is active
-                if (this.liveTrading.isActive) {
+                if (this.isActive) {
                     this.loadLiveTradingData();
                 }
             });
@@ -116,7 +116,7 @@ export class LiveTrading {
         if (customSymbolsInput) {
             customSymbolsInput.addEventListener('input', (e) => {
                 // Only refresh order book signals if trading is active
-                if (this.liveTrading.isActive) {
+                if (this.isActive) {
                     this.loadLiveTradingData();
                 }
             });
@@ -124,7 +124,7 @@ export class LiveTrading {
             customSymbolsInput.addEventListener('keypress', (e) => {
                 // Only refresh order book signals if trading is active
                 if (e.key === 'Enter') {
-                    if (this.liveTrading.isActive) {
+                    if (this.isActive) {
                         this.loadLiveTradingData();
                     }
                 }
@@ -395,7 +395,7 @@ export class LiveTrading {
                                 headers: {
                                     'Content-Type': 'application/json'
                                 },
-                                body: JSON.stringify({ symbols: validSymbols })
+                                body: JSON.stringify({ signals: activeSignals })
                             });
 
                             const processData = await processResponse.json();
@@ -649,8 +649,9 @@ export class LiveTrading {
                 
                 this.dashboard.uiUtils.showMessage('Trading started successfully', 'success');
                 
-                // Load live trading data immediately after starting
+                // Load live trading data and stats immediately after starting
                 await this.loadLiveTradingData();
+                await this.loadLiveTradingStats();
                 
                 // Start auto-refresh
                 this.startOrderBookFrequentRefresh();
