@@ -128,11 +128,15 @@ def check_handlers_ready(handlers_name: str, handlers):
     if handlers is None:
         raise HTTPException(status_code=503, detail=f"Server not ready - {handlers_name} not initialized")
 
-# Mount static files with optimized settings
-app.mount("/static", StaticFiles(directory="static", html=True), name="static")
+# Mount static files with optimized settings using absolute paths
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 # Templates
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 @app.on_event("startup")
 async def startup_event():
