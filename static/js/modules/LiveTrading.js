@@ -699,9 +699,24 @@ export class LiveTrading {
             // Load simulated trading stats (which are the same as live stats in simulated mode)
             const response = await fetch('/api/simulated-trading/status');
             const data = await response.json();
-            
+
             if (data.portfolio) {
-                this.updateLiveTradingStats(data.portfolio);
+                // Attempt to fetch Sharpe ratio from trades stats API
+                let sharpeRatio = 0.0;
+                try {
+                    const statsResp = await fetch('/api/trades/stats');
+                    const statsData = await statsResp.json();
+                    if (statsData && statsData.status === 'success' && statsData.stats) {
+                        sharpeRatio = statsData.stats.sharpe_ratio ?? 0.0;
+                    } else if (statsData && typeof statsData.sharpe_ratio !== 'undefined') {
+                        sharpeRatio = statsData.sharpe_ratio ?? 0.0;
+                    }
+                } catch (e) {
+                    // Keep default sharpeRatio = 0.0 on failure
+                    console.warn('Unable to load Sharpe ratio from /api/trades/stats:', e);
+                }
+
+                this.updateLiveTradingStats(data.portfolio, { sharpeRatio });
             } else {
                 console.error('No portfolio data received for live trading stats');
             }
@@ -710,7 +725,7 @@ export class LiveTrading {
         }
     }
 
-    updateLiveTradingStats(portfolioData) {
+    updateLiveTradingStats(portfolioData, extras = {}) {
         if (!portfolioData) {
             return;
         }
@@ -751,8 +766,8 @@ export class LiveTrading {
         const grossLoss = Math.abs(losingTrades.reduce((sum, trade) => sum + trade.pnl, 0));
         const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
 
-        // Calculate Sharpe ratio (simplified - would need more data for proper calculation)
-        const sharpeRatio = 0.0; // Placeholder - would need return series
+        // Use Sharpe ratio from extras when available (backend-derived)
+        const sharpeRatio = typeof extras.sharpeRatio === 'number' ? extras.sharpeRatio : 0.0;
 
         // Calculate risk-adjusted return
         const riskAdjustedReturn = 0.0; // Placeholder - would need proper risk metrics
@@ -767,6 +782,10 @@ export class LiveTrading {
             }
             return sum;
         }, 0);
+
+        // Max drawdown from portfolio (could be fraction [0..1] or percentage)
+        const rawMaxDrawdown = typeof portfolioData.max_drawdown === 'number' ? portfolioData.max_drawdown : 0.0;
+        const maxDrawdown = rawMaxDrawdown; // Keep raw; format in UI (handle fraction vs percent)
 
         // Update live trading stats UI
         this.updateLiveTradingStatsUI({
@@ -789,7 +808,8 @@ export class LiveTrading {
             activePositions: activePositions,
             grossProfit: grossProfit,
             grossLoss: grossLoss,
-            positionValue: positionValue
+            positionValue: positionValue,
+            maxDrawdown: maxDrawdown
         });
     }
 
@@ -809,7 +829,8 @@ export class LiveTrading {
         // Risk Metrics
         this.updateElement('live-profit-factor', stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2));
         this.updateElement('live-sharpe-ratio', stats.sharpeRatio.toFixed(2));
-        this.updateElement('live-max-drawdown', '0.00%'); // Placeholder
+        const maxDDPct = (typeof stats.maxDrawdown === 'number') ? (stats.maxDrawdown > 1 ? stats.maxDrawdown : stats.maxDrawdown * 100) : 0.0;
+        this.updateElement('live-max-drawdown', maxDDPct.toFixed(2) + '%');
         this.updateElement('live-total-volume', stats.totalVolume.toFixed(2));
 
         // Additional metrics
