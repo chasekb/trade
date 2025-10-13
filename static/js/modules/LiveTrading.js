@@ -439,6 +439,9 @@ export class LiveTrading {
             // Load simulated trading stats
             await this.dashboard.simulatedTrading.loadSimulatedTradingStats();
             
+            // Load live trading stats (ensure Live tab KPIs stay in sync in simulated mode)
+            await this.loadLiveTradingStats();
+            
             // Load trading history
             await this.dashboard.pagination.loadTradingHistory();
             
@@ -588,6 +591,8 @@ export class LiveTrading {
         // Start auto-refresh every 30 seconds
         this.orderBookRefreshInterval = setInterval(() => {
             this.loadLiveTradingData();
+            // Keep live trading KPIs updated alongside signals
+            this.loadLiveTradingStats();
         }, 30000);
     }
 
@@ -601,6 +606,8 @@ export class LiveTrading {
         this.orderBookRefreshInterval = setInterval(() => {
             if (this.isActive) {
                 this.loadLiveTradingData();
+                // Refresh Live KPIs on the same cadence as signals
+                this.loadLiveTradingStats();
             }
         }, 5000);
     }
