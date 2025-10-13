@@ -330,11 +330,27 @@ class TradingHandlers:
     async def process_simulated_signals(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process simulated trading signals."""
         try:
-            signals = request_data.get('signals', [])
-            
+            # Accept either full signals list or just symbols (legacy)
+            signals = request_data.get('signals')
+            symbols = request_data.get('symbols')
+
+            if signals is None and symbols:
+                # Backward compatibility: if only symbols provided, create basic buy signals
+                signals = [
+                    {
+                        "symbol": sym,
+                        "signal": "buy",
+                        "signal_generated": True,
+                        "price": 0.0,
+                        "signal_strength": 0.5,
+                        "signal_reason": "Auto-generated from symbols list"
+                    }
+                    for sym in symbols if isinstance(sym, str)
+                ]
+
             if not signals:
                 return {"error": "No signals provided"}
-            
+
             result = await self.simulated_trading_manager.process_signals(signals)
             
             logger.info(f"Processed {len(signals)} signals, executed {result.get('executed_trades', 0)} trades")
