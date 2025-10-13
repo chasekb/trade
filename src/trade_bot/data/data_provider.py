@@ -9,15 +9,27 @@ import json
 
 
 class CoinbaseDataProvider:
-    """Data provider for Coinbase historical data."""
-    
-    def __init__(self, product_id: str = "BTC-USD"):
+    """Data provider for Coinbase Exchange public endpoints.
+
+    Accepts either a product ID string (e.g., "BTC-USD") or a TradingConfig-like
+    object that exposes a "product_id" attribute. This makes the provider
+    compatible with call sites that pass a config object.
+    """
+
+    def __init__(self, config_or_product_id: Any = "BTC-USD"):
         """Initialize the data provider.
-        
+
         Args:
-            product_id: Trading pair (e.g., "BTC-USD")
+            config_or_product_id: Either a product ID string like "BTC-USD" or an
+                object with a "product_id" attribute (e.g., TradingConfig).
         """
-        self.product_id = product_id
+        # Allow both product_id string and TradingConfig-like objects
+        if isinstance(config_or_product_id, str):
+            self.product_id = config_or_product_id
+        else:
+            # Fallback: try to pull product_id attribute from the object
+            self.product_id = getattr(config_or_product_id, "product_id", "BTC-USD")
+
         self.base_url = "https://api.exchange.coinbase.com"
         self.logger = logging.getLogger(__name__)
     
