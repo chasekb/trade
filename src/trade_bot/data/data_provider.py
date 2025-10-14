@@ -2,8 +2,11 @@
 
 import asyncio
 import logging
+import os
+import socket
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlsplit
 import aiohttp
 import json
 
@@ -30,8 +33,49 @@ class CoinbaseDataProvider:
             # Fallback: try to pull product_id attribute from the object
             self.product_id = getattr(config_or_product_id, "product_id", "BTC-USD")
 
-        self.base_url = "https://api.exchange.coinbase.com"
+        # Allow overriding public base URL via environment to support proxies/region issues
+        self.base_url = os.getenv("COINBASE_PUBLIC_BASE_URL", "https://api.exchange.coinbase.com")
         self.logger = logging.getLogger(__name__)
+        # Network resilience state
+        self._consecutive_failures: int = 0
+        self._cooldown_until: Optional[datetime] = None
+        self._host: str = urlsplit(self.base_url).hostname or "api.exchange.coinbase.com"
+
+    def _in_cooldown(self) -> bool:
+        return self._cooldown_until is not None and datetime.now() < self._cooldown_until
+
+    def _begin_cooldown(self) -> None:
+        # Exponential backoff up to 2 minutes
+        backoff_seconds = min(120, 2 ** min(self._consecutive_failures, 6))
+        self._cooldown_until = datetime.now() + timedelta(seconds=backoff_seconds)
+        self.logger.warning(
+            f"Network cooldown activated for {backoff_seconds}s after {self._consecutive_failures} failures"
+        )
+
+    def _reset_cooldown(self) -> None:
+        self._consecutive_failures = 0
+        self._cooldown_until = None
+
+    def _host_resolves(self) -> bool:
+        try:
+            # DNS preflight; run in thread to avoid blocking event loop
+            socket.gethostbyname(self._host)
+            return True
+        except Exception as e:
+            self.logger.warning(f"DNS resolution failed for {self._host}: {e}")
+            return False
+
+    def _session_kwargs(self) -> Dict[str, Any]:
+        # Respect system proxies and set sane timeouts and headers
+        timeout = aiohttp.ClientTimeout(total=10, connect=5, sock_read=7)
+        return {
+            "timeout": timeout,
+            "trust_env": True,  # pick up HTTPS_PROXY/NO_PROXY
+            "headers": {
+                "User-Agent": "trade-bot/1.0 (+https://github.com/) aiohttp",
+                "Accept": "application/json",
+            },
+        }
     
     async def get_historical_candles(self, 
                                    start_time: datetime, 
@@ -242,24 +286,43 @@ class CoinbaseDataProvider:
         Returns:
             Order book data with bids and asks
         """
+        if self._in_cooldown():
+            self.logger.debug(
+                f"Skipping order book fetch for {self.product_id} - in cooldown until {self._cooldown_until}"
+            )
+            return {}
+
         self.logger.info(f"Fetching order book for {self.product_id} (level {level})")
         
         url = f"{self.base_url}/products/{self.product_id}/book"
         params = {'level': level}
         
         try:
-            async with aiohttp.ClientSession() as session:
+            # DNS preflight to avoid tight error loops on name resolution failures
+            if not await asyncio.to_thread(self._host_resolves):
+                self._consecutive_failures += 1
+                self._begin_cooldown()
+                return {}
+
+            async with aiohttp.ClientSession(**self._session_kwargs()) as session:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
                         self.logger.info(f"Retrieved order book with {len(data.get('bids', []))} bids and {len(data.get('asks', []))} asks")
+                        self._reset_cooldown()
                         return self._process_order_book_data(data)
                     else:
                         error_text = await response.text()
                         self.logger.error(f"Failed to fetch order book: {response.status} - {error_text}")
+                        self._consecutive_failures += 1
+                        if self._consecutive_failures >= 3:
+                            self._begin_cooldown()
                         return {}
         except Exception as e:
+            self._consecutive_failures += 1
             self.logger.error(f"Error fetching order book: {e}")
+            if self._consecutive_failures >= 3:
+                self._begin_cooldown()
             return {}
     
     def _process_order_book_data(self, raw_data: Dict) -> Dict[str, Any]:
