@@ -19,6 +19,8 @@ class DataHandlers:
         self.simulated_trading_manager = simulated_trading_manager
         self.trading_handlers = trading_handlers
         self.trading_state = trading_state
+        # De-duplicate noisy warnings per symbol
+        self._last_no_data_warn_at: dict[str, float] = {}
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -97,7 +99,7 @@ class DataHandlers:
                 try:
                     # Ensure symbol is a string and log it
                     symbol_str = str(symbol).strip()
-                    logger.info(f"Fetching order book for {symbol_str} (level 2)")
+                    logger.debug(f"Fetching order book for {symbol_str} (level 2)")
                     
                     # Create a data provider instance for this symbol
                     from ...data.data_provider import CoinbaseDataProvider
@@ -281,8 +283,12 @@ class DataHandlers:
                         
                         logger.info(f"Generated live orderbook signal for {symbol}: {signal} (strength: {signal_strength:.2f})")
                     else:
-                        # Fallback to placeholder if no data
-                        logger.warning(f"No orderbook data available for {symbol}, using placeholder")
+                        # Fallback to placeholder if no data, but rate-limit warnings per symbol
+                        now_ts = datetime.now().timestamp()
+                        last_ts = self._last_no_data_warn_at.get(symbol, 0)
+                        if now_ts - last_ts >= 60:
+                            logger.warning(f"No orderbook data available for {symbol}, using placeholder")
+                            self._last_no_data_warn_at[symbol] = now_ts
                         signals.append({
                             "symbol": symbol,
                             "signal": "hold",
