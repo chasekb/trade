@@ -19,6 +19,9 @@ class CoinbaseDataProvider:
     compatible with call sites that pass a config object.
     """
 
+    # Class-level host state to avoid per-instance spam and enable shared cooldowns
+    _host_state: Dict[str, Dict[str, Any]] = {}
+
     def __init__(self, config_or_product_id: Any = "BTC-USD"):
         """Initialize the data provider.
 
@@ -36,25 +39,33 @@ class CoinbaseDataProvider:
         # Allow overriding public base URL via environment to support proxies/region issues
         self.base_url = os.getenv("COINBASE_PUBLIC_BASE_URL", "https://api.exchange.coinbase.com")
         self.logger = logging.getLogger(__name__)
-        # Network resilience state
-        self._consecutive_failures: int = 0
-        self._cooldown_until: Optional[datetime] = None
         self._host: str = urlsplit(self.base_url).hostname or "api.exchange.coinbase.com"
+        # Ensure host state exists
+        CoinbaseDataProvider._host_state.setdefault(
+            self._host, {"failures": 0, "cooldown_until": None}
+        )
+
+    def _get_state(self) -> Dict[str, Any]:
+        return CoinbaseDataProvider._host_state[self._host]
 
     def _in_cooldown(self) -> bool:
-        return self._cooldown_until is not None and datetime.now() < self._cooldown_until
+        cooldown_until = self._get_state().get("cooldown_until")
+        return cooldown_until is not None and datetime.now() < cooldown_until
 
     def _begin_cooldown(self) -> None:
+        state = self._get_state()
+        failures = state.get("failures", 0)
         # Exponential backoff up to 2 minutes
-        backoff_seconds = min(120, 2 ** min(self._consecutive_failures, 6))
-        self._cooldown_until = datetime.now() + timedelta(seconds=backoff_seconds)
+        backoff_seconds = min(120, 2 ** min(failures, 6))
+        state["cooldown_until"] = datetime.now() + timedelta(seconds=backoff_seconds)
         self.logger.warning(
-            f"Network cooldown activated for {backoff_seconds}s after {self._consecutive_failures} failures"
+            f"Network cooldown activated for {backoff_seconds}s after {failures} failures (host={self._host})"
         )
 
     def _reset_cooldown(self) -> None:
-        self._consecutive_failures = 0
-        self._cooldown_until = None
+        state = self._get_state()
+        state["failures"] = 0
+        state["cooldown_until"] = None
 
     def _host_resolves(self) -> bool:
         try:
@@ -300,7 +311,8 @@ class CoinbaseDataProvider:
         try:
             # DNS preflight to avoid tight error loops on name resolution failures
             if not await asyncio.to_thread(self._host_resolves):
-                self._consecutive_failures += 1
+                st = self._get_state()
+                st["failures"] = st.get("failures", 0) + 1
                 self._begin_cooldown()
                 return {}
 
@@ -314,14 +326,16 @@ class CoinbaseDataProvider:
                     else:
                         error_text = await response.text()
                         self.logger.error(f"Failed to fetch order book: {response.status} - {error_text}")
-                        self._consecutive_failures += 1
-                        if self._consecutive_failures >= 3:
+                        st = self._get_state()
+                        st["failures"] = st.get("failures", 0) + 1
+                        if st["failures"] >= 3:
                             self._begin_cooldown()
                         return {}
         except Exception as e:
-            self._consecutive_failures += 1
+            st = self._get_state()
+            st["failures"] = st.get("failures", 0) + 1
             self.logger.error(f"Error fetching order book: {e}")
-            if self._consecutive_failures >= 3:
+            if st["failures"] >= 3:
                 self._begin_cooldown()
             return {}
     
