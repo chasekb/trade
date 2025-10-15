@@ -188,6 +188,23 @@ async def startup_event():
         logger.error(f"Failed to start application: {e}")
         raise
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully close simulated positions on server shutdown."""
+    try:
+        if simulated_trading_manager is not None:
+            # Close all open simulated positions and persist SELLs
+            await simulated_trading_manager.force_close_all_positions("Server shutdown")
+        # Optionally mark active session inactive
+        try:
+            if database_manager is not None and hasattr(simulated_trading_manager, 'session_id') and simulated_trading_manager.session_id:
+                database_manager.deactivate_session(simulated_trading_manager.session_id)
+        except Exception as e:
+            logger.warning(f"Failed to deactivate session on shutdown: {e}")
+        logger.info("✅ Shutdown hook completed: all simulated positions closed")
+    except Exception as e:
+        logger.error(f"Error in shutdown hook: {e}")
+
 # API Routes
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
