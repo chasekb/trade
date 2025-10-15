@@ -828,18 +828,194 @@
                         <i class="fas fa-sync-alt mr-1"></i>Refresh
                     </button>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="text-center">
-                        <p class="text-sm text-gray-600">Simulated P&L</p>
-                        <p id="sim-total-pnl" class="text-xl font-bold text-gray-900">$0.00</p>
+
+                <!-- Simulated Trading Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <!-- Net P&L Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-dollar-sign text-2xl text-green-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Simulated P&L</p>
+                                <p id="sim-total-pnl" class="text-2xl font-bold text-gray-900">$0.00</p>
+                                <p id="sim-pnl-change" class="text-sm text-gray-500">+$0.00</p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="text-center">
-                        <p class="text-sm text-gray-600">Simulated Win Rate</p>
-                        <p id="sim-win-rate" class="text-xl font-bold text-gray-900">0%</p>
+                    <!-- Win Rate Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-percentage text-2xl text-blue-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Simulated Win Rate</p>
+                                <p id="sim-win-rate" class="text-2xl font-bold text-gray-900">0%</p>
+                                <p id="sim-win-rate-change" class="text-sm text-gray-500">+0%</p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="text-center">
-                        <p class="text-sm text-gray-600">Simulated Trades</p>
-                        <p id="sim-total-trades" class="text-xl font-bold text-gray-900">0</p>
+                    <!-- Total Trades Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-exchange-alt text-2xl text-purple-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Simulated Trades</p>
+                                <p id="sim-total-trades" class="text-2xl font-bold text-gray-900">0</p>
+                                <p id="sim-trades-today" class="text-sm text-gray-500">Today: 0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Positions Value Card -->
+                    <div class="card-enhanced p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-wallet text-2xl text-orange-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Positions Value</p>
+                                <p id="sim-positions-value" class="text-2xl font-bold text-gray-900">$0.00</p>
+                                <p class="text-sm text-gray-500">Active Positions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portfolio Summary -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Balances</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Cash Balance</span>
+                                <span id="sim-cash-balance" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Total Value</span>
+                                <span id="sim-total-value" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Total Fees</span>
+                                <span id="sim-total-fees" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">PnL Breakdown</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Unrealized P&L</span>
+                                <span id="sim-unrealized-pnl" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Realized P&L</span>
+                                <span id="sim-realized-pnl" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Position Count</span>
+                                <span id="sim-position-count" class="text-sm font-medium text-gray-900">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance and Risk Metrics -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Performance Metrics Card -->
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Performance Metrics</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Average Win</span>
+                                <span id="sim-avg-win" class="text-sm font-medium text-green-600">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Average Loss</span>
+                                <span id="sim-avg-loss" class="text-sm font-medium text-red-600">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Best Trade</span>
+                                <span id="sim-best-trade" class="text-sm font-medium text-green-600">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Worst Trade</span>
+                                <span id="sim-worst-trade" class="text-sm font-medium text-red-600">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Risk Metrics Card -->
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Risk Metrics</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Profit Factor</span>
+                                <span id="sim-profit-factor" class="text-sm font-medium text-gray-900">0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Sharpe Ratio</span>
+                                <span id="sim-sharpe-ratio" class="text-sm font-medium text-gray-900">0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Max Drawdown</span>
+                                <span id="sim-max-drawdown" class="text-sm font-medium text-red-600">0.00%</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Total Volume</span>
+                                <span id="sim-total-volume" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trading Activity -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Trading Activity</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Average Trade Size</span>
+                                <span id="sim-avg-trade-size" class="text-sm font-medium text-gray-900">$0.00</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Active Positions</span>
+                                <span id="sim-active-positions" class="text-sm font-medium text-gray-900">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Winning Trades</span>
+                                <span id="sim-winning-trades" class="text-sm font-medium text-gray-900">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Losing Trades</span>
+                                <span id="sim-losing-trades" class="text-sm font-medium text-gray-900">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Trades Table -->
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Recent Trades</h3>
+                        <div class="data-table">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead>
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Side</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PnL</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sim-recent-trades-table" class="bg-white divide-y divide-gray-200">
+                                    <!-- Rows injected via JS -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>

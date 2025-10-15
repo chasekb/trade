@@ -38,10 +38,15 @@ export class SimulatedTrading {
         const winningTradesCount = winningTrades.length;
         const losingTradesCount = losingTrades.length;
 
-        // Calculate P&L metrics
-        const totalPnl = portfolioData.total_pnl || 0;
+        // Calculate P&L metrics and portfolio balances
+        const cashBalance = portfolioData.cash_balance || 0;
+        const totalValue = portfolioData.total_value || 0;
+        const totalPositionsValue = (typeof portfolioData.total_positions_value !== 'undefined') ? portfolioData.total_positions_value : 0;
+        const unrealizedPnl = (typeof portfolioData.unrealized_pnl !== 'undefined') ? portfolioData.unrealized_pnl : 0;
+        const realizedPnl = (typeof portfolioData.realized_pnl !== 'undefined') ? portfolioData.realized_pnl : 0;
+        const totalPnl = portfolioData.total_pnl || (unrealizedPnl + realizedPnl);
         const totalFees = portfolioData.total_fees || 0;
-        const netPnl = totalPnl - totalFees;
+        const netPnl = (typeof portfolioData.net_pnl !== 'undefined') ? portfolioData.net_pnl : (totalPnl - totalFees);
 
         // Calculate win rate
         const winRate = totalTrades > 0 ? (winningTradesCount / totalTrades) * 100 : 0;
@@ -71,9 +76,15 @@ export class SimulatedTrading {
 
         // Count active positions
         const activePositions = Object.values(positions).filter(pos => pos.status === 'open').length;
+        const positionCount = (typeof portfolioData.position_count !== 'undefined') ? portfolioData.position_count : activePositions;
 
         // Update simulated trading stats
         this.dashboard.simulatedTradingStats = {
+            cashBalance: cashBalance,
+            totalValue: totalValue,
+            totalPositionsValue: totalPositionsValue,
+            unrealizedPnl: unrealizedPnl,
+            realizedPnl: realizedPnl,
             totalPnl: totalPnl,
             totalFees: totalFees,
             netPnl: netPnl,
@@ -92,7 +103,9 @@ export class SimulatedTrading {
             avgTradeSize: avgTradeSize,
             activePositions: activePositions,
             grossProfit: grossProfit,
-            grossLoss: grossLoss
+            grossLoss: grossLoss,
+            positionCount: positionCount,
+            recentTrades: (portfolioData.recent_trades || trades).slice(0, 10)
         };
 
         // Log calculated stats for validation
@@ -129,6 +142,14 @@ export class SimulatedTrading {
         this.updateElement('sim-winning-trades', stats.winningTrades);
         this.updateElement('sim-losing-trades', stats.losingTrades);
 
+        // Portfolio balances and breakdown
+        this.updateElement('sim-cash-balance', stats.cashBalance.toFixed(2));
+        this.updateElement('sim-total-value', stats.totalValue.toFixed(2));
+        this.updateElement('sim-positions-value', stats.totalPositionsValue.toFixed(2));
+        this.updateElement('sim-unrealized-pnl', stats.unrealizedPnl.toFixed(2));
+        this.updateElement('sim-realized-pnl', stats.realizedPnl.toFixed(2));
+        this.updateElement('sim-position-count', stats.positionCount);
+
         // Performance Metrics
         this.updateElement('sim-avg-win', stats.avgWin.toFixed(2));
         this.updateElement('sim-avg-loss', stats.avgLoss.toFixed(2));
@@ -154,6 +175,27 @@ export class SimulatedTrading {
         // Additional metrics that might be useful
         if (this.dashboard.simulatedTradingStats.profitFactor === Infinity) {
             this.updateElement('sim-profit-factor', '∞');
+        }
+
+        // Recent trades table
+        const tableBody = document.getElementById('sim-recent-trades-table');
+        if (tableBody) {
+            tableBody.innerHTML = '';
+            const trades = stats.recentTrades || [];
+            trades.forEach(t => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                const side = (t.side || '').toUpperCase();
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(t.timestamp || Date.now()).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${t.symbol || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${side === 'BUY' ? 'text-green-600' : 'text-red-600'}">${side || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(t.quantity || 0).toFixed ? (t.quantity || 0).toFixed(4) : t.quantity || 0}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(t.price || 0).toFixed ? (t.price || 0).toFixed(2) : t.price || 0}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${((t.pnl || 0) >= 0) ? 'text-green-600' : 'text-red-600'}">${(t.pnl || 0).toFixed ? (t.pnl || 0).toFixed(2) : t.pnl || 0}</td>
+                `;
+                tableBody.appendChild(row);
+            });
         }
     }
 
