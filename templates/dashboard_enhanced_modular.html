@@ -868,6 +868,23 @@
                 </div>
 
                 <!-- Order Book Signals Table -->
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-2">
+                        <label for="live-orderbook-page-size" class="text-sm text-gray-700">Rows:</label>
+                        <select id="live-orderbook-page-size" class="form-select">
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span id="live-orderbook-page-info" class="text-sm text-gray-600">Page 1 of 1</span>
+                        <button id="live-orderbook-prev" class="pagination-btn" disabled>Previous</button>
+                        <button id="live-orderbook-next" class="pagination-btn">Next</button>
+                    </div>
+                </div>
+
                 <div class="data-table">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead>
