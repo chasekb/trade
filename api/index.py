@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 
 # Import the web server app
-from trade_bot.web_server import app
+from trade_bot.web.web_server import app
 
 # Create a new FastAPI instance for Vercel
 vercel_app = FastAPI(title="Trading Bot API", version="1.0.0")
