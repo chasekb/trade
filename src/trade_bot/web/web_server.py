@@ -129,16 +129,71 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 backtest_db = BacktestDatabase()
 db_manager = DatabaseManager("data/databases/trading_cache.db")
 
-# Global variables for data storage
-real_time_data: Dict[str, Dict] = {}
-historical_data_cache: Dict[str, List[Dict]] = {}
+from collections import OrderedDict
+import time as _time
+
+
+class TTLCache:
+    """A simple TTL + LRU cache.
+
+    - Evicts least-recently-used entries when exceeding maxsize
+    - Treats expired entries as missing
+    """
+
+    def __init__(self, maxsize: int = 1000, ttl_seconds: int = 3600):
+        self._store: OrderedDict[str, tuple[float, dict]] = OrderedDict()
+        self._maxsize: int = maxsize
+        self._ttl_seconds: int = ttl_seconds
+
+    def _purge_expired(self) -> None:
+        now = _time.time()
+        expired_keys: list[str] = []
+        for key, (expires_at, _val) in list(self._store.items()):
+            if expires_at <= now:
+                expired_keys.append(key)
+        for key in expired_keys:
+            self._store.pop(key, None)
+
+    def __contains__(self, key: str) -> bool:  # type: ignore[override]
+        self._purge_expired()
+        return key in self._store
+
+    def __len__(self) -> int:  # type: ignore[override]
+        self._purge_expired()
+        return len(self._store)
+
+    def __getitem__(self, key: str) -> dict:  # type: ignore[override]
+        self._purge_expired()
+        expires_at, value = self._store[key]
+        # Refresh LRU position
+        self._store.move_to_end(key)
+        return value
+
+    def __setitem__(self, key: str, value: dict) -> None:  # type: ignore[override]
+        self._purge_expired()
+        expires_at = _time.time() + self._ttl_seconds
+        if key in self._store:
+            self._store.move_to_end(key)
+        self._store[key] = (expires_at, value)
+        # Evict LRU entries if over capacity
+        while len(self._store) > self._maxsize:
+            self._store.popitem(last=False)
+
+    def get(self, key: str, default: dict | None = None) -> dict | None:
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
+
+
+# Global variables for data storage (bounded with TTL)
+real_time_data = TTLCache(maxsize=100, ttl_seconds=300)
+historical_data_cache = TTLCache(maxsize=1000, ttl_seconds=3600)
 backtest_results: Dict[str, Dict] = {}
 websocket_clients: List[WebSocket] = []
 
 # Configuration
 config = TradingConfig.from_env()
-logger.info(f"DEBUG: Config loaded - API key: {'SET' if config.api_key else 'NOT SET'}")
-logger.info(f"DEBUG: Config loaded - API secret: {'SET' if config.api_secret else 'NOT SET'}")
 product_fetcher = ProductFetcher()
 
 # Simulated Trading Manager
@@ -243,6 +298,33 @@ class BacktestRequest(BaseModel):
     data_analysis_mode: str = 'recent'  # 'all', 'recent', 'sampled'
     recent_data_limit: int = 50
     sampling_ratio: float = 0.1
+
+    @validator("days")
+    def _validate_days(cls, v: int) -> int:
+        if not 1 <= v <= 365:
+            raise ValueError("days must be between 1 and 365")
+        return v
+
+    @validator("granularity")
+    def _validate_granularity(cls, v: int) -> int:
+        allowed = {60, 300, 900, 3600, 21600, 86400}
+        if v not in allowed:
+            raise ValueError("granularity must be one of 60,300,900,3600,21600,86400")
+        return v
+
+    @validator("portfolio_percentage")
+    def _validate_portfolio_pct(cls, v: float) -> float:
+        if not 1.0 <= v <= 100.0:
+            raise ValueError("portfolio_percentage must be between 1 and 100")
+        return v
+
+    @validator("product_id")
+    def _validate_product_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not isinstance(v, str) or "/" in v or ".." in v or len(v) > 30:
+            raise ValueError("invalid product_id")
+        return v
 
 class BacktestHistoryItem(BaseModel):
     id: int
@@ -463,6 +545,7 @@ class WebSocketManager:
                 # Only broadcast if we have some data
                 if any([ticker_data, trade_data, level2_data, candles_data, 
                        matches_data, status_data, market_trades_data]):
+                    # Cache current snapshot with TTL; key by product_id
                     real_time_data[config.product_id] = current_data
                     
                     # Broadcast to all connected clients
@@ -511,7 +594,7 @@ async def get_real_time_data(product_id: str = None):
     if not product_id:
         product_id = config.product_id
     
-    return real_time_data.get(product_id, {})
+    return real_time_data.get(product_id, {}) or {}
 
 
 @app.get("/api/historical-data")
@@ -541,7 +624,7 @@ async def get_historical_data(
         
         historical_data_cache[cache_key] = historical_data
     
-    return historical_data_cache[cache_key]
+    return historical_data_cache.get(cache_key, [])
 
 @app.get("/api/symbols")
 async def get_available_symbols():
@@ -625,7 +708,7 @@ async def get_candles_data(
         
         historical_data_cache[cache_key] = candles_data
     
-    return historical_data_cache[cache_key]
+    return historical_data_cache.get(cache_key, [])
 
 
 @app.post("/api/run-backtest")
@@ -1406,10 +1489,7 @@ async def get_live_orderbook_signals(symbols: str = None):
         if not manager.data_handler:
             return {"error": "Data handler not initialized"}
         print("DEBUG: Data handler is initialized")
-        print(f"DEBUG: DataHandler API key: {'SET' if manager.data_handler.api_key else 'NOT SET'}")
-        print(f"DEBUG: DataHandler API secret: {'SET' if manager.data_handler.api_secret else 'NOT SET'}")
-        print(f"DEBUG: Main config API key: {'SET' if config.api_key else 'NOT SET'}")
-        print(f"DEBUG: Main config API secret: {'SET' if config.api_secret else 'NOT SET'}")
+        logger.debug("DataHandler and main config initialized")
         
         # Check if trading is active
         if not trading_state["is_active"]:

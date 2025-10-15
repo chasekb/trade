@@ -41,9 +41,8 @@ class DataHandler:
         self.api_secret = getattr(config, 'api_secret', None)
         self.passphrase = getattr(config, 'passphrase', None)
         
-        # Debug logging
-        logger.info(f"DataHandler initialized with API key: {'SET' if self.api_key else 'NOT SET'}")
-        logger.info(f"DataHandler initialized with API secret: {'SET' if self.api_secret else 'NOT SET'}")
+        # Initialization logging without credential state
+        logger.info("DataHandler initialized")
         
         # Ensure output directory exists
         os.makedirs(config.output_dir, exist_ok=True)
@@ -379,13 +378,13 @@ class DataHandler:
             logger.warning("API credentials not configured, using public endpoints only")
             return {}
         
-        logger.info(f"Creating JWT token for API key: {self.api_key[:8]}...")
+        logger.info("Creating JWT token for authenticated request")
         jwt_token = self._generate_jwt_token(method, path)
         if not jwt_token:
             logger.warning("Failed to generate JWT token, using public endpoints only")
             return {}
         
-        logger.info(f"Generated JWT token: {jwt_token[:50]}...")
+        logger.debug("Generated JWT token")
         
         return {
             'Authorization': f'Bearer {jwt_token}',

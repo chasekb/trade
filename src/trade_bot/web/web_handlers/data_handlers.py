@@ -574,35 +574,26 @@ class DataHandlers:
             }
             
             # Save to database
-            print(f"DEBUG: Attempting to save session {session_id} with data: {session_data}")
-            logger.info(f"Attempting to save session {session_id} with data: {session_data}")
+            logger.info(f"Attempting to save session {session_id}")
             try:
                 # Test database connection first
-                print("DEBUG: Testing database connection...")
                 logger.info("Testing database connection...")
                 test_result = self.database_manager.get_cache_stats()
-                print(f"DEBUG: Database connection test result: {test_result}")
-                logger.info(f"Database connection test result: {test_result}")
+                logger.debug(f"Database connection test result: {bool(test_result)}")
                 
                 success = self.database_manager.save_trading_session(session_id, session_data)
-                print(f"DEBUG: Database save result: {success}")
                 logger.info(f"Database save result: {success}")
                 if not success:
-                    print(f"DEBUG: Database save returned False for session {session_id}")
                     logger.error(f"Database save returned False for session {session_id}")
             except Exception as db_error:
-                print(f"DEBUG: Database save exception: {db_error}")
                 logger.error(f"Database save exception: {db_error}")
                 import traceback
-                print(f"DEBUG: Traceback: {traceback.format_exc()}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 # Try to identify the problematic object
                 try:
                     import json
                     json.dumps(session_data)
-                    print("DEBUG: Session data is JSON serializable")
                 except Exception as json_error:
-                    print(f"DEBUG: JSON serialization error: {json_error}")
                     logger.error(f"JSON serialization error: {json_error}")
                 return {"error": f"Database save failed: {str(db_error)}"}
             
