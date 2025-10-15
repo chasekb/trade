@@ -609,6 +609,39 @@ class SimulatedTradingManager:
             # Remove the position from the active positions dictionary
             del self.positions[symbol]
             logger.info(f"Closed position for {symbol}: {reason}")
+
+    async def force_close_all_positions(self, reason: str = "Server shutdown") -> None:
+        """Force close all open positions, persisting SELL trades to the DB.
+
+        This is used for graceful shutdown so that simulated open positions
+        don't appear as lingering positions when the server restarts.
+        """
+        try:
+            # Snapshot symbols to avoid dict-size-change while iterating
+            open_symbols = [sym for sym, pos in self.positions.items() if pos.status == 'open']
+            for symbol in open_symbols:
+                try:
+                    position = self.positions.get(symbol)
+                    if not position or position.status != 'open':
+                        continue
+
+                    # Use current known price as exit price; if zero, fallback to entry
+                    exit_price = position.current_price or position.entry_price
+                    quantity = position.quantity
+
+                    # Build a synthetic signal context for audit trail
+                    signal_ctx: Dict[str, Any] = {
+                        'signal_reason': reason
+                    }
+
+                    # Execute sell to persist trade and remove position
+                    await self._execute_sell_trade(symbol, exit_price, quantity, signal_ctx)
+                except Exception as e:
+                    logger.warning(f"Failed to force-close {symbol} on shutdown: {e}")
+                    # Ensure position is marked closed to avoid lingering UI state
+                    self._close_position(symbol, f"{reason} (fallback close)")
+        except Exception as e:
+            logger.error(f"Error during force_close_all_positions: {e}")
     
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Get all open positions."""
