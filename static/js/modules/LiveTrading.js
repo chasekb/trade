@@ -12,6 +12,9 @@ export class LiveTrading {
         this.symbols = [];
         this.positions = [];
         this.orderBookRefreshInterval = null;
+        // Live Order Book pagination state
+        this.orderBookPage = 1;
+        this.orderBookPerPage = 50;
     }
 
     setupLiveTrading() {
@@ -179,6 +182,37 @@ export class LiveTrading {
         const refreshButton = document.getElementById('refresh-orderbook-signals');
         if (refreshButton) {
             refreshButton.addEventListener('click', () => {
+                this.loadLiveTradingData();
+            });
+        }
+
+        // Live Order Book pagination controls
+        const livePrevBtn = document.getElementById('live-orderbook-prev');
+        const liveNextBtn = document.getElementById('live-orderbook-next');
+        const livePageSize = document.getElementById('live-orderbook-page-size');
+
+        if (livePrevBtn) {
+            livePrevBtn.addEventListener('click', () => {
+                if (this.orderBookPage > 1) {
+                    this.orderBookPage -= 1;
+                    this.loadLiveTradingData();
+                }
+            });
+        }
+
+        if (liveNextBtn) {
+            liveNextBtn.addEventListener('click', () => {
+                this.orderBookPage += 1;
+                this.loadLiveTradingData();
+            });
+        }
+
+        if (livePageSize) {
+            try { livePageSize.value = String(this.orderBookPerPage); } catch (_) {}
+            livePageSize.addEventListener('change', () => {
+                const newSize = parseInt(livePageSize.value, 10) || 50;
+                this.orderBookPerPage = newSize;
+                this.orderBookPage = 1;
                 this.loadLiveTradingData();
             });
         }
@@ -360,7 +394,7 @@ export class LiveTrading {
         try {
             let apiUrl = '/api/orderbook/live-signals';
             const symbolsParam = validSymbols.join(',');
-            apiUrl += `?symbols=${symbolsParam}`;
+            apiUrl += `?symbols=${symbolsParam}&page=${this.orderBookPage}&per_page=${this.orderBookPerPage}`;
 
             const response = await fetch(apiUrl);
             const data = await response.json();
@@ -377,7 +411,7 @@ export class LiveTrading {
 
             // Update pagination if available
             if (data.pagination) {
-                this.dashboard.pagination.updateOrderBookSignalsPagination(data.pagination);
+                this.updateLiveOrderBookPagination(data.pagination);
             }
 
             // Update order book signals table
@@ -539,6 +573,29 @@ export class LiveTrading {
         });
     }
 
+    updateLiveOrderBookPagination(pagination) {
+        const pageInfo = document.getElementById('live-orderbook-page-info');
+        const prevBtn = document.getElementById('live-orderbook-prev');
+        const nextBtn = document.getElementById('live-orderbook-next');
+        const pageSize = document.getElementById('live-orderbook-page-size');
+
+        if (pageInfo) {
+            pageInfo.textContent = `Page ${pagination.current_page} of ${pagination.total_pages}`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = pagination.current_page <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = pagination.current_page >= pagination.total_pages;
+        }
+        if (pageSize) {
+            try { pageSize.value = String(this.orderBookPerPage); } catch (_) {}
+        }
+
+        // Sync internal state with backend pagination (in case server adjusted values)
+        this.orderBookPage = pagination.current_page || this.orderBookPage;
+    }
+
     updateOrderBookStatistics(data) {
         const totalAnalyzed = document.getElementById('total-analyzed');
         const activeSignals = document.getElementById('active-signals');
@@ -563,11 +620,16 @@ export class LiveTrading {
 
         // Update statistics
         if (totalAnalyzed) {
-            totalAnalyzed.textContent = data.signals ? data.signals.length : 0;
+            const total = (data.pagination && typeof data.pagination.total_signals === 'number')
+                ? data.pagination.total_signals
+                : (typeof data.total_analyzed === 'number' ? data.total_analyzed : (data.signals ? data.signals.length : 0));
+            totalAnalyzed.textContent = total;
         }
 
         if (activeSignals) {
-            const activeCount = data.signals ? data.signals.filter(s => s.signal_generated === true).length : 0;
+            const activeCount = (typeof data.active_signals === 'number')
+                ? data.active_signals
+                : (data.signals ? data.signals.filter(s => s.signal_generated === true).length : 0);
             activeSignals.textContent = activeCount;
         }
 

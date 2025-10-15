@@ -585,13 +585,13 @@ async def get_cache_stats():
     return await data_handlers.get_cache_stats()
 
 @app.get("/api/data/orderbook-signals")
-async def get_live_orderbook_signals(symbols: str = None, page: int = 1, per_page: int = 10):
+async def get_live_orderbook_signals(symbols: str = None, page: int = 1, per_page: int = 50):
     """Get live order book signals."""
     check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_live_orderbook_signals(symbols, page, per_page)
 
 @app.get("/api/orderbook/live-signals")
-async def get_orderbook_live_signals(symbols: str = None, page: int = 1, per_page: int = 10):
+async def get_orderbook_live_signals(symbols: str = None, page: int = 1, per_page: int = 50):
     """Get live order book signals (alternative endpoint)."""
     check_handlers_ready("data_handlers", data_handlers)
     return await data_handlers.get_live_orderbook_signals(symbols, page, per_page)
