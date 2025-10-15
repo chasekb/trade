@@ -27,45 +27,14 @@ from ..web.web_handlers import (
     TradingHandlers, WebSocketHandlers, DataHandlers
 )
 from ..web.web_handlers.live_portfolio_handlers import LivePortfolioHandlers
+from ..web.models import (
+    SubscriptionRequest, BacktestRequest, BacktestHistoryItem,
+    BacktestHistoryResponse, BacktestStatsResponse
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Pydantic models
-class SubscriptionRequest(BaseModel):
-    channel: str
-    product_id: Optional[str] = None
-
-class BacktestRequest(BaseModel):
-    strategy: str
-    symbol: str
-    start_date: str
-    end_date: str
-    strategy_params: Dict[str, Any] = {}
-
-class BacktestHistoryItem(BaseModel):
-    backtest_id: int
-    strategy: str
-    symbol: str
-    start_date: str
-    end_date: str
-    total_trades: int
-    win_rate: float
-    total_return: float
-    created_at: str
-
-class BacktestHistoryResponse(BaseModel):
-    backtests: list[BacktestHistoryItem]
-    total: int
-    limit: int
-    offset: int
-
-class BacktestStatsResponse(BaseModel):
-    total_backtests: int
-    successful_backtests: int
-    average_return: float
-    best_strategy: str
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()

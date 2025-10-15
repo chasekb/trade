@@ -750,10 +750,12 @@ self.portfolio_percentage = max(1.0, min(100.0, portfolio_percentage))
 ### 🔴 High Priority (Next Sprint)
 
 4. **Refactor: Split web_server.py**
-   - [ ] Move logic to existing `web_handlers/` modules
-   - [ ] Keep only routing in main file
-   - [ ] Update tests
-   - **Files:** `web_server.py` → handlers
+   - [x] Move logic to existing `web_handlers/` modules
+   - [x] Keep only routing in main file
+   - [x] Update tests
+   - **Files:** `web_server.py` → handlers, `models.py`
+   - **Status:** Completed (October 15, 2025)
+   - **Details:** Reduced from 2,537 lines to 791 lines; all business logic delegated to handlers
    - **Estimate:** 16 hours
 
 5. **Code Quality: Remove duplicate implementations**
