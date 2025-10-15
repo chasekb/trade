@@ -660,6 +660,9 @@ export class LiveTrading {
                 await this.loadLiveTradingData();
                 await this.loadLiveTradingStats();
                 
+                // Load simulated trading stats to update the simulated trading widget
+                await this.dashboard.simulatedTrading.loadSimulatedTradingStats();
+                
                 // Start auto-refresh
                 this.startOrderBookFrequentRefresh();
             } else {
@@ -716,7 +719,21 @@ export class LiveTrading {
                     console.warn('Unable to load Sharpe ratio from /api/trades/stats:', e);
                 }
 
-                this.updateLiveTradingStats(data.portfolio, { sharpeRatio });
+                // Normalize portfolio shape to include trades and positions for UI calculations
+                const portfolio = { ...data.portfolio };
+                if (Array.isArray(data.recent_trades)) {
+                    portfolio.trades = data.recent_trades;
+                    portfolio.recent_trades = data.recent_trades;
+                } else if (!Array.isArray(portfolio.trades)) {
+                    portfolio.trades = [];
+                }
+                if (Array.isArray(data.open_positions)) {
+                    portfolio.positions = data.open_positions;
+                } else if (!portfolio.positions) {
+                    portfolio.positions = [];
+                }
+
+                this.updateLiveTradingStats(portfolio, { sharpeRatio });
             } else {
                 console.error('No portfolio data received for live trading stats');
             }
