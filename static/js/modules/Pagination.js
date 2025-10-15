@@ -11,6 +11,7 @@ export class Pagination {
         this.backtestHistoryPage = 1;
         this.itemsPerPage = 50;
         this.tradingHistoryItemsPerPage = 50;
+        this.positionsItemsPerPage = 50;
     }
 
     setupTradingHistoryPagination() {
@@ -79,6 +80,7 @@ export class Pagination {
         const prevBtn = document.getElementById('positions-prev');
         const nextBtn = document.getElementById('positions-next');
         const pageInfo = document.getElementById('positions-page-info');
+        const pageSizeSelect = document.getElementById('positions-page-size');
 
         if (prevBtn) {
             prevBtn.addEventListener('click', () => {
@@ -92,6 +94,18 @@ export class Pagination {
         if (nextBtn) {
             nextBtn.addEventListener('click', () => {
                 this.positionsPage++;
+                this.loadPositions();
+            });
+        }
+
+        if (pageSizeSelect) {
+            try {
+                pageSizeSelect.value = String(this.positionsItemsPerPage);
+            } catch (_) {}
+            pageSizeSelect.addEventListener('change', () => {
+                const newLimit = parseInt(pageSizeSelect.value, 10) || 50;
+                this.positionsItemsPerPage = newLimit;
+                this.positionsPage = 1;
                 this.loadPositions();
             });
         }
@@ -159,7 +173,7 @@ export class Pagination {
         try {
             const data = await this.dashboard.dataManager.loadPositions(
                 this.positionsPage, 
-                this.itemsPerPage
+                this.positionsItemsPerPage
             );
 
             if (data && data.positions) {
