@@ -757,10 +757,11 @@ self.portfolio_percentage = max(1.0, min(100.0, portfolio_percentage))
    - **Estimate:** 16 hours
 
 5. **Code Quality: Remove duplicate implementations**
-   - [ ] Choose canonical version for each module
-   - [ ] Remove `*_new.py` or `*_old.py` files
-   - [ ] Update all imports
+   - [x] Choose canonical version for each module
+   - [x] Remove `*_new.py` or `*_old.py` files
+   - [x] Update all imports
    - **Files:** Multiple `*_new.py` files
+   - **Status:** Completed (October 15, 2025)
    - **Estimate:** 8 hours
 
 6. **Testing: Add security tests**

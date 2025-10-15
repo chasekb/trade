@@ -1,7 +1,6 @@
 """Web domain - Web server and handlers."""
 
 from .web_server import app as web_app
-from .web_server_new import app as new_web_app
 from .web_components import RateLimiter, WebSocketManager
 from .web_handlers import (
     APIHandlers,
@@ -14,7 +13,6 @@ from .web_handlers import (
 
 __all__ = [
     'web_app',
-    'new_web_app',
     'RateLimiter',
     'WebSocketManager',
     'APIHandlers',
