@@ -209,6 +209,9 @@ class EnhancedTradingDashboard {
                 // Initialize symbol mode UI
                 this.uiUtils.updateSymbolModeUI();
 
+                // Initialize trading mode UI visibility (simulated vs live stats)
+                this.uiUtils.updateTradingModeUI();
+
                 // Initialize universe selection
                 this.uiUtils.updateUniverseTypeUI();
 
