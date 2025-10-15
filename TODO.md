@@ -765,10 +765,11 @@ self.portfolio_percentage = max(1.0, min(100.0, portfolio_percentage))
    - **Estimate:** 8 hours
 
 6. **Testing: Add security tests**
-   - [ ] Input validation tests
-   - [ ] Authentication/authorization tests
-   - [ ] SQL injection prevention tests
-   - **Files:** New test files in `tests/security/`
+   - [x] Input validation tests
+   - [x] Authentication/authorization tests
+   - [x] SQL injection prevention tests
+   - **Files:** `tests/test_security.py`, `tests/SECURITY_TESTS_README.md`
+   - **Status:** Completed (October 15, 2025)
    - **Estimate:** 8 hours
 
 7. **Performance: Add connection pooling**
