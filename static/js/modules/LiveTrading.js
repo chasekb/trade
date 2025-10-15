@@ -704,8 +704,40 @@ export class LiveTrading {
             }
         });
 
+        // Read trading controls from UI depending on symbol mode
+        let positionSizePercent;
+        let maxPositions;
+        let positionUpdateInterval;
         try {
-            const response = await this.dashboard.dataManager.startTrading(mode, strategy, symbols, parameters);
+            const symbolMode = document.querySelector('input[name="trading-symbol-mode"]:checked')?.value;
+            positionUpdateInterval = parseInt(document.getElementById('live-position-update-interval')?.value) || 5;
+            if (symbolMode === 'universe') {
+                const universePositionSizeEl = document.getElementById('universe-position-size');
+                const universeMaxPositionsEl = document.getElementById('universe-max-positions');
+                if (universePositionSizeEl) positionSizePercent = parseFloat(universePositionSizeEl.value);
+                if (universeMaxPositionsEl) maxPositions = parseInt(universeMaxPositionsEl.value);
+            } else {
+                const singlePosSizeEl = document.getElementById('live-position-size');
+                const singleMaxPosEl = document.getElementById('live-max-positions');
+                if (singlePosSizeEl) positionSizePercent = parseFloat(singlePosSizeEl.value);
+                if (singleMaxPosEl) maxPositions = parseInt(singleMaxPosEl.value);
+            }
+        } catch (e) {
+            console.warn('Unable to read trading control values:', e);
+        }
+
+        try {
+            const response = await this.dashboard.dataManager.startTrading(
+                mode,
+                strategy,
+                symbols,
+                parameters,
+                {
+                    position_size_percent: positionSizePercent,
+                    max_positions: maxPositions,
+                    position_update_interval: positionUpdateInterval
+                }
+            );
             
             if (response && (response.status === 'success' || response.status === 'started')) {
                 this.isActive = true;

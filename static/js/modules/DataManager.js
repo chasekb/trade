@@ -184,23 +184,39 @@ export class DataManager {
         }
     }
 
-    async startTrading(mode, strategy, symbols, parameters) {
+    async startTrading(mode, strategy, symbols, parameters, options = {}) {
         try {
             // Use the correct endpoint based on trading mode
             const endpoint = mode === 'live' ? '/api/trading/live/start' : '/api/trading/simulated/start';
             
+            // Build request payload aligning with backend expectations
+            const payload = {
+                mode,
+                symbols,
+                strategy_type: strategy,
+                strategy_params: parameters
+            };
+
+            // Include optional trading controls when provided
+            if (typeof options.position_size_percent === 'number' && !Number.isNaN(options.position_size_percent)) {
+                payload.position_size_percent = options.position_size_percent;
+            }
+            if (typeof options.max_positions === 'number' && !Number.isNaN(options.max_positions)) {
+                payload.max_positions = options.max_positions;
+            }
+            if (typeof options.position_update_interval === 'number' && !Number.isNaN(options.position_update_interval)) {
+                payload.position_update_interval = options.position_update_interval;
+            }
+            if (typeof options.initial_balance === 'number' && !Number.isNaN(options.initial_balance)) {
+                payload.initial_balance = options.initial_balance;
+            }
+
             const response = await this.fetchData(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    // Align with backend expectations
-                    mode,
-                    symbols,
-                    strategy_type: strategy,
-                    strategy_params: parameters
-                })
+                body: JSON.stringify(payload)
             });
             return response;
         } catch (error) {
