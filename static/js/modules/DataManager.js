@@ -153,7 +153,7 @@ export class DataManager {
 
     async loadOrderBookHistory(page = 1, limit = 50) {
         try {
-            const url = `/api/orderbook/live-signals?page=${page}&per_page=${limit}`;
+            const url = `/api/orderbook/signals/paginated?page=${page}&per_page=${limit}`;
             const data = await this.fetchData(url);
             return data;
         } catch (error) {
