@@ -1,6 +1,7 @@
 """WebSocket handlers for the trading web server."""
 
 import logging
+import re
 from typing import Dict, Any, Optional, List
 from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 
@@ -44,6 +45,11 @@ class WebSocketHandlers:
             
             if not channel:
                 raise HTTPException(status_code=400, detail="Channel is required")
+            allowed_channels = {"ticker", "level2", "candles", "matches", "status", "market_trades"}
+            if channel not in allowed_channels:
+                raise HTTPException(status_code=400, detail="Invalid channel")
+            if product_id and not re.fullmatch(r"[A-Z0-9\-]{3,30}", str(product_id)):
+                raise HTTPException(status_code=400, detail="Invalid product_id format")
             
             # Subscribe logic would go here
             return {
@@ -64,6 +70,11 @@ class WebSocketHandlers:
             
             if not channel:
                 raise HTTPException(status_code=400, detail="Channel is required")
+            allowed_channels = {"ticker", "level2", "candles", "matches", "status", "market_trades"}
+            if channel not in allowed_channels:
+                raise HTTPException(status_code=400, detail="Invalid channel")
+            if product_id and not re.fullmatch(r"[A-Z0-9\-]{3,30}", str(product_id)):
+                raise HTTPException(status_code=400, detail="Invalid product_id format")
             
             # Unsubscribe logic would go here
             return {

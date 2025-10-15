@@ -1,6 +1,7 @@
 """Trading handlers for the trading web server."""
 
 import logging
+import re
 from typing import Dict, Any, Optional
 from fastapi import HTTPException
 
@@ -21,6 +22,23 @@ class TradingHandlers:
             symbols = request_data.get('symbols', ['BTC-USD'])
             strategy_type = request_data.get('strategy_type', 'SMA')
             strategy_params = request_data.get('strategy_params', {})
+
+            # Validate symbols
+            if not isinstance(symbols, list) or len(symbols) == 0:
+                raise HTTPException(status_code=400, detail="symbols must be a non-empty array")
+            clean_symbols = []
+            for s in symbols:
+                if isinstance(s, str) and re.fullmatch(r"[A-Z0-9\-]{3,30}", s):
+                    clean_symbols.append(s)
+            if not clean_symbols:
+                raise HTTPException(status_code=400, detail="No valid symbols provided")
+            symbols = clean_symbols[:100]
+
+            # Validate params
+            if strategy_params is None:
+                strategy_params = {}
+            if not isinstance(strategy_params, dict):
+                raise HTTPException(status_code=400, detail="strategy_params must be an object")
             
             # Start simulated trading
             self.simulated_trading_manager.start_trading(symbols)
@@ -56,6 +74,8 @@ class TradingHandlers:
         (assumes whole-position sells, as implemented by the simulator).
         """
         try:
+            page = max(1, int(page))
+            limit = max(1, min(int(limit), 1000))
             # Primary source: in-memory simulated trading state
             positions = self.simulated_trading_manager.get_open_positions()
 
@@ -148,7 +168,7 @@ class TradingHandlers:
         """Close a specific live trading position."""
         try:
             symbol = request_data.get('symbol')
-            if not symbol:
+            if not symbol or not re.fullmatch(r"[A-Z0-9\-]{3,30}", str(symbol)):
                 raise HTTPException(status_code=400, detail="Symbol is required")
             
             # Close position logic would go here
@@ -173,8 +193,12 @@ class TradingHandlers:
     async def get_paginated_trading_history(self, page: int = 1, per_page: int = 10, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Get paginated trading history, optionally filtered by session_id."""
         try:
+            page = max(1, int(page))
+            per_page = max(1, min(int(per_page), 1000))
             # Get trades from database, filtered by session_id if provided
             if session_id:
+                if not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
+                    raise HTTPException(status_code=400, detail="Invalid session_id format")
                 all_trades = self.database_manager.get_trades_by_session(session_id)
             else:
                 all_trades = self.database_manager.get_all_trades(limit=1000, offset=0)
@@ -206,6 +230,8 @@ class TradingHandlers:
     async def get_all_trading_history(self, limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
         """Get all trading history from database."""
         try:
+            limit = max(1, min(int(limit), 5000))
+            offset = max(0, int(offset))
             trades = self.database_manager.get_all_trades(limit=limit, offset=offset)
             total_count = self.database_manager.get_trades_count()
             
@@ -223,6 +249,9 @@ class TradingHandlers:
     async def get_session_trading_history(self, session_id: str, limit: int = 100) -> Dict[str, Any]:
         """Get trading history for a specific session."""
         try:
+            if not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
+                raise HTTPException(status_code=400, detail="Invalid session_id format")
+            limit = max(1, min(int(limit), 2000))
             trades = self.database_manager.get_trades_by_session(session_id, limit=limit)
             session_info = self.database_manager.get_session_info(session_id)
             

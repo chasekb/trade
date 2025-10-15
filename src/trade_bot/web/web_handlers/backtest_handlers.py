@@ -1,6 +1,7 @@
 """Backtest handlers for the trading web server."""
 
 import logging
+import re
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from fastapi import HTTPException
@@ -38,11 +39,36 @@ class BacktestHandlers:
     async def run_backtest(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Run a backtest with the specified parameters."""
         try:
-            strategy_name = request_data.get('strategy', 'SMA')
-            symbol = request_data.get('symbol', 'BTC-USD')
+            strategy_name = str(request_data.get('strategy', 'SMA'))
+            symbol = str(request_data.get('symbol', 'BTC-USD'))
             start_date = request_data.get('start_date')
             end_date = request_data.get('end_date')
             strategy_params = request_data.get('strategy_params', {})
+
+            # Validate symbol format (e.g., BTC-USD)
+            if not re.fullmatch(r"[A-Z0-9\-]{3,30}", symbol):
+                raise HTTPException(status_code=400, detail="Invalid symbol format")
+
+            # Validate strategy name
+            if strategy_name not in self.strategy_classes:
+                raise HTTPException(status_code=400, detail=f"Unknown strategy: {strategy_name}")
+
+            # Validate strategy params type
+            if strategy_params is None:
+                strategy_params = {}
+            if not isinstance(strategy_params, dict):
+                raise HTTPException(status_code=400, detail="strategy_params must be an object")
+
+            # Validate dates if provided
+            if start_date and end_date:
+                try:
+                    from datetime import datetime as _dt
+                    sd = _dt.fromisoformat(str(start_date).replace('Z', '+00:00'))
+                    ed = _dt.fromisoformat(str(end_date).replace('Z', '+00:00'))
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid ISO date format")
+                if ed < sd:
+                    raise HTTPException(status_code=400, detail="end_date must be after start_date")
             
             # Get strategy class
             strategy_class = self.strategy_classes.get(strategy_name)
@@ -88,6 +114,8 @@ class BacktestHandlers:
     async def get_backtest_history(self, limit: int = 10, offset: int = 0) -> Dict[str, Any]:
         """Get backtest history with pagination."""
         try:
+            limit = max(1, min(int(limit), 1000))
+            offset = max(0, int(offset))
             # This would typically fetch from database with pagination
             return {
                 "backtests": [],
@@ -102,6 +130,8 @@ class BacktestHandlers:
     async def get_backtest(self, backtest_id: int) -> Dict[str, Any]:
         """Get a specific backtest by ID."""
         try:
+            if int(backtest_id) <= 0:
+                raise HTTPException(status_code=400, detail="Invalid backtest_id")
             # This would typically fetch from database
             return {"error": "Backtest not found"}
         except Exception as e:
@@ -125,6 +155,8 @@ class BacktestHandlers:
     async def delete_backtest(self, backtest_id: int) -> Dict[str, Any]:
         """Delete a backtest."""
         try:
+            if int(backtest_id) <= 0:
+                raise HTTPException(status_code=400, detail="Invalid backtest_id")
             # This would typically delete from database
             return {"message": "Backtest deleted successfully"}
         except Exception as e:
