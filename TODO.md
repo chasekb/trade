@@ -734,11 +734,11 @@ self.portfolio_percentage = max(1.0, min(100.0, portfolio_percentage))
    - **Status:** Completed (October 15, 2025)
 
 2. **Security: Add input validation**
-   - [x] Validate all API endpoint inputs (initial: `BacktestRequest` in `web_server.py`)
+   - [x] Validate all API endpoint inputs
+   - [x] Sanitize and bound pagination/symbol inputs
    - [x] Validate file paths (database path constrained)
-   - [ ] Broaden validation across `web/web_handlers/*`
-   - **Files:** `web_server.py`, `database_manager.py`, `web/web_handlers/*`
-   - **Status:** Partially completed (in progress)
+   - **Files:** `web_server.py`, `web/web_handlers/*`, `database_manager.py`
+   - **Status:** Completed (October 15, 2025)
 
 3. **Bug: Fix memory leaks**
    - [x] Implement LRU+TTL cache for `real_time_data`

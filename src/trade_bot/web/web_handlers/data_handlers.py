@@ -1,6 +1,7 @@
 """Data handlers for the trading web server."""
 
 import logging
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import HTTPException
@@ -36,6 +37,9 @@ class DataHandlers:
         try:
             if not symbols:
                 return {"error": "No symbols provided"}
+            # basic pagination guardrails
+            page = max(1, int(page))
+            per_page = max(1, min(int(per_page), 1000))
             
             # Check if trading is active (either simulated trading or async trading)
             trading_active = False
@@ -89,6 +93,14 @@ class DataHandlers:
             if len(symbol_list) > max_symbols:
                 logger.info(f"Capping symbols from {len(symbol_list)} to {max_symbols} to avoid timeouts")
                 symbol_list = symbol_list[:max_symbols]
+            # Validate symbol formats
+            valid = []
+            for s in symbol_list:
+                if re.fullmatch(r"[A-Z0-9\-]{3,30}", s):
+                    valid.append(s)
+            if not valid:
+                return {"signals": [], "trading_active": False, "message": "No valid symbols provided", "pagination": {"current_page": page, "per_page": per_page, "total_signals": 0, "total_pages": 0, "has_next": False, "has_prev": False}}
+            symbol_list = valid
             
             # Debug logging to see what symbols we're processing
             logger.info(f"Processing symbols for order book signals: {symbol_list}")
@@ -513,7 +525,7 @@ class DataHandlers:
     async def save_current_trading_state(self, session_id: str) -> bool:
         """Save current trading state to database."""
         try:
-            if not session_id:
+            if not session_id or not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", session_id):
                 return False
                 
             # Get current trading status
@@ -551,7 +563,7 @@ class DataHandlers:
             session_id = request_data.get('session_id')
             logger.info(f"Save session request received for session_id: {session_id}")
             
-            if not session_id:
+            if not session_id or not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
                 raise HTTPException(status_code=400, detail="Session ID is required")
             
             # Get current trading status
@@ -617,7 +629,7 @@ class DataHandlers:
         try:
             session_id = request_data.get('session_id')
             
-            if not session_id:
+            if not session_id or not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
                 raise HTTPException(status_code=400, detail="Session ID is required")
             
             # Load session data from database
@@ -673,7 +685,7 @@ class DataHandlers:
     async def load_session_state(self, session_id: str) -> Dict[str, Any]:
         """Load trading session state."""
         try:
-            if not session_id:
+            if not session_id or not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
                 raise HTTPException(status_code=400, detail="Session ID is required")
             
             # Load session data from database
@@ -700,8 +712,10 @@ class DataHandlers:
             session_id = request_data.get('session_id')
             state_data = request_data.get('state', {})
             
-            if not session_id:
+            if not session_id or not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
                 raise HTTPException(status_code=400, detail="Session ID is required")
+            if not isinstance(state_data, dict):
+                raise HTTPException(status_code=400, detail="state must be an object")
             
             # Save dashboard state logic would go here
             return {
@@ -716,7 +730,7 @@ class DataHandlers:
     async def load_dashboard_state(self, session_id: str) -> Dict[str, Any]:
         """Load dashboard UI state."""
         try:
-            if not session_id:
+            if not session_id or not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
                 raise HTTPException(status_code=400, detail="Session ID is required")
             
             # Load dashboard state logic would go here
