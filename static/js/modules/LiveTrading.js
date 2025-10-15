@@ -655,6 +655,12 @@ export class LiveTrading {
             this.loadLiveTradingData();
             // Keep live trading KPIs updated alongside signals
             this.loadLiveTradingStats();
+            // Also refresh simulated trading stats when in simulated mode
+            try {
+                if (this.dashboard?.liveTrading?.mode === 'simulated' && this.dashboard?.simulatedTrading) {
+                    this.dashboard.simulatedTrading.loadSimulatedTradingStats();
+                }
+            } catch (_) {}
         }, 30000);
     }
 
@@ -670,6 +676,12 @@ export class LiveTrading {
                 this.loadLiveTradingData();
                 // Refresh Live KPIs on the same cadence as signals
                 this.loadLiveTradingStats();
+                // Keep simulated trading widget in sync during simulated mode
+                try {
+                    if (this.dashboard?.liveTrading?.mode === 'simulated' && this.dashboard?.simulatedTrading) {
+                        this.dashboard.simulatedTrading.loadSimulatedTradingStats();
+                    }
+                } catch (_) {}
             }
         }, 5000);
     }
