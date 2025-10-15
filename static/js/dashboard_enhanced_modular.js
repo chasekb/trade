@@ -399,10 +399,9 @@ class EnhancedTradingDashboard {
             this.loadInitialStrategyParameters();
         } else if (tabName === 'trading-history') {
             this.pagination.loadTradingHistory();
+            this.pagination.loadPositions();
         } else if (tabName === 'orderbook-signals') {
             this.pagination.loadOrderBookSignals();
-        } else if (tabName === 'positions') {
-            this.pagination.loadPositions();
         } else if (tabName === 'backtest-history') {
             this.pagination.loadBacktestHistory();
         }
