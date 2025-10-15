@@ -18,6 +18,8 @@ export class UIUtils {
         const mode = this.dashboard.liveTrading.mode;
         const startButton = document.getElementById('start-trading');
         const warningText = document.querySelector('#live-mode + p');
+        const liveStats = document.getElementById('live-trading-stats-section');
+        const simStats = document.getElementById('simulated-trading-stats-section');
         
         if (mode === 'live') {
             startButton.textContent = 'Start Live Trading';
@@ -26,6 +28,8 @@ export class UIUtils {
                 warningText.textContent = '⚠️ Live trading mode - real money at risk!';
                 warningText.className = 'text-red-600 text-sm mt-2';
             }
+            if (liveStats) liveStats.style.display = 'block';
+            if (simStats) simStats.style.display = 'none';
         } else {
             startButton.textContent = 'Start Simulated Trading';
             startButton.className = 'px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -33,6 +37,8 @@ export class UIUtils {
                 warningText.textContent = 'Simulated trading mode - no real money at risk';
                 warningText.className = 'text-green-600 text-sm mt-2';
             }
+            if (liveStats) liveStats.style.display = 'none';
+            if (simStats) simStats.style.display = 'block';
         }
     }
 

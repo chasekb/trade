@@ -541,29 +541,7 @@
                 </div>
             </div>
 
-            <!-- Simulated Trading Stats -->
-            <div class="card-enhanced p-6 mb-8">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Simulated Trading Statistics</h3>
-                    <button id="refresh-simulated-stats" class="btn-primary">
-                        <i class="fas fa-sync-alt mr-1"></i>Refresh
-                    </button>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="text-center">
-                        <p class="text-sm text-gray-600">Simulated P&L</p>
-                        <p id="sim-total-pnl" class="text-xl font-bold text-gray-900">$0.00</p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-sm text-gray-600">Simulated Win Rate</p>
-                        <p id="sim-win-rate" class="text-xl font-bold text-gray-900">0%</p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-sm text-gray-600">Simulated Trades</p>
-                        <p id="sim-total-trades" class="text-xl font-bold text-gray-900">0</p>
-                    </div>
-                </div>
-            </div>
+            
         </div>
 
         <!-- Live Trading Tab Content -->
@@ -724,8 +702,8 @@
                 </button>
             </div>
 
-            <!-- Live Trading Statistics Section -->
-            <div class="card-enhanced p-6 mb-6">
+            <!-- Live Trading Statistics Section (visible in live mode) -->
+            <div id="live-trading-stats-section" class="card-enhanced p-6 mb-6">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-semibold text-gray-900">Live Trading Statistics</h3>
                     <button id="refresh-live-trading-stats" class="btn-primary">
@@ -838,6 +816,30 @@
                                 <span id="live-total-volume" class="text-sm font-medium text-gray-900">$0.00</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Simulated Trading Statistics Section (visible in simulated mode) -->
+            <div id="simulated-trading-stats-section" class="card-enhanced p-6 mb-8" style="display: none;">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Simulated Trading Statistics</h3>
+                    <button id="refresh-simulated-stats" class="btn-primary">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">Simulated P&L</p>
+                        <p id="sim-total-pnl" class="text-xl font-bold text-gray-900">$0.00</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">Simulated Win Rate</p>
+                        <p id="sim-win-rate" class="text-xl font-bold text-gray-900">0%</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">Simulated Trades</p>
+                        <p id="sim-total-trades" class="text-xl font-bold text-gray-900">0</p>
                     </div>
                 </div>
             </div>
