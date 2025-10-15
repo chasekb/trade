@@ -24,8 +24,7 @@ class APIClient:
         self.api_secret = getattr(config, 'api_secret', None)
         self.passphrase = getattr(config, 'passphrase', None)
         
-        logger.info(f"APIClient initialized with API key: {'SET' if self.api_key else 'NOT SET'}")
-        logger.info(f"APIClient initialized with API secret: {'SET' if self.api_secret else 'NOT SET'}")
+        logger.info("APIClient initialized")
     
     def _generate_jwt_token(self, method: str, uri: str) -> str:
         """Generate JWT token for API authentication."""

@@ -6,6 +6,7 @@ import sqlite3
 import json
 import hashlib
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
 import logging
 
@@ -15,7 +16,15 @@ class DatabaseManager:
     """Manages SQLite database for caching trading data."""
     
     def __init__(self, db_path: str = "data/databases/trading_cache.db"):
-        self.db_path = db_path
+        # Validate and constrain database path to project data directory
+        base_dir = Path("data/databases").resolve()
+        provided = Path(db_path).resolve()
+        try:
+            provided.relative_to(base_dir)
+        except Exception:
+            logger.warning("Invalid db_path outside allowed directory; falling back to default")
+            provided = (base_dir / "trading_cache.db").resolve()
+        self.db_path = str(provided)
         self.init_database()
     
     def init_database(self):
