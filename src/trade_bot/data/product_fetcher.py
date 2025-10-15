@@ -9,6 +9,8 @@ import logging
 from typing import List, Dict, Set
 from datetime import datetime
 
+from .http_session_manager import get_http_session
+
 logger = logging.getLogger(__name__)
 
 class ProductFetcher:
@@ -22,17 +24,17 @@ class ProductFetcher:
     async def fetch_all_products(self) -> List[Dict]:
         """Fetch all available products from Coinbase API."""
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.base_url}/products") as response:
-                    if response.status == 200:
-                        products = await response.json()
-                        self.products_cache = products
-                        self.last_updated = datetime.now()
-                        logger.info(f"Fetched {len(products)} products from Coinbase API")
-                        return products
-                    else:
-                        logger.error(f"Failed to fetch products: {response.status}")
-                        return []
+            session = await get_http_session()
+            async with session.get(f"{self.base_url}/products") as response:
+                if response.status == 200:
+                    products = await response.json()
+                    self.products_cache = products
+                    self.last_updated = datetime.now()
+                    logger.info(f"Fetched {len(products)} products from Coinbase API")
+                    return products
+                else:
+                    logger.error(f"Failed to fetch products: {response.status}")
+                    return []
         except Exception as e:
             logger.error(f"Error fetching products: {e}")
             return []

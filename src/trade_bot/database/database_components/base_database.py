@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict
 import logging
 
+from ..connection_pool import get_pool
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,11 +17,12 @@ class BaseDatabase:
     
     def __init__(self, db_path: str = "data/databases/trading_cache.db"):
         self.db_path = db_path
+        self._pool = get_pool(db_path)
         self.init_database()
     
     def init_database(self):
         """Initialize database tables."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._pool.get_connection() as conn:
             cursor = conn.cursor()
             self._create_tables(cursor)
             conn.commit()
@@ -49,7 +52,7 @@ class BaseDatabase:
     def _execute_query(self, query: str, params: tuple = ()) -> list:
         """Execute a query and return results."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 return cursor.fetchall()
@@ -60,7 +63,7 @@ class BaseDatabase:
     def _execute_update(self, query: str, params: tuple = ()) -> bool:
         """Execute an update query."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 conn.commit()
@@ -76,7 +79,7 @@ class BaseDatabase:
             WHERE expires_at IS NOT NULL AND expires_at < ?
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, (datetime.now(),))
                 deleted_count = cursor.rowcount
