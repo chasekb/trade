@@ -357,7 +357,7 @@
                         <i class="fas fa-wallet mr-2"></i>Positions
                     </button>
                     <button id="backtest-history-tab" class="tab-button border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 text-sm font-medium">
-                        <i class="fas fa-chart-bar mr-2"></i>Backtest History
+                        <i class="fas fa-chart-bar mr-2"></i>Backtesting
                     </button>
                 </nav>
             </div>
@@ -434,88 +434,7 @@
                 </div>
             </div>
 
-            <!-- Backtesting Section -->
-            <div class="card-enhanced p-6 mb-8">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">
-                    <i class="fas fa-calculator mr-2"></i>Backtesting
-                </h3>
-                
-                <!-- Backtest Controls -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Product</label>
-                        <select id="backtest-product" class="form-select w-full">
-                            <option value="BTC-USD">BTC-USD</option>
-                            <option value="ETH-USD">ETH-USD</option>
-                            <option value="ADA-USD">ADA-USD</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Days</label>
-                        <select id="backtest-days" class="form-select w-full">
-                            <option value="3">3 days</option>
-                            <option value="7" selected>7 days</option>
-                            <option value="14">14 days</option>
-                            <option value="30">30 days</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Short Window</label>
-                        <input type="number" id="short-window" value="5" min="2" max="50" 
-                               class="form-input w-full">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Long Window</label>
-                        <input type="number" id="long-window" value="20" min="5" max="100" 
-                               class="form-input w-full">
-                    </div>
-                </div>
-                
-                <button id="run-backtest" class="btn-primary">
-                    <i class="fas fa-play mr-2"></i>Run Backtest
-                </button>
-
-                <!-- Backtest Results -->
-                <div id="backtest-results" class="mt-6 hidden">
-                    <h4 class="text-md font-semibold text-gray-900 mb-4">Results</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <p class="text-sm text-gray-600">Total Return</p>
-                            <p class="text-xl font-bold" id="backtest-return">0.00%</p>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <p class="text-sm text-gray-600">Win Rate</p>
-                            <p class="text-xl font-bold" id="backtest-win-rate">0.00%</p>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <p class="text-sm text-gray-600">Total Trades</p>
-                            <p class="text-xl font-bold" id="backtest-trades">0</p>
-                        </div>
-                    </div>
-                    <div id="backtest-chart" style="height: 300px;"></div>
-                </div>
-            </div>
-
-            <!-- Trading Metrics Table -->
-            <div class="card-enhanced p-6 mb-8">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">
-                    <i class="fas fa-table mr-2"></i>Trading Metrics
-                </h3>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200" id="metrics-table">
-                            <!-- Metrics will be populated by JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            
 
             <!-- Trading Stats Cards -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -1068,11 +987,94 @@
             </div>
         </div>
 
-        <!-- Backtest History Tab Content -->
+        <!-- Backtesting Tab Content -->
         <div id="backtest-history-content" class="tab-content hidden">
+            <!-- Backtesting Section (moved from Overview) -->
+            <div class="card-enhanced p-6 mb-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-calculator mr-2"></i>Backtesting
+                </h3>
+                
+                <!-- Backtest Controls -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Product</label>
+                        <select id="backtest-product" class="form-select w-full">
+                            <option value="BTC-USD">BTC-USD</option>
+                            <option value="ETH-USD">ETH-USD</option>
+                            <option value="ADA-USD">ADA-USD</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Days</label>
+                        <select id="backtest-days" class="form-select w-full">
+                            <option value="3">3 days</option>
+                            <option value="7" selected>7 days</option>
+                            <option value="14">14 days</option>
+                            <option value="30">30 days</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Short Window</label>
+                        <input type="number" id="short-window" value="5" min="2" max="50" 
+                               class="form-input w-full">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Long Window</label>
+                        <input type="number" id="long-window" value="20" min="5" max="100" 
+                               class="form-input w-full">
+                    </div>
+                </div>
+                
+                <button id="run-backtest" class="btn-primary">
+                    <i class="fas fa-play mr-2"></i>Run Backtest
+                </button>
+
+                <!-- Backtest Results -->
+                <div id="backtest-results" class="mt-6 hidden">
+                    <h4 class="text-md font-semibold text-gray-900 mb-4">Results</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <p class="text-sm text-gray-600">Total Return</p>
+                            <p class="text-xl font-bold" id="backtest-return">0.00%</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <p class="text-sm text-gray-600">Win Rate</p>
+                            <p class="text-xl font-bold" id="backtest-win-rate">0.00%</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <p class="text-sm text-gray-600">Total Trades</p>
+                            <p class="text-xl font-bold" id="backtest-trades">0</p>
+                        </div>
+                    </div>
+                    <div id="backtest-chart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <!-- Trading Metrics Table (moved from Overview) -->
+            <div class="card-enhanced p-6 mb-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-table mr-2"></i>Trading Metrics
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200" id="metrics-table">
+                            <!-- Metrics will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="card-enhanced p-6">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Backtest History</h3>
+                    <h3 class="text-lg font-semibold text-gray-900">Backtesting</h3>
                     <div class="flex items-center space-x-4">
                         <span id="backtest-history-page-info" class="text-sm text-gray-600">Page 1 of 1</span>
                         <button id="backtest-history-prev" class="pagination-btn" disabled>Previous</button>
