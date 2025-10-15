@@ -13,7 +13,22 @@ export class SimulatedTrading {
             const data = await response.json();
             
             if (data.portfolio) {
-                this.updateSimulatedTradingStats(data.portfolio);
+                // Augment portfolio with trades/positions if provided at top-level by backend
+                const portfolio = { ...data.portfolio };
+                if (Array.isArray(data.recent_trades)) {
+                    portfolio.trades = data.recent_trades;
+                    portfolio.recent_trades = data.recent_trades;
+                } else if (!Array.isArray(portfolio.trades)) {
+                    portfolio.trades = [];
+                }
+
+                if (Array.isArray(data.open_positions)) {
+                    portfolio.positions = data.open_positions;
+                } else if (!portfolio.positions) {
+                    portfolio.positions = [];
+                }
+
+                this.updateSimulatedTradingStats(portfolio);
             } else {
                 console.error('No portfolio data received');
             }
