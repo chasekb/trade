@@ -347,10 +347,10 @@ async def stop_live_trading(request: dict):
     return await trading_handlers.stop_live_trading(request)
 
 @app.get("/api/trading/live/positions")
-async def get_live_positions():
-    """Get current live trading positions."""
+async def get_live_positions(page: int = 1, limit: int = 50):
+    """Get current live trading positions (paginated)."""
     check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_live_positions()
+    return await trading_handlers.get_live_positions(page=page, limit=limit)
 
 @app.post("/api/trading/live/close-position")
 async def close_live_position(request: dict):

@@ -48,14 +48,101 @@ class TradingHandlers:
             logger.error(f"Error stopping live trading: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    async def get_live_positions(self) -> Dict[str, Any]:
-        """Get current live trading positions."""
+    async def get_live_positions(self, page: int = 1, limit: int = 50) -> Dict[str, Any]:
+        """Get current live trading positions with pagination.
+
+        If no positions are available in-memory (e.g. after a restart),
+        attempt a lightweight reconstruction from recent trades in the DB
+        (assumes whole-position sells, as implemented by the simulator).
+        """
         try:
+            # Primary source: in-memory simulated trading state
             positions = self.simulated_trading_manager.get_open_positions()
-            return {"positions": positions}
+
+            # Fallback: reconstruct from recent trades persisted in DB
+            if not positions:
+                positions = await self._reconstruct_open_positions_from_db()
+
+            total_positions = len(positions)
+            total_pages = (total_positions + limit - 1) // limit if limit > 0 else 1
+            current_page = max(1, min(page, total_pages if total_pages > 0 else 1))
+            offset = (current_page - 1) * limit if limit > 0 else 0
+            page_positions = positions[offset: offset + limit] if limit > 0 else positions
+
+            return {
+                "positions": page_positions,
+                "pagination": {
+                    "current_page": current_page,
+                    "per_page": limit,
+                    "total_pages": total_pages,
+                    "total_positions": total_positions,
+                    "has_next": current_page < total_pages,
+                    "has_prev": current_page > 1
+                }
+            }
         except Exception as e:
             logger.error(f"Error getting live positions: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    async def _reconstruct_open_positions_from_db(self) -> list[Dict[str, Any]]:
+        """Reconstruct open positions from recent trades in the database.
+
+        Assumes the simulator opens with a single BUY and closes with a full SELL.
+        If the latest trade for a symbol is a BUY with no subsequent SELL, we
+        treat it as an open position. Uses trade price as both entry and current
+        price for a conservative zero P&L default when live pricing is unavailable.
+        """
+        try:
+            if not hasattr(self.database_manager, "get_recent_trades"):
+                return []
+
+            recent_trades = self.database_manager.get_recent_trades(limit=1000) or []
+
+            # Sort ascending by timestamp to process chronologically
+            def _ts(trade: Dict[str, Any]):
+                ts = trade.get("timestamp")
+                return ts or ""
+
+            recent_trades.sort(key=_ts)
+
+            symbol_state: Dict[str, Dict[str, Any]] = {}
+            for trade in recent_trades:
+                symbol = trade.get("symbol")
+                side = trade.get("side")
+                if not symbol or side not in ("buy", "sell"):
+                    continue
+                if side == "buy":
+                    symbol_state[symbol] = {
+                        "symbol": symbol,
+                        "side": "long",
+                        "quantity": float(trade.get("quantity", 0.0)),
+                        "entry_price": float(trade.get("price", 0.0)),
+                        "current_price": float(trade.get("price", 0.0)),
+                        "unrealized_pnl": 0.0,
+                        "entry_time": trade.get("timestamp") or "",
+                        "duration": ""
+                    }
+                else:  # sell closes the whole position in our simulator
+                    symbol_state[symbol] = None
+
+            open_positions: list[Dict[str, Any]] = []
+            from datetime import datetime
+            for state in symbol_state.values():
+                if state:
+                    # Compute duration if possible
+                    entry_time = state.get("entry_time")
+                    try:
+                        if entry_time:
+                            dt = datetime.fromisoformat(entry_time.replace("Z", "+00:00"))
+                            state["duration"] = str(datetime.now(dt.tzinfo) - dt)
+                    except Exception:
+                        pass
+                    open_positions.append(state)
+
+            return open_positions
+        except Exception as e:
+            logger.error(f"Error reconstructing open positions from DB: {e}")
+            return []
     
     async def close_live_position(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Close a specific live trading position."""

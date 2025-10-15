@@ -198,7 +198,7 @@ export class Pagination {
             row.className = 'hover:bg-gray-50';
             
             row.innerHTML = `
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.id}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.id ?? trade.trade_id ?? ''}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.symbol}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.side}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.quantity}</td>
