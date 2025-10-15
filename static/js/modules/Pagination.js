@@ -243,12 +243,12 @@ export class Pagination {
             row.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${position.symbol}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${position.quantity}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${position.avg_price}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${position.entry_price}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$${position.current_price}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm ${pnlColor}">
                     ${position.unrealized_pnl >= 0 ? '+' : ''}$${position.unrealized_pnl.toFixed(2)}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(position.timestamp).toLocaleString()}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(position.entry_time).toLocaleString()}</td>
             `;
             
             tableBody.appendChild(row);
