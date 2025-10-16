@@ -289,7 +289,16 @@ class TradingHandlers:
             
             # Calculate basic metrics
             total_trades = len(all_trades)
-            total_volume = sum(trade.get('quantity', 0) * trade.get('price', 0) for trade in all_trades)
+            # Handle both 'size' and 'quantity' keys for trade size
+            def _qty(trade):
+                v = trade.get('quantity')
+                if v is None:
+                    v = trade.get('size')
+                try:
+                    return float(v or 0)
+                except Exception:
+                    return 0.0
+            total_volume = sum(_qty(trade) * float(trade.get('price', 0) or 0) for trade in all_trades)
             total_pnl = sum(trade.get('pnl', 0) for trade in all_trades)
             total_fees = sum(trade.get('fees', 0) for trade in all_trades)
             
@@ -298,7 +307,7 @@ class TradingHandlers:
             win_rate = (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
             
             # Calculate trade size metrics
-            trade_sizes = [trade.get('quantity', 0) * trade.get('price', 0) for trade in all_trades]
+            trade_sizes = [_qty(trade) * float(trade.get('price', 0) or 0) for trade in all_trades]
             avg_trade_size = sum(trade_sizes) / len(trade_sizes) if trade_sizes else 0
             
             # Best and worst trades

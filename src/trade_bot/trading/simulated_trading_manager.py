@@ -64,6 +64,12 @@ class Portfolio:
     win_rate: float
     total_trades: int
     winning_trades: int
+    # Added explicit fields for clarity and correct frontend calculations
+    total_positions_value: float = 0.0
+    unrealized_pnl: float = 0.0
+    realized_pnl: float = 0.0
+    net_pnl: float = 0.0
+    position_count: int = 0
 
 
 class SimulatedTradingManager:
@@ -349,18 +355,31 @@ class SimulatedTradingManager:
         self._update_all_position_prices()
         
         total_value = self.cash_balance
-        total_pnl = 0.0
+        unrealized_pnl = 0.0
         total_fees = sum(trade.fees for trade in self.trades)
-        winning_trades = sum(1 for trade in self.trades if trade.pnl > 0)
+        # Only count completed trades (SELL) for win metrics
+        completed_trades = [t for t in self.trades if t.side == 'sell']
+        winning_trades = sum(1 for trade in completed_trades if trade.pnl > 0)
         
         # Calculate total value including open positions
+        total_positions_value = 0.0
+        open_position_count = 0
         for position in self.positions.values():
             if position.status == 'open':
-                total_value += position.quantity * position.current_price
-                total_pnl += position.unrealized_pnl
+                pos_val = position.quantity * position.current_price
+                total_positions_value += pos_val
+                total_value += pos_val
+                unrealized_pnl += position.unrealized_pnl
+                open_position_count += 1
         
-        # Calculate win rate
-        total_trades = len(self.trades)
+        # Realized PnL is the sum of SELL trade PnL (already net of fees in _execute_sell_trade)
+        realized_pnl = sum(trade.pnl for trade in completed_trades)
+        # Total PnL (gross) = realized + unrealized; Net PnL = realized + unrealized (fees already accounted in realized, and total_fees reported separately)
+        total_pnl = unrealized_pnl + realized_pnl
+        net_pnl = total_pnl  # keep net_pnl explicit for frontend, avoid double-subtracting fees there
+        
+        # Calculate win rate using only completed trades
+        total_trades = len(completed_trades)
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
         
         # Update peak value and max drawdown
@@ -380,7 +399,12 @@ class SimulatedTradingManager:
             max_drawdown=self.max_drawdown,
             win_rate=win_rate,
             total_trades=total_trades,
-            winning_trades=winning_trades
+            winning_trades=winning_trades,
+            total_positions_value=total_positions_value,
+            unrealized_pnl=unrealized_pnl,
+            realized_pnl=realized_pnl,
+            net_pnl=net_pnl,
+            position_count=open_position_count
         )
     
     async def process_signals(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -663,6 +687,7 @@ class SimulatedTradingManager:
                     "entry_price": position.entry_price,
                     "current_price": position.current_price,
                     "unrealized_pnl": position.unrealized_pnl,
+                    "status": "open",
                     "entry_time": entry_time.isoformat(),
                     "duration": str(datetime.now() - entry_time)
                 })
