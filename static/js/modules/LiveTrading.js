@@ -860,14 +860,17 @@ export class LiveTrading {
         // Calculate trade-based metrics
         const winningTrades = trades.filter(trade => trade.pnl > 0);
         const losingTrades = trades.filter(trade => trade.pnl < 0);
-        const totalTrades = trades.length;
+        // Prefer completed trades count for win-rate; fallback to total trades if data lacks sides
+        const completedTradesCount = trades.filter(t => (t.side || '').toLowerCase() === 'sell').length;
+        const totalTrades = completedTradesCount || trades.length;
         const winningTradesCount = winningTrades.length;
         const losingTradesCount = losingTrades.length;
 
         // Calculate P&L metrics
-        const totalPnl = portfolioData.total_pnl || 0;
-        const totalFees = portfolioData.total_fees || 0;
-        const netPnl = totalPnl - totalFees;
+        const totalPnl = typeof portfolioData.total_pnl === 'number' ? portfolioData.total_pnl : 0;
+        const totalFees = typeof portfolioData.total_fees === 'number' ? portfolioData.total_fees : 0;
+        // Prefer backend-provided net_pnl if present to avoid double-subtracting fees
+        const netPnl = typeof portfolioData.net_pnl === 'number' ? portfolioData.net_pnl : totalPnl;
 
         // Calculate win rate
         const winRate = totalTrades > 0 ? (winningTradesCount / totalTrades) * 100 : 0;
@@ -896,15 +899,19 @@ export class LiveTrading {
         const riskAdjustedReturn = 0.0; // Placeholder - would need proper risk metrics
 
         // Count active positions
-        const activePositions = Object.values(positions).filter(pos => pos.status === 'open').length;
+        const activePositions = Object.values(positions).filter(pos => (pos.status || 'open') === 'open').length;
 
-        // Calculate position value
-        const positionValue = Object.values(positions).reduce((sum, pos) => {
-            if (pos.status === 'open') {
-                return sum + (pos.quantity * pos.current_price || 0);
-            }
-            return sum;
-        }, 0);
+        // Calculate position value (prefer backend-provided total)
+        const positionValue = (typeof portfolioData.total_positions_value === 'number')
+            ? portfolioData.total_positions_value
+            : Object.values(positions).reduce((sum, pos) => {
+                if ((pos.status || 'open') === 'open') {
+                    const qty = typeof pos.quantity === 'number' ? pos.quantity : 0;
+                    const px = typeof pos.current_price === 'number' ? pos.current_price : 0;
+                    return sum + (qty * px);
+                }
+                return sum;
+            }, 0);
 
         // Max drawdown from portfolio (could be fraction [0..1] or percentage)
         const rawMaxDrawdown = typeof portfolioData.max_drawdown === 'number' ? portfolioData.max_drawdown : 0.0;

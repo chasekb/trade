@@ -101,6 +101,14 @@ class DatabaseManager:
         """Get most recent trades across all sessions."""
         return self.trade_manager.get_recent_trades(limit)
     
+    def get_all_trades(self, limit: int = 1000, offset: int = 0) -> List[Dict[str, Any]]:
+        """Get all trades with pagination."""
+        return self.trade_manager.get_all_trades(limit=limit, offset=offset)
+    
+    def get_trades_count(self) -> int:
+        """Get total trades count."""
+        return self.trade_manager.get_trades_count()
+    
     def get_trade_stats(self, session_id: str = None) -> Dict[str, Any]:
         """Get trade statistics."""
         return self.trade_manager.get_trade_stats(session_id)

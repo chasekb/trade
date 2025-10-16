@@ -59,12 +59,16 @@ export class SimulatedTrading {
         const totalPositionsValue = (typeof portfolioData.total_positions_value !== 'undefined') ? portfolioData.total_positions_value : 0;
         const unrealizedPnl = (typeof portfolioData.unrealized_pnl !== 'undefined') ? portfolioData.unrealized_pnl : 0;
         const realizedPnl = (typeof portfolioData.realized_pnl !== 'undefined') ? portfolioData.realized_pnl : 0;
-        const totalPnl = portfolioData.total_pnl || (unrealizedPnl + realizedPnl);
-        const totalFees = portfolioData.total_fees || 0;
-        const netPnl = (typeof portfolioData.net_pnl !== 'undefined') ? portfolioData.net_pnl : (totalPnl - totalFees);
+        const totalPnl = (typeof portfolioData.total_pnl === 'number') ? portfolioData.total_pnl : (unrealizedPnl + realizedPnl);
+        const totalFees = (typeof portfolioData.total_fees === 'number') ? portfolioData.total_fees : 0;
+        // Prefer backend-provided net_pnl; otherwise do not subtract fees again if totalPnl already includes realized - fees
+        const netPnl = (typeof portfolioData.net_pnl === 'number') ? portfolioData.net_pnl : totalPnl;
 
         // Calculate win rate
-        const winRate = totalTrades > 0 ? (winningTradesCount / totalTrades) * 100 : 0;
+        // Prefer completed trades for win rate when side available
+        const completedTradesCount = trades.filter(t => (t.side || '').toLowerCase() === 'sell').length;
+        const denom = completedTradesCount || totalTrades;
+        const winRate = denom > 0 ? (winningTradesCount / denom) * 100 : 0;
 
         // Calculate trade size metrics (volume = quantity * price)
         const totalTradeVolume = trades.reduce((sum, trade) => sum + (trade.quantity * trade.price), 0);
@@ -90,7 +94,7 @@ export class SimulatedTrading {
         const riskAdjustedReturn = 0.0; // Placeholder - would need proper risk metrics
 
         // Count active positions
-        const activePositions = Object.values(positions).filter(pos => pos.status === 'open').length;
+        const activePositions = Object.values(positions).filter(pos => (pos.status || 'open') === 'open').length;
         const positionCount = (typeof portfolioData.position_count !== 'undefined') ? portfolioData.position_count : activePositions;
 
         // Update simulated trading stats

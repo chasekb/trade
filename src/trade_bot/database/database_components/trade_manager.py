@@ -24,7 +24,7 @@ class TradeManager(BaseDatabase):
                 session_id TEXT NOT NULL,
                 symbol TEXT NOT NULL,
                 side TEXT NOT NULL,
-                size REAL NOT NULL,
+                size REAL,
                 price REAL NOT NULL,
                 timestamp INTEGER NOT NULL,
                 strategy_type TEXT,
@@ -35,6 +35,30 @@ class TradeManager(BaseDatabase):
                 FOREIGN KEY (session_id) REFERENCES trading_sessions (session_id)
             )
         """)
+        # Migration: ensure 'size' column exists; backfill from legacy 'quantity' when present
+        try:
+            cursor.execute("PRAGMA table_info(individual_trades)")
+            columns = [row[1] for row in cursor.fetchall()]
+            # Add missing columns used by queries
+            if 'size' not in columns:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN size REAL")
+            if 'signal_reason' not in columns:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN signal_reason TEXT")
+            if 'strategy_type' not in columns:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN strategy_type TEXT")
+            if 'pnl' not in columns:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN pnl REAL")
+            if 'fees' not in columns:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN fees REAL")
+            if 'created_at' not in columns:
+                cursor.execute("ALTER TABLE individual_trades ADD COLUMN created_at TIMESTAMP")
+            # Backfill size from quantity if legacy column exists and size is NULL
+            cursor.execute("PRAGMA table_info(individual_trades)")
+            columns2 = [row[1] for row in cursor.fetchall()]
+            if 'quantity' in columns2:
+                cursor.execute("UPDATE individual_trades SET size = COALESCE(size, quantity)")
+        except Exception as e:
+            logger.warning(f"TradeManager migration check failed: {e}")
     
     def save_trade(self, trade_data: Dict[str, Any]) -> bool:
         """Save individual trade record."""
@@ -168,6 +192,50 @@ class TradeManager(BaseDatabase):
         except Exception as e:
             logger.error(f"Error getting recent trades: {e}")
             return []
+
+    def get_all_trades(self, limit: int = 1000, offset: int = 0) -> List[Dict[str, Any]]:
+        """Get all trades across all sessions with pagination."""
+        try:
+            query = """
+                SELECT trade_id, session_id, symbol, side, size, price, timestamp,
+                       strategy_type, signal_reason, pnl, fees, created_at
+                FROM individual_trades
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            """
+            results = self._execute_query(query, (limit, offset))
+            trades: List[Dict[str, Any]] = []
+            for row in results:
+                trades.append({
+                    'trade_id': row[0],
+                    'session_id': row[1],
+                    'symbol': row[2],
+                    'side': row[3],
+                    'size': row[4],
+                    'price': row[5],
+                    'timestamp': row[6],
+                    'strategy_type': row[7],
+                    'signal_reason': row[8],
+                    'pnl': row[9],
+                    'fees': row[10],
+                    'created_at': row[11]
+                })
+            return trades
+        except Exception as e:
+            logger.error(f"Error getting all trades: {e}")
+            return []
+
+    def get_trades_count(self) -> int:
+        """Get total number of trades across all sessions."""
+        try:
+            query = "SELECT COUNT(*) FROM individual_trades"
+            results = self._execute_query(query)
+            if results:
+                return int(results[0][0] or 0)
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting trades count: {e}")
+            return 0
     
     def get_trade_stats(self, session_id: str = None) -> Dict[str, Any]:
         """Get trade statistics."""
