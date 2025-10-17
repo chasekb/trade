@@ -77,17 +77,17 @@ class SignalManager(BaseDatabase):
             
             where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
             
-            # Get total count
-            count_query = f"SELECT COUNT(*) FROM order_book_signals {where_clause}"
+            # Get total count - use parameterized query
+            count_query = "SELECT COUNT(*) FROM order_book_signals " + where_clause
             count_results = self._execute_query(count_query, tuple(params))
             total_count = count_results[0][0] if count_results else 0
             
-            # Get signals
-            signals_query = f"""
+            # Get signals - use parameterized query
+            signals_query = """
                 SELECT signal_id, session_id, symbol, signal_type, strength, price, 
                        timestamp, signal_data, processed, created_at
                 FROM order_book_signals 
-                {where_clause}
+                """ + where_clause + """
                 ORDER BY timestamp DESC 
                 LIMIT ? OFFSET ?
             """
