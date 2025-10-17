@@ -243,6 +243,7 @@ class CacheManager(BaseDatabase):
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 for table in tables:
+                    # Use f-string with hardcoded table names to prevent SQL injection
                     cursor.execute(f"DELETE FROM {table}")
                 conn.commit()
             
