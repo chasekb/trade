@@ -1,0 +1,88 @@
+# Vector Database Configuration for ML Trading Optimization
+
+# Qdrant Vector Database Configuration
+qdrant:
+  # Server configuration
+  host: "localhost"
+  port: 6333
+  grpc_port: 6334
+  
+  # Collection settings
+  collection_name: "trading_features"
+  vector_size: 128
+  distance_metric: "Cosine"
+  
+  # Performance settings
+  max_connections: 100
+  timeout: 30
+  
+  # Storage settings
+  storage_path: "/qdrant/storage"
+  wal_path: "/qdrant/wal"
+  
+  # Memory settings
+  max_memory_usage: "2GB"
+  
+  # Indexing settings
+  index_type: "HNSW"
+  hnsw_config:
+    m: 16
+    ef_construct: 200
+    ef: 100
+
+# Redis Cache Configuration
+redis:
+  host: "localhost"
+  port: 6380
+  
+  # Connection settings
+  max_connections: 50
+  timeout: 5
+  
+  # Memory settings
+  max_memory: "512MB"
+  max_memory_policy: "allkeys-lru"
+  
+  # Persistence settings
+  save_interval: "900 1"
+  save_changes: 100
+  
+  # Cache settings
+  default_ttl: 3600  # 1 hour
+
+# ML Model Server Configuration
+ml_server:
+  host: "localhost"
+  port: 8002
+  
+  # Model settings
+  model_cache_size: 5
+  prediction_timeout: 5
+  
+  # Performance settings
+  max_workers: 4
+  batch_size: 32
+  
+  # Model update settings
+  auto_update: true
+  update_interval: 3600  # 1 hour
+
+# Vector Database Integration Settings
+integration:
+  # Feature vector settings
+  feature_vector_size: 128
+  batch_insert_size: 100
+  similarity_threshold: 0.7
+  
+  # Real-time settings
+  real_time_enabled: true
+  update_frequency: 1  # seconds
+  
+  # Performance monitoring
+  enable_monitoring: true
+  metrics_interval: 60  # seconds
+  
+  # Backup settings
+  backup_enabled: true
+  backup_interval: 86400  # 24 hours
+  backup_retention: 7  # days

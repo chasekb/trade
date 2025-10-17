@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: qdrant_vector_db
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_storage:/qdrant/storage
+      - qdrant_wal:/qdrant/wal
+      - ./config/vector-db-config.yaml:/qdrant/config/production.yaml
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__STORAGE__STORAGE_PATH=/qdrant/storage
+      - QDRANT__STORAGE__WAL_PATH=/qdrant/wal
+      - QDRANT__STORAGE__PERFORMANCE__MAX_MEMORY_USAGE=2GB
+    command: ["qdrant", "--config-path", "/qdrant/config/production.yaml"]
+    restart: unless-stopped
+    networks:
+      - trade_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis Cache for Vector Operations
+  redis_cache:
+    image: redis:7.2-alpine
+    container_name: redis_vector_cache
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    environment:
+      - REDIS_MAXMEMORY=512mb
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --appendonly yes
+      --appendfsync everysec
+    restart: unless-stopped
+    networks:
+      - trade_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ML Model Server
+  ml_model_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml-server
+    container_name: ml_model_server
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./src/trade_bot/ml:/app/ml
+      - ./data/models:/app/models
+      - ./config:/app/config
+    environment:
+      - ML_SERVER_HOST=0.0.0.0
+      - ML_SERVER_PORT=8002
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis_cache
+      - REDIS_PORT=6379
+      - MODEL_CACHE_SIZE=5
+      - MAX_WORKERS=4
+      - BATCH_SIZE=32
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - trade_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Vector Database Monitor
+  vector_monitor:
+    image: prom/prometheus:v2.48.0
+    container_name: vector_monitor
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - trade_network
+
+volumes:
+  qdrant_storage:
+    driver: local
+  qdrant_wal:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+
+networks:
+  trade_network:
+    external: true
+    name: trade_network
