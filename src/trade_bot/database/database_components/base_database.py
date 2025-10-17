@@ -74,10 +74,24 @@ class BaseDatabase:
     
     def cleanup_expired_data(self, table_name: str) -> int:
         """Clean up expired data from a specific table."""
-        query = f"""
-            DELETE FROM {table_name} 
+        # Whitelist allowed table names to prevent SQL injection
+        allowed_tables = {
+            'historical_candles',
+            'order_book_snapshots', 
+            'trade_history',
+            'trading_sessions',
+            'dashboard_state',
+            'order_book_signals'
+        }
+        
+        if table_name not in allowed_tables:
+            logger.error(f"Invalid table name for cleanup: {table_name}")
+            return 0
+            
+        query = """
+            DELETE FROM {} 
             WHERE expires_at IS NOT NULL AND expires_at < ?
-        """
+        """.format(table_name)
         try:
             with self._pool.get_connection() as conn:
                 cursor = conn.cursor()
