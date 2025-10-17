@@ -61,43 +61,12 @@ class UniverseSelector:
         for symbol in list(failed_symbols.keys())[:5]:  # Log first 5
             logger.info(f"Failed symbol {symbol}: {failed_symbols[symbol]}")
         
-        # For Order Book strategy, if no signals found, create fallback signals
+        # For Order Book strategy, if no signals found, DO NOT create fallback signals
+        # This prevents opening positions without real signals
         logger.info(f"Strategy class: {self.strategy_class.__name__}, valid_signals: {len(valid_signals)}")
         if not valid_signals and self.strategy_class.__name__ == 'OrderBookStrategy':
-            logger.warning("No Order Book signals found, creating fallback signals for available symbols")
-            fallback_signals = {}
-            
-            # Create fallback signals for symbols that had data (even if no signal)
-            # Use all symbols with data, not limited by max_positions
-            symbols_with_data = [symbol for symbol, data in symbol_signals.items() if data is not None]
-            symbols_to_process = symbols_with_data
-            
-            for symbol in symbols_to_process:
-                data = symbol_signals[symbol]
-                # Create a neutral signal with low strength
-                fallback_signals[symbol] = {
-                    'signal': 'buy',  # Default to buy
-                    'strength': 0.1,  # Low strength
-                    'price': data.get('price', 0),
-                    'volume': data.get('volume', 0),
-                    'strategy_data': {'reason': 'fallback_signal', 'action': 'buy'}
-                }
-            
-            # If still no signals, create fallback for symbols that failed data fetch
-            if not fallback_signals:
-                logger.warning("No data available for any symbols, creating minimal fallback signals")
-                for symbol in universe_symbols:  # Use all universe symbols, not limited by max_positions
-                    fallback_signals[symbol] = {
-                        'signal': 'buy',  # Default to buy
-                        'strength': 0.05,  # Very low strength
-                        'price': 50000.0,  # Default price
-                        'volume': 1000.0,  # Default volume
-                        'strategy_data': {'reason': 'minimal_fallback', 'action': 'buy'}
-                    }
-            
-            if fallback_signals:
-                logger.info(f"Created {len(fallback_signals)} fallback signals")
-                valid_signals = fallback_signals
+            logger.warning("No Order Book signals found - this is expected behavior. No fallback signals will be created to prevent opening positions without real signals.")
+            # Do not create fallback signals - only trade when real signals exist
         
         if not valid_signals:
             logger.warning("No symbols with valid signals found")
