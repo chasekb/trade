@@ -266,10 +266,10 @@ MLEnhancedOrderBookStrategy(
 1. **ML Server Not Responding**
    ```bash
    # Check service status
-   podman-compose -f podman-compose-vector-db.yml ps
+   python main.py vector-db
    
-   # Check logs
-   podman-compose -f podman-compose-vector-db.yml logs ml_model_server
+   # Check logs (services run in foreground with integrated logging)
+   # Logs are displayed in the terminal where the command is run
    ```
 
 2. **No Training Data**
