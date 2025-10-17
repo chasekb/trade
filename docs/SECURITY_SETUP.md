@@ -23,14 +23,16 @@ This project requires Coinbase API credentials for trading functionality. For se
    COINBASE_PASSPHRASE=your_actual_passphrase
    ```
 
-4. **Configure trading strategies** through the web dashboard:
+4. **Configure all trading settings** through the web dashboard:
    - Start the application: `python main.py web`
    - Navigate to the Live Trading tab
-   - Use the Strategy Configuration section to set up:
+   - Configure all trading parameters including:
+     - Position sizes, stop loss, take profit percentages
+     - Trading fees and product selection
      - Dollar Cost Averaging (DCA) settings (if using DCA strategy)
      - Buy & Hold settings (if using Buy & Hold strategy)
      - Symbol limits and universe selection
-     - Other strategy-specific parameters
+     - All other strategy-specific parameters
 
 5. **Verify your setup**:
    ```bash
