@@ -1487,7 +1487,10 @@ class EnhancedTradingDashboard {
                 { name: 'large_trade_threshold', label: 'Large Trade Threshold ($)', type: 'number', default: 2000, min: 1000, max: 100000 },
                 { name: 'data_analysis_mode', label: 'Data Analysis Mode', type: 'select', default: 'all', options: ['recent', 'all', 'sampled'] },
                 { name: 'recent_data_limit', label: 'Recent Data Limit', type: 'number', default: 200, min: 10, max: 1000 },
-                { name: 'sampling_ratio', label: 'Sampling Ratio', type: 'number', default: 0.1, min: 0.01, max: 1.0, step: 0.01 }
+                { name: 'sampling_ratio', label: 'Sampling Ratio', type: 'number', default: 0.1, min: 0.01, max: 1.0, step: 0.01 },
+                { name: 'max_symbols_per_request', label: 'Max Symbols Per Request', type: 'number', default: 1000, min: 10, max: 10000 },
+                { name: 'max_universe_size', label: 'Max Universe Size', type: 'number', default: 500, min: 1, max: 5000 },
+                { name: 'max_positions_per_session', label: 'Max Positions Per Session', type: 'number', default: 100, min: 1, max: 1000 }
             ],
             'dca': [
                 { name: 'interval_hours', label: 'Interval (Hours)', type: 'number', default: 24, min: 1, max: 168 },

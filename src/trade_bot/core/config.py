@@ -28,6 +28,11 @@ class TradingConfig:
     take_profit_percentage: float = 0.04  # 4%
     trading_fee_percentage: float = 0.001  # 0.1%
     
+    # Symbol limits (configurable)
+    max_symbols_per_request: int = 1000  # Maximum symbols per API request
+    max_universe_size: int = 500  # Maximum universe size for trading
+    max_positions_per_session: int = 100  # Maximum positions per trading session
+    
     # Dollar Cost Averaging (DCA) settings
     enable_dca: bool = False
     dca_amount: float = 100.0  # Fixed amount to invest per DCA period
@@ -56,6 +61,9 @@ class TradingConfig:
             stop_loss_percentage=float(os.getenv("STOP_LOSS_PERCENTAGE", "0.02")),
             take_profit_percentage=float(os.getenv("TAKE_PROFIT_PERCENTAGE", "0.04")),
             trading_fee_percentage=float(os.getenv("TRADING_FEE_PERCENTAGE", "0.001")),
+            max_symbols_per_request=int(os.getenv("MAX_SYMBOLS_PER_REQUEST", "1000")),
+            max_universe_size=int(os.getenv("MAX_UNIVERSE_SIZE", "500")),
+            max_positions_per_session=int(os.getenv("MAX_POSITIONS_PER_SESSION", "100")),
             enable_dca=os.getenv("ENABLE_DCA", "false").lower() == "true",
             dca_amount=float(os.getenv("DCA_AMOUNT", "100.0")),
             dca_frequency=int(os.getenv("DCA_FREQUENCY", "7")),
