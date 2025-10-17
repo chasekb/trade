@@ -47,6 +47,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
+secrets.txt
 
 # Logs
 *.log
