@@ -88,10 +88,11 @@ class BaseDatabase:
             logger.error(f"Invalid table name for cleanup: {table_name}")
             return 0
             
-        query = """
-            DELETE FROM {} 
+        # Use parameterized query with validated table name
+        query = f"""
+            DELETE FROM {table_name} 
             WHERE expires_at IS NOT NULL AND expires_at < ?
-        """.format(table_name)
+        """
         try:
             with self._pool.get_connection() as conn:
                 cursor = conn.cursor()

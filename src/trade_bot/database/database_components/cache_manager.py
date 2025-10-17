@@ -216,13 +216,13 @@ class CacheManager(BaseDatabase):
             # Get counts for each table
             tables = ['historical_candles', 'order_book_snapshots', 'trade_history']
             for table in tables:
-                # Use parameterized queries to prevent SQL injection
-                query = "SELECT COUNT(*) FROM {}".format(table)
+                # Use f-strings with hardcoded table names to prevent SQL injection
+                query = f"SELECT COUNT(*) FROM {table}"
                 results = self._execute_query(query)
                 stats[f"{table}_count"] = results[0][0] if results else 0
                 
                 # Get total size
-                query = "SELECT SUM(LENGTH(data_json)) FROM {}".format(table)
+                query = f"SELECT SUM(LENGTH(data_json)) FROM {table}"
                 results = self._execute_query(query)
                 stats[f"{table}_size_bytes"] = results[0][0] if results and results[0][0] else 0
             
