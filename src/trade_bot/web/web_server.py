@@ -663,11 +663,11 @@ async def get_trading_state():
 @app.post("/api/data/save-session")
 async def save_session_state(request: dict):
     """Save trading session state."""
-    print(f"DEBUG: save_session_state endpoint called with request: {request}")
+    logger.info("save_session_state endpoint called")
     check_handlers_ready("data_handlers", data_handlers)
-    print(f"DEBUG: data_handlers is ready, calling save_session_state")
+    logger.debug("data_handlers is ready, calling save_session_state")
     result = await data_handlers.save_session_state(request)
-    print(f"DEBUG: save_session_state result: {result}")
+    logger.info("save_session_state completed successfully")
     return result
 
 @app.post("/api/data/restore-trading")
