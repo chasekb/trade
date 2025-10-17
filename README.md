@@ -121,7 +121,7 @@ pip install scikit-learn pandas numpy joblib requests
 
 3. **Update your `.env` file** with your actual credentials
 
-4. **Configure trading strategies** through the web dashboard's Strategy Configuration tab
+4. **Configure all trading settings** through the web dashboard's Live Trading tab
 
 5. **See [Security Setup Guide](docs/SECURITY_SETUP.md)** for detailed instructions
 
