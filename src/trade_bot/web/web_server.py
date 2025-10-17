@@ -27,10 +27,12 @@ from ..web.web_handlers import (
     TradingHandlers, WebSocketHandlers, DataHandlers
 )
 from ..web.web_handlers.live_portfolio_handlers import LivePortfolioHandlers
+from ..web.web_handlers.ml_handler import ml_router
 from ..web.models import (
     SubscriptionRequest, BacktestRequest, BacktestHistoryItem,
     BacktestHistoryResponse, BacktestStatsResponse
 )
+from ..ml.vector_database_service import get_vector_db_service
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -71,6 +73,10 @@ websocket_handlers = None
 data_handlers = None
 live_portfolio_handlers = None
 
+# Global vector database and ML services
+vector_db_service = None
+ml_optimizer = None
+
 # FastAPI app with performance optimizations
 app = FastAPI(
     title="Trading Dashboard API", 
@@ -90,6 +96,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include ML router
+app.include_router(ml_router)
 
 # Helper function to check if handlers are ready
 def check_handlers_ready(handlers_name: str, handlers):
@@ -113,6 +122,7 @@ async def startup_event():
     global data_handler, simulated_trading_manager, database_manager, websocket_client
     global api_handlers, dashboard_handlers, backtest_handlers, trading_handlers
     global websocket_handlers, data_handlers, websocket_manager, live_portfolio_handlers
+    global vector_db_service, ml_optimizer
     
     try:
         # Initialize configuration
@@ -121,6 +131,44 @@ async def startup_event():
             api_secret=os.getenv('COINBASE_API_SECRET', ''),
             passphrase=os.getenv('COINBASE_PASSPHRASE', '')
         )
+        
+        # Initialize vector database and ML services
+        logger.info("🚀 Starting vector database and ML services...")
+        vector_db_service = get_vector_db_service()
+        
+        # Start vector database services
+        if await vector_db_service.start_services():
+            logger.info("✅ Vector database services started successfully")
+            
+            # Initialize vector database
+            if await vector_db_service.initialize_vector_database():
+                logger.info("✅ Vector database initialized")
+            else:
+                logger.warning("⚠️ Failed to initialize vector database")
+            
+            # Initialize ML optimizer
+            try:
+                from ..ml.ml_optimizer import MLTradingOptimizer
+                ml_optimizer = MLTradingOptimizer(
+                    db_path="data/databases/trading_cache.db",
+                    models_dir="data/models",
+                    vector_db_host=vector_db_service.config['qdrant']['host'],
+                    vector_db_port=vector_db_service.config['qdrant']['port']
+                )
+                
+                # Initialize vector database for ML
+                if ml_optimizer.initialize_vector_database():
+                    logger.info("✅ ML optimizer initialized with vector database")
+                else:
+                    logger.warning("⚠️ Failed to initialize ML optimizer vector database")
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize ML optimizer: {e}")
+                ml_optimizer = None
+        else:
+            logger.error("❌ Failed to start vector database services")
+            vector_db_service = None
+            ml_optimizer = None
         
         # Initialize core components
         data_provider = CoinbaseDataProvider(config)
@@ -145,6 +193,13 @@ async def startup_event():
         live_portfolio_handlers = LivePortfolioHandlers(config)
         logger.info(f"✅ Live portfolio handlers initialized: {live_portfolio_handlers is not None}")
         
+        # Set ML optimizer in ML dashboard integration
+        if ml_optimizer:
+            from ..web.web_components.ml_dashboard import MLDashboardIntegration
+            ml_integration = MLDashboardIntegration()
+            ml_integration.set_ml_optimizer(ml_optimizer)
+            logger.info("✅ ML dashboard integration configured with local ML optimizer")
+        
         # Start WebSocket client
         # Note: WebSocket client will be started when needed
         
@@ -159,20 +214,40 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Gracefully close simulated positions on server shutdown."""
+    """Gracefully close simulated positions and stop services on server shutdown."""
+    global vector_db_service, ml_optimizer
+    
     try:
+        # Stop simulated trading if running
         if simulated_trading_manager is not None:
             # Close all open simulated positions and persist SELLs
             await simulated_trading_manager.force_close_all_positions("Server shutdown")
+            logger.info("✅ Simulated trading stopped")
+        
         # Optionally mark active session inactive
         try:
             if database_manager is not None and hasattr(simulated_trading_manager, 'session_id') and simulated_trading_manager.session_id:
                 database_manager.deactivate_session(simulated_trading_manager.session_id)
         except Exception as e:
             logger.warning(f"Failed to deactivate session on shutdown: {e}")
-        logger.info("✅ Shutdown hook completed: all simulated positions closed")
+        
+        # Stop vector database and ML services
+        if vector_db_service:
+            logger.info("🛑 Stopping vector database services...")
+            await vector_db_service.stop_services()
+            logger.info("✅ Vector database services stopped")
+        
+        # Clean up ML optimizer
+        if ml_optimizer:
+            logger.info("🧠 Cleaning up ML optimizer...")
+            # ML optimizer cleanup if needed
+            ml_optimizer = None
+            logger.info("✅ ML optimizer cleaned up")
+        
+        logger.info("👋 Trading Dashboard shutdown complete")
+        
     except Exception as e:
-        logger.error(f"Error in shutdown hook: {e}")
+        logger.error(f"Error during shutdown: {e}")
 
 # API Routes
 @app.get("/", response_class=HTMLResponse)
