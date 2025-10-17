@@ -84,6 +84,22 @@ class TradingConfig:
             raise ValueError("COINBASE_API_SECRET is required")
         if not self.passphrase:
             raise ValueError("COINBASE_PASSPHRASE is required")
+        
+        # Validate API key format (Coinbase API keys are typically 32 characters)
+        if len(self.api_key) != 32:
+            raise ValueError("COINBASE_API_KEY must be 32 characters long")
+        if not self.api_key.isalnum():
+            raise ValueError("COINBASE_API_KEY must contain only alphanumeric characters")
+        
+        # Validate API secret format (Coinbase API secrets are typically 88 characters base64)
+        if len(self.api_secret) != 88:
+            raise ValueError("COINBASE_API_SECRET must be 88 characters long")
+        if not self.api_secret.replace('+', '').replace('/', '').replace('=', '').isalnum():
+            raise ValueError("COINBASE_API_SECRET must be valid base64 format")
+        
+        # Validate passphrase (should not be empty and reasonable length)
+        if len(self.passphrase) < 8:
+            raise ValueError("COINBASE_PASSPHRASE must be at least 8 characters long")
         if self.max_position_size <= 0:
             raise ValueError("MAX_POSITION_SIZE must be positive")
         if not 0 < self.stop_loss_percentage < 1:
