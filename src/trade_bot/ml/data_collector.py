@@ -1,0 +1,447 @@
+"""ML Data Collector for extracting and preprocessing trading data."""
+
+import logging
+import sqlite3
+import json
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Optional, Any, Tuple
+from datetime import datetime, timedelta
+from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OrderBookFeatures:
+    """Order book feature vector."""
+    timestamp: int
+    symbol: str
+    bid_ask_imbalance: float
+    spread_percent: float
+    mid_price: float
+    bid_volume: float
+    ask_volume: float
+    order_book_depth: int
+    large_bid_wall: bool
+    large_ask_wall: bool
+    wall_size: float
+    volume_weighted_price: float
+    price_momentum: float
+    volatility: float
+
+
+@dataclass
+class TradeOutcome:
+    """Trade outcome for ML training."""
+    trade_id: str
+    symbol: str
+    side: str
+    entry_price: float
+    exit_price: float
+    quantity: float
+    pnl: float
+    fees: float
+    duration_seconds: int
+    signal_type: str
+    signal_strength: float
+    entry_timestamp: int
+    exit_timestamp: int
+
+
+class MLDataCollector:
+    """Collects and preprocesses trading data for ML training."""
+    
+    def __init__(self, db_path: str = "data/databases/trading_cache.db"):
+        self.db_path = db_path
+        
+    def extract_order_book_signals(self, days_back: int = 30) -> List[Dict[str, Any]]:
+        """Extract order book signals from database."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Calculate timestamp threshold
+            threshold_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
+            
+            query = """
+                SELECT signal_id, session_id, symbol, signal_type, strength, price, 
+                       timestamp, signal_data, spread, imbalance, mid_price, 
+                       best_bid, best_ask, order_book_depth, volume, total_signals
+                FROM order_book_signals 
+                WHERE timestamp >= ?
+                ORDER BY timestamp ASC
+            """
+            
+            cursor.execute(query, (threshold_timestamp,))
+            results = cursor.fetchall()
+            
+            signals = []
+            for row in results:
+                signal_data = json.loads(row[7]) if row[7] else {}
+                signals.append({
+                    'signal_id': row[0],
+                    'session_id': row[1],
+                    'symbol': row[2],
+                    'signal_type': row[3],
+                    'strength': row[4],
+                    'price': row[5],
+                    'timestamp': row[6],
+                    'signal_data': signal_data,
+                    'spread': row[8],
+                    'imbalance': row[9],
+                    'mid_price': row[10],
+                    'best_bid': row[11],
+                    'best_ask': row[12],
+                    'order_book_depth': row[13],
+                    'volume': row[14],
+                    'total_signals': row[15]
+                })
+            
+            conn.close()
+            logger.info(f"Extracted {len(signals)} order book signals")
+            return signals
+            
+        except Exception as e:
+            logger.error(f"Error extracting order book signals: {e}")
+            return []
+    
+    def extract_trade_outcomes(self, days_back: int = 30) -> List[Dict[str, Any]]:
+        """Extract trade outcomes for ML training."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Calculate timestamp threshold
+            threshold_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
+            
+            query = """
+                SELECT trade_id, session_id, symbol, side, size, price, timestamp,
+                       strategy_type, signal_reason, pnl, fees, created_at
+                FROM individual_trades 
+                WHERE timestamp >= ?
+                ORDER BY timestamp ASC
+            """
+            
+            cursor.execute(query, (threshold_timestamp,))
+            results = cursor.fetchall()
+            
+            trades = []
+            for row in results:
+                trades.append({
+                    'trade_id': row[0],
+                    'session_id': row[1],
+                    'symbol': row[2],
+                    'side': row[3],
+                    'size': row[4],
+                    'price': row[5],
+                    'timestamp': row[6],
+                    'strategy_type': row[7],
+                    'signal_reason': row[8],
+                    'pnl': row[9],
+                    'fees': row[10],
+                    'created_at': row[11]
+                })
+            
+            conn.close()
+            logger.info(f"Extracted {len(trades)} trade outcomes")
+            return trades
+            
+        except Exception as e:
+            logger.error(f"Error extracting trade outcomes: {e}")
+            return []
+    
+    def extract_order_book_snapshots(self, symbol: str, days_back: int = 7) -> List[Dict[str, Any]]:
+        """Extract order book snapshots for feature engineering."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Calculate timestamp threshold
+            threshold_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
+            
+            query = """
+                SELECT product_id, timestamp, data_json, created_at
+                FROM order_book_snapshots 
+                WHERE product_id = ? AND timestamp >= ?
+                ORDER BY timestamp ASC
+            """
+            
+            cursor.execute(query, (symbol, threshold_timestamp))
+            results = cursor.fetchall()
+            
+            snapshots = []
+            for row in results:
+                data_json = json.loads(row[2]) if row[2] else {}
+                snapshots.append({
+                    'product_id': row[0],
+                    'timestamp': row[1],
+                    'data_json': data_json,
+                    'created_at': row[3]
+                })
+            
+            conn.close()
+            logger.info(f"Extracted {len(snapshots)} order book snapshots for {symbol}")
+            return snapshots
+            
+        except Exception as e:
+            logger.error(f"Error extracting order book snapshots: {e}")
+            return []
+    
+    def create_feature_vectors(self, signals: List[Dict[str, Any]], 
+                              trades: List[Dict[str, Any]]) -> List[OrderBookFeatures]:
+        """Create feature vectors from signals and trades."""
+        feature_vectors = []
+        
+        # Convert to DataFrames for easier processing
+        signals_df = pd.DataFrame(signals)
+        trades_df = pd.DataFrame(trades)
+        
+        if signals_df.empty:
+            logger.warning("No signals available for feature vector creation")
+            return feature_vectors
+        
+        # Group by symbol and timestamp for feature engineering
+        for symbol in signals_df['symbol'].unique():
+            symbol_signals = signals_df[signals_df['symbol'] == symbol].copy()
+            symbol_trades = trades_df[trades_df['symbol'] == symbol].copy() if not trades_df.empty else pd.DataFrame()
+            
+            # Sort by timestamp
+            symbol_signals = symbol_signals.sort_values('timestamp')
+            
+            for _, signal in symbol_signals.iterrows():
+                try:
+                    # Extract order book features
+                    features = OrderBookFeatures(
+                        timestamp=int(signal['timestamp']),
+                        symbol=symbol,
+                        bid_ask_imbalance=float(signal.get('imbalance', 0.0)),
+                        spread_percent=float(signal.get('spread', 0.0)),
+                        mid_price=float(signal.get('mid_price', signal['price'])),
+                        bid_volume=self._calculate_bid_volume(signal),
+                        ask_volume=self._calculate_ask_volume(signal),
+                        order_book_depth=int(signal.get('order_book_depth', 0)),
+                        large_bid_wall=self._detect_large_bid_wall(signal),
+                        large_ask_wall=self._detect_large_ask_wall(signal),
+                        wall_size=self._calculate_wall_size(signal),
+                        volume_weighted_price=self._calculate_vwap(signal),
+                        price_momentum=self._calculate_price_momentum(symbol_signals, signal),
+                        volatility=self._calculate_volatility(symbol_signals, signal)
+                    )
+                    
+                    feature_vectors.append(features)
+                    
+                except Exception as e:
+                    logger.warning(f"Error creating feature vector for signal {signal['signal_id']}: {e}")
+                    continue
+        
+        logger.info(f"Created {len(feature_vectors)} feature vectors")
+        return feature_vectors
+    
+    def create_training_labels(self, feature_vectors: List[OrderBookFeatures], 
+                              trades: List[Dict[str, Any]]) -> List[Tuple[OrderBookFeatures, TradeOutcome]]:
+        """Create training labels by matching features with trade outcomes."""
+        training_data = []
+        
+        # Convert trades to DataFrame for easier matching
+        trades_df = pd.DataFrame(trades) if trades else pd.DataFrame()
+        
+        if trades_df.empty:
+            logger.warning("No trades available for label creation")
+            return training_data
+        
+        for features in feature_vectors:
+            # Find trades that occurred within a time window after this signal
+            time_window = 300  # 5 minutes
+            matching_trades = trades_df[
+                (trades_df['symbol'] == features.symbol) &
+                (trades_df['timestamp'] >= features.timestamp) &
+                (trades_df['timestamp'] <= features.timestamp + time_window)
+            ]
+            
+            if not matching_trades.empty:
+                # Use the first matching trade as the outcome
+                trade = matching_trades.iloc[0]
+                
+                # Calculate trade outcome
+                outcome = TradeOutcome(
+                    trade_id=trade['trade_id'],
+                    symbol=trade['symbol'],
+                    side=trade['side'],
+                    entry_price=float(trade['price']),
+                    exit_price=float(trade['price']),  # Simplified - would need actual exit price
+                    quantity=float(trade['size']),
+                    pnl=float(trade['pnl']),
+                    fees=float(trade['fees']),
+                    duration_seconds=int(trade['timestamp']) - features.timestamp,
+                    signal_type=features.symbol,  # Placeholder
+                    signal_strength=features.bid_ask_imbalance,
+                    entry_timestamp=features.timestamp,
+                    exit_timestamp=int(trade['timestamp'])
+                )
+                
+                training_data.append((features, outcome))
+        
+        logger.info(f"Created {len(training_data)} training examples")
+        return training_data
+    
+    def _calculate_bid_volume(self, signal: pd.Series) -> float:
+        """Calculate total bid volume from signal data."""
+        try:
+            signal_data = signal.get('signal_data', {})
+            if isinstance(signal_data, str):
+                signal_data = json.loads(signal_data)
+            
+            bids = signal_data.get('bids', [])
+            if not bids:
+                return 0.0
+            
+            return sum(float(bid[1]) for bid in bids[:5] if len(bid) >= 2)
+        except Exception:
+            return 0.0
+    
+    def _calculate_ask_volume(self, signal: pd.Series) -> float:
+        """Calculate total ask volume from signal data."""
+        try:
+            signal_data = signal.get('signal_data', {})
+            if isinstance(signal_data, str):
+                signal_data = json.loads(signal_data)
+            
+            asks = signal_data.get('asks', [])
+            if not asks:
+                return 0.0
+            
+            return sum(float(ask[1]) for ask in asks[:5] if len(ask) >= 2)
+        except Exception:
+            return 0.0
+    
+    def _detect_large_bid_wall(self, signal: pd.Series) -> bool:
+        """Detect if there's a large bid wall."""
+        try:
+            signal_data = signal.get('signal_data', {})
+            if isinstance(signal_data, str):
+                signal_data = json.loads(signal_data)
+            
+            bids = signal_data.get('bids', [])
+            if not bids:
+                return False
+            
+            # Check if any bid level has volume > 1000
+            for bid in bids[:10]:
+                if len(bid) >= 2 and float(bid[1]) > 1000:
+                    return True
+            
+            return False
+        except Exception:
+            return False
+    
+    def _detect_large_ask_wall(self, signal: pd.Series) -> bool:
+        """Detect if there's a large ask wall."""
+        try:
+            signal_data = signal.get('signal_data', {})
+            if isinstance(signal_data, str):
+                signal_data = json.loads(signal_data)
+            
+            asks = signal_data.get('asks', [])
+            if not asks:
+                return False
+            
+            # Check if any ask level has volume > 1000
+            for ask in asks[:10]:
+                if len(ask) >= 2 and float(ask[1]) > 1000:
+                    return True
+            
+            return False
+        except Exception:
+            return False
+    
+    def _calculate_wall_size(self, signal: pd.Series) -> float:
+        """Calculate the size of the largest wall."""
+        try:
+            signal_data = signal.get('signal_data', {})
+            if isinstance(signal_data, str):
+                signal_data = json.loads(signal_data)
+            
+            bids = signal_data.get('bids', [])
+            asks = signal_data.get('asks', [])
+            
+            max_bid_volume = max((float(bid[1]) for bid in bids[:10] if len(bid) >= 2), default=0.0)
+            max_ask_volume = max((float(ask[1]) for ask in asks[:10] if len(ask) >= 2), default=0.0)
+            
+            return max(max_bid_volume, max_ask_volume)
+        except Exception:
+            return 0.0
+    
+    def _calculate_vwap(self, signal: pd.Series) -> float:
+        """Calculate volume-weighted average price."""
+        try:
+            signal_data = signal.get('signal_data', {})
+            if isinstance(signal_data, str):
+                signal_data = json.loads(signal_data)
+            
+            bids = signal_data.get('bids', [])
+            asks = signal_data.get('asks', [])
+            
+            if not bids or not asks:
+                return float(signal.get('mid_price', signal['price']))
+            
+            # Calculate VWAP from top 5 levels
+            total_volume = 0
+            total_value = 0
+            
+            for bid in bids[:5]:
+                if len(bid) >= 2:
+                    price, volume = float(bid[0]), float(bid[1])
+                    total_value += price * volume
+                    total_volume += volume
+            
+            for ask in asks[:5]:
+                if len(ask) >= 2:
+                    price, volume = float(ask[0]), float(ask[1])
+                    total_value += price * volume
+                    total_volume += volume
+            
+            return total_value / total_volume if total_volume > 0 else float(signal.get('mid_price', signal['price']))
+        except Exception:
+            return float(signal.get('mid_price', signal['price']))
+    
+    def _calculate_price_momentum(self, symbol_signals: pd.DataFrame, signal: pd.Series) -> float:
+        """Calculate price momentum over recent signals."""
+        try:
+            # Get recent signals (last 10)
+            recent_signals = symbol_signals[
+                symbol_signals['timestamp'] <= signal['timestamp']
+            ].tail(10)
+            
+            if len(recent_signals) < 2:
+                return 0.0
+            
+            prices = recent_signals['price'].values
+            if len(prices) < 2:
+                return 0.0
+            
+            # Calculate momentum as price change percentage
+            return ((prices[-1] - prices[0]) / prices[0]) * 100
+        except Exception:
+            return 0.0
+    
+    def _calculate_volatility(self, symbol_signals: pd.DataFrame, signal: pd.Series) -> float:
+        """Calculate price volatility over recent signals."""
+        try:
+            # Get recent signals (last 20)
+            recent_signals = symbol_signals[
+                symbol_signals['timestamp'] <= signal['timestamp']
+            ].tail(20)
+            
+            if len(recent_signals) < 2:
+                return 0.0
+            
+            prices = recent_signals['price'].values
+            if len(prices) < 2:
+                return 0.0
+            
+            # Calculate volatility as standard deviation of price changes
+            price_changes = np.diff(prices) / prices[:-1]
+            return float(np.std(price_changes)) * 100
+        except Exception:
+            return 0.0
