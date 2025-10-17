@@ -22,6 +22,8 @@ class DataHandlers:
         self.trading_state = trading_state
         # De-duplicate noisy warnings per symbol
         self._last_no_data_warn_at: dict[str, float] = {}
+        # Get configurable symbol limits
+        self.max_symbols_per_request = getattr(config, 'max_symbols_per_request', 1000)
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -89,10 +91,10 @@ class DataHandlers:
             
             symbol_list = [s.strip() for s in symbols.split(',')]
             # Cap symbols to avoid heavy requests in universe mode
-            max_symbols = 50
-            if len(symbol_list) > max_symbols:
-                logger.info(f"Capping symbols from {len(symbol_list)} to {max_symbols} to avoid timeouts")
-                symbol_list = symbol_list[:max_symbols]
+            # Use configurable limit from strategy configuration
+            if len(symbol_list) > self.max_symbols_per_request:
+                logger.info(f"Capping symbols from {len(symbol_list)} to {self.max_symbols_per_request} to avoid timeouts")
+                symbol_list = symbol_list[:self.max_symbols_per_request]
             # Validate symbol formats
             valid = []
             for s in symbol_list:

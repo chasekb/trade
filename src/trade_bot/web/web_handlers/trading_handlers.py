@@ -15,6 +15,9 @@ class TradingHandlers:
         self.config = config
         self.simulated_trading_manager = simulated_trading_manager
         self.database_manager = database_manager
+        # Get configurable symbol limits
+        self.max_symbols_per_request = getattr(config, 'max_symbols_per_request', 1000)
+        self.max_universe_size = getattr(config, 'max_universe_size', 500)
     
     async def start_live_trading(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Start live trading session."""
@@ -32,7 +35,16 @@ class TradingHandlers:
                     clean_symbols.append(s)
             if not clean_symbols:
                 raise HTTPException(status_code=400, detail="No valid symbols provided")
-            symbols = clean_symbols[:100]
+            
+            # Check universe size limit
+            if len(clean_symbols) > self.max_universe_size:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Universe size {len(clean_symbols)} exceeds maximum allowed {self.max_universe_size}. Please reduce the number of symbols or increase the max_universe_size configuration."
+                )
+            
+            # Use configurable limit from strategy configuration
+            symbols = clean_symbols[:self.max_symbols_per_request]
 
             # Validate params
             if strategy_params is None:
@@ -370,6 +382,21 @@ class TradingHandlers:
             max_positions = request_data.get('max_positions', 5)
             position_update_interval = request_data.get('position_update_interval', 5)
             initial_balance = request_data.get('initial_balance', 10000.0)
+            
+            # Validate universe size limit
+            if len(symbols) > self.max_universe_size:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Universe size {len(symbols)} exceeds maximum allowed {self.max_universe_size}. Please reduce the number of symbols or increase the max_universe_size configuration."
+                )
+            
+            # Validate max positions limit
+            max_positions_per_session = getattr(self.config, 'max_positions_per_session', 100)
+            if max_positions > max_positions_per_session:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Max positions {max_positions} exceeds maximum allowed {max_positions_per_session}. Please reduce max_positions or increase the max_positions_per_session configuration."
+                )
             
             # Generate session ID for this trading session
             import uuid

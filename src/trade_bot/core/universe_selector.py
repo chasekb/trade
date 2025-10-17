@@ -68,9 +68,9 @@ class UniverseSelector:
             fallback_signals = {}
             
             # Create fallback signals for symbols that had data (even if no signal)
-            # Limit to max_positions to avoid creating too many signals
+            # Use all symbols with data, not limited by max_positions
             symbols_with_data = [symbol for symbol, data in symbol_signals.items() if data is not None]
-            symbols_to_process = symbols_with_data[:max_positions]
+            symbols_to_process = symbols_with_data
             
             for symbol in symbols_to_process:
                 data = symbol_signals[symbol]
@@ -86,7 +86,7 @@ class UniverseSelector:
             # If still no signals, create fallback for symbols that failed data fetch
             if not fallback_signals:
                 logger.warning("No data available for any symbols, creating minimal fallback signals")
-                for symbol in universe_symbols[:max_positions]:  # Take first N symbols
+                for symbol in universe_symbols:  # Use all universe symbols, not limited by max_positions
                     fallback_signals[symbol] = {
                         'signal': 'buy',  # Default to buy
                         'strength': 0.05,  # Very low strength
