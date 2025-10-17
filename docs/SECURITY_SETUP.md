@@ -23,7 +23,16 @@ This project requires Coinbase API credentials for trading functionality. For se
    COINBASE_PASSPHRASE=your_actual_passphrase
    ```
 
-4. **Verify your setup**:
+4. **Configure trading strategies** through the web dashboard:
+   - Start the application: `python main.py web`
+   - Navigate to the Live Trading tab
+   - Use the Strategy Configuration section to set up:
+     - Dollar Cost Averaging (DCA) settings (if using DCA strategy)
+     - Buy & Hold settings (if using Buy & Hold strategy)
+     - Symbol limits and universe selection
+     - Other strategy-specific parameters
+
+5. **Verify your setup**:
    ```bash
    python -c "from src.trade_bot.core.config import TradingConfig; TradingConfig.from_env().validate(); print('Credentials validated successfully!')"
    ```
