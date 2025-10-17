@@ -186,7 +186,8 @@ class MLSignalGenerator:
             first_time = datetime.fromisoformat(trades[0].get('timestamp', '').replace('Z', '+00:00'))
             last_time = datetime.fromisoformat(trades[-1].get('timestamp', '').replace('Z', '+00:00'))
             return (last_time - first_time).total_seconds() / 3600
-        except:
+        except (ValueError, TypeError, KeyError, IndexError) as e:
+            logger.warning(f"Failed to calculate time range from trades: {e}")
             return 1
     
     def _calculate_volatility(self, trades: List[Dict]) -> float:
