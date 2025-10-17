@@ -147,7 +147,8 @@ class SimulatedTradingManager:
                         try:
                             from datetime import datetime
                             entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
-                        except:
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Failed to parse entry_time '{entry_time}': {e}")
                             entry_time = datetime.now()
                     elif not entry_time:
                         entry_time = datetime.now()
@@ -677,7 +678,8 @@ class SimulatedTradingManager:
                 if isinstance(entry_time, str):
                     try:
                         entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
-                    except:
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Failed to parse entry_time '{entry_time}': {e}")
                         entry_time = datetime.now()
                 
                 open_positions.append({

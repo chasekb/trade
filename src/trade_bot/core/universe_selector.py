@@ -255,7 +255,8 @@ class UniverseSelector:
                             imbalance_str = signal_type.split(': ')[-1] if ': ' in signal_type else '0'
                             imbalance = abs(float(imbalance_str))
                             strength = min(0.8, imbalance * 2)  # Scale imbalance to strength
-                        except:
+                        except (ValueError, TypeError, AttributeError) as e:
+                            logger.warning(f"Failed to parse imbalance from signal_type '{signal_type}': {e}")
                             strength = 0.6
                     elif 'large_trade' in signal_type:
                         strength = 0.7  # Medium-high strength for large trades
