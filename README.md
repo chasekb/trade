@@ -109,6 +109,23 @@ npm install --prefix data/cache
 pip install scikit-learn pandas numpy joblib requests
 ```
 
+### Security Setup
+**IMPORTANT:** Before running the application, you must set up your Coinbase API credentials securely.
+
+1. **Copy the environment template:**
+   ```bash
+   cp docs/env.example .env
+   ```
+
+2. **Get your Coinbase API credentials** from [Coinbase Pro API Settings](https://pro.coinbase.com/profile/api)
+
+3. **Update your `.env` file** with your actual credentials
+
+4. **See [Security Setup Guide](docs/SECURITY_SETUP.md)** for detailed instructions
+
+**⚠️ Never commit your `.env` file or expose your API credentials!**
+```
+
 ### Running the Application
 
 #### Web Dashboard with Integrated ML Services (Recommended)
