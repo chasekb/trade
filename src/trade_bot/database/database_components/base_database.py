@@ -34,7 +34,7 @@ class BaseDatabase:
     def _calculate_hash(self, data: Any) -> str:
         """Calculate hash for data to detect changes."""
         data_str = json.dumps(data, sort_keys=True)
-        return hashlib.md5(data_str.encode()).hexdigest()
+        return hashlib.sha256(data_str.encode()).hexdigest()
     
     def _get_expiration_time(self, data_type: str) -> datetime:
         """Get expiration time for different data types."""
