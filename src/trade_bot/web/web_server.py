@@ -26,7 +26,7 @@ from ..web.web_handlers import (
     APIHandlers, DashboardHandlers, BacktestHandlers, 
     TradingHandlers, WebSocketHandlers, DataHandlers
 )
-from ..web.web_handlers.app_state.live_portfolio_handlers import LivePortfolioHandlers
+from ..web.web_handlers.live_portfolio_handlers import LivePortfolioHandlers
 from ..web.web_handlers.ml_handler import ml_router
 from ..web.models import (
     SubscriptionRequest, BacktestRequest, BacktestHistoryItem,
@@ -162,17 +162,13 @@ async def startup_event():
         backtest_handlers = BacktestHandlers(config, database_manager)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager)
         app_state.websocket_handlers = WebSocketHandlers(websocket_manager)
-        app_state.data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, app_state.app_state.trading_state)
+        app_state.data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, app_state.trading_state)
         app_state.live_portfolio_handlers = LivePortfolioHandlers(config)
 
         # Store handlers in application state
         app_state.api_handlers = api_handlers
-        app_state.app_state.dashboard_handlers = app_state.dashboard_handlers
         app_state.backtest_handlers = backtest_handlers
         app_state.trading_handlers = trading_handlers
-        app_state.app_state.websocket_handlers = app_state.websocket_handlers
-        app_state.app_state.data_handlers = app_state.data_handlers
-        app_state.app_state.live_portfolio_handlers = app_state.live_portfolio_handlers
 
         logger.info(f"✅ Live portfolio handlers initialized: {app_state.live_portfolio_handlers is not None}")
 
@@ -220,8 +216,8 @@ async def get_dashboard(request: Request):
         from fastapi.responses import FileResponse
         return FileResponse("static/dashboard_enhanced_modular.html")
     else:
-        check_handlers_ready("app_state.dashboard_handlers", app_state.app_state.dashboard_handlers)
-        return await app_state.app_state.dashboard_handlers.get_dashboard(request)
+        check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
+        return await app_state.dashboard_handlers.get_dashboard(request)
 
 @app.get("/modular", response_class=HTMLResponse)
 async def get_modular_dashboard(request: Request):
@@ -548,13 +544,11 @@ async def get_subscriptions():
 async def subscribe_to_channel(request: SubscriptionRequest):
     """Subscribe to a WebSocket channel."""
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
-    check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.subscribe_to_channel(request.dict())
 
 @app.post("/api/websocket/unsubscribe")
 async def unsubscribe_from_channel(request: SubscriptionRequest):
     """Unsubscribe from a WebSocket channel."""
-    check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.unsubscribe_from_channel(request.dict())
 
@@ -562,13 +556,11 @@ async def unsubscribe_from_channel(request: SubscriptionRequest):
 async def get_realtime_status():
     """Get real-time data status."""
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
-    check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.get_realtime_status()
 
 @app.post("/api/websocket/toggle")
 async def toggle_realtime_data():
     """Toggle real-time data streaming."""
-    check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.toggle_realtime_data()
 
@@ -669,20 +661,17 @@ async def get_data_summary_alt():
 async def get_subscriptions_alt():
     """Alternative endpoint for subscriptions."""
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
-    check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.get_subscriptions()
 
 @app.get("/api/realtime-status")
 async def get_realtime_status_alt():
     """Alternative endpoint for realtime status."""
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
-    check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.get_realtime_status()
 
 @app.get("/api/trades/stats")
 async def get_trades_stats():
     """Get trading statistics."""
-    check_handlers_ready("trading_handlers", trading_handlers)
     check_handlers_ready("trading_handlers", trading_handlers)
     return await trading_handlers.get_simulated_trading_status()
 
@@ -755,11 +744,10 @@ async def get_candles(product_id: str, granularity: int, days: int = 7):
     # Use fixed historical date range since system date is in 2025
     end_time = datetime(2024, 12, 31)
     start_time = end_time - timedelta(days=days)
-    check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
     return await app_state.dashboard_handlers.get_candles_data(
-        product_id, 
-        start_time.isoformat(), 
-        end_time.isoformat(), 
+        product_id,
+        start_time.isoformat(),
+        end_time.isoformat(),
         granularity
     )
 
