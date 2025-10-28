@@ -33,7 +33,7 @@ qdrant:
 # Redis Cache Configuration
 redis:
   host: "localhost"
-  port: 6380
+  port: 6379
   
   # Connection settings
   max_connections: 50

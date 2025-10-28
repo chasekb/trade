@@ -110,45 +110,53 @@ async def startup_event():
             passphrase=os.getenv('COINBASE_PASSPHRASE', '')
         )
 
-        # Initialize vector database and ML services
+        # Initialize vector database and ML services (fault-tolerant)
         logger.info("🚀 Starting vector database and ML services...")
         vector_db_service = get_vector_db_service()
         app_state_local.vector_db_service = vector_db_service
 
         # Start vector database services
-        if await vector_db_service.start_services():
-            logger.info("✅ Vector database services started successfully")
+        services_started = False
+        try:
+            services_started = await vector_db_service.start_services()
+            if services_started:
+                logger.info("✅ Vector database services started successfully")
 
-            # Initialize vector database
-            if await vector_db_service.initialize_vector_database():
-                logger.info("✅ Vector database initialized")
-            else:
-                logger.warning("⚠️ Failed to initialize vector database")
-
-            # Initialize ML optimizer
-            try:
-                from ..ml.ml_optimizer import MLTradingOptimizer
-                ml_optimizer = MLTradingOptimizer(
-                    db_path="data/databases/trading_cache.db",
-                    models_dir="data/models",
-                    vector_db_host=vector_db_service.config['qdrant']['host'],
-                    vector_db_port=vector_db_service.config['qdrant']['port']
-                )
-                app_state_local.ml_optimizer = ml_optimizer
-
-                # Initialize vector database for ML
-                if ml_optimizer.initialize_vector_database():
-                    logger.info("✅ ML optimizer initialized with vector database")
+                # Initialize vector database
+                if await vector_db_service.initialize_vector_database():
+                    logger.info("✅ Vector database initialized")
                 else:
-                    logger.warning("⚠️ Failed to initialize ML optimizer vector database")
+                    logger.warning("⚠️ Failed to initialize vector database")
 
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize ML optimizer: {e}")
+                # Initialize ML optimizer
+                try:
+                    from ..ml.ml_optimizer import MLTradingOptimizer
+                    ml_optimizer = MLTradingOptimizer(
+                        db_path="data/databases/trading_cache.db",
+                        models_dir="data/models",
+                        vector_db_host=vector_db_service.config['qdrant']['host'],
+                        vector_db_port=vector_db_service.config['qdrant']['port']
+                    )
+                    app_state_local.ml_optimizer = ml_optimizer
+
+                    # Initialize vector database for ML
+                    if ml_optimizer.initialize_vector_database():
+                        logger.info("✅ ML optimizer initialized with vector database")
+                    else:
+                        logger.warning("⚠️ Failed to initialize ML optimizer vector database")
+
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize ML optimizer: {e}")
+                    app_state_local.ml_optimizer = None
+            else:
+                logger.warning("⚠️ Failed to start vector database services - continuing without ML features")
                 app_state_local.ml_optimizer = None
-        else:
-            logger.error("❌ Failed to start vector database services")
-            app_state_local.vector_db_service = None
+        except Exception as e:
+            logger.error(f"❌ Exception during service startup: {e} - continuing without ML features")
             app_state_local.ml_optimizer = None
+
+        if not services_started:
+            logger.info("📊 Application will run in basic trading mode (ML features disabled)")
 
         # Initialize core components
         data_provider = CoinbaseDataProvider(config)
