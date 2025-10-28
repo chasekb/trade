@@ -769,21 +769,7 @@ class SimulatedTradingManager:
             }
 
             # Broadcast to websocket manager if available
-            # Try different ways to access websocket manager
-            websocket_manager = None
-
-            # Method 1: Check if we have a reference to websocket manager
-            if hasattr(self, '_websocket_manager') and self._websocket_manager:
-                websocket_manager = self._websocket_manager
-
-            # Method 2: Try getting from global application state
-            if not websocket_manager:
-                try:
-                    from ..web.web_components import get_app_state
-                    app_state = get_app_state()
-                    websocket_manager = getattr(app_state, 'websocket_manager', None)
-                except (ImportError, RuntimeError):
-                    pass
+            websocket_manager = getattr(self, '_websocket_manager', None)
 
             if websocket_manager:
                 try:

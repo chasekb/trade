@@ -11,11 +11,15 @@ logger = logging.getLogger(__name__)
 
 class TradingHandlers:
     """Handles trading-related functionality for the trading web server."""
-    
-    def __init__(self, config, simulated_trading_manager, database_manager):
+
+    def __init__(self, config, simulated_trading_manager, database_manager, websocket_manager=None):
         self.config = config
         self.simulated_trading_manager = simulated_trading_manager
         self.database_manager = database_manager
+        self.websocket_manager = websocket_manager
+        # Set websocket manager reference in simulated trading manager for direct access
+        if websocket_manager:
+            self.simulated_trading_manager._websocket_manager = websocket_manager
         # Get configurable symbol limits
         self.max_symbols_per_request = getattr(config, 'max_symbols_per_request', 1000)
         self.max_universe_size = getattr(config, 'max_universe_size', 500)
