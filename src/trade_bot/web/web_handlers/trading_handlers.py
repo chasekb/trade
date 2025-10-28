@@ -2,6 +2,7 @@
 
 import logging
 import re
+import json
 from typing import Dict, Any, Optional
 from fastapi import HTTPException
 
@@ -419,11 +420,14 @@ class TradingHandlers:
             
             # Start simulated trading with position size parameters
             self.simulated_trading_manager.start_trading(
-                symbols, 
+                symbols,
                 position_size_percent=position_size_percent,
                 max_positions=max_positions
             )
-            
+
+            # Broadcast initial trading state to frontend widgets
+            await self._broadcast_trading_start_to_frontend()
+
             return {
                 "status": "started",
                 "session_id": session_id,
@@ -531,7 +535,7 @@ class TradingHandlers:
         try:
             symbols = request_data.get('symbols', [])
             self.simulated_trading_manager.add_symbols(symbols)
-            
+
             return {
                 "status": "added",
                 "symbols": symbols,
@@ -540,3 +544,171 @@ class TradingHandlers:
         except Exception as e:
             logger.error(f"Error adding symbols to trading: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    async def _broadcast_trading_start_to_frontend(self) -> None:
+        """Broadcast initial trading state to frontend widgets after starting trading."""
+        try:
+            # Get current trading status data
+            portfolio = self.simulated_trading_manager.get_portfolio_summary()
+            open_positions = self.simulated_trading_manager.get_open_positions()
+            recent_trades = self.simulated_trading_manager.get_recent_trades()
+
+            # Convert portfolio to dictionary for JSON serialization
+            from dataclasses import asdict
+            portfolio_dict = asdict(portfolio)
+
+            # Prepare data for frontend widgets
+            trading_data = {
+                "is_trading": self.simulated_trading_manager.is_trading,
+                "symbols": self.simulated_trading_manager.symbols_to_trade,
+                "strategy_type": self.simulated_trading_manager.strategy_type,
+                "strategy_params": self.simulated_trading_manager.strategy_params,
+                "max_positions": self.simulated_trading_manager.max_positions,
+                "position_size_percent": self.simulated_trading_manager.position_size_percent * 100,
+                "portfolio": portfolio_dict,
+                "open_positions": open_positions,
+                "recent_trades": recent_trades,
+                "session_id": getattr(self.simulated_trading_manager, 'session_id', None),
+                "trading_started_at": self.simulated_trading_manager.last_signal_check.isoformat() if self.simulated_trading_manager.last_signal_check else None
+            }
+
+            # Prepare signals data (initial empty/hold signals for each symbol)
+            signals_data = {
+                "signals": [
+                    {
+                        "symbol": symbol,
+                        "signal": "hold",
+                        "signal_type": "hold",
+                        "signal_strength": 0.0,
+                        "strength": 0.0,
+                        "price": 0.0,
+                        "timestamp": self.simulated_trading_manager.last_signal_check.isoformat() if self.simulated_trading_manager.last_signal_check else None,
+                        "reason": "Initializing trading session",
+                        "signal_reason": "Initializing trading session",
+                        "data_status": "initializing",
+                        "spread": 0.0,
+                        "volume": 0.0,
+                        "signal_generated": False,
+                        "criteria_analysis": {
+                            "bid_ask_squeeze": {
+                                "enabled": True,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Trading session starting",
+                                "threshold": 0.1,
+                                "current_value": 0
+                            },
+                            "volume_imbalance_buy": {
+                                "enabled": True,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Trading session starting",
+                                "threshold": 0.1,
+                                "current_value": 0,
+                                "bid_volume": 0,
+                                "ask_volume": 0
+                            },
+                            "volume_imbalance_sell": {
+                                "enabled": True,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Trading session starting",
+                                "threshold": 0.1,
+                                "current_value": 0,
+                                "bid_volume": 0,
+                                "ask_volume": 0
+                            },
+                            "large_trade_buy": {
+                                "enabled": True,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Trading session starting",
+                                "threshold": 10000,
+                                "current_value": 0,
+                                "large_trades_count": 0
+                            },
+                            "large_trade_sell": {
+                                "enabled": True,
+                                "meets_criteria": False,
+                                "delta_to_threshold": 0,
+                                "analysis": "Trading session starting",
+                                "threshold": 10000,
+                                "current_value": 0,
+                                "large_trades_count": 0
+                            }
+                        }
+                    }
+                    for symbol in self.simulated_trading_manager.symbols_to_trade
+                ],
+                "trading_active": True,
+                "message": "Trading session initialized successfully",
+                "total_analyzed": self.simulated_trading_manager.get_total_signals_processed(),
+                "active_signals": 0,
+                "average_strength": 0.0,
+                "last_updated": self.simulated_trading_manager.last_signal_check.isoformat() if self.simulated_trading_manager.last_signal_check else None,
+                "pagination": {
+                    "current_page": 1,
+                    "per_page": 1000,
+                    "total_signals": len(self.simulated_trading_manager.symbols_to_trade),
+                    "total_pages": 1,
+                    "has_next": False,
+                    "has_prev": False
+                }
+            }
+
+            # Import the websocket manager to broadcast to frontend
+            from ..web_components.websocket_manager import WebSocketManager
+
+            # Broadcast trading statistics update to frontend
+            websocket_manager = getattr(self.simulated_trading_manager, '_websocket_manager', None)
+            if websocket_manager:
+                await websocket_manager.broadcast(json.dumps({
+                    "type": "trading_statistics_update",
+                    "data": trading_data
+                }))
+
+                # Broadcast initial signals update to frontend
+                await websocket_manager.broadcast(json.dumps({
+                    "type": "orderbook_signals_update",
+                    "data": signals_data
+                }))
+
+                logger.debug("Broadcasted initial trading state to frontend widgets")
+            else:
+                logger.warning("WebSocket manager not available for broadcasting trading start")
+
+        except Exception as e:
+            logger.error(f"Error broadcasting initial trading state to frontend: {e}")
+
+    async def _broadcast_trading_update_to_frontend(self, signals_result: Dict[str, Any] = None) -> None:
+        """Broadcast trading updates to frontend widgets."""
+        try:
+            # Get current trading status data
+            trading_status = await self.get_simulated_trading_status()
+
+            # Get websocket manager from app state
+            from ..web_components import get_app_state
+            app_state = get_app_state()
+            websocket_manager = getattr(app_state, 'websocket_manager', None)
+            if not websocket_manager:
+                # Try getting from existing websocket client if available
+                websocket_manager = getattr(self.simulated_trading_manager, '_websocket_manager', None)
+
+            if websocket_manager:
+                # Broadcast trading statistics update
+                await websocket_manager.broadcast(json.dumps({
+                    "type": "trading_statistics_update",
+                    "data": trading_status
+                }))
+
+                # If signals result is provided, broadcast signals update too
+                if signals_result:
+                    await websocket_manager.broadcast(json.dumps({
+                        "type": "orderbook_signals_update",
+                        "data": signals_result
+                    }))
+
+                logger.debug("Broadcasted trading update to frontend widgets")
+
+        except Exception as e:
+            logger.error(f"Error broadcasting trading update to frontend: {e}")
