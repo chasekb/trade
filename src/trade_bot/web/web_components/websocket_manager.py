@@ -27,8 +27,7 @@ class WebSocketManager:
         self.subscriptions: Dict[str, Set[str]] = {}  # channel -> set of product_ids
     
     async def connect(self, websocket: WebSocket):
-        """Accept a new WebSocket connection."""
-        await websocket.accept()
+        """Handle a new WebSocket connection."""
         self.active_connections.append(websocket)
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
     

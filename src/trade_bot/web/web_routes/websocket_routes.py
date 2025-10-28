@@ -17,12 +17,27 @@ def check_handlers_ready(handlers_name: str, handlers):
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections."""
-    # Check if app_state is initialized
-    if app_state is None:
-        await websocket.close(code=1013, reason="Service unavailable - application not initialized")
-        return
-    check_handlers_ready("websocket_handlers", app_state.websocket_handlers)
-    await app_state.websocket_handlers.websocket_endpoint(websocket)
+    try:
+        # Accept the WebSocket connection immediately to avoid 403 errors
+        await websocket.accept()
+
+        # Check if app_state is initialized after accepting
+        if app_state is None:
+            await websocket.close(code=1013, reason="Service unavailable - application not initialized")
+            return
+
+        # Check if websocket_handlers are initialized (using websocket close instead of HTTPException)
+        if app_state.websocket_handlers is None:
+            await websocket.close(code=1013, reason="Server not ready - websocket_handlers not initialized")
+            return
+
+        await app_state.websocket_handlers.websocket_endpoint(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket endpoint error: {e}")
+        try:
+            await websocket.close(code=1013, reason="WebSocket initialization error")
+        except:
+            pass
 
 # WebSocket subscription routes
 @router.get("/api/websocket/subscriptions")

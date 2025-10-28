@@ -17,15 +17,24 @@ class WebSocketHandlers:
     async def websocket_endpoint(self, websocket: WebSocket) -> None:
         """Handle WebSocket connections."""
         try:
+            # Connect websocket to manager (no accept here, already accepted in route)
             await self.websocket_manager.connect(websocket)
+
+            # Send initial connection confirmation
+            await websocket.send_text('{"type": "connected", "message": "WebSocket connection established"}')
+
             try:
                 while True:
                     data = await websocket.receive_text()
                     await self.websocket_manager.handle_message(websocket, data)
             except WebSocketDisconnect:
+                logger.info("WebSocket client disconnected")
+                self.websocket_manager.disconnect(websocket)
+            except Exception as e:
+                logger.error(f"WebSocket message handling error: {e}")
                 self.websocket_manager.disconnect(websocket)
         except Exception as e:
-            logger.error(f"WebSocket error: {e}")
+            logger.error(f"WebSocket connection error: {e}")
             self.websocket_manager.disconnect(websocket)
     
     async def get_subscriptions(self) -> Dict[str, Any]:
