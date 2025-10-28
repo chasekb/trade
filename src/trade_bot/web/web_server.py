@@ -21,7 +21,7 @@ from ..database.database_manager import DatabaseManager
 from ..trading.simulated_trading_manager import SimulatedTradingManager
 from ..data.websocket_client import WebSocketClient
 from ..data.data_handler import DataHandler
-from ..web.web_components import RateLimiter, WebSocketManager, ApplicationState, set_app_state
+from ..web.web_components import RateLimiter, WebSocketManager, ApplicationState, set_app_state, get_app_state
 from ..web.web_handlers import (
     APIHandlers, DashboardHandlers, BacktestHandlers,
     TradingHandlers, WebSocketHandlers, DataHandlers
@@ -215,8 +215,10 @@ async def startup_event():
 async def shutdown_event():
     """Gracefully close simulated positions and stop services on server shutdown."""
     try:
-        # Use application state cleanup method
-        await app_state.cleanup()
+        # Get application state to perform cleanup
+        app_state_instance = get_app_state()
+        if app_state_instance:
+            await app_state_instance.cleanup()
         logger.info("👋 Trading Dashboard shutdown complete")
 
     except Exception as e:
