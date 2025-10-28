@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from ..web_components import app_state
-from ..ml.vector_database_service import get_vector_db_service
+from ...ml.vector_database_service import get_vector_db_service
 
 # Create router
 router = APIRouter()
