@@ -17,7 +17,7 @@ trade/
 │   ├── package-lock.json     # Node.js lock file
 │   ├── playwright.config.ts  # Playwright configuration
 │   ├── vector-db-config.yaml # Vector database configuration
-│   └── vercel.json           # Vercel deployment config
+
 │
 ├── src/                       # Source code
 │   └── trade_bot/            # Main application package
