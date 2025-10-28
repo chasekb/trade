@@ -565,9 +565,12 @@ class SimulatedTradingManager:
         
         # Save trade to database
         self._save_trade_to_db(trade)
-        
+
+        # Broadcast real-time update to frontend widgets
+        self._broadcast_trading_update()
+
         logger.info(f"Executed BUY: {quantity:.6f} {symbol} at ${price:.2f} (fees: ${fees:.2f})")
-        
+
         return {
             "trade_id": trade_id,
             "action": "buy",
@@ -577,24 +580,24 @@ class SimulatedTradingManager:
             "fees": fees,
             "reason": trade.reason
         }
-    
+
     async def _execute_sell_trade(self, symbol: str, price: float, quantity: float, signal: Dict) -> Dict:
         """Execute a sell trade."""
         position = self.positions[symbol]
-        
+
         # Calculate PnL
         pnl = (price - position.entry_price) * quantity
         fees = price * quantity * self.trading_fee
         net_pnl = pnl - fees
-        
+
         # Update cash balance
         proceeds = (price * quantity) - fees
         self.cash_balance += proceeds
-        
+
         # Create trade record
         self.trade_counter += 1
         trade_id = f"sim_{self.trade_counter}_{symbol}_{int(datetime.now().timestamp())}"
-        
+
         trade = Trade(
             trade_id=trade_id,
             symbol=symbol,
@@ -607,15 +610,18 @@ class SimulatedTradingManager:
             fees=fees
         )
         self.trades.append(trade)
-        
+
         # Save trade to database
         self._save_trade_to_db(trade)
-        
+
+        # Broadcast real-time update to frontend widgets
+        self._broadcast_trading_update()
+
         # Close position
         self._close_position(symbol, "Sell signal executed")
-        
+
         logger.info(f"Executed SELL: {quantity:.6f} {symbol} at ${price:.2f} (PnL: ${net_pnl:.2f}, fees: ${fees:.2f})")
-        
+
         return {
             "trade_id": trade_id,
             "action": "sell",
@@ -734,8 +740,73 @@ class SimulatedTradingManager:
             if symbol not in self.symbols_to_trade:
                 self.symbols_to_trade.append(symbol)
                 logger.info(f"Added symbol to trading: {symbol}")
-        
+
         logger.info(f"Updated trading symbols: {self.symbols_to_trade}")
+
+    def _broadcast_trading_update(self) -> None:
+        """Broadcast trading update to frontend widgets."""
+        try:
+            # Skip if not trading to avoid unnecessary broadcasts
+            if not self.is_trading:
+                return
+
+            # Get current portfolio state for broadcasting
+            portfolio = self.get_portfolio_summary()
+            open_positions = self.get_open_positions()
+            recent_trades = self.get_recent_trades()[:10]  # Limit recent trades to last 10
+
+            # Import here to avoid circular imports
+            import json
+
+            # Prepare trading data for broadcast
+            trading_data = {
+                "is_trading": self.is_trading,
+                "portfolio": portfolio.__dict__ if hasattr(portfolio, '__dict__') else asdict(portfolio),
+                "open_positions": open_positions,
+                "recent_trades": recent_trades,
+                "timestamp": datetime.now().isoformat(),
+                "total_signals_processed": self.get_total_signals_processed()
+            }
+
+            # Broadcast to websocket manager if available
+            # Try different ways to access websocket manager
+            websocket_manager = None
+
+            # Method 1: Check if we have a reference to websocket manager
+            if hasattr(self, '_websocket_manager') and self._websocket_manager:
+                websocket_manager = self._websocket_manager
+
+            # Method 2: Try getting from global application state
+            if not websocket_manager:
+                try:
+                    from ..web.web_components import get_app_state
+                    app_state = get_app_state()
+                    websocket_manager = getattr(app_state, 'websocket_manager', None)
+                except (ImportError, RuntimeError):
+                    pass
+
+            if websocket_manager:
+                try:
+                    async def broadcast_update():
+                        await websocket_manager.broadcast(json.dumps({
+                            "type": "trading_statistics_update",
+                            "data": trading_data
+                        }))
+
+                    # Try to get event loop for async broadcast
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(broadcast_update())
+                    except RuntimeError:
+                        # No running loop, run synchronously in a new loop
+                        asyncio.run(broadcast_update())
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast trading update: {e}")
+            else:
+                logger.debug("WebSocket manager not available for trading broadcast")
+
+        except Exception as e:
+            logger.error(f"Error in trading update broadcast: {e}")
     
     async def get_loading_status(self) -> Dict[str, Any]:
         """Get current loading status for async symbol loading."""
