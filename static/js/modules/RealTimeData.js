@@ -71,8 +71,17 @@ export class RealTimeData {
     }
 
     handleWebSocketMessage(data) {
+        console.log('📡 RealTimeData handling WebSocket message:', data.type, data);
         if (data.type === 'real_time_data') {
             this.updateRealTimeData(data.data);
+        } else if (data.type === 'trading_statistics_update') {
+            // Handle simulated trading statistics updates
+            console.log('📊 Updating simulated trading statistics via WebSocket');
+            this.updateTradingStatistics(data.data);
+        } else if (data.type === 'orderbook_signals_update') {
+            // Handle order book signals updates
+            console.log('📈 Updating order book signals via WebSocket');
+            this.updateOrderBookSignals(data.data);
         }
     }
 
@@ -385,6 +394,179 @@ export class RealTimeData {
         
         // Refresh trading metrics
         this.loadTradingMetrics();
+    }
+
+    // WebSocket handler for simulated trading statistics updates
+    updateTradingStatistics(data) {
+        console.log('📊 Processing trading statistics update:', data);
+
+        // Batch DOM updates for better performance
+        const updates = [];
+
+        // Update simulated trading statistics widget elements if they exist
+        const elements = [
+            'simulated-total-pnl',
+            'simulated-win-rate',
+            'simulated-total-trades',
+            'simulated-active-positions',
+            'simulated-position-value',
+            'simulated-profit-factor',
+            'simulated-sharpe-ratio',
+            'simulated-max-drawdown',
+            'simulated-avg-win',
+            'simulated-avg-loss',
+            'simulated-best-trade',
+            'simulated-worst-trade'
+        ];
+
+        elements.forEach(elementId => {
+            const element = document.getElementById(elementId);
+            if (element && data.hasOwnProperty(this.elementIdToDataKey(elementId))) {
+                let value = data[this.elementIdToDataKey(elementId)];
+                let formattedValue = this.formatTradingStatistic(elementId, value);
+                updates.push(() => {
+                    element.textContent = formattedValue;
+                });
+            }
+        });
+
+        // Update timestamp if element exists
+        const lastUpdateElement = document.getElementById('simulated-last-update');
+        if (lastUpdateElement) {
+            updates.push(() => {
+                lastUpdateElement.textContent = new Date(data.timestamp || Date.now()).toLocaleTimeString();
+            });
+        }
+
+        // Execute all DOM updates in batch
+        requestAnimationFrame(() => {
+            updates.forEach(update => update());
+            console.log('✅ Simulated trading statistics updated via WebSocket');
+        });
+    }
+
+    // WebSocket handler for order book signals updates
+    updateOrderBookSignals(data) {
+        console.log('📈 Processing order book signals update:', data);
+
+        // Batch DOM updates for better performance
+        const updates = [];
+
+        // Update order book statistics elements if they exist
+        const totalAnalyzedElement = document.getElementById('total-analyzed');
+        if (totalAnalyzedElement && data.total_analyzed !== undefined) {
+            updates.push(() => {
+                totalAnalyzedElement.textContent = data.total_analyzed;
+            });
+        }
+
+        const activeSignalsElement = document.getElementById('active-signals');
+        if (activeSignalsElement && data.active_signals !== undefined) {
+            updates.push(() => {
+                activeSignalsElement.textContent = data.active_signals;
+            });
+        }
+
+        const avgStrengthElement = document.getElementById('avg-strength');
+        if (avgStrengthElement && data.average_strength !== undefined) {
+            updates.push(() => {
+                avgStrengthElement.textContent = data.average_strength.toFixed(2);
+            });
+        }
+
+        const lastUpdatedElement = document.getElementById('last-updated');
+        if (lastUpdatedElement) {
+            updates.push(() => {
+                lastUpdatedElement.textContent = new Date(data.last_updated || Date.now()).toLocaleTimeString();
+            });
+        }
+
+        // Update signals table if signals are provided
+        if (data.signals && Array.isArray(data.signals) && data.signals.length > 0) {
+            const tableBody = document.getElementById('orderbook-signals-table');
+            if (tableBody) {
+                // Clear existing content
+                updates.push(() => {
+                    tableBody.innerHTML = '';
+
+                    // Add new signals
+                    data.signals.forEach(signal => {
+                        const row = document.createElement('tr');
+                        row.className = 'hover:bg-gray-50';
+
+                        const signalClass = signal.signal_generated ? 'text-green-600 bg-green-50' : 'text-gray-600 bg-gray-50';
+                        const strengthColor = (signal.signal_strength >= 0.7) ? 'text-green-600' :
+                                           (signal.signal_strength >= 0.4) ? 'text-yellow-600' : 'text-red-600';
+
+                        row.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${signal.symbol}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm ${signalClass}">
+                                ${signal.signal_generated ? 'Active' : 'Inactive'}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm ${strengthColor}">
+                                ${signal.signal_strength.toFixed(2)}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(signal.timestamp).toLocaleString()}</td>
+                        `;
+
+                        tableBody.appendChild(row);
+                    });
+                });
+            }
+        }
+
+        // Execute all DOM updates in batch
+        requestAnimationFrame(() => {
+            updates.forEach(update => update());
+            console.log('✅ Order book signals updated via WebSocket');
+        });
+    }
+
+    // Helper method to map element IDs to data keys
+    elementIdToDataKey(elementId) {
+        const mappings = {
+            'simulated-total-pnl': 'net_pnl',
+            'simulated-win-rate': 'win_rate',
+            'simulated-total-trades': 'total_trades',
+            'simulated-active-positions': 'active_positions',
+            'simulated-position-value': 'position_value',
+            'simulated-profit-factor': 'profit_factor',
+            'simulated-sharpe-ratio': 'sharpe_ratio',
+            'simulated-max-drawdown': 'max_drawdown',
+            'simulated-avg-win': 'avg_win',
+            'simulated-avg-loss': 'avg_loss',
+            'simulated-best-trade': 'best_trade',
+            'simulated-worst-trade': 'worst_trade'
+        };
+        return mappings[elementId] || elementId;
+    }
+
+    // Helper method to format trading statistics for display
+    formatTradingStatistic(elementId, value) {
+        if (value === null || value === undefined) return '0';
+
+        switch (elementId) {
+            case 'simulated-total-pnl':
+            case 'simulated-position-value':
+            case 'simulated-avg-win':
+            case 'simulated-avg-loss':
+            case 'simulated-best-trade':
+            case 'simulated-worst-trade':
+                return Number(value).toFixed(2);
+            case 'simulated-win-rate':
+                return Number(value).toFixed(1) + '%';
+            case 'simulated-profit-factor':
+                return (value === Infinity) ? '∞' : Number(value).toFixed(2);
+            case 'simulated-sharpe-ratio':
+                return Number(value).toFixed(2);
+            case 'simulated-max-drawdown':
+                return Number(value).toFixed(2) + '%';
+            case 'simulated-total-trades':
+            case 'simulated-active-positions':
+                return Math.round(Number(value)).toString();
+            default:
+                return value.toString();
+        }
     }
 
     startDataRefresh() {
