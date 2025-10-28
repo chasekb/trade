@@ -4,8 +4,7 @@ import asyncio
 import logging
 from fastapi import APIRouter, HTTPException
 
-from ..web_handlers import TradingHandlers
-from ..web_components import ApplicationState
+from ..web_components import app_state
 
 # Create router
 router = APIRouter()
@@ -19,46 +18,46 @@ def check_handlers_ready(handlers_name: str, handlers):
 
 # Live Trading Routes
 @router.post("/api/trading/live/start")
-async def start_live_trading(request: dict, trading_handlers: TradingHandlers = None):
+async def start_live_trading(request: dict):
     """Start live trading session."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.start_live_trading(request)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.start_live_trading(request)
 
 @router.post("/api/trading/live/stop")
-async def stop_live_trading(request: dict, trading_handlers: TradingHandlers = None):
+async def stop_live_trading(request: dict):
     """Stop live trading session."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.stop_live_trading(request)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.stop_live_trading(request)
 
 @router.get("/api/trading/live/positions")
-async def get_live_positions(page: int = 1, limit: int = 50, trading_handlers: TradingHandlers = None):
+async def get_live_positions(page: int = 1, limit: int = 50):
     """Get current live trading positions (paginated)."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_live_positions(page=page, limit=limit)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_live_positions(page=page, limit=limit)
 
 @router.post("/api/trading/live/close-position")
-async def close_live_position(request: dict, trading_handlers: TradingHandlers = None):
+async def close_live_position(request: dict):
     """Close a specific live trading position."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.close_live_position(request)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.close_live_position(request)
 
 @router.get("/api/trading/live/history")
-async def get_live_trading_history(trading_handlers: TradingHandlers = None):
+async def get_live_trading_history():
     """Get live trading history."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_live_trading_history()
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_live_trading_history()
 
 # Simulated Trading Routes
 @router.post("/api/trading/simulated/start")
-async def start_simulated_trading(request: dict, trading_handlers: TradingHandlers = None):
+async def start_simulated_trading(request: dict):
     """Start simulated trading session."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.start_simulated_trading(request)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.start_simulated_trading(request)
 
 @router.post("/api/async-trading/start")
-async def start_async_trading(request: dict, app_state: ApplicationState = None, trading_handlers: TradingHandlers = None):
+async def start_async_trading(request: dict):
     """Start async trading session with progressive symbol loading."""
-    check_handlers_ready("trading_handlers", trading_handlers)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
 
     try:
         # Extract trading parameters
@@ -94,7 +93,7 @@ async def start_async_trading(request: dict, app_state: ApplicationState = None,
         )
 
         # Start simulated trading with initial symbols
-        await trading_handlers.start_simulated_trading({
+        await app_state.trading_handlers.start_simulated_trading({
             'symbols': initial_symbols,
             'strategy_type': strategy_type,
             'strategy_params': strategy_params,
@@ -124,7 +123,7 @@ async def start_async_trading(request: dict, app_state: ApplicationState = None,
         return {"error": str(e)}
 
 @router.get("/api/async-trading/loading-status")
-async def get_async_trading_loading_status(app_state: ApplicationState = None):
+async def get_async_trading_loading_status():
     """Get async trading loading status (alternative endpoint)."""
     try:
         return {
@@ -137,93 +136,93 @@ async def get_async_trading_loading_status(app_state: ApplicationState = None):
         return {"error": str(e)}
 
 @router.get("/api/data/load-universe")
-async def load_universe_data(symbols: str = None, data_handlers = None):
+async def load_universe_data(symbols: str = None):
     """Load data for universe of symbols."""
-    check_handlers_ready("data_handlers", data_handlers)
+    check_handlers_ready("data_handlers", app_state.data_handlers)
     if symbols:
         symbol_list = symbols.split(',')
-        return await data_handlers.load_remaining_symbols_async(symbol_list, 3)
+        return await app_state.data_handlers.load_remaining_symbols_async(symbol_list, 3)
     else:
         return {"status": "error", "message": "No symbols provided"}
 
 @router.get("/api/data/load-symbols")
-async def load_symbols_data(symbols: str = None, data_handlers = None):
+async def load_symbols_data(symbols: str = None):
     """Load data for symbols (alternative endpoint)."""
-    check_handlers_ready("data_handlers", data_handlers)
+    check_handlers_ready("data_handlers", app_state.data_handlers)
     if symbols:
         symbol_list = symbols.split(',')
-        return await data_handlers.load_remaining_symbols_async(symbol_list, 3)
+        return await app_state.data_handlers.load_remaining_symbols_async(symbol_list, 3)
     else:
         return {"status": "error", "message": "No symbols provided"}
 
 @router.post("/api/trading/simulated/stop")
-async def stop_simulated_trading(trading_handlers: TradingHandlers = None):
+async def stop_simulated_trading():
     """Stop simulated trading session."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.stop_simulated_trading()
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.stop_simulated_trading()
 
 @router.get("/api/trading/simulated/status")
-async def get_simulated_trading_status(trading_handlers: TradingHandlers = None):
+async def get_simulated_trading_status():
     """Get simulated trading status."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_simulated_trading_status()
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_simulated_trading_status()
 
 @router.get("/api/simulated-trading/status")
-async def get_simulated_trading_status_alt(trading_handlers: TradingHandlers = None):
+async def get_simulated_trading_status_alt():
     """Alternative endpoint for simulated trading status."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_simulated_trading_status()
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_simulated_trading_status()
 
 @router.post("/api/trading/simulated/process-signals")
-async def process_simulated_signals(request: dict, trading_handlers: TradingHandlers = None):
+async def process_simulated_signals(request: dict):
     """Process simulated trading signals."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.process_simulated_signals(request)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.process_simulated_signals(request)
 
 @router.post("/api/trading/simulated/reset")
-async def reset_simulated_trading(trading_handlers: TradingHandlers = None):
+async def reset_simulated_trading():
     """Reset simulated trading session."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.reset_simulated_trading()
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.reset_simulated_trading()
 
 @router.post("/api/trading/simulated/add-symbols")
-async def add_symbols_to_trading(request: dict, trading_handlers: TradingHandlers = None):
+async def add_symbols_to_trading(request: dict):
     """Add symbols to current trading session."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.add_symbols_to_trading(request)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.add_symbols_to_trading(request)
 
 # Trading Statistics Routes
 @router.get("/api/trades/stats")
-async def get_trades_stats(trading_handlers: TradingHandlers = None):
+async def get_trades_stats():
     """Get trading statistics."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_simulated_trading_status()
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_simulated_trading_status()
 
 @router.get("/api/trades/paginated")
-async def get_trades_paginated(page: int = 1, per_page: int = 10, session_id: str = None, trading_handlers: TradingHandlers = None):
+async def get_trades_paginated(page: int = 1, per_page: int = 10, session_id: str = None):
     """Get paginated trades."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_paginated_trading_history(page=page, per_page=per_page, session_id=session_id)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_paginated_trading_history(page=page, per_page=per_page, session_id=session_id)
 
 @router.get("/api/trades/session/{session_id}")
-async def get_session_trades(session_id: str, trading_handlers: TradingHandlers = None):
+async def get_session_trades(session_id: str):
     """Get trades for a specific session."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_session_trading_history(session_id)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_session_trading_history(session_id)
 
 @router.get("/api/trading/history/all")
-async def get_all_trading_history(limit: int = 1000, offset: int = 0, trading_handlers: TradingHandlers = None):
+async def get_all_trading_history(limit: int = 1000, offset: int = 0):
     """Get all trading history from database."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_all_trading_history(limit=limit, offset=offset)
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_all_trading_history(limit=limit, offset=offset)
 
 @router.get("/api/trading/metrics")
-async def get_trading_metrics(trading_handlers: TradingHandlers = None):
+async def get_trading_metrics():
     """Get comprehensive trading metrics."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    return await trading_handlers.get_trading_metrics()
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.get_trading_metrics()
 
-async def load_remaining_symbols_background(remaining_symbols: list, batch_size: int = 3, app_state: ApplicationState = None, trading_handlers: TradingHandlers = None):
+async def load_remaining_symbols_background(remaining_symbols: list, batch_size: int = 3):
     """Background task to load remaining symbols progressively."""
     try:
         logger.info(f"Starting background loading of {len(remaining_symbols)} symbols")
@@ -233,7 +232,7 @@ async def load_remaining_symbols_background(remaining_symbols: list, batch_size:
             batch = remaining_symbols[i:i + batch_size]
 
             # Add batch to trading
-            await trading_handlers.add_symbols_to_trading({"symbols": batch})
+            await app_state.trading_handlers.add_symbols_to_trading({"symbols": batch})
 
             # Update trading state
             current_symbols = app_state.trading_state.get("symbols", [])

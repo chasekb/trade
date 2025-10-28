@@ -17,8 +17,8 @@ qdrant:
   timeout: 30
   
   # Storage settings
-  storage_path: "/qdrant/storage"
-  wal_path: "/qdrant/wal"
+  storage_path: "./data/vector_db/storage"
+  wal_path: "./data/vector_db/wal"
   
   # Memory settings
   max_memory_usage: "2GB"
