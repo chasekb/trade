@@ -289,10 +289,10 @@ class VectorDatabaseService:
         """Check if Qdrant is responding."""
         try:
             response = requests.get(
-                f"http://{self.config['qdrant']['host']}:{self.config['qdrant']['port']}/health",
+                f"http://{self.config['qdrant']['host']}:{self.config['qdrant']['port']}/healthz",
                 timeout=5
             )
-            return response.status_code == 200
+            return response.status_code == 200 and "healthz check passed" in response.text
         except Exception:
             return False
     
@@ -324,7 +324,7 @@ class VectorDatabaseService:
     async def stop_services(self) -> None:
         """Stop all vector database services."""
         logger.info("Stopping vector database services...")
-        
+
         # Stop ML Model Server
         if self.ml_server_process:
             try:
@@ -338,9 +338,9 @@ class VectorDatabaseService:
                 logger.error(f"Error stopping ML Model Server: {e}")
             finally:
                 self.ml_server_process = None
-        
-        # Stop Redis
-        if self.redis_process:
+
+        # Stop Redis (only if it's a local process, not podman container)
+        if self.redis_process and isinstance(self.redis_process, subprocess.Popen):
             try:
                 if os.name != 'nt':
                     os.killpg(os.getpgid(self.redis_process.pid), signal.SIGTERM)
@@ -352,9 +352,11 @@ class VectorDatabaseService:
                 logger.error(f"Error stopping Redis: {e}")
             finally:
                 self.redis_process = None
-        
-        # Stop Qdrant
-        if self.qdrant_process:
+        elif self.redis_process == "podman_container":
+            logger.info("Redis podman container will remain running (externally managed)")
+
+        # Stop Qdrant (only if it's a local process, not podman container)
+        if self.qdrant_process and isinstance(self.qdrant_process, subprocess.Popen):
             try:
                 if os.name != 'nt':
                     os.killpg(os.getpgid(self.qdrant_process.pid), signal.SIGTERM)
@@ -366,26 +368,38 @@ class VectorDatabaseService:
                 logger.error(f"Error stopping Qdrant: {e}")
             finally:
                 self.qdrant_process = None
-        
+        elif self.qdrant_process == "podman_container":
+            logger.info("Qdrant podman container will remain running (externally managed)")
+
         self.services_running = False
         logger.info("All vector database services stopped")
     
     def get_service_status(self) -> Dict[str, Any]:
         """Get status of all services."""
+        def _get_process_info(process):
+            """Helper to get process info safely."""
+            if isinstance(process, subprocess.Popen):
+                return {
+                    'running': process.poll() is None,
+                    'pid': process.pid
+                }
+            elif isinstance(process, str):
+                # External container process
+                return {
+                    'running': True,  # Assume running if tracked
+                    'pid': None
+                }
+            else:
+                return {
+                    'running': False,
+                    'pid': None
+                }
+
         return {
             'services_running': self.services_running,
-            'qdrant': {
-                'running': self.qdrant_process is not None and self.qdrant_process.poll() is None,
-                'pid': self.qdrant_process.pid if self.qdrant_process else None
-            },
-            'redis': {
-                'running': self.redis_process is not None and self.redis_process.poll() is None,
-                'pid': self.redis_process.pid if self.redis_process else None
-            },
-            'ml_server': {
-                'running': self.ml_server_process is not None and self.ml_server_process.poll() is None,
-                'pid': self.ml_server_process.pid if self.ml_server_process else None
-            }
+            'qdrant': _get_process_info(self.qdrant_process),
+            'redis': _get_process_info(self.redis_process),
+            'ml_server': _get_process_info(self.ml_server_process)
         }
     
     def get_service_urls(self) -> Dict[str, str]:
@@ -403,9 +417,19 @@ class VectorDatabaseService:
             if not self.services_running:
                 logger.error("Services not running, cannot initialize vector database")
                 return False
-            
-            return self.vector_db_client.initialize_vector_database()
-            
+
+            # Check if collection exists, create it if it doesn't
+            if not self.vector_db_client.check_collection_exists():
+                logger.info("Creating trading_features collection...")
+                if not self.vector_db_client.create_collection():
+                    logger.error("Failed to create vector database collection")
+                    return False
+                logger.info("Vector database collection created successfully")
+            else:
+                logger.info("Vector database collection already exists")
+
+            return True
+
         except Exception as e:
             logger.error(f"Error initializing vector database: {e}")
             return False
