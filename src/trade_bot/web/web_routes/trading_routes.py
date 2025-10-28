@@ -20,30 +20,40 @@ def check_handlers_ready(handlers_name: str, handlers):
 @router.post("/api/trading/live/start")
 async def start_live_trading(request: dict):
     """Start live trading session."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.start_live_trading(request)
 
 @router.post("/api/trading/live/stop")
 async def stop_live_trading(request: dict):
     """Stop live trading session."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.stop_live_trading(request)
 
 @router.get("/api/trading/live/positions")
 async def get_live_positions(page: int = 1, limit: int = 50):
     """Get current live trading positions (paginated)."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_live_positions(page=page, limit=limit)
 
 @router.post("/api/trading/live/close-position")
 async def close_live_position(request: dict):
     """Close a specific live trading position."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.close_live_position(request)
 
 @router.get("/api/trading/live/history")
 async def get_live_trading_history():
     """Get live trading history."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_live_trading_history()
 
@@ -51,12 +61,16 @@ async def get_live_trading_history():
 @router.post("/api/trading/simulated/start")
 async def start_simulated_trading(request: dict):
     """Start simulated trading session."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.start_simulated_trading(request)
 
 @router.post("/api/async-trading/start")
 async def start_async_trading(request: dict):
     """Start async trading session with progressive symbol loading."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
 
     try:
@@ -125,6 +139,8 @@ async def start_async_trading(request: dict):
 @router.get("/api/async-trading/loading-status")
 async def get_async_trading_loading_status():
     """Get async trading loading status (alternative endpoint)."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     try:
         return {
             "loading_progress": app_state.trading_state.loading_progress,
@@ -138,6 +154,8 @@ async def get_async_trading_loading_status():
 @router.get("/api/data/load-universe")
 async def load_universe_data(symbols: str = None):
     """Load data for universe of symbols."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("data_handlers", app_state.data_handlers)
     if symbols:
         symbol_list = symbols.split(',')
@@ -148,6 +166,8 @@ async def load_universe_data(symbols: str = None):
 @router.get("/api/data/load-symbols")
 async def load_symbols_data(symbols: str = None):
     """Load data for symbols (alternative endpoint)."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("data_handlers", app_state.data_handlers)
     if symbols:
         symbol_list = symbols.split(',')
@@ -158,36 +178,48 @@ async def load_symbols_data(symbols: str = None):
 @router.post("/api/trading/simulated/stop")
 async def stop_simulated_trading():
     """Stop simulated trading session."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.stop_simulated_trading()
 
 @router.get("/api/trading/simulated/status")
 async def get_simulated_trading_status():
     """Get simulated trading status."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_simulated_trading_status()
 
 @router.get("/api/simulated-trading/status")
 async def get_simulated_trading_status_alt():
     """Alternative endpoint for simulated trading status."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_simulated_trading_status()
 
 @router.post("/api/trading/simulated/process-signals")
 async def process_simulated_signals(request: dict):
     """Process simulated trading signals."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.process_simulated_signals(request)
 
 @router.post("/api/trading/simulated/reset")
 async def reset_simulated_trading():
     """Reset simulated trading session."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.reset_simulated_trading()
 
 @router.post("/api/trading/simulated/add-symbols")
 async def add_symbols_to_trading(request: dict):
     """Add symbols to current trading session."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.add_symbols_to_trading(request)
 
@@ -195,30 +227,40 @@ async def add_symbols_to_trading(request: dict):
 @router.get("/api/trades/stats")
 async def get_trades_stats():
     """Get trading statistics."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_simulated_trading_status()
 
 @router.get("/api/trades/paginated")
 async def get_trades_paginated(page: int = 1, per_page: int = 10, session_id: str = None):
     """Get paginated trades."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_paginated_trading_history(page=page, per_page=per_page, session_id=session_id)
 
 @router.get("/api/trades/session/{session_id}")
 async def get_session_trades(session_id: str):
     """Get trades for a specific session."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_session_trading_history(session_id)
 
 @router.get("/api/trading/history/all")
 async def get_all_trading_history(limit: int = 1000, offset: int = 0):
     """Get all trading history from database."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_all_trading_history(limit=limit, offset=offset)
 
 @router.get("/api/trading/metrics")
 async def get_trading_metrics():
     """Get comprehensive trading metrics."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_trading_metrics()
 
@@ -231,36 +273,51 @@ async def load_remaining_symbols_background(remaining_symbols: list, batch_size:
         for i in range(0, len(remaining_symbols), batch_size):
             batch = remaining_symbols[i:i + batch_size]
 
-            # Add batch to trading
-            await app_state.trading_handlers.add_symbols_to_trading({"symbols": batch})
+            try:
+                # Check if app_state is available before proceeding
+                if app_state is None:
+                    logger.error("App state not available in background loading")
+                    return
 
-            # Update trading state
-            current_symbols = app_state.trading_state.get("symbols", [])
-            app_state.trading_state["symbols"] = current_symbols + batch
+                # Add batch to trading
+                await app_state.trading_handlers.add_symbols_to_trading({"symbols": batch})
 
-            # Update loading progress
-            loaded_count = len(app_state.trading_state["symbols"])
-            total_count = app_state.trading_state["loading_progress"]["total"]
-            remaining_count = len(remaining_symbols) - (i + len(batch))
+                # Update trading state
+                current_symbols = app_state.trading_state.get("symbols", [])
+                app_state.trading_state["symbols"] = current_symbols + batch
 
-            app_state.trading_state["loading_progress"] = {
-                "status": "loading" if remaining_count > 0 else "complete",
-                "loaded": loaded_count,
-                "total": total_count,
-                "remaining": remaining_count,
-                "progress": int((loaded_count / total_count) * 100) if total_count > 0 else 100
-            }
+                # Update loading progress
+                loaded_count = len(app_state.trading_state["symbols"])
+                total_count = app_state.trading_state["loading_progress"]["total"]
+                remaining_count = len(remaining_symbols) - (i + len(batch))
 
-            # Wait between batches to avoid overwhelming the system
-            await asyncio.sleep(2.0)
+                app_state.trading_state["loading_progress"] = {
+                    "status": "loading" if remaining_count > 0 else "complete",
+                    "loaded": loaded_count,
+                    "total": total_count,
+                    "remaining": remaining_count,
+                    "progress": int((loaded_count / total_count) * 100) if total_count > 0 else 100
+                }
 
-            logger.info(f"Loaded batch {i//batch_size + 1}: {batch}")
+                # Wait between batches to avoid overwhelming the system
+                await asyncio.sleep(2.0)
+
+                logger.info(f"Loaded batch {i//batch_size + 1}: {batch}")
+
+            except Exception as batch_error:
+                logger.error(f"Error loading batch {i//batch_size + 1}: {batch_error}")
+                # Mark progress as error and continue with next batch
+                if app_state and app_state.trading_state:
+                    app_state.trading_state["loading_progress"]["status"] = "error"
+                continue
 
         # Mark loading as complete
-        app_state.trading_state["loading_progress"]["status"] = "complete"
+        if app_state and app_state.trading_state:
+            app_state.trading_state["loading_progress"]["status"] = "complete"
 
         logger.info("Background symbol loading completed")
 
     except Exception as e:
         logger.error(f"Error in background symbol loading: {e}")
-        app_state.trading_state["loading_progress"]["status"] = "error"
+        if app_state and app_state.trading_state:
+            app_state.trading_state["loading_progress"]["status"] = "error"
