@@ -1,36 +1,55 @@
-# Trading Bot
+# Advanced Trading Bot
 
-A Python websocket trading bot using Coinbase Advanced Trading API with real-time market data processing and automated trading strategies.
+A comprehensive trading bot system built with Python 3.11+ using Coinbase Advanced Trading API, featuring real-time WebSocket connections, multiple trading strategies, advanced backtesting, machine learning optimization, and a modern web dashboard.
 
 ## Features
 
-- **Real-time WebSocket Connection**: Connects to Coinbase Advanced Trading WebSocket for live market data
-- **Trading Strategy**: Simple Moving Average (SMA) crossover strategy with configurable parameters
-- **Risk Management**: Built-in stop loss and take profit mechanisms
-- **Data Export**: CSV output for ticker data, trades, and signals
-- **Comprehensive Testing**: Full test suite with 49 test cases
-- **Modern Python**: Built with Python 3.11+ and managed with uv
+- **Real-time Trading**: WebSocket integration for live market data and automated trade execution
+- **Multiple Trading Strategies**: SMA, RSI, Bollinger Bands, MACD, Fibonacci, ATR, Stochastic, and ML-enhanced order book strategies
+- **Machine Learning Trading Optimization**: Integrated ML system with vector database for pattern recognition and signal optimization
+- **Advanced Backtesting**: Comprehensive historical data analysis with detailed performance metrics
+- **Vector Database Integration**: Qdrant + Redis architecture for ML feature storage and similarity search
+- **Web Dashboard**: Modern FastAPI-based interface with real-time data visualization
+- **Risk Management**: Built-in stop-loss, take-profit, and position sizing mechanisms
+- **Data Management**: SQLite database with extensive data handlers and CSV export capabilities
+- **Automated Service Management**: Integrated startup of vector database, ML services, and Redis cache
+- **Comprehensive Testing**: Full test suite with 100+ test cases covering all components
 
 ## Project Structure
 
 ```
 trade/
-├── src/trade_bot/           # Main trading bot package
-│   ├── __init__.py
-│   ├── config.py            # Configuration management
-│   ├── websocket_client.py  # WebSocket client for real-time data
-│   ├── trading_strategy.py  # SMA crossover trading strategy
-│   ├── data_handler.py      # Data storage and CSV export
-│   └── trading_bot.py       # Main bot orchestration
-├── tests/                   # Comprehensive test suite
-│   ├── test_config.py
-│   ├── test_trading_strategy.py
-│   ├── test_data_handler.py
-│   └── test_websocket_client.py
-├── outputs/                 # CSV data output directory
-├── main.py                  # Entry point
-├── pyproject.toml          # Project configuration
-└── README.md
+├── src/trade_bot/                  # Main trading bot package
+│   ├── core/                      # Core functionality
+│   │   ├── config.py              # Configuration management
+│   │   ├── trading_bot.py         # Main bot orchestration
+│   │   └── universe_selector.py   # Market universe selection
+│   ├── data/                      # Data handling and providers
+│   │   ├── data_provider.py       # Historical and real-time data
+│   │   ├── websocket_client.py    # WebSocket client
+│   │   ├── database/              # Database components
+│   │   └── data_components/        # Data processing components
+│   ├── trading/                   # Trading strategies and execution
+│   │   ├── strategies/            # Multiple trading strategies
+│   │   ├── simulated_trading_manager.py # Simulated trading
+│   │   └── trade_executor.py      # Trade execution logic
+│   ├── ml/                        # Machine Learning components
+│   │   ├── vector_database_service.py # Vector DB manager
+│   │   ├── data_collector.py      # ML data collection
+│   │   ├── model_manager.py       # ML model management
+│   │   └── model_trainer.py       # ML training engine
+│   └── web/                       # Web dashboard components
+│       ├── web_server.py         # FastAPI server
+│       ├── web_components/        # UI components
+│       └── web_handlers/          # API handlers
+├── tests/                         # Comprehensive test suite
+├── docs/                          # Extensive documentation
+├── static/                        # Web assets
+├── templates/                     # HTML templates
+├── scripts/                       # Executable scripts
+├── outputs/                       # Generated data and reports
+├── main.py                        # Unified entry point
+└── config/                        # Configuration files
 ```
 
 ## Installation
