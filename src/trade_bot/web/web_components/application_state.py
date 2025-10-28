@@ -11,8 +11,8 @@ from ..web_handlers import (
     APIHandlers, DashboardHandlers, BacktestHandlers,
     TradingHandlers, WebSocketHandlers, DataHandlers, LivePortfolioHandlers
 )
-from ..ml.vector_database_service import VectorDatabaseService
-from ..ml.ml_optimizer import MLTradingOptimizer
+from ...ml.vector_database_service import VectorDatabaseService
+from ...ml.ml_optimizer import MLTradingOptimizer
 
 
 @dataclass
