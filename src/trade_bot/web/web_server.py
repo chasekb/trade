@@ -178,6 +178,14 @@ async def startup_event():
         app_state_local.websocket_client = websocket_client
         app_state_local.websocket_manager = websocket_manager
 
+        # Connect WebSocketManager to trading state and components
+        websocket_manager.set_trading_state({
+            "is_active": app_state_local.trading_state.is_trading,
+            "strategy_type": app_state_local.trading_state.active_strategy,
+            "symbols": app_state_local.trading_state.symbols
+        })
+        websocket_manager.set_simulated_trading(simulated_trading_manager)
+
         # Initialize handlers
         api_handlers = APIHandlers(config, data_provider, cached_data_provider, product_fetcher, database_manager, simulated_trading_manager)
         app_state_local.dashboard_handlers = DashboardHandlers(config, templates)
@@ -207,8 +215,15 @@ async def startup_event():
         # Set the global app_state reference so routes can access it
         set_app_state(app_state_local)
 
-        # Start WebSocket client
-        # Note: WebSocket client will be started when needed
+        # Start WebSocket client and real-time data processing
+        # Note: WebSocket client and background processing will be started when needed
+        try:
+            # Start the real-time data processing which includes background trading signal processing
+            await websocket_manager.start_real_time_data()
+            logger.info("✅ WebSocket manager real-time data processing started")
+        except Exception as e:
+            logger.error(f"❌ Failed to start WebSocket manager real-time data processing: {e}")
+            # Don't fail startup, just log the error
 
         logger.info("🚀 Trading Dashboard started successfully!")
         logger.info("📊 Dashboard available at: http://localhost:8001")

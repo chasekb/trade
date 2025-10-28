@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class WebSocketManager:
     """Manages WebSocket connections for real-time data."""
-    
+
     def __init__(self, config: TradingConfig):
         self.config = config
         self.active_connections: List[WebSocket] = []
@@ -25,16 +25,60 @@ class WebSocketManager:
         self.trading_state: Dict[str, Any] = {}
         self.simulated_trading = None
         self.subscriptions: Dict[str, Set[str]] = {}  # channel -> set of product_ids
+        self.connection_heartbeats: Dict[WebSocket, datetime] = {}  # track last heartbeat per connection
     
     async def connect(self, websocket: WebSocket):
         """Handle a new WebSocket connection."""
         self.active_connections.append(websocket)
+        self.connection_heartbeats[websocket] = datetime.now()
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
-    
-    def disconnect(self, websocket: WebSocket):
+
+        # Start heartbeat checker if this is the first connection
+        if len(self.active_connections) == 1:
+            asyncio.create_task(self._heartbeat_checker())
+
+    async def _heartbeat_checker(self):
+        """Periodically check connection heartbeats and ping clients."""
+        import json
+        while self.active_connections:
+            try:
+                current_time = datetime.now()
+                dead_connections = []
+
+                # Check each connection for heartbeat timeout
+                for websocket, last_heartbeat in self.connection_heartbeats.items():
+                    time_since_heartbeat = (current_time - last_heartbeat).total_seconds()
+
+                    # If no heartbeat for 60 seconds, ping
+                    if time_since_heartbeat > 60:
+                        try:
+                            await websocket.send_text(json.dumps({'type': 'ping'}))
+                        except Exception as e:
+                            logger.warning(f"Failed to ping connection: {e}")
+                            dead_connections.append(websocket)
+                            continue
+
+                    # If no heartbeat for 300 seconds (5 minutes), close connection
+                    if time_since_heartbeat > 300:
+                        logger.warning(f"Connection timeout - no heartbeat for 5 minutes")
+                        dead_connections.append(websocket)
+
+                # Clean up dead connections
+                for websocket in dead_connections:
+                    await self.disconnect(websocket)
+
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+            except Exception as e:
+                logger.error(f"Error in heartbeat checker: {e}")
+                await asyncio.sleep(30)
+
+    async def disconnect(self, websocket: WebSocket):
         """Remove a WebSocket connection."""
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+        if websocket in self.connection_heartbeats:
+            del self.connection_heartbeats[websocket]
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
     
     async def send_personal_message(self, message: str, websocket: WebSocket):
@@ -43,7 +87,7 @@ class WebSocketManager:
             await websocket.send_text(message)
         except Exception as e:
             logger.error(f"Error sending message: {e}")
-            self.disconnect(websocket)
+            await self.disconnect(websocket)
     
     async def broadcast(self, message: str):
         """Broadcast a message to all connected WebSockets."""
@@ -52,7 +96,59 @@ class WebSocketManager:
                 await connection.send_text(message)
             except Exception as e:
                 logger.error(f"Error broadcasting to connection: {e}")
-                self.disconnect(connection)
+                await self.disconnect(connection)
+
+    async def handle_message(self, websocket: WebSocket, message: str):
+        """Handle incoming WebSocket messages from clients."""
+        try:
+            # Update heartbeat timestamp for this connection
+            self.connection_heartbeats[websocket] = datetime.now()
+
+            # Parse the message (expected to be JSON)
+            import json
+            data = json.loads(message)
+
+            # Handle different message types
+            msg_type = data.get('type', 'unknown')
+
+            if msg_type == 'ping':
+                # Respond to ping with pong to keep connection alive
+                await websocket.send_text(json.dumps({'type': 'pong'}))
+            elif msg_type == 'subscribe':
+                # Handle subscription request
+                channel = data.get('channel')
+                product_id = data.get('product_id', self.config.product_id)
+                if channel and product_id:
+                    if channel not in self.subscriptions:
+                        self.subscriptions[channel] = set()
+                    self.subscriptions[channel].add(product_id)
+                    logger.info(f"Subscribed to {channel} for {product_id}")
+                    await websocket.send_text(json.dumps({
+                        'type': 'subscribed',
+                        'channel': channel,
+                        'product_id': product_id
+                    }))
+            elif msg_type == 'unsubscribe':
+                # Handle unsubscription request
+                channel = data.get('channel')
+                product_id = data.get('product_id', self.config.product_id)
+                if channel and product_id and channel in self.subscriptions:
+                    self.subscriptions[channel].discard(product_id)
+                    if not self.subscriptions[channel]:
+                        del self.subscriptions[channel]
+                    logger.info(f"Unsubscribed from {channel} for {product_id}")
+                    await websocket.send_text(json.dumps({
+                        'type': 'unsubscribed',
+                        'channel': channel,
+                        'product_id': product_id
+                    }))
+            else:
+                logger.warning(f"Unknown message type: {msg_type}")
+
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON received: {message}")
+        except Exception as e:
+            logger.error(f"Error handling WebSocket message: {e}")
     
     async def start_real_time_data(self):
         """Start the real-time data feed with all subscription types."""
@@ -87,15 +183,71 @@ class WebSocketManager:
                     symbols = self.trading_state.get("symbols", [])
                     if symbols and self.simulated_trading:
                         # Process signals through simulated trading
-                        # This would need to be implemented based on the actual signal processing logic
-                        pass
-                
+                        await self._fetch_and_process_signals(symbols)
+
                 # Wait before next check
-                await asyncio.sleep(30)  # Check every 30 seconds
-                
+                await asyncio.sleep(10)  # Check every 10 seconds for more responsive trading
+
             except Exception as e:
                 logger.error(f"Error in simulated trading processing: {e}")
-                await asyncio.sleep(30)  # Wait before retrying
+                await asyncio.sleep(10)  # Wait before retrying
+
+    async def _fetch_and_process_signals(self, symbols):
+        """Fetch live order book signals and process them automatically."""
+        try:
+            # Import data handlers to get signals
+            from ..web_handlers.data_handlers import DataHandlers
+
+            # Limit symbols to avoid API timeouts
+            max_symbols = 50
+            if len(symbols) > max_symbols:
+                # Prioritize symbols that might have signals - could be improved with more logic
+                symbols = symbols[:max_symbols]
+
+            # Create data handler instance
+            # We'll need to create a minimal config for this
+            class MinimalConfig:
+                def __init__(self):
+                    self.max_symbols_per_request = 1000
+
+            config = MinimalConfig()
+            data_handler = DataHandlers(
+                config=config,
+                data_provider=None,
+                cached_data_provider=None,
+                database_manager=None,
+                simulated_trading_manager=self.simulated_trading
+            )
+
+            # Get the signals string format
+            symbols_str = ','.join(symbols)
+
+            # Fetch live order book signals
+            signals_response = await data_handler.get_live_orderbook_signals(symbols_str)
+
+            if signals_response and signals_response.get('trading_active') and signals_response.get('signals'):
+                signals = signals_response['signals']
+
+                # Filter for active signals that should trigger trades
+                active_signals = [
+                    signal for signal in signals
+                    if signal.get('signal_generated', False) and signal.get('signal') in ['buy', 'sell']
+                ]
+
+                if active_signals:
+                    logger.info(f"Auto-processing {len(active_signals)} active signals: {[s['symbol'] + ':' + s['signal'] for s in active_signals]}")
+
+                    # Process the signals through the simulated trading manager
+                    result = await self.simulated_trading.process_signals(active_signals)
+
+                    executed_trades = result.get('executed_trades', 0)
+                    if executed_trades > 0:
+                        logger.info(f"Auto-executed {executed_trades} trades from {len(active_signals)} signals")
+                    else:
+                        logger.debug(f"No trades executed from {len(active_signals)} active signals (may be due to position limits, existing positions, or insufficient funds)")
+
+        except Exception as e:
+            logger.error(f"Error fetching and processing signals: {e}")
     
     async def _run_websocket_client(self):
         """Run the websocket client in the background."""
