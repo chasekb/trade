@@ -113,16 +113,33 @@ class VectorDatabaseService:
             return False
     
     async def _start_qdrant(self) -> bool:
-        """Start Qdrant vector database."""
+        """Check if Qdrant vector database is available."""
         try:
-            logger.info("Starting Qdrant vector database...")
-            
+            logger.info("Checking Qdrant vector database...")
+
+            # Check if Qdrant container is running via podman
+            try:
+                result = subprocess.run([
+                    "podman", "ps", "--filter", "name=qdrant",
+                    "--format", "{{.Names}}"
+                ], capture_output=True, text=True, timeout=10)
+
+                if "qdrant" in result.stdout:
+                    logger.info("Qdrant container is already running via podman")
+                    self.qdrant_process = "podman_container"  # Mark as external process
+                    return True
+                else:
+                    logger.warning("No Qdrant container found, will attempt to start local Qdrant")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                logger.warning("Podman not available or failed, will attempt to start local Qdrant")
+
+            # Fallback: Try to start local Qdrant (legacy behavior)
             # Create data directories
             storage_path = Path(self.config['qdrant']['storage_path'])
             wal_path = Path(self.config['qdrant']['wal_path'])
             storage_path.mkdir(parents=True, exist_ok=True)
             wal_path.mkdir(parents=True, exist_ok=True)
-            
+
             # Start Qdrant process
             cmd = [
                 "qdrant",
@@ -130,26 +147,45 @@ class VectorDatabaseService:
                 "--storage-path", str(storage_path),
                 "--wal-path", str(wal_path)
             ]
-            
+
             self.qdrant_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 preexec_fn=os.setsid if os.name != 'nt' else None
             )
-            
+
             logger.info(f"Qdrant started with PID: {self.qdrant_process.pid}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error starting Qdrant: {e}")
             return False
     
     async def _start_redis(self) -> bool:
-        """Start Redis cache server."""
+        """Check if Redis cache server is available."""
         try:
+            logger.info("Checking Redis cache server...")
+
+            # Check if Redis container is running via podman
+            try:
+                result = subprocess.run([
+                    "podman", "ps", "--filter", "name=redis",
+                    "--format", "{{.Names}}"
+                ], capture_output=True, text=True, timeout=10)
+
+                if "redis" in result.stdout:
+                    logger.info("Redis container is already running via podman")
+                    self.redis_process = "podman_container"  # Mark as external process
+                    return True
+                else:
+                    logger.warning("No Redis container found, will attempt to start local Redis")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                logger.warning("Podman not available or failed, will attempt to start local Redis")
+
+            # Fallback: Try to start local Redis (legacy behavior)
             logger.info("Starting Redis cache server...")
-            
+
             # Start Redis process
             cmd = [
                 "redis-server",
@@ -159,17 +195,17 @@ class VectorDatabaseService:
                 "--save", self.config['redis']['save_interval'],
                 "--appendonly", "yes"
             ]
-            
+
             self.redis_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 preexec_fn=os.setsid if os.name != 'nt' else None
             )
-            
+
             logger.info(f"Redis started with PID: {self.redis_process.pid}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error starting Redis: {e}")
             return False
