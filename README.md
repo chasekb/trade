@@ -8,7 +8,6 @@ A comprehensive trading bot system with web dashboard, backtesting, live trading
 trade/
 ├── main.py                     # Main entry point
 ├── README.md                   # This file
-├── TODO.md                     # Project tasks and roadmap
 │
 ├── config/                     # Configuration files
 │   ├── pyproject.toml         # Python project configuration

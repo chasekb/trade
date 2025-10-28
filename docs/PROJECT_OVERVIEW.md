@@ -2,50 +2,90 @@
 
 ## 🎯 Project Summary
 
-This is a comprehensive Python trading bot built with `coinbase-advanced-py` that provides:
+This is a comprehensive Python trading bot system built with modern technologies and advanced machine learning capabilities. The system integrates multiple trading strategies, real-time data processing, automated backtesting, and an intelligent ML optimization layer for enhanced trading decisions.
 
-- **Real-time Trading** with WebSocket integration
-- **Advanced Backtesting** with historical data analysis
-- **Modern Web Dashboard** with interactive charts
-- **Risk Management** with stop-loss and take-profit
-- **Performance Analytics** with detailed metrics
-- **Session-Based Trading** with isolated trading history per session
-- **Simulated Trading** with live portfolio management
-- **Trade Classification** with simulated vs live trade tracking
+## 🚀 Key Features
 
-## 🏗️ Architecture
+### Core Trading Capabilities
+- **Real-time Trading**: WebSocket integration with Coinbase Advanced Trading API
+- **Multiple Trading Strategies**: 10+ strategies including SMA, RSI, Bollinger Bands, MACD, FIB, ATR, Stochastic, ML-enhanced order book analysis
+- **Advanced Backtesting**: Comprehensive historical data analysis with detailed performance metrics
+- **Modern Web Dashboard**: FastAPI-based interface with real-time data visualization and ML management
+- **Risk Management**: Multi-level risk controls with stop-loss, take-profit, and position sizing
+- **Session-Based Trading**: Isolated trading sessions with comprehensive tracking and analytics
 
-### Core Components
+### Machine Learning Optimization System
+- **ML Trading Optimization**: Integrated machine learning system for signal optimization and pattern recognition
+- **Vector Database Integration**: Qdrant + Redis architecture for ML feature storage and similarity search
+- **Automated Service Management**: Integrated startup of vector database, ML model server, and Redis cache
+- **Real-time Model Inference**: Sub-second ML predictions integrated into live trading strategies
+- **Model Management Framework**: Versioning, hot-swapping, and performance monitoring
+- **Feature Engineering Pipeline**: Advanced order book feature extraction and trading fee optimization
 
-1. **Trading Bot** (`src/trade_bot/trading_bot.py`)
-   - Main trading logic and execution
-   - WebSocket integration for real-time data
-   - Risk management and position sizing
+### Data Architecture
+- **Comprehensive Data Handling**: Multi-tier data architecture with specialized handlers
+- **Database Integration**: SQLite with advanced connection pooling and optimization
+- **Real-time Data Streaming**: WebSocket and REST API integration for live market data
+- **Data Export & Analytics**: CSV export with detailed trade signal and performance analysis
 
-2. **Trading Strategy** (`src/trade_bot/trading_strategy.py`)
-   - Simple Moving Average (SMA) strategy
-   - Golden Cross / Death Cross signals
-   - Configurable parameters
+## 🏗️ Advanced Architecture
 
-3. **Data Handler** (`src/trade_bot/data_handler.py`)
-   - Data storage and management
-   - CSV export functionality
-   - Real-time data processing
+### Core System Components
 
-4. **Backtester** (`src/trade_bot/backtester.py`)
-   - Historical data backtesting
-   - Performance metrics calculation
-   - Strategy optimization
+1. **Core Engine** (`src/trade_bot/core/`)
+   - **Trading Bot** (`trading_bot.py`): Main orchestration engine with multi-strategy support
+   - **Configuration System** (`config.py`): Multi-environment configuration management
+   - **Universe Selector** (`universe_selector.py`): Dynamic market selection and portfolio optimization
 
-5. **Web Server** (`src/trade_bot/web_server.py`)
-   - FastAPI-based web dashboard
-   - Real-time data streaming
-   - RESTful API endpoints
+2. **Data Layer** (`src/trade_bot/data/`)
+   - **Data Provider** (`data_provider.py`): Unified data access with caching and optimization
+   - **WebSocket Client** (`websocket_client.py`): High-performance real-time data streaming
+   - **Database System** (`database/`): Advanced SQLite implementation with connection pooling
+   - **Data Components** (`data_components/`): Specialized handlers for trades, signals, and market data
 
-6. **Data Provider** (`src/trade_bot/data_provider.py`)
-   - Historical data fetching from Coinbase
-   - Data processing and formatting
-   - Mock data for testing
+3. **Trading Engine** (`src/trade_bot/trading/`)
+   - **Strategy Framework** (`strategies/`): 10+ technical analysis and ML strategies
+   - **Simulated Trading Manager** (`simulated_trading_manager.py`): Live portfolio simulation with realistic execution
+   - **Trading Components** (`simulated_components/`): Modular trading logic and portfolio management
+
+### Machine Learning System (`src/trade_bot/ml/`)
+
+1. **Vector Database Service** (`vector_database_service.py`)
+   - Integrated Qdrant + Redis management
+   - Automated service startup and health monitoring
+   - Real-time feature vector storage and similarity search
+
+2. **Data Collection & Processing** (`data_collector.py`)
+   - Historical trading data extraction
+   - Feature vector creation from order book patterns
+   - ML training data preparation and labeling
+
+3. **ML Model Management** (`model_manager.py`)
+   - Model versioning and deployment
+   - Performance monitoring and rollback capabilities
+   - Automated model replacement triggers
+
+4. **Model Training Engine** (`model_trainer.py`)
+   - Ensemble model training (Random Forest, Gradient Boosting, Neural Networks)
+   - Hyperparameter optimization and cross-validation
+   - Trading-domain specific performance metrics
+
+### Web Interface System (`src/trade_bot/web/`)
+
+1. **FastAPI Server** (`web_server.py`)
+   - High-performance async web server
+   - Real-time WebSocket data streaming
+   - Comprehensive REST API with OpenAPI documentation
+
+2. **UI Components** (`web_components/`)
+   - Modular dashboard components
+   - ML management interface
+   - Real-time data visualization
+
+3. **API Handlers** (`web_handlers/`)
+   - Specialized handlers for trading, backtesting, and ML operations
+   - Rate limiting and request validation
+   - Comprehensive error handling
 
 ## 📁 Directory Structure
 
