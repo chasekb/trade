@@ -41,41 +41,10 @@ logger = logging.getLogger(__name__)
 # Global rate limiter instance
 rate_limiter = RateLimiter()
 
-# Global WebSocket manager (will be initialized in startup)
-websocket_manager = None
+# Global application state manager
+app_state = ApplicationState()
 
-# Global trading state
-trading_state = {
-    "is_trading": False,
-    "active_strategy": None,
-    "symbols": [],
-    "session_id": None
-}
-
-# Global data handler
-data_handler = None
-
-# Global simulated trading manager
-simulated_trading_manager = None
-
-# Global database manager
-database_manager = None
-
-# Global WebSocket client
-websocket_client = None
-
-# Global handlers
-api_handlers = None
-dashboard_handlers = None
-backtest_handlers = None
-trading_handlers = None
-websocket_handlers = None
-data_handlers = None
-live_portfolio_handlers = None
-
-# Global vector database and ML services
-vector_db_service = None
-ml_optimizer = None
+# Moved to ApplicationState class
 
 # FastAPI app with performance optimizations
 app = FastAPI(
@@ -119,11 +88,6 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup."""
-    global data_handler, simulated_trading_manager, database_manager, websocket_client
-    global api_handlers, dashboard_handlers, backtest_handlers, trading_handlers
-    global websocket_handlers, data_handlers, websocket_manager, live_portfolio_handlers
-    global vector_db_service, ml_optimizer
-    
     try:
         # Initialize configuration
         config = TradingConfig(
@@ -131,21 +95,22 @@ async def startup_event():
             api_secret=os.getenv('COINBASE_API_SECRET', ''),
             passphrase=os.getenv('COINBASE_PASSPHRASE', '')
         )
-        
+
         # Initialize vector database and ML services
         logger.info("🚀 Starting vector database and ML services...")
         vector_db_service = get_vector_db_service()
-        
+        app_state.vector_db_service = vector_db_service
+
         # Start vector database services
         if await vector_db_service.start_services():
             logger.info("✅ Vector database services started successfully")
-            
+
             # Initialize vector database
             if await vector_db_service.initialize_vector_database():
                 logger.info("✅ Vector database initialized")
             else:
                 logger.warning("⚠️ Failed to initialize vector database")
-            
+
             # Initialize ML optimizer
             try:
                 from ..ml.ml_optimizer import MLTradingOptimizer
@@ -155,21 +120,22 @@ async def startup_event():
                     vector_db_host=vector_db_service.config['qdrant']['host'],
                     vector_db_port=vector_db_service.config['qdrant']['port']
                 )
-                
+                app_state.ml_optimizer = ml_optimizer
+
                 # Initialize vector database for ML
                 if ml_optimizer.initialize_vector_database():
                     logger.info("✅ ML optimizer initialized with vector database")
                 else:
                     logger.warning("⚠️ Failed to initialize ML optimizer vector database")
-                    
+
             except Exception as e:
                 logger.error(f"❌ Failed to initialize ML optimizer: {e}")
-                ml_optimizer = None
+                app_state.ml_optimizer = None
         else:
             logger.error("❌ Failed to start vector database services")
-            vector_db_service = None
-            ml_optimizer = None
-        
+            app_state.vector_db_service = None
+            app_state.ml_optimizer = None
+
         # Initialize core components
         data_provider = CoinbaseDataProvider(config)
         cached_data_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
@@ -182,32 +148,52 @@ async def startup_event():
         data_handler = DataHandler(config)
         websocket_client = WebSocketClient(config)
         websocket_manager = WebSocketManager(config)
-        
+
+        # Store components in application state
+        app_state.data_handler = data_handler
+        app_state.simulated_trading_manager = simulated_trading_manager
+        app_state.database_manager = database_manager
+        app_state.websocket_client = websocket_client
+        app_state.websocket_manager = websocket_manager
+
         # Initialize handlers
         api_handlers = APIHandlers(config, data_provider, cached_data_provider, product_fetcher, database_manager, simulated_trading_manager)
         dashboard_handlers = DashboardHandlers(config, templates)
         backtest_handlers = BacktestHandlers(config, database_manager)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager)
         websocket_handlers = WebSocketHandlers(websocket_manager)
-        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, trading_state)
+        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, app_state.trading_state)
         live_portfolio_handlers = LivePortfolioHandlers(config)
+
+        # Store handlers in application state
+        app_state.api_handlers = api_handlers
+        app_state.dashboard_handlers = dashboard_handlers
+        app_state.backtest_handlers = backtest_handlers
+        app_state.trading_handlers = trading_handlers
+        app_state.websocket_handlers = websocket_handlers
+        app_state.data_handlers = data_handlers
+        app_state.live_portfolio_handlers = live_portfolio_handlers
+
         logger.info(f"✅ Live portfolio handlers initialized: {live_portfolio_handlers is not None}")
-        
+
         # Set ML optimizer in ML dashboard integration
-        if ml_optimizer:
+        if app_state.ml_optimizer:
             from ..web.web_components.ml_dashboard import MLDashboardIntegration
             ml_integration = MLDashboardIntegration()
-            ml_integration.set_ml_optimizer(ml_optimizer)
+            ml_integration.set_ml_optimizer(app_state.ml_optimizer)
             logger.info("✅ ML dashboard integration configured with local ML optimizer")
-        
+
+        # Mark application as initialized
+        app_state.set_initialized(True)
+
         # Start WebSocket client
         # Note: WebSocket client will be started when needed
-        
+
         logger.info("🚀 Trading Dashboard started successfully!")
         logger.info("📊 Dashboard available at: http://localhost:8001")
         logger.info("🔌 WebSocket endpoint: ws://localhost:8001/ws")
         logger.info("📈 API documentation: http://localhost:8001/docs")
-        
+
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
         raise
@@ -215,37 +201,11 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Gracefully close simulated positions and stop services on server shutdown."""
-    global vector_db_service, ml_optimizer
-    
     try:
-        # Stop simulated trading if running
-        if simulated_trading_manager is not None:
-            # Close all open simulated positions and persist SELLs
-            await simulated_trading_manager.force_close_all_positions("Server shutdown")
-            logger.info("✅ Simulated trading stopped")
-        
-        # Optionally mark active session inactive
-        try:
-            if database_manager is not None and hasattr(simulated_trading_manager, 'session_id') and simulated_trading_manager.session_id:
-                database_manager.deactivate_session(simulated_trading_manager.session_id)
-        except Exception as e:
-            logger.warning(f"Failed to deactivate session on shutdown: {e}")
-        
-        # Stop vector database and ML services
-        if vector_db_service:
-            logger.info("🛑 Stopping vector database services...")
-            await vector_db_service.stop_services()
-            logger.info("✅ Vector database services stopped")
-        
-        # Clean up ML optimizer
-        if ml_optimizer:
-            logger.info("🧠 Cleaning up ML optimizer...")
-            # ML optimizer cleanup if needed
-            ml_optimizer = None
-            logger.info("✅ ML optimizer cleaned up")
-        
+        # Use application state cleanup method
+        await app_state.cleanup()
         logger.info("👋 Trading Dashboard shutdown complete")
-        
+
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
 
@@ -301,15 +261,14 @@ async def favicon():
 @app.get("/api/real-time-data")
 async def get_real_time_data(product_id: str = None):
     """Get real-time market data."""
-    check_handlers_ready("dashboard_handlers", dashboard_handlers)
-    check_handlers_ready("dashboard_handlers", dashboard_handlers)
-    return await dashboard_handlers.get_real_time_data(product_id)
+    check_handlers_ready("dashboard_handlers", app_state.dashboard_handlers)
+    return await app_state.dashboard_handlers.get_real_time_data(product_id)
 
 @app.get("/api/historical-data")
 async def get_historical_data(product_id: str, start_time: str = None, end_time: str = None, granularity: int = 3600, days: int = 7):
     """Get historical market data."""
-    check_handlers_ready("dashboard_handlers", dashboard_handlers)
-    
+    check_handlers_ready("dashboard_handlers", app_state.dashboard_handlers)
+
     # If start_time and end_time are not provided, calculate from days
     if start_time is None or end_time is None:
         from datetime import datetime, timedelta
@@ -317,32 +276,32 @@ async def get_historical_data(product_id: str, start_time: str = None, end_time:
         start_time = end_time - timedelta(days=days)
         start_time = start_time.isoformat()
         end_time = end_time.isoformat()
-    
-    return await dashboard_handlers.get_historical_data(product_id, start_time, end_time, granularity)
+
+    return await app_state.dashboard_handlers.get_historical_data(product_id, start_time, end_time, granularity)
 
 @app.get("/api/symbols")
 async def get_available_symbols():
     """Get available trading symbols."""
-    check_handlers_ready("api_handlers", api_handlers)
-    return await api_handlers.get_available_symbols()
+    check_handlers_ready("api_handlers", app_state.api_handlers)
+    return await app_state.api_handlers.get_available_symbols()
 
 @app.get("/api/products")
 async def get_available_products():
     """Get available products for trading."""
-    check_handlers_ready("api_handlers", api_handlers)
-    return await api_handlers.get_available_products()
+    check_handlers_ready("api_handlers", app_state.api_handlers)
+    return await app_state.api_handlers.get_available_products()
 
 @app.get("/api/channels")
 async def get_available_channels():
     """Get available WebSocket channels."""
-    check_handlers_ready("api_handlers", api_handlers)
-    return await api_handlers.get_available_channels()
+    check_handlers_ready("api_handlers", app_state.api_handlers)
+    return await app_state.api_handlers.get_available_channels()
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
-    check_handlers_ready("api_handlers", api_handlers)
-    return await api_handlers.health_check()
+    check_handlers_ready("api_handlers", app_state.api_handlers)
+    return await app_state.api_handlers.health_check()
 
 # Backtest Routes
 @app.post("/api/backtest")
@@ -434,8 +393,8 @@ async def start_simulated_trading(request: dict):
 @app.post("/api/async-trading/start")
 async def start_async_trading(request: dict):
     """Start async trading session with progressive symbol loading."""
-    check_handlers_ready("trading_handlers", trading_handlers)
-    
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+
     try:
         # Extract trading parameters
         symbols = request.get('symbols', ['BTC-USD', 'ETH-USD'])
@@ -448,31 +407,29 @@ async def start_async_trading(request: dict):
         session_id = request.get('session_id')
         immediate_start = request.get('immediate_start', True)
         batch_size = request.get('batch_size', 3)
-        
+
         # Create session ID if not provided
         if not session_id:
             import time
             session_id = f"async_trading_{int(time.time())}"
-        
+
         # Start with first batch of symbols for immediate trading
         initial_symbols = symbols[:batch_size] if len(symbols) > batch_size else symbols
         remaining_symbols = symbols[batch_size:] if len(symbols) > batch_size else []
-        
-        # Update global trading state
-        trading_state["is_trading"] = True
-        trading_state["active_strategy"] = strategy_type
-        trading_state["symbols"] = initial_symbols
-        trading_state["session_id"] = session_id
-        trading_state["loading_progress"] = {
-            "status": "loading",
-            "loaded": len(initial_symbols),
-            "total": len(symbols),
-            "remaining": len(remaining_symbols),
-            "progress": int((len(initial_symbols) / len(symbols)) * 100) if symbols else 100
-        }
-        
+
+        # Update trading state via application state
+        app_state.trading_state.is_trading = True
+        app_state.trading_state.active_strategy = strategy_type
+        app_state.trading_state.symbols = initial_symbols
+        app_state.trading_state.session_id = session_id
+        app_state.update_loading_progress(
+            loaded=len(initial_symbols),
+            total=len(symbols),
+            status="loading"
+        )
+
         # Start simulated trading with initial symbols
-        await trading_handlers.start_simulated_trading({
+        await app_state.trading_handlers.start_simulated_trading({
             'symbols': initial_symbols,
             'strategy_type': strategy_type,
             'strategy_params': strategy_params,
@@ -481,22 +438,22 @@ async def start_async_trading(request: dict):
             'position_update_interval': position_update_interval,
             'initial_balance': initial_balance
         })
-        
+
         # Start background symbol loading if there are remaining symbols
         if remaining_symbols and immediate_start:
             import asyncio
             asyncio.create_task(load_remaining_symbols_background(remaining_symbols, batch_size))
-        
+
         return {
             "status": "started",
             "session_id": session_id,
             "initial_symbols": initial_symbols,
             "remaining_symbols": remaining_symbols,
             "total_symbols": len(symbols),
-            "loading_progress": trading_state["loading_progress"],
+            "loading_progress": app_state.trading_state.loading_progress,
             "trading_active": True
         }
-        
+
     except Exception as e:
         logger.error(f"Error starting async trading: {e}")
         return {"error": str(e)}
@@ -506,15 +463,9 @@ async def get_async_trading_loading_status():
     """Get async trading loading status (alternative endpoint)."""
     try:
         return {
-            "loading_progress": trading_state.get("loading_progress", {
-                "status": "complete",
-                "loaded": 0,
-                "total": 0,
-                "remaining": 0,
-                "progress": 100
-            }),
-            "current_symbols": trading_state.get("symbols", []),
-            "is_loading": trading_state.get("loading_progress", {}).get("status") == "loading"
+            "loading_progress": app_state.trading_state.loading_progress,
+            "current_symbols": app_state.trading_state.symbols,
+            "is_loading": app_state.trading_state.loading_progress.get("status") == "loading"
         }
     except Exception as e:
         logger.error(f"Error getting loading status: {e}")
