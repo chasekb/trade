@@ -1,44 +1,47 @@
 #!/usr/bin/env python3
 """
-Web Dashboard Server
+Web Dashboard Script - Main entry point for the trading dashboard.
 
-Starts the FastAPI web server for the trading bot dashboard.
+This script launches the FastAPI web server using uvicorn.
 """
-"""Launch the trading dashboard web server."""
 
-import asyncio
-import logging
+import os
 import sys
-from pathlib import Path
-
-# Add project src to path (project_root/src)
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-
-import uvicorn
-from trade_bot.web.web_server import app
+import logging
 
 def main():
-    """Launch the web server."""
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    
+    """Start the trading dashboard web server."""
+    # Import uvicorn
+    try:
+        import uvicorn
+    except ImportError:
+        print("Error: uvicorn not installed. Install with: uv add uvicorn")
+        sys.exit(1)
+
+    # Set up logging for dashboard startup
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    logger = logging.getLogger("scripts.web.web_dashboard")
+
     logger.info("🚀 Starting Trading Dashboard...")
     logger.info("📊 Dashboard will be available at: http://localhost:8001")
     logger.info("🔌 WebSocket endpoint: ws://localhost:8001/ws")
     logger.info("📈 API documentation: http://localhost:8001/docs")
-    
+
+    # Run the FastAPI application using import string for reload support
     try:
         uvicorn.run(
-            "trade_bot.web.web_server:app",
+            "src.trade_bot.web.web_server:app",
             host="0.0.0.0",
             port=8001,
             log_level="info",
-            reload=True  # Enable auto-reload for development
+            reload=True
         )
-    except KeyboardInterrupt:
-        logger.info("👋 Shutting down Trading Dashboard...")
     except Exception as e:
-        logger.error(f"❌ Error starting server: {e}")
+        logger.error(f"❌ Failed to start web dashboard: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -39,6 +39,60 @@ logging.basicConfig(
 
 def run_web_dashboard():
     """Start the web dashboard server."""
+    import subprocess
+    import sys
+
+    def check_container_running(name):
+        """Check if a podman container is running."""
+        try:
+            result = subprocess.run([
+                "podman", "ps", "--filter", f"name={name}",
+                "--format", "{{.Names}}"
+            ], capture_output=True, text=True, timeout=10)
+            return name in result.stdout
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    def start_container(image, name, ports):
+        """Start a podman container."""
+        port_args = []
+        for host_port, container_port in ports:
+            port_args.extend(["-p", f"{host_port}:{container_port}"])
+
+        try:
+            subprocess.run([
+                "podman", "run", "-d", "--name", name,
+                "--replace"  # Replace existing container if it exists
+            ] + port_args + [image], check=True, timeout=60)
+            print(f"✅ Started {name} container")
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            print(f"❌ Failed to start {name} container: {e}", file=sys.stderr)
+            return False
+        return True
+
+    print("🔍 Checking required services...")
+
+    # Check and start Qdrant if needed
+    if not check_container_running("qdrant"):
+        print("📊 Starting Qdrant vector database...")
+        if not start_container("qdrant/qdrant", "qdrant", [(6333, 6333), (6334, 6334)]):
+            print("⚠️ Qdrant failed to start, but continuing...")
+    else:
+        print("✅ Qdrant is already running")
+
+    # Check and start Redis if needed
+    if not check_container_running("redis"):
+        print("🗄️ Starting Redis cache service...")
+        if not start_container("redis:latest", "redis", [(6379, 6379)]):
+            print("⚠️ Redis failed to start, but continuing...")
+    else:
+        print("✅ Redis is already running")
+
+    # Give services time to fully start
+    import time
+    print("⏳ Waiting for services to be ready...")
+    time.sleep(3)
+
     from scripts.web.web_dashboard import main
     main()
 
