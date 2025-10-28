@@ -134,7 +134,7 @@ async def startup_event():
                     vector_db_host=vector_db_service.config['qdrant']['host'],
                     vector_db_port=vector_db_service.config['qdrant']['port']
                 )
-                app_state.ml_optimizer = ml_optimizer
+                app_state_local.ml_optimizer = ml_optimizer
 
                 # Initialize vector database for ML
                 if ml_optimizer.initialize_vector_database():
@@ -164,40 +164,40 @@ async def startup_event():
         websocket_manager = WebSocketManager(config)
 
         # Store components in application state
-        app_state.data_handler = data_handler
-        app_state.simulated_trading_manager = simulated_trading_manager
-        app_state.database_manager = database_manager
-        app_state.websocket_client = websocket_client
-        app_state.websocket_manager = websocket_manager
+        app_state_local.data_handler = data_handler
+        app_state_local.simulated_trading_manager = simulated_trading_manager
+        app_state_local.database_manager = database_manager
+        app_state_local.websocket_client = websocket_client
+        app_state_local.websocket_manager = websocket_manager
 
         # Initialize handlers
         api_handlers = APIHandlers(config, data_provider, cached_data_provider, product_fetcher, database_manager, simulated_trading_manager)
-        app_state.dashboard_handlers = DashboardHandlers(config, templates)
+        app_state_local.dashboard_handlers = DashboardHandlers(config, templates)
         backtest_handlers = BacktestHandlers(config, database_manager)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager)
-        app_state.websocket_handlers = WebSocketHandlers(websocket_manager)
-        app_state.data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, app_state.trading_state)
-        app_state.live_portfolio_handlers = LivePortfolioHandlers(config)
+        app_state_local.websocket_handlers = WebSocketHandlers(websocket_manager)
+        app_state_local.data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, app_state_local.trading_state)
+        app_state_local.live_portfolio_handlers = LivePortfolioHandlers(config)
 
         # Store handlers in application state
-        app_state.api_handlers = api_handlers
-        app_state.backtest_handlers = backtest_handlers
-        app_state.trading_handlers = trading_handlers
+        app_state_local.api_handlers = api_handlers
+        app_state_local.backtest_handlers = backtest_handlers
+        app_state_local.trading_handlers = trading_handlers
 
-        logger.info(f"✅ Live portfolio handlers initialized: {app_state.live_portfolio_handlers is not None}")
+        logger.info(f"✅ Live portfolio handlers initialized: {app_state_local.live_portfolio_handlers is not None}")
 
         # Set ML optimizer in ML dashboard integration
-        if app_state.ml_optimizer:
+        if app_state_local.ml_optimizer:
             from ..web.web_components.ml_dashboard import MLDashboardIntegration
             ml_integration = MLDashboardIntegration()
-            ml_integration.set_ml_optimizer(app_state.ml_optimizer)
+            ml_integration.set_ml_optimizer(app_state_local.ml_optimizer)
             logger.info("✅ ML dashboard integration configured with local ML optimizer")
 
         # Mark application as initialized
-        app_state.set_initialized(True)
+        app_state_local.set_initialized(True)
 
         # Set the global app_state reference so routes can access it
-        set_app_state(app_state)
+        set_app_state(app_state_local)
 
         # Start WebSocket client
         # Note: WebSocket client will be started when needed

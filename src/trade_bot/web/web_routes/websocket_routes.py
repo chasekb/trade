@@ -17,6 +17,10 @@ def check_handlers_ready(handlers_name: str, handlers):
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections."""
+    # Check if app_state is initialized
+    if app_state is None:
+        await websocket.close(code=1013, reason="Service unavailable - application not initialized")
+        return
     check_handlers_ready("websocket_handlers", app_state.websocket_handlers)
     await app_state.websocket_handlers.websocket_endpoint(websocket)
 
@@ -24,29 +28,39 @@ async def websocket_endpoint(websocket: WebSocket):
 @router.get("/api/websocket/subscriptions")
 async def get_subscriptions():
     """Get current WebSocket subscriptions."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.get_subscriptions()
 
 @router.post("/api/websocket/subscribe")
 async def subscribe_to_channel(request: SubscriptionRequest):
     """Subscribe to a WebSocket channel."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.subscribe_to_channel(request.dict())
 
 @router.post("/api/websocket/unsubscribe")
 async def unsubscribe_from_channel(request: SubscriptionRequest):
     """Unsubscribe from a WebSocket channel."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.unsubscribe_from_channel(request.dict())
 
 @router.get("/api/websocket/status")
 async def get_realtime_status():
     """Get real-time data status."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.get_realtime_status()
 
 @router.post("/api/websocket/toggle")
 async def toggle_realtime_data():
     """Toggle real-time data streaming."""
+    if app_state is None:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.toggle_realtime_data()
