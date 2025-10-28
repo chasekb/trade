@@ -21,7 +21,7 @@ from ..database.database_manager import DatabaseManager
 from ..trading.simulated_trading_manager import SimulatedTradingManager
 from ..data.websocket_client import WebSocketClient
 from ..data.data_handler import DataHandler
-from ..web.web_components import RateLimiter, WebSocketManager, ApplicationState
+from ..web.web_components import RateLimiter, WebSocketManager, ApplicationState, set_app_state
 from ..web.web_handlers import (
     APIHandlers, DashboardHandlers, BacktestHandlers,
     TradingHandlers, WebSocketHandlers, DataHandlers
@@ -45,8 +45,7 @@ logger = logging.getLogger(__name__)
 # Global rate limiter instance
 rate_limiter = RateLimiter()
 
-# Global application state manager
-app_state = ApplicationState()
+# Global application state manager - will be set during startup
 
 # Moved to ApplicationState class
 
@@ -101,6 +100,9 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 async def startup_event():
     """Initialize the application on startup."""
     try:
+        # Create application state instance
+        app_state_local = ApplicationState()
+
         # Initialize configuration
         config = TradingConfig(
             api_key=os.getenv('COINBASE_API_KEY', ''),
@@ -111,7 +113,7 @@ async def startup_event():
         # Initialize vector database and ML services
         logger.info("🚀 Starting vector database and ML services...")
         vector_db_service = get_vector_db_service()
-        app_state.vector_db_service = vector_db_service
+        app_state_local.vector_db_service = vector_db_service
 
         # Start vector database services
         if await vector_db_service.start_services():
@@ -142,11 +144,11 @@ async def startup_event():
 
             except Exception as e:
                 logger.error(f"❌ Failed to initialize ML optimizer: {e}")
-                app_state.ml_optimizer = None
+                app_state_local.ml_optimizer = None
         else:
             logger.error("❌ Failed to start vector database services")
-            app_state.vector_db_service = None
-            app_state.ml_optimizer = None
+            app_state_local.vector_db_service = None
+            app_state_local.ml_optimizer = None
 
         # Initialize core components
         data_provider = CoinbaseDataProvider(config)
@@ -193,6 +195,9 @@ async def startup_event():
 
         # Mark application as initialized
         app_state.set_initialized(True)
+
+        # Set the global app_state reference so routes can access it
+        set_app_state(app_state)
 
         # Start WebSocket client
         # Note: WebSocket client will be started when needed
