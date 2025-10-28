@@ -50,7 +50,7 @@ class DataHandlers:
             
             # Also check if async trading is active
             if not trading_active and self.trading_state:
-                async_trading_active = self.trading_state.get("is_trading", False)
+                async_trading_active = self.trading_state.is_trading
                 if async_trading_active:
                     trading_active = True
                     logger.info("Async trading is active, enabling order book signals")
