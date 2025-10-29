@@ -410,6 +410,14 @@ class EnhancedTradingDashboard {
         } else if (tabName === 'ml-analytics') {
             this.loadMLAlyticsData();
         }
+
+        // Ensure the tab content is visible after switching
+        const tabContent = document.getElementById(`${tabName}-content`);
+        if (tabContent && tabContent.classList.contains('hidden')) {
+            console.log(`Tab switching: forcing visibility for ${tabName}`);
+            tabContent.classList.remove('hidden');
+        }
+    }
     }
 
     // Cleanup method
