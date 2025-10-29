@@ -142,6 +142,10 @@ class WebSocketManager:
                         'channel': channel,
                         'product_id': product_id
                     }))
+            elif msg_type == 'request_trading_status':
+                # Handle trading status request from frontend
+                logger.info("Received request for current trading status from frontend")
+                await self._handle_trading_status_request(websocket)
             else:
                 logger.warning(f"Unknown message type: {msg_type}")
 
@@ -415,3 +419,71 @@ class WebSocketManager:
     def get_active_channels(self) -> List[str]:
         """Get list of active channels."""
         return list(self.subscriptions.keys())
+
+    async def _handle_trading_status_request(self, websocket: WebSocket):
+        """Handle trading status request from frontend client."""
+        try:
+            # If we have a simulated trading manager, get its current status
+            if self.simulated_trading:
+                await self.simulated_trading._broadcast_current_trading_status()
+            else:
+                # If no trading manager, try to get it from the app state
+                try:
+                    from ..web_components import get_app_state
+                    app_state = get_app_state()
+                    if app_state and hasattr(app_state, 'trading_handlers'):
+                        await app_state.trading_handlers._broadcast_current_trading_status()
+                    else:
+                        logger.warning("No trading handlers available to broadcast status")
+                        await websocket.send_text(json.dumps({
+                            "type": "trading_statistics_update",
+                            "data": {
+                                "is_trading": False,
+                                "symbols": [],
+                                "portfolio": {
+                                    "cash_balance": 0,
+                                    "total_value": 0,
+                                    "positions": {},
+                                    "trades": [],
+                                    "total_pnl": 0,
+                                    "total_fees": 0,
+                                    "max_drawdown": 0.0,
+                                    "win_rate": 0.0,
+                                    "total_trades": 0
+                                },
+                                "open_positions": [],
+                                "recent_trades": []
+                            }
+                        }))
+                except Exception as e:
+                    logger.error(f"Error accessing app state for trading status: {e}")
+                    await websocket.send_text(json.dumps({
+                        "type": "trading_statistics_update",
+                        "data": {
+                            "is_trading": False,
+                            "symbols": [],
+                            "portfolio": {
+                                "cash_balance": 0,
+                                "total_value": 0,
+                                "positions": {},
+                                "trades": [],
+                                "total_pnl": 0,
+                                "total_fees": 0,
+                                "max_drawdown": 0.0,
+                                "win_rate": 0.0,
+                                "total_trades": 0
+                            },
+                            "open_positions": [],
+                            "recent_trades": []
+                        }
+                    }))
+
+        except Exception as e:
+            logger.error(f"Error handling trading status request: {e}")
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Failed to get trading status"
+                }))
+            except Exception as send_error:
+                logger.error(f"Error sending error message: {send_error}")

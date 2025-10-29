@@ -41,33 +41,57 @@ export class RealTimeData {
     connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
-        
+
+        if (this.ws) {
+            this.ws.close();
+        }
+
+        console.log('🔌 Connecting to WebSocket:', wsUrl);
         this.ws = new WebSocket(wsUrl);
-        
+
         this.ws.onopen = () => {
-            console.log('WebSocket connected');
+            console.log('✅ WebSocket connected successfully');
             this.isConnected = true;
             this.updateConnectionStatus(true);
+
+            // Immediately request current trading status once connected
+            this.requestCurrentTradingStatus();
         };
-        
+
         this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.handleWebSocketMessage(data);
+            try {
+                const data = JSON.parse(event.data);
+                console.log('📡 WebSocket message received:', data.type);
+                this.handleWebSocketMessage(data);
+            } catch (error) {
+                console.error('❌ Error parsing WebSocket message:', error);
+            }
         };
-        
-        this.ws.onclose = () => {
-            console.log('WebSocket disconnected');
+
+        this.ws.onclose = (event) => {
+            console.log('🔌 WebSocket disconnected, code:', event.code, 'reason:', event.reason);
             this.isConnected = false;
             this.updateConnectionStatus(false);
-            // Reconnect after 5 seconds
-            setTimeout(() => this.connectWebSocket(), 5000);
+            // Reconnect after 3 seconds with exponential backoff
+            this.reconnectDelay = Math.min((this.reconnectDelay || 3000) * 1.5, 30000);
+            setTimeout(() => this.connectWebSocket(), this.reconnectDelay);
         };
-        
+
         this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
+            console.error('🔌 WebSocket error:', error);
             this.isConnected = false;
             this.updateConnectionStatus(false);
         };
+    }
+
+    requestCurrentTradingStatus() {
+        // Send a request for current trading status via WebSocket
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'request_trading_status',
+                message: 'Requesting current trading status'
+            }));
+        }
     }
 
     handleWebSocketMessage(data) {
