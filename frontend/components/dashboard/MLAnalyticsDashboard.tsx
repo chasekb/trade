@@ -1,0 +1,328 @@
+import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { DashboardGrid } from '@/components/layout/DashboardGrid';
+import { cn } from '@/lib/utils';
+import { useMLAnalytics } from '@/hooks/useMLAnalytics';
+import { useModelTraining } from '@/hooks/useModelTraining';
+
+interface ModelStatusCardProps {
+  status: import('@/types/trading').MLModelStatus;
+}
+
+function ModelStatusCard({ status }: ModelStatusCardProps) {
+  const isTrained = status.is_trained;
+  const dotClass = isTrained ? 'bg-green-500' : 'bg-red-500';
+  const statusText = isTrained ? 'Model Trained' : 'Model Not Trained';
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${dotClass} animate-pulse`}></div>
+          Model Status
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <p className={cn(
+            'font-medium',
+            isTrained ? 'text-green-700' : 'text-red-700'
+          )}>
+            {statusText}
+          </p>
+
+          {isTrained && status.current_model && (
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p><strong>Name:</strong> {status.current_model.model_name}</p>
+              <p><strong>Version:</strong> {status.current_model.version_id}</p>
+              {status.last_training_time && (
+                <p><strong>Last Trained:</strong> {new Date(status.last_training_time).toLocaleString()}</p>
+              )}
+            </div>
+          )}
+
+          {status.error && (
+            <p className="text-red-600 text-sm">{status.error}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface PerformanceMetricsProps {
+  metrics: import('@/types/trading').MLPerformanceMetrics;
+}
+
+function PerformanceMetricsCard({ metrics }: PerformanceMetricsProps) {
+  if (metrics.error) {
+    return (
+      <Card className="border-red-200">
+        <CardHeader>
+          <CardTitle>Performance Metrics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-red-600">{metrics.error}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Performance Metrics</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-muted-foreground">R² Score</p>
+              <p className="text-lg font-semibold">
+                {metrics.r2 !== undefined ? metrics.r2.toFixed(4) : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">RMSE</p>
+              <p className="text-lg font-semibold">
+                {metrics.rmse !== undefined ? metrics.rmse.toFixed(4) : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">MAE</p>
+              <p className="text-lg font-semibold">
+                {metrics.mae !== undefined ? metrics.mae.toFixed(4) : 'N/A'}
+              </p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-muted-foreground">Profit Factor</p>
+              <p className="text-lg font-semibold">
+                {metrics.profit_factor !== undefined ? metrics.profit_factor.toFixed(2) : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Sharpe Ratio</p>
+              <p className="text-lg font-semibold">
+                {metrics.sharpe_ratio !== undefined ? metrics.sharpe_ratio.toFixed(2) : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Win Rate</p>
+              <p className="text-lg font-semibold">
+                {metrics.win_rate !== undefined ? `${(metrics.win_rate * 100).toFixed(1)}%` : 'N/A'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface FeatureImportanceChartProps {
+  features: Record<string, number>;
+}
+
+function FeatureImportanceChart({ features }: FeatureImportanceChartProps) {
+  // Sort features by importance and take top 10
+  const sortedFeatures = Object.entries(features)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 10);
+
+  if (sortedFeatures.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Feature Importance</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">No feature importance data available</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const maxValue = Math.max(...sortedFeatures.map(([, value]) => value));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Top 10 Feature Importance</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {sortedFeatures.map(([feature, importance]) => {
+            const percentage = (importance / maxValue) * 100;
+            return (
+              <div key={feature} className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" title={feature}>
+                    {feature}
+                  </p>
+                </div>
+                <div className="flex-1 max-w-[120px]">
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full"
+                      style={{ width: `${percentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="text-right min-w-[60px]">
+                  <span className="text-sm font-mono">
+                    {importance.toFixed(3)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ModelControls() {
+  const { trainModel, isTraining, updateModel, isUpdating, rollbackModel, isRollingBack } = useModelTraining();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Model Controls</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button
+            onClick={() => trainModel()}
+            disabled={isTraining}
+            className="flex-1"
+            variant="primary"
+          >
+            {isTraining ? 'Training...' : 'Train Model'}
+          </Button>
+
+          <Button
+            onClick={() => updateModel()}
+            disabled={isUpdating}
+            className="flex-1"
+            variant="secondary"
+          >
+            {isUpdating ? 'Updating...' : 'Update Model'}
+          </Button>
+
+          <Button
+            onClick={() => rollbackModel()}
+            disabled={isRollingBack}
+            className="flex-1"
+            variant="outline"
+          >
+            {isRollingBack ? 'Rolling Back...' : 'Rollback'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface MLAnalyticsDashboardProps {
+  className?: string;
+}
+
+export default function MLAnalyticsDashboard({ className }: MLAnalyticsDashboardProps) {
+  const { mlData, isLoading, error } = useMLAnalytics();
+
+  if (error) {
+    return (
+      <Card className="border-red-200 bg-red-50">
+        <CardContent className="p-6">
+          <div className="text-center">
+            <p className="text-red-800 font-medium">Failed to load ML analytics</p>
+            <p className="text-red-600 text-sm mt-1">{error.message}</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isLoading || !mlData) {
+    return <MLAnalyticsSkeleton />;
+  }
+
+  return (
+    <div className={cn('space-y-6', className)}>
+      <div className="flex items-center gap-2 mb-6">
+        <span className="text-2xl">🤖</span>
+        <h2 className="text-2xl font-bold">ML Trading Optimization</h2>
+      </div>
+
+      <DashboardGrid>
+        <ModelStatusCard status={mlData.status} />
+        <PerformanceMetricsCard metrics={mlData.performance} />
+      </DashboardGrid>
+
+      <DashboardGrid className="grid-cols-1 lg:grid-cols-2">
+        <FeatureImportanceChart features={mlData.feature_importance} />
+        <ModelControls />
+      </DashboardGrid>
+    </div>
+  );
+}
+
+function MLAnalyticsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="w-8 h-8 bg-gray-200 rounded animate-pulse"></div>
+        <div className="w-64 h-8 bg-gray-200 rounded animate-pulse"></div>
+      </div>
+
+      <DashboardGrid>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i} className="animate-pulse">
+            <CardContent className="p-6">
+              <div className="space-y-3">
+                <div className="h-6 bg-gray-200 rounded w-32"></div>
+                <div className="h-4 bg-gray-200 rounded w-48"></div>
+                <div className="space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-36"></div>
+                  <div className="h-4 bg-gray-200 rounded w-40"></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </DashboardGrid>
+
+      <DashboardGrid className="grid-cols-1 lg:grid-cols-2">
+        <Card className="animate-pulse">
+          <CardContent className="p-6">
+            <div className="h-6 bg-gray-200 rounded w-40 mb-4"></div>
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="flex-1 h-4 bg-gray-200 rounded"></div>
+                  <div className="flex-1 h-4 bg-gray-200 rounded"></div>
+                  <div className="w-16 h-4 bg-gray-200 rounded"></div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="animate-pulse">
+          <CardContent className="p-6">
+            <div className="h-6 bg-gray-200 rounded w-32 mb-4"></div>
+            <div className="flex gap-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex-1 h-10 bg-gray-200 rounded"></div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </DashboardGrid>
+    </div>
+  );
+}
