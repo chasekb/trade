@@ -552,6 +552,13 @@ class TradingHandlers:
     async def _broadcast_trading_start_to_frontend(self) -> None:
         """Broadcast initial trading state to frontend widgets after starting trading."""
         try:
+            await self._broadcast_current_trading_status()
+        except Exception as e:
+            logger.error(f"Error broadcasting initial trading state to frontend: {e}")
+
+    async def _broadcast_current_trading_status(self) -> None:
+        """Broadcast current trading status to all connected frontend clients."""
+        try:
             # Get current trading status data
             portfolio = self.simulated_trading_manager.get_portfolio_summary()
             open_positions = self.simulated_trading_manager.get_open_positions()
@@ -576,94 +583,42 @@ class TradingHandlers:
                 "trading_started_at": self.simulated_trading_manager.last_signal_check.isoformat() if self.simulated_trading_manager.last_signal_check else None
             }
 
-            # Prepare signals data (initial empty/hold signals for each symbol)
-            signals_data = {
-                "signals": [
-                    {
-                        "symbol": symbol,
-                        "signal": "hold",
-                        "signal_type": "hold",
-                        "signal_strength": 0.0,
-                        "strength": 0.0,
-                        "price": 0.0,
-                        "timestamp": self.simulated_trading_manager.last_signal_check.isoformat() if self.simulated_trading_manager.last_signal_check else None,
-                        "reason": "Initializing trading session",
-                        "signal_reason": "Initializing trading session",
-                        "data_status": "initializing",
-                        "spread": 0.0,
-                        "volume": 0.0,
-                        "signal_generated": False,
-                        "criteria_analysis": {
-                            "bid_ask_squeeze": {
-                                "enabled": True,
-                                "meets_criteria": False,
-                                "delta_to_threshold": 0,
-                                "analysis": "Trading session starting",
-                                "threshold": 0.1,
-                                "current_value": 0
-                            },
-                            "volume_imbalance_buy": {
-                                "enabled": True,
-                                "meets_criteria": False,
-                                "delta_to_threshold": 0,
-                                "analysis": "Trading session starting",
-                                "threshold": 0.1,
-                                "current_value": 0,
-                                "bid_volume": 0,
-                                "ask_volume": 0
-                            },
-                            "volume_imbalance_sell": {
-                                "enabled": True,
-                                "meets_criteria": False,
-                                "delta_to_threshold": 0,
-                                "analysis": "Trading session starting",
-                                "threshold": 0.1,
-                                "current_value": 0,
-                                "bid_volume": 0,
-                                "ask_volume": 0
-                            },
-                            "large_trade_buy": {
-                                "enabled": True,
-                                "meets_criteria": False,
-                                "delta_to_threshold": 0,
-                                "analysis": "Trading session starting",
-                                "threshold": 10000,
-                                "current_value": 0,
-                                "large_trades_count": 0
-                            },
-                            "large_trade_sell": {
-                                "enabled": True,
-                                "meets_criteria": False,
-                                "delta_to_threshold": 0,
-                                "analysis": "Trading session starting",
-                                "threshold": 10000,
-                                "current_value": 0,
-                                "large_trades_count": 0
-                            }
-                        }
-                    }
-                    for symbol in self.simulated_trading_manager.symbols_to_trade
-                ],
-                "trading_active": True,
-                "message": "Trading session initialized successfully",
-                "total_analyzed": self.simulated_trading_manager.get_total_signals_processed(),
-                "active_signals": 0,
-                "average_strength": 0.0,
-                "last_updated": self.simulated_trading_manager.last_signal_check.isoformat() if self.simulated_trading_manager.last_signal_check else None,
-                "pagination": {
-                    "current_page": 1,
-                    "per_page": 1000,
-                    "total_signals": len(self.simulated_trading_manager.symbols_to_trade),
-                    "total_pages": 1,
-                    "has_next": False,
-                    "has_prev": False
-                }
-            }
+            # Prepare signals data (use actual signals if available, otherwise default)
+            try:
+                # Try to get live signals data
+                from ..data_handlers import DataHandlers
+                # Create a data handler instance to get signals
+                data_handler = DataHandlers(
+                    config=self.config,
+                    data_provider=None,
+                    cached_data_provider=None,
+                    database_manager=self.database_manager,
+                    simulated_trading_manager=self.simulated_trading_manager,
+                    trading_handlers=self,
+                    trading_state=None
+                )
+
+                if self.simulated_trading_manager.symbols_to_trade:
+                    symbols_str = ','.join(self.simulated_trading_manager.symbols_to_trade)
+                    signals_response = await data_handler.get_live_orderbook_signals(symbols_str)
+
+                    if signals_response and signals_response.get('signals'):
+                        signals_data = signals_response
+                        signals_data["trading_active"] = True
+                    else:
+                        # Fallback to default signals
+                        signals_data = self._create_default_signals_data()
+                else:
+                    signals_data = self._create_default_signals_data()
+
+            except Exception as signals_error:
+                logger.warning(f"Could not get live signals data: {signals_error}")
+                signals_data = self._create_default_signals_data()
 
             # Import the websocket manager to broadcast to frontend
             from ..web_components.websocket_manager import WebSocketManager
 
-            # Broadcast trading statistics update to frontend
+            # Broadcast trading statistics update to frontend widgets
             websocket_manager = getattr(self.simulated_trading_manager, '_websocket_manager', None)
             if websocket_manager:
                 await websocket_manager.broadcast(json.dumps({
@@ -671,18 +626,103 @@ class TradingHandlers:
                     "data": trading_data
                 }))
 
-                # Broadcast initial signals update to frontend
+                # Broadcast signals update to frontend
                 await websocket_manager.broadcast(json.dumps({
                     "type": "orderbook_signals_update",
                     "data": signals_data
                 }))
 
-                logger.debug("Broadcasted initial trading state to frontend widgets")
+                logger.debug("Broadcasted current trading state to frontend widgets")
             else:
-                logger.warning("WebSocket manager not available for broadcasting trading start")
+                logger.warning("WebSocket manager not available for broadcasting trading status")
 
         except Exception as e:
-            logger.error(f"Error broadcasting initial trading state to frontend: {e}")
+            logger.error(f"Error broadcasting current trading state to frontend: {e}")
+
+    def _create_default_signals_data(self):
+        """Create default signals data for when live signals are not available."""
+        return {
+            "signals": [
+                {
+                    "symbol": symbol,
+                    "signal": "hold",
+                    "signal_type": "hold",
+                    "signal_strength": 0.0,
+                    "strength": 0.0,
+                    "price": 0.0,
+                    "timestamp": None,
+                    "reason": "Trading session starting",
+                    "signal_reason": "Trading session starting",
+                    "data_status": "initializing",
+                    "spread": 0.0,
+                    "volume": 0.0,
+                    "signal_generated": False,
+                    "criteria_analysis": {
+                        "bid_ask_squeeze": {
+                            "enabled": True,
+                            "meets_criteria": False,
+                            "delta_to_threshold": 0,
+                            "analysis": "Trading session starting",
+                            "threshold": 0.1,
+                            "current_value": 0
+                        },
+                        "volume_imbalance_buy": {
+                            "enabled": True,
+                            "meets_criteria": False,
+                            "delta_to_threshold": 0,
+                            "analysis": "Trading session starting",
+                            "threshold": 0.1,
+                            "current_value": 0,
+                            "bid_volume": 0,
+                            "ask_volume": 0
+                        },
+                        "volume_imbalance_sell": {
+                            "enabled": True,
+                            "meets_criteria": False,
+                            "delta_to_threshold": 0,
+                            "analysis": "Trading session starting",
+                            "threshold": 0.1,
+                            "current_value": 0,
+                            "bid_volume": 0,
+                            "ask_volume": 0
+                        },
+                        "large_trade_buy": {
+                            "enabled": True,
+                            "meets_criteria": False,
+                            "delta_to_threshold": 0,
+                            "analysis": "Trading session starting",
+                            "threshold": 10000,
+                            "current_value": 0,
+                            "large_trades_count": 0
+                        },
+                        "large_trade_sell": {
+                            "enabled": True,
+                            "meets_criteria": False,
+                            "delta_to_threshold": 0,
+                            "analysis": "Trading session starting",
+                            "threshold": 10000,
+                            "current_value": 0,
+                            "large_trades_count": 0
+                        }
+                    }
+                }
+                for symbol in (self.simulated_trading_manager.symbols_to_trade or [])
+            ],
+            "trading_active": True,
+            "message": "Trading session status requested",
+            "total_analyzed": self.simulated_trading_manager.get_total_signals_processed() if hasattr(self.simulated_trading_manager, 'get_total_signals_processed') else 0,
+            "active_signals": 0,
+            "average_strength": 0.0,
+            "last_updated": None,
+            "pagination": {
+                "current_page": 1,
+                "per_page": 1000,
+                "total_signals": len(self.simulated_trading_manager.symbols_to_trade or []),
+                "total_pages": 1,
+                "has_next": False,
+                "has_prev": False
+            }
+        }
 
     async def _broadcast_trading_update_to_frontend(self, signals_result: Dict[str, Any] = None) -> None:
         """Broadcast trading updates to frontend widgets."""
