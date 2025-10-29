@@ -7,3 +7,5 @@ export type { CardProps, CardHeaderProps, CardTitleProps, CardContentProps } fro
 
 export { Input } from './Input';
 export type { InputProps } from './Input';
+
+export { DataTable } from './DataTable';
