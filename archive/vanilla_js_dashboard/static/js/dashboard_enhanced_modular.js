@@ -418,7 +418,6 @@ class EnhancedTradingDashboard {
             tabContent.classList.remove('hidden');
         }
     }
-    }
 
     // Cleanup method
     destroy() {

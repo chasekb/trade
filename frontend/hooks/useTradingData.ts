@@ -26,16 +26,16 @@ export function useTradingStats() {
         if ((response.data as any).portfolio) {
           // Convert portfolio data to stats
           const portfolio = (response.data as any).portfolio;
-          const trades = portfolio.trades || [];
-          const totalTrades = trades.length;
-          const totalPnl = portfolio.total_pnl || 0;
-          const winningTrades = trades.filter((t: any) => (t.pnl || 0) > 0).length;
-          const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+          const trades = (response.data as any).recent_trades || portfolio.trades || [];
+          const totalTrades = portfolio.total_trades || trades.length || 0;
+          const totalPnl = portfolio.total_pnl || portfolio.net_pnl || 0;
+          const winRate = portfolio.win_rate || (totalTrades > 0 ? (portfolio.winning_trades || 0) / totalTrades * 100 : 0);
+          const winningTrades = portfolio.winning_trades || (trades.filter((t: any) => (t.pnl || 0) > 0).length);
 
           const result: TradingStats = {
             total_pnl: totalPnl,
             total_fees: portfolio.total_fees || 0,
-            net_pnl: totalPnl - (portfolio.total_fees || 0),
+            net_pnl: portfolio.net_pnl || (totalPnl - (portfolio.total_fees || 0)),
             win_rate: winRate,
             total_trades: totalTrades,
             winning_trades: winningTrades,

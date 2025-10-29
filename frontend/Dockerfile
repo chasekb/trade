@@ -1,5 +1,5 @@
-# Use the official Node.js runtime as the base image
-FROM node:18-alpine AS base
+# Use the official Node.js runtime as the base image (Node.js 20 for Next.js 16 compatibility)
+FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -10,15 +10,30 @@ WORKDIR /app
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
 RUN \
-  if [ -f package-lock.json ]; then npm ci --only=production; \
+  if [ -f package-lock.json ]; then npm ci; \
   else echo "Lockfile not found." && exit 1; \
   fi
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+
+# Install all dependencies in builder stage
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source code, excluding node_modules and other heavy directories
+COPY next.config.ts* ./
+COPY postcss.config.mjs* ./
+COPY tsconfig.json* ./
+COPY jest.config.js* ./
+COPY eslint.config.mjs* ./
+COPY public ./public
+COPY app ./app
+COPY components ./components
+COPY hooks ./hooks
+COPY lib ./lib
+COPY types ./types
 
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry

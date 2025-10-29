@@ -13,6 +13,20 @@ const nextConfig: NextConfig = {
     serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate'],
   },
 
+  // Proxy API routes to backend
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://backend:8000/api/:path*' // Use internal docker network
+      },
+      {
+        source: '/ws',
+        destination: 'http://backend:8000/ws' // WebSocket proxy
+      }
+    ];
+  },
+
   webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
     // Bundle analyzer for production builds
     if (!dev && process.env.ANALYZE === 'true') {
