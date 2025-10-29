@@ -1,8 +1,11 @@
 """WebSocket Routes for Trading Dashboard."""
 
+import logging
 from fastapi import APIRouter, HTTPException, WebSocket
 from ..models import SubscriptionRequest
 from ..web_components import app_state
+
+logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter()

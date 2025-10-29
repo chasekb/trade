@@ -4,7 +4,7 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse, Response
 
-from ..web_components import RateLimiter, app_state
+from ..web_components import RateLimiter, app_state, get_app_state
 
 # Create router
 router = APIRouter()
@@ -28,6 +28,7 @@ async def get_dashboard(request: Request):
     if use_modular:
         return FileResponse("static/dashboard_enhanced_modular.html")
     else:
+        app_state = get_app_state()
         check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
         return await app_state.dashboard_handlers.get_dashboard(request)
 
@@ -54,6 +55,7 @@ async def get_modular_dashboard_alt():
 @router.get("/legacy", response_class=HTMLResponse)
 async def get_legacy_dashboard(request: Request):
     """Serve the legacy enhanced dashboard page."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
     return await app_state.dashboard_handlers.get_dashboard(request)
 
@@ -66,12 +68,14 @@ async def favicon():
 @router.get("/api/real-time-data")
 async def get_real_time_data(product_id: str = None):
     """Get real-time market data."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
     return await app_state.dashboard_handlers.get_real_time_data(product_id)
 
 @router.get("/api/historical-data")
 async def get_historical_data(product_id: str, start_time: str = None, end_time: str = None, granularity: int = 3600, days: int = 7):
     """Get historical market data."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
 
     # If start_time and end_time are not provided, calculate from days
@@ -88,18 +92,21 @@ async def get_historical_data(product_id: str, start_time: str = None, end_time:
 @router.get("/api/symbols")
 async def get_available_symbols():
     """Get available trading symbols."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.api_handlers", app_state.api_handlers)
     return await app_state.api_handlers.get_available_symbols()
 
 @router.get("/api/products")
 async def get_available_products():
     """Get available products for trading."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.api_handlers", app_state.api_handlers)
     return await app_state.api_handlers.get_available_products()
 
 @router.get("/api/channels")
 async def get_available_channels():
     """Get available WebSocket channels."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.api_handlers", app_state.api_handlers)
     return await app_state.api_handlers.get_available_channels()
 
@@ -107,6 +114,7 @@ async def get_available_channels():
 @router.get("/api/health")
 async def health_check():
     """Health check endpoint."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.api_handlers", app_state.api_handlers)
     return await app_state.api_handlers.health_check()
 
@@ -114,17 +122,20 @@ async def health_check():
 @router.get("/api/subscriptions")
 async def get_subscriptions_alt():
     """Alternative endpoint for subscriptions."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.get_subscriptions()
 
 @router.get("/api/realtime-status")
 async def get_realtime_status_alt():
     """Alternative endpoint for realtime status."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.websocket_handlers", app_state.websocket_handlers)
     return await app_state.websocket_handlers.get_realtime_status()
 
 @router.get("/api/data-summary")
 async def get_data_summary_alt():
     """Alternative endpoint for data summary statistics."""
+    app_state = get_app_state()
     check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
     return await app_state.dashboard_handlers.get_data_summary()
