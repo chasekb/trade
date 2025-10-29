@@ -34,7 +34,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    command: ["python", "main.py", "web"]
+    command: ["python", "app.py"]
 
   # Frontend Service (Next.js TypeScript)
   frontend:
