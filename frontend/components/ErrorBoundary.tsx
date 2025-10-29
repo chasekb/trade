@@ -23,7 +23,7 @@ export class ErrorBoundary extends React.Component<
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
+    return { hasError: true, error, errorInfo: undefined };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -107,7 +107,7 @@ export function withErrorBoundary<P extends object>(
   fallback?: React.ComponentType<{ error: Error; retry: () => void }>
 ) {
   const WrappedComponent = (props: P) => (
-    <ErrorBoundary fallback={fallback}>
+    <ErrorBoundary {...(fallback && { fallback })}>
       <Component {...props} />
     </ErrorBoundary>
   );
