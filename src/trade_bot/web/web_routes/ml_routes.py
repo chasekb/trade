@@ -5,18 +5,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 import os
 
-# Import ML handler
-from ..web_handlers.ml_handler import ml_router
-
-# Create router for ML dashboard pages
-page_router = APIRouter()
+# Create main router for ML dashboard pages
+router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-# Include the API ML router
-ml_router = ml_router
 
-
-@page_router.get("/ml-dashboard", response_class=HTMLResponse)
+@router.get("/ml-dashboard", response_class=HTMLResponse)
 async def get_ml_dashboard(request: Request):
     """Serve the ML monitoring dashboard page."""
     try:
@@ -35,7 +29,7 @@ async def get_ml_dashboard(request: Request):
         """, status_code=500)
 
 
-@page_router.get("/ml-analytics", response_class=HTMLResponse)
+@router.get("/ml-analytics", response_class=HTMLResponse)
 async def get_ml_analytics(request: Request):
     """Serve the ML analytics dashboard (alias for backward compatibility)."""
     return await get_ml_dashboard(request)
