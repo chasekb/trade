@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Chart as ChartJS,
   ChartData,
@@ -14,6 +14,7 @@ import {
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { BaseChart } from './BaseChart';
+import { usePriceData, useRealTimePriceData } from '@/hooks/usePriceData';
 
 // Register necessary Chart.js components for line charts
 ChartJS.register(
@@ -185,7 +186,7 @@ export function PriceChart({
       options={chartOptions}
       height={height}
       width={width}
-      className={className}
+      {...(className && { className })}
     />
   );
 }
