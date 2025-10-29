@@ -353,8 +353,14 @@
                     <button id="orderbook-signals-tab" style="display: none;" class="tab-button border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 text-sm font-medium">
                         <i class="fas fa-signal mr-2"></i>Order Book Signals
                     </button>
+                    <button id="positions-tab" class="tab-button border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 text-sm font-medium">
+                        <i class="fas fa-wallet mr-2"></i>Positions
+                    </button>
                     <button id="backtest-history-tab" class="tab-button border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 text-sm font-medium">
                         <i class="fas fa-chart-bar mr-2"></i>Backtesting
+                    </button>
+                    <button id="ml-analytics-tab" class="tab-button border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 text-sm font-medium">
+                        <i class="fas fa-brain mr-2"></i>ML Analytics
                     </button>
                 </nav>
             </div>
@@ -541,7 +547,29 @@
                 </div>
             </div>
 
-            
+            <!-- Simulated Trading Stats -->
+            <div class="card-enhanced p-6 mb-8">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Simulated Trading Statistics</h3>
+                    <button id="refresh-simulated-stats" class="btn-primary">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">Simulated P&L</p>
+                        <p id="sim-total-pnl" class="text-xl font-bold text-gray-900">$0.00</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">Simulated Win Rate</p>
+                        <p id="sim-win-rate" class="text-xl font-bold text-gray-900">0%</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">Simulated Trades</p>
+                        <p id="sim-total-trades" class="text-xl font-bold text-gray-900">0</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Live Trading Tab Content -->
@@ -596,39 +624,38 @@
 
                 <!-- Universe Configuration -->
                 <div id="universe-config" class="mb-6" style="display: none;">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Universe Type</label>
-                            <select id="universe-type" class="form-select w-full">
-                                <option value="all_products">All Products (468 symbols) - Complete List</option>
-                                <option value="all_usd">All USD Pairs (324 symbols) - Recommended</option>
-                                <option value="all_eur">All EUR Pairs (40 symbols)</option>
-                                <option value="all_usdt">All USDT Pairs (35 symbols)</option>
-                                <option value="all_btc">All BTC Pairs (30 symbols)</option>
-                                <option value="major">Major Pairs (7 symbols)</option>
-                                <option value="minor">Minor Pairs (21 symbols)</option>
-                                <option value="crypto">Cryptocurrency (35 symbols)</option>
-                                <option value="custom">Custom</option>
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
-                            <select id="universe-strategy-type" class="form-select w-full">
-                                <option value="orderbook">Order Book Analysis</option>
-                                <option value="sma">Simple Moving Average</option>
-                                <option value="ema">Exponential Moving Average</option>
-                                <option value="rsi">RSI</option>
-                                <option value="bollinger">Bollinger Bands</option>
-                                <option value="macd">MACD</option>
-                                <option value="stochastic">Stochastic</option>
-                                <option value="fibonacci">Fibonacci</option>
-                                <option value="atr">ATR</option>
-                                <option value="dca">DCA</option>
-                                <option value="buy_and_hold">Buy and Hold</option>
-                                <option value="ml_signal">ML Signal</option>
-                            </select>
-                        </div>
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Universe Type</label>
+                        <select id="universe-type" class="form-select w-full">
+                            <option value="all_products">All Products (468 symbols) - Complete List</option>
+                            <option value="all_usd">All USD Pairs (324 symbols) - Recommended</option>
+                            <option value="all_eur">All EUR Pairs (40 symbols)</option>
+                            <option value="all_usdt">All USDT Pairs (35 symbols)</option>
+                            <option value="all_btc">All BTC Pairs (30 symbols)</option>
+                            <option value="major">Major Pairs (7 symbols)</option>
+                            <option value="minor">Minor Pairs (21 symbols)</option>
+                            <option value="crypto">Cryptocurrency (35 symbols)</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <!-- Strategy Selection -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
+                        <select id="live-strategy-type" class="form-select w-full">
+                            <option value="orderbook">Order Book Analysis</option>
+                            <option value="sma">Simple Moving Average</option>
+                            <option value="ema">Exponential Moving Average</option>
+                            <option value="rsi">RSI</option>
+                            <option value="bollinger">Bollinger Bands</option>
+                            <option value="macd">MACD</option>
+                            <option value="stochastic">Stochastic</option>
+                            <option value="fibonacci">Fibonacci</option>
+                            <option value="atr">ATR</option>
+                            <option value="dca">DCA</option>
+                            <option value="buy_and_hold">Buy and Hold</option>
+                            <option value="ml_signal">ML Signal</option>
+                        </select>
                     </div>
 
                     <!-- Universe Parameters -->
@@ -668,17 +695,6 @@
                     </div>
                 </div>
 
-                <!-- Strategy Selection -->
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Strategy Type</label>
-                    <select id="live-strategy-type" class="form-select w-full">
-                        <option value="orderbook">Order Book Analysis</option>
-                        <option value="sma">Simple Moving Average</option>
-                        <option value="ema">Exponential Moving Average</option>
-                        <option value="rsi">RSI</option>
-                    </select>
-                </div>
-
                 <!-- Strategy Parameters -->
                 <div id="live-strategy-params" class="mb-6">
                     <!-- Parameters will be loaded dynamically -->
@@ -702,8 +718,8 @@
                 </button>
             </div>
 
-            <!-- Live Trading Statistics Section (visible in live mode) -->
-            <div id="live-trading-stats-section" class="card-enhanced p-6 mb-6">
+            <!-- Live Trading Statistics Section -->
+            <div class="card-enhanced p-6 mb-6">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-semibold text-gray-900">Live Trading Statistics</h3>
                     <button id="refresh-live-trading-stats" class="btn-primary">
@@ -820,206 +836,6 @@
                 </div>
             </div>
 
-            <!-- Simulated Trading Statistics Section (visible in simulated mode) -->
-            <div id="simulated-trading-stats-section" class="card-enhanced p-6 mb-8" style="display: none;">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Simulated Trading Statistics</h3>
-                    <button id="refresh-simulated-stats" class="btn-primary">
-                        <i class="fas fa-sync-alt mr-1"></i>Refresh
-                    </button>
-                </div>
-
-                <!-- Simulated Trading Summary Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                    <!-- Net P&L Card -->
-                    <div class="card-enhanced p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-dollar-sign text-2xl text-green-500"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-500">Simulated P&L</p>
-                                <p id="sim-total-pnl" class="text-2xl font-bold text-gray-900">$0.00</p>
-                                <p id="sim-pnl-change" class="text-sm text-gray-500">+$0.00</p>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Win Rate Card -->
-                    <div class="card-enhanced p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-percentage text-2xl text-blue-500"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-500">Simulated Win Rate</p>
-                                <p id="sim-win-rate" class="text-2xl font-bold text-gray-900">0%</p>
-                                <p id="sim-win-rate-change" class="text-sm text-gray-500">+0%</p>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Total Trades Card -->
-                    <div class="card-enhanced p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-exchange-alt text-2xl text-purple-500"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-500">Simulated Trades</p>
-                                <p id="sim-total-trades" class="text-2xl font-bold text-gray-900">0</p>
-                                <p id="sim-trades-today" class="text-sm text-gray-500">Today: 0</p>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Positions Value Card -->
-                    <div class="card-enhanced p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-wallet text-2xl text-orange-500"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-500">Positions Value</p>
-                                <p id="sim-positions-value" class="text-2xl font-bold text-gray-900">$0.00</p>
-                                <p class="text-sm text-gray-500">Active Positions</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Portfolio Summary -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                    <div class="card-enhanced p-6">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Balances</h3>
-                        <div class="space-y-4">
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Cash Balance</span>
-                                <span id="sim-cash-balance" class="text-sm font-medium text-gray-900">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Total Value</span>
-                                <span id="sim-total-value" class="text-sm font-medium text-gray-900">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Total Fees</span>
-                                <span id="sim-total-fees" class="text-sm font-medium text-gray-900">$0.00</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-enhanced p-6">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">PnL Breakdown</h3>
-                        <div class="space-y-4">
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Unrealized P&L</span>
-                                <span id="sim-unrealized-pnl" class="text-sm font-medium text-gray-900">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Realized P&L</span>
-                                <span id="sim-realized-pnl" class="text-sm font-medium text-gray-900">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Position Count</span>
-                                <span id="sim-position-count" class="text-sm font-medium text-gray-900">0</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Performance and Risk Metrics -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                    <!-- Performance Metrics Card -->
-                    <div class="card-enhanced p-6">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Performance Metrics</h3>
-                        <div class="space-y-4">
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Average Win</span>
-                                <span id="sim-avg-win" class="text-sm font-medium text-green-600">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Average Loss</span>
-                                <span id="sim-avg-loss" class="text-sm font-medium text-red-600">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Best Trade</span>
-                                <span id="sim-best-trade" class="text-sm font-medium text-green-600">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Worst Trade</span>
-                                <span id="sim-worst-trade" class="text-sm font-medium text-red-600">$0.00</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Risk Metrics Card -->
-                    <div class="card-enhanced p-6">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Risk Metrics</h3>
-                        <div class="space-y-4">
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Profit Factor</span>
-                                <span id="sim-profit-factor" class="text-sm font-medium text-gray-900">0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Sharpe Ratio</span>
-                                <span id="sim-sharpe-ratio" class="text-sm font-medium text-gray-900">0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Max Drawdown</span>
-                                <span id="sim-max-drawdown" class="text-sm font-medium text-red-600">0.00%</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Total Volume</span>
-                                <span id="sim-total-volume" class="text-sm font-medium text-gray-900">$0.00</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Trading Activity -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                    <div class="card-enhanced p-6">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Trading Activity</h3>
-                        <div class="space-y-4">
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Average Trade Size</span>
-                                <span id="sim-avg-trade-size" class="text-sm font-medium text-gray-900">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Active Positions</span>
-                                <span id="sim-active-positions" class="text-sm font-medium text-gray-900">0</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Winning Trades</span>
-                                <span id="sim-winning-trades" class="text-sm font-medium text-gray-900">0</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-sm text-gray-600">Losing Trades</span>
-                                <span id="sim-losing-trades" class="text-sm font-medium text-gray-900">0</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Recent Trades Table -->
-                    <div class="card-enhanced p-6">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Recent Trades</h3>
-                        <div class="data-table">
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead>
-                                    <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Side</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PnL</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="sim-recent-trades-table" class="bg-white divide-y divide-gray-200">
-                                    <!-- Rows injected via JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Order Book Signals Section -->
             <div class="card-enhanced p-6 mb-6">
                 <div class="flex justify-between items-center mb-4">
@@ -1054,7 +870,7 @@
                     <p id="orderbook-message-text" class="text-sm text-blue-800"></p>
                 </div>
 
-                <!-- Live Order Book Pagination Controls -->
+                <!-- Order Book Signals Table -->
                 <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center space-x-2">
                         <label for="live-orderbook-page-size" class="text-sm text-gray-700">Rows:</label>
@@ -1072,7 +888,6 @@
                     </div>
                 </div>
 
-                <!-- Order Book Signals Table -->
                 <div class="data-table">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead>
@@ -1095,53 +910,8 @@
         <div id="trading-history-content" class="tab-content hidden">
             <div class="card-enhanced p-6">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Open Positions</h3>
-                    <div class="flex items-center space-x-4">
-                        <div class="flex items-center space-x-2">
-                            <label for="positions-page-size" class="text-sm text-gray-700">Rows:</label>
-                            <select id="positions-page-size" class="form-select">
-                                <option value="10">10</option>
-                                <option value="25">25</option>
-                                <option value="50" selected>50</option>
-                                <option value="100">100</option>
-                            </select>
-                        </div>
-                        <span id="positions-page-info" class="text-sm text-gray-600">Page 1 of 1</span>
-                        <button id="positions-prev" class="pagination-btn" disabled>Previous</button>
-                        <button id="positions-next" class="pagination-btn">Next</button>
-                    </div>
-                </div>
-                <div class="data-table">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead>
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Price</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unrealized P&L</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Time</th>
-                            </tr>
-                        </thead>
-                        <tbody id="positions-table" class="bg-white divide-y divide-gray-200">
-                            <!-- Data will be loaded dynamically -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="card-enhanced p-6">
-                <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-semibold text-gray-900">Trading History</h3>
                     <div class="flex items-center space-x-4">
-                        <div class="flex items-center space-x-2">
-                            <label for="trading-history-page-size" class="text-sm text-gray-700">Rows:</label>
-                            <select id="trading-history-page-size" class="form-select">
-                                <option value="10">10</option>
-                                <option value="25">25</option>
-                                <option value="50" selected>50</option>
-                                <option value="100">100</option>
-                            </select>
-                        </div>
                         <span id="trading-history-page-info" class="text-sm text-gray-600">Page 1 of 1</span>
                         <button id="trading-history-prev" class="pagination-btn" disabled>Previous</button>
                         <button id="trading-history-next" class="pagination-btn">Next</button>
@@ -1197,7 +967,45 @@
             </div>
         </div>
 
-        
+        <!-- Positions Tab Content -->
+        <div id="positions-content" class="tab-content hidden">
+            <div class="card-enhanced p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Open Positions</h3>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <label for="positions-page-size" class="text-sm text-gray-700">Rows:</label>
+                            <select id="positions-page-size" class="form-select">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
+                        <span id="positions-page-info" class="text-sm text-gray-600">Page 1 of 1</span>
+                        <button id="positions-prev" class="pagination-btn" disabled>Previous</button>
+                        <button id="positions-next" class="pagination-btn">Next</button>
+                    </div>
+                </div>
+                <div class="data-table">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead>
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Price</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unrealized P&L</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="positions-table" class="bg-white divide-y divide-gray-200">
+                            <!-- Data will be loaded dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
         <!-- Backtesting Tab Content -->
         <div id="backtest-history-content" class="tab-content hidden">
@@ -1310,8 +1118,160 @@
                         </tbody>
                     </table>
                 </div>
+        </div>
+
+        <!-- ML Analytics Tab Content -->
+        <div id="ml-analytics-content" class="tab-content hidden">
+            <div class="card-enhanced p-6 mb-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">ML Analytics Dashboard</h3>
+                <p class="text-gray-600 mb-6">Monitor machine learning models, performance metrics, and manage model training.</p>
+
+                <!-- ML Status Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Model Status</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-model-status">Loading...</p>
+                            </div>
+                            <i class="fas fa-brain text-blue-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Last Updated: <span id="ml-model-last-updated">Never</span></span>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Vector Database</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-vector-db-status">Checking...</p>
+                            </div>
+                            <i class="fas fa-database text-green-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Collections: <span id="ml-collection-count">0</span></span>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Feature Vectors</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-vector-count">0</p>
+                            </div>
+                            <i class="fas fa-chart-line text-purple-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Total stored vectors</span>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Training Status</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-training-status">Idle</p>
+                            </div>
+                            <i class="fas fa-cogs text-orange-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Model training progress</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ML Performance Charts -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Performance Metrics</h3>
+                        <div id="ml-performance-chart" style="height: 300px;">
+                            <div class="flex items-center justify-center h-full text-gray-500">
+                                <i class="fas fa-chart-bar text-4xl mb-4"></i>
+                                <p>Loading performance data...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Feature Importance</h3>
+                        <div id="ml-feature-importance-chart" style="height: 300px;">
+                            <div class="flex items-center justify-center h-full text-gray-500">
+                                <i class="fas fa-sliders-h text-4xl mb-4"></i>
+                                <p>Loading feature importance...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ML Controls -->
+                <div class="card-enhanced p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Model Management</h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button id="ml-train-model-btn" class="btn-primary">
+                            <i class="fas fa-play mr-2"></i>Train New Model
+                        </button>
+
+                        <button id="ml-update-model-btn" class="btn-success">
+                            <i class="fas fa-sync mr-2"></i>Update Model
+                        </button>
+
+                        <button id="ml-rollback-model-btn" class="btn-danger">
+                            <i class="fas fa-undo mr-2"></i>Rollback Model
+                        </button>
+                    </div>
+
+                    <!-- Training Progress -->
+                    <div id="ml-training-progress" class="hidden mt-4">
+                        <div class="mb-2 flex justify-between">
+                            <span class="text-sm font-medium">Training Progress</span>
+                            <span id="ml-progress-percent" class="text-sm">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="ml-progress-bar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1" id="ml-progress-message">Initializing training...</p>
+                    </div>
+
+                    <!-- Action Status Messages -->
+                    <div id="ml-action-status" class="hidden mt-4 p-3 rounded-md"></div>
+                </div>
+
+                <!-- Model Details Table -->
+                <div class="card-enhanced p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Model Performance Details</h3>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Value</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Benchmark</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ml-performance-table-body" class="bg-white divide-y divide-gray-200">
+                                <!-- Performance data will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-4 text-sm text-gray-500" id="ml-performance-table-status">
+                        Loading ML performance data...
+                    </div>
+
+                    <!-- Refresh Button -->
+                    <div class="mt-4 flex justify-end">
+                        <button id="ml-refresh-dashboard" class="btn-primary">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh ML Data
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
+
     </div>
 
     <!-- Loading Overlay -->
@@ -1323,6 +1283,6 @@
     </div>
 
     <!-- Modular JavaScript Implementation -->
-    <script type="module" src="/static/js/dashboard_enhanced_modular.js?v=20250929-modular"></script>
+    <script type="module" src="/static/js/dashboard_enhanced_modular.js?v=20250930-fix"></script>
 </body>
 </html>
