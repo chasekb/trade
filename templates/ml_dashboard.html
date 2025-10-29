@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Analytics Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: transform 0.2s ease-in-out;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+        }
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- ML Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6 card-hover" id="model-status-card">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-medium">Model Status</p>
+                        <p class="text-2xl font-bold text-gray-900" id="model-status">Loading...</p>
+                    </div>
+                    <i class="fas fa-brain text-blue-500 text-2xl" id="model-status-icon"></i>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm text-gray-500">Last Updated: <span id="model-last-updated">Never</span></span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-medium">Vector Database</p>
+                        <p class="text-2xl font-bold text-gray-900" id="vector-db-status">Checking...</p>
+                    </div>
+                    <i class="fas fa-database text-green-500 text-2xl" id="vector-db-icon"></i>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm text-gray-500">Collections: <span id="collection-count">0</span></span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-medium">Feature Vectors</p>
+                        <p class="text-2xl font-bold text-gray-900" id="vector-count">0</p>
+                    </div>
+                    <i class="fas fa-chart-line text-purple-500 text-2xl"></i>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm text-gray-500">Total stored vectors</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-medium">Training Status</p>
+                        <p class="text-2xl font-bold text-gray-900" id="training-status">Idle</p>
+                    </div>
+                    <i class="fas fa-cogs text-orange-500 text-2xl" id="training-icon"></i>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm text-gray-500">Model training progress</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ML Performance Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-chart-bar mr-2"></i>Performance Metrics
+                </h3>
+                <div id="performance-chart" style="height: 300px;"></div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-sliders-h mr-2"></i>Feature Importance
+                </h3>
+                <div id="feature-importance-chart" style="height: 300px;"></div>
+            </div>
+        </div>
+
+        <!-- ML Controls -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                <i class="fas fa-tools mr-2"></i>Model Management
+            </h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button id="train-model-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                    <i class="fas fa-play mr-2"></i>Train New Model
+                </button>
+
+                <button id="update-model-btn" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                    <i class="fas fa-sync mr-2"></i>Update Model
+                </button>
+
+                <button id="rollback-model-btn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                    <i class="fas fa-undo mr-2"></i>Rollback Model
+                </button>
+            </div>
+
+            <!-- Training Progress (shown during training) -->
+            <div id="training-progress" class="hidden mt-4">
+                <div class="mb-2 flex justify-between">
+                    <span class="text-sm font-medium">Training Progress</span>
+                    <span id="progress-percent" class="text-sm">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="progress-bar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+                </div>
+                <p class="text-xs text-gray-500 mt-1" id="progress-message">Initializing training...</p>
+            </div>
+
+            <!-- Action Status Messages -->
+            <div id="action-status" class="hidden mt-4 p-3 rounded-md"></div>
+        </div>
+
+        <!-- Model Details Table -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                <i class="fas fa-list mr-2"></i>Model Performance Details
+            </h3>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Value</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Benchmark</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Change</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="performance-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Performance data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-4 text-sm text-gray-500" id="performance-table-status">
+                Loading performance data...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ML Dashboard JavaScript
+        async function updateMLDashboard() {
+            try {
+                // Fetch ML dashboard data
+                const response = await fetch('/api/ml/dashboard');
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                updateDashboardDisplay(data);
+
+            } catch (error) {
+                console.error('Error updating ML dashboard:', error);
+                showErrorStatus('Failed to load ML data: ' + error.message);
+            }
+        }
+
+        function updateDashboardDisplay(data) {
+            // Update status cards
+            updateModelStatus(data.status || {});
+            updateVectorStatus(data.status || {});
+
+            // Update performance metrics
+            if (data.performance) {
+                updatePerformanceMetrics(data.performance);
+                updatePerformanceTable(data.performance);
+            }
+
+            // Update feature importance
+            if (data.feature_importance) {
+                updateFeatureImportanceChart(data.feature_importance);
+            }
+        }
+
+        function updateModelStatus(status) {
+            const modelStatusElement = document.getElementById('model-status');
+            const modelIconElement = document.getElementById('model-status-icon');
+            const lastUpdatedElement = document.getElementById('model-last-updated');
+
+            modelStatusElement.textContent = status.is_trained ? 'Trained' : 'Not Trained';
+            modelStatusElement.className = status.is_trained ? 'text-2xl font-bold text-green-600' : 'text-2xl font-bold text-red-600';
+
+            modelIconElement.className = status.is_trained ? 'fas fa-brain text-green-500 text-2xl' : 'fas fa-brain text-red-500 text-2xl';
+
+            if (status.last_updated) {
+                lastUpdatedElement.textContent = new Date(status.last_updated).toLocaleString();
+            }
+        }
+
+        function updateVectorStatus(status) {
+            // Update vector database status
+            const vectorStatusElement = document.getElementById('vector-db-status');
+            const vectorIconElement = document.getElementById('vector-db-icon');
+            const collectionCountElement = document.getElementById('collection-count');
+
+            // This would be populated from actual status data
+            vectorStatusElement.textContent = 'Connected';
+            vectorIconElement.className = 'fas fa-database text-green-500 text-2xl';
+            collectionCountElement.textContent = '1';
+        }
+
+        function updatePerformanceMetrics(performance) {
+            // Create/update performance chart
+            const chartData = {
+                labels: ['R² Score', 'RMSE', 'Profit Factor', 'Sharpe Ratio', 'Win Rate'],
+                datasets: [{
+                    label: 'Performance Metrics',
+                    data: [
+                        performance.r2_score || 0,
+                        performance.rmse || 0,
+                        performance.profit_factor || 0,
+                        performance.sharpe_ratio || 0,
+                        performance.win_rate || 0
+                    ],
+                    backgroundColor: [
+                        'rgba(54, 162, 235, 0.6)',
+                        'rgba(255, 99, 132, 0.6)',
+                        'rgba(75, 192, 192, 0.6)',
+                        'rgba(255, 205, 86, 0.6)',
+                        'rgba(153, 102, 255, 0.6)'
+                    ],
+                    borderColor: [
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(255, 205, 86, 1)',
+                        'rgba(153, 102, 255, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            };
+
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            };
+
+            const ctx = document.getElementById('performance-chart');
+            if (window.performanceChart) {
+                window.performanceChart.destroy();
+            }
+            window.performanceChart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+
+        function updateFeatureImportanceChart(featureImportance) {
+            // Convert feature importance object to chart data
+            const features = Object.keys(featureImportance);
+            const importances = Object.values(featureImportance);
+
+            const chartData = {
+                labels: features,
+                datasets: [{
+                    label: 'Feature Importance',
+                    data: importances,
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            };
+
+            const chartOptions = {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            };
+
+            const ctx = document.getElementById('feature-importance-chart');
+            if (window.featureImportanceChart) {
+                window.featureImportanceChart.destroy();
+            }
+            window.featureImportanceChart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+
+        function updatePerformanceTable(performance) {
+            const tbody = document.getElementById('performance-table-body');
+            const statusElement = document.getElementById('performance-table-status');
+
+            // Define performance metrics to display
+            const metrics = [
+                { name: 'R² Score', value: performance.r2_score, benchmark: '>0.7', format: '.3f' },
+                { name: 'RMSE', value: performance.rmse, benchmark: '<0.05', format: '.4f' },
+                { name: 'Profit Factor', value: performance.profit_factor, benchmark: '>1.2', format: '.2f' },
+                { name: 'Sharpe Ratio', value: performance.sharpe_ratio, benchmark: '>1.0', format: '.2f' },
+                { name: 'Win Rate', value: performance.win_rate, benchmark: '>55%', format: '.1%' }
+            ];
+
+            tbody.innerHTML = '';
+
+            metrics.forEach(metric => {
+                const row = document.createElement('tr');
+
+                const value = metric.value !== undefined ? metric.value : 0;
+                const formattedValue = metric.format.includes('%') ?
+                    (value * 100).toFixed(1) + '%' :
+                    value.toFixed(parseInt(metric.format.replace('.', '')));
+
+                const isGood = metric.benchmark.startsWith('>') ?
+                    value > parseFloat(metric.benchmark.substring(1)) :
+                    value < parseFloat(metric.benchmark.substring(1));
+
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${metric.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formattedValue}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${metric.benchmark}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${isGood ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${isGood ? 'Good' : 'Needs Attention'}
+                        </span>
+                    </td>
+                `;
+
+                tbody.appendChild(row);
+            });
+
+            statusElement.textContent = `Last updated: ${new Date().toLocaleString()}`;
+        }
+
+        function showErrorStatus(message) {
+            // Update status cards with error
+            document.getElementById('model-status').textContent = 'Error';
+            document.getElementById('model-status').className = 'text-2xl font-bold text-red-600';
+            document.getElementById('vector-db-status').textContent = 'Error';
+            document.getElementById('vector-db-status').className = 'text-2xl font-bold text-red-600';
+
+            document.getElementById('performance-table-status').textContent = message;
+        }
+
+        // Button event handlers
+        document.getElementById('train-model-btn').addEventListener('click', async () => {
+            await performMLAction('train', 'train-model-btn');
+        });
+
+        document.getElementById('update-model-btn').addEventListener('click', async () => {
+            await performMLAction('update', 'update-model-btn');
+        });
+
+        document.getElementById('rollback-model-btn').addEventListener('click', async () => {
+            await performMLAction('rollback', 'rollback-model-btn');
+        });
+
+        async function performMLAction(action, buttonId) {
+            const button = document.getElementById(buttonId);
+            const originalText = button.innerHTML;
+            const statusElement = document.getElementById('action-status');
+
+            try {
+                // Disable button and show loading
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
+
+                // Show progress for training
+                if (action === 'train') {
+                    document.getElementById('training-progress').classList.remove('hidden');
+                    // Simulate progress updates
+                    simulateTrainingProgress();
+                }
+
+                // Call API
+                const response = await fetch('/api/ml/' + action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                // Show result
+                statusElement.className = result.error ? 'bg-red-100 border border-red-400 text-red-700 p-3 rounded-md' : 'bg-green-100 border border-green-400 text-green-700 p-3 rounded-md';
+                statusElement.textContent = result.error || result.message || 'Action completed successfully';
+                statusElement.classList.remove('hidden');
+
+                // Hide progress after delay
+                setTimeout(() => {
+                    document.getElementById('training-progress').classList.add('hidden');
+
+                    // Refresh dashboard data
+                    updateMLDashboard();
+                }, 3000);
+
+            } catch (error) {
+                statusElement.className = 'bg-red-100 border border-red-400 text-red-700 p-3 rounded-md';
+                statusElement.textContent = 'Error: ' + error.message;
+                statusElement.classList.remove('hidden');
+            } finally {
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        }
+
+        function simulateTrainingProgress() {
+            let progress = 0;
+            const progressBar = document.getElementById('progress-bar');
+            const progressPercent = document.getElementById('progress-percent');
+            const progressMessage = document.getElementById('progress-message');
+
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 100) progress = 100;
+
+                progressBar.style.width = progress + '%';
+                progressPercent.textContent = Math.round(progress) + '%';
+
+                // Update messages based on progress
+                if (progress < 25) {
+                    progressMessage.textContent = 'Loading data and preprocessing...';
+                } else if (progress < 50) {
+                    progressMessage.textContent = 'Training model...';
+                } else if (progress < 75) {
+                    progressMessage.textContent = 'Validating performance...';
+                } else if (progress < 100) {
+                    progressMessage.textContent = 'Saving model...';
+                } else {
+                    progressMessage.textContent = 'Training completed!';
+                    clearInterval(interval);
+                }
+            }, 1000);
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial data load
+            updateMLDashboard();
+
+            // Refresh data periodically
+            setInterval(updateMLDashboard, 30000); // Update every 30 seconds
+        });
+    </script>
+</body>
+</html>

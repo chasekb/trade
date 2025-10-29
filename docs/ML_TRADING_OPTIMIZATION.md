@@ -192,6 +192,336 @@ The ML system integrates with the web dashboard at `http://localhost:8001`:
 - **Model Controls**: Train, update, and rollback models
 - **Performance Metrics**: Real-time model performance
 
+## Web Dashboard Integration Plan
+
+### Overview
+
+The current ML system provides comprehensive API endpoints but lacks web UI integration. This integration plan outlines implementing ML monitoring, management, and usage capabilities directly within the trading dashboard.
+
+### Phase 1: ML Monitoring Dashboard
+
+#### 1.1 Create ML Dashboard Components
+
+**Frontend Integration:**
+- Add "ML Analytics" tab to main dashboard navigation
+- Create ML status cards showing system health, model availability, and vector database connectivity
+- Integrate feature importance visualization with interactive charts
+- Display real-time performance metrics (R², RMSE,PnL ratios, Sharpe ratio)
+
+**Backend Requirements:**
+- Extend `dashboard_handlers.py` with ML data retrieval methods
+- Create ML-specific routes in `ml_routes.py` for dashboard serving
+- Implement real-time ML status updates via WebSocket integration
+
+**Technical Implementation:**
+```python
+# Add to web_routes/ml_routes.py
+@router.get("/ml-dashboard", response_class=HTMLResponse)
+async def get_ml_dashboard(request: Request):
+    """Serve ML monitoring dashboard."""
+    return templates.TemplateResponse("ml_dashboard.html", {"request": request})
+
+# Add to web_handlers/dashboard_handlers.py
+async def get_ml_system_overview(self) -> Dict[str, Any]:
+    """Get comprehensive ML system overview for dashboard."""
+    # Combine status, performance, and feature importance data
+    return await self.ml_integration.get_ml_dashboard_data()
+```
+
+#### 1.2 ML Status Monitoring
+
+**Real-time Status Display:**
+- Model training status indicators (idle, training, completed, failed)
+- Vector database connectivity and collection health
+- ML optimizer availability and initialization status
+- Last model update timestamp and version
+
+**Performance Metrics Dashboard:**
+- Interactive charts for R² score, RMSE trends over time
+- Profit factor and Sharpe ratio visualizations
+- Win rate with confidence intervals
+- Feature importance bar charts with hover details
+
+### Phase 2: ML Management Interface
+
+#### 2.1 Training Controls
+
+**Manual Training Interface:**
+- One-click model training with progress indicators
+- Training parameter controls (days back, model types, hyperparameters)
+- Real-time training progress with estimated completion
+- Training history and comparison of model versions
+
+**Automated Training Features:**
+- Scheduled training intervals configuration
+- Threshold-based retraining triggers (performance degradation)
+- Model validation metrics display during training
+
+#### 2.2 Model Management
+
+**Model Version Control:**
+- Current active model display with version info
+- Model history table with performance metrics
+- Version comparison tools (side-by-side metrics)
+- Rollback interface with confirmation dialogs
+
+**Model Deployment:**
+- Hot-swap capability without trading interruption
+- A/B testing interface for new model validation
+- Gradual rollout controls (percentage of trades)
+
+#### 2.3 Model Update Interface
+
+**Incremental Learning:**
+- Manual update triggers for new data ingestion
+- Automated daily updates scheduling
+- Update status monitoring with progress bars
+- Rollback options if updates degrade performance
+
+### Phase 3: Live Trading Integration
+
+#### 3.1 ML Strategy Selection
+
+**Strategy Configuration:**
+- Add "ML Enhanced Strategy" to live trading strategy dropdown
+- ML confidence threshold slider (0.1 - 1.0)
+- Fallback mode toggle (ML → Baseline on failure)
+- Real-time ML prediction confidence display
+
+**Enhanced Strategy Settings:**
+```
+Strategy Type: ML Enhanced Order Book Analysis
+├── ML Model: trading_optimizer_v20241201
+├── Confidence Threshold: 0.65
+├── Fallback Strategy: orderbook_analysis
+├── Update Frequency: real-time
+└── Performance Tracking: enabled
+```
+
+#### 3.2 Live ML Monitoring
+
+**During Live Trading:**
+- Real-time ML prediction confidence gauge
+- ML vs baseline performance comparison
+- Feature importance updates during active trading
+- ML signal strength indicators on order book data
+
+**Trading Decision Tracking:**
+- Log when ML predictions override baseline signals
+- Track ML prediction accuracy in real-time
+- Display last N ML decisions with outcomes
+
+#### 3.3 ML-Alerts Integration
+
+**Alert Types:**
+- ML model confidence threshold breaches
+- Performance degradation warnings
+- Model staleness alerts (outdated training data)
+- Feature drift detection notifications
+
+### Phase 4: Advanced Features
+
+#### 4.1 Historical ML Analysis
+
+**ML Backtesting Section:**
+- Dedicated ML strategy backtesting with historical analysis
+- Compare ML performance across different market conditions
+- Feature importance evolution over time
+- Model robustness testing across symbols
+
+#### 4.2 ML Model Insights
+
+**Deep Learning Analytics:**
+- Model interpretability visualizations
+- Feature contribution analysis per prediction
+- Prediction uncertainty quantification
+- Model ensemble voting transparency
+
+### Technical Implementation Details
+
+#### Frontend Architecture
+
+**ML Dashboard Template (`templates/ml_dashboard.html`):**
+```html
+<!-- ML Status Cards -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div class="card-enhanced p-6">
+        <h3 class="text-lg font-semibold">Model Status</h3>
+        <div id="model-status" class="status-indicator">Ready</div>
+    </div>
+    <!-- Additional status cards -->
+</div>
+
+<!-- ML Performance Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div class="card-enhanced p-6">
+        <h3 class="text-lg font-semibold">Performance Metrics</h3>
+        <canvas id="performance-chart"></canvas>
+    </div>
+    <!-- Additional charts -->
+</div>
+
+<!-- ML Controls -->
+<div class="card-enhanced p-6">
+    <h3 class="text-lg font-semibold">Model Management</h3>
+    <button id="train-model" class="btn-primary">Train New Model</button>
+    <button id="update-model" class="btn-success">Update Model</button>
+    <button id="rollback-model" class="btn-danger">Rollback</button>
+</div>
+```
+
+**Live Trading ML Integration:**
+```html
+<!-- Add to live trading configuration -->
+<div class="mb-6">
+    <label class="block text-sm font-medium text-gray-700 mb-2">
+        ML Enhancement
+    </label>
+    <div class="flex items-center space-x-4">
+        <label class="flex items-center">
+            <input type="checkbox" id="enable-ml" class="mr-2">
+            <span class="text-sm">Enable ML Enhancement</span>
+        </label>
+        <div class="flex items-center space-x-2">
+            <span class="text-sm">Confidence:</span>
+            <input type="range" id="ml-confidence-threshold" min="0.1" max="1.0" step="0.05" value="0.6">
+            <span id="confidence-value">0.6</span>
+        </div>
+    </div>
+</div>
+```
+
+#### JavaScript Integration
+
+**ML Data Fetching (`static/js/ml_dashboard.js`):**
+```javascript
+// Real-time ML status updates
+async function updateMLStatus() {
+    try {
+        const response = await fetch('/api/ml/dashboard');
+        const data = await response.json();
+
+        // Update status indicators
+        updateModelStatus(data.status);
+        updatePerformanceMetrics(data.performance);
+        updateFeatureImportance(data.feature_importance);
+    } catch (error) {
+        console.error('Error fetching ML data:', error);
+    }
+}
+
+// ML training progress
+async function trainModel() {
+    try {
+        const response = await fetch('/api/ml/train', { method: 'POST' });
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            showTrainingProgress();
+        }
+    } catch (error) {
+        showError('Training failed: ' + error.message);
+    }
+}
+```
+
+#### Backend Extensions
+
+**New ML Routes:**
+```python
+# src/trade_bot/web/web_routes/ml_routes.py
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+router = APIRouter()
+templates = Jinja2Templates(directory="templates")
+
+@router.get("/ml-dashboard", response_class=HTMLResponse)
+async def ml_dashboard(request: Request):
+    """Serve ML monitoring dashboard."""
+    return templates.TemplateResponse("ml_dashboard.html", {"request": request})
+
+@router.get("/api/ml/realtime-status")
+async def get_ml_realtime_status():
+    """Get real-time ML system status."""
+    # Implementation in MLDashboardIntegration
+```
+
+**Web Server Integration:**
+```python
+# Add to web_server.py, in startup_event()
+from ..web.web_routes import ml_routes
+
+app.include_router(ml_routes.router)
+
+# Add ML state to application state
+app_state_local.ml_dashboard_integration = MLDashboardIntegration()
+```
+
+### Implementation Timeline
+
+#### Phase 1 (Week 1-2): ML Monitoring Dashboard ✅ COMPLETED
+- [x] Create ML dashboard template (`ml_dashboard.html`)
+- [x] Implement ML routes (`ml_routes.py`)
+- [x] Add ML status and performance display
+- [x] Integrate feature importance charts
+
+#### Phase 2 (Week 3): ML Management Interface
+- [ ] Implement training controls and progress tracking
+- [ ] Add model version management interface
+- [ ] Create model update and rollback functionality
+
+#### Phase 3 (Week 4): Live Trading Integration
+- [ ] Integrate ML strategy selection in live trading tab
+- [ ] Add real-time ML monitoring during live trading
+- [ ] Implement ML alert system
+
+#### Phase 4 (Week 5): Advanced Features
+- [ ] Add ML backtesting capabilities
+- [ ] Implement deep learning analytics
+- [ ] Performance optimization and polishing
+
+### Success Metrics
+
+**User Experience:**
+- ML dashboard loads within 3 seconds
+- Real-time updates every 5 seconds during monitoring
+- Training progress updates every 2 seconds
+- No UI blocking during ML operations
+
+**Functionality:**
+- 100% coverage of ML API endpoints in web UI
+- Consistent error handling and loading states
+- Mobile-responsive design for all ML interfaces
+- WebSocket integration for real-time status updates
+
+**Performance:**
+- ML dashboard memory usage under 50MB
+- API response times under 500ms for monitoring endpoints
+- Training operations don't impact trading performance
+- Efficient data caching for repeated requests
+
+### Testing and Validation
+
+**Unit Tests:**
+- ML dashboard component rendering
+- API endpoint integration
+- Form validation for ML controls
+- Error state handling
+
+**Integration Tests:**
+- End-to-end ML training workflow
+- Live trading with ML enhancement
+- Model rollback and recovery
+- Real-time monitoring accuracy
+
+**Performance Tests:**
+- Concurrent user load testing
+- Memory usage during extended monitoring
+- Network latency impact on real-time features
+- Database query performance under load
+
 ## API Endpoints
 
 The ML Model Server provides REST API endpoints:

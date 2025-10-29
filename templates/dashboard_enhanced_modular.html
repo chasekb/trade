@@ -359,6 +359,9 @@
                     <button id="backtest-history-tab" class="tab-button border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 text-sm font-medium">
                         <i class="fas fa-chart-bar mr-2"></i>Backtesting
                     </button>
+                    <button id="ml-analytics-tab" class="tab-button border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 text-sm font-medium">
+                        <i class="fas fa-brain mr-2"></i>ML Analytics
+                    </button>
                 </nav>
             </div>
         </div>
@@ -1115,8 +1118,160 @@
                         </tbody>
                     </table>
                 </div>
+        </div>
+
+        <!-- ML Analytics Tab Content -->
+        <div id="ml-analytics-content" class="tab-content hidden">
+            <div class="card-enhanced p-6 mb-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">ML Analytics Dashboard</h3>
+                <p class="text-gray-600 mb-6">Monitor machine learning models, performance metrics, and manage model training.</p>
+
+                <!-- ML Status Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Model Status</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-model-status">Loading...</p>
+                            </div>
+                            <i class="fas fa-brain text-blue-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Last Updated: <span id="ml-model-last-updated">Never</span></span>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Vector Database</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-vector-db-status">Checking...</p>
+                            </div>
+                            <i class="fas fa-database text-green-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Collections: <span id="ml-collection-count">0</span></span>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Feature Vectors</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-vector-count">0</p>
+                            </div>
+                            <i class="fas fa-chart-line text-purple-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Total stored vectors</span>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6 card-hover">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Training Status</p>
+                                <p class="text-2xl font-bold text-gray-900" id="ml-training-status">Idle</p>
+                            </div>
+                            <i class="fas fa-cogs text-orange-500 text-2xl"></i>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Model training progress</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ML Performance Charts -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Performance Metrics</h3>
+                        <div id="ml-performance-chart" style="height: 300px;">
+                            <div class="flex items-center justify-center h-full text-gray-500">
+                                <i class="fas fa-chart-bar text-4xl mb-4"></i>
+                                <p>Loading performance data...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-enhanced p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Feature Importance</h3>
+                        <div id="ml-feature-importance-chart" style="height: 300px;">
+                            <div class="flex items-center justify-center h-full text-gray-500">
+                                <i class="fas fa-sliders-h text-4xl mb-4"></i>
+                                <p>Loading feature importance...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ML Controls -->
+                <div class="card-enhanced p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Model Management</h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button id="ml-train-model-btn" class="btn-primary">
+                            <i class="fas fa-play mr-2"></i>Train New Model
+                        </button>
+
+                        <button id="ml-update-model-btn" class="btn-success">
+                            <i class="fas fa-sync mr-2"></i>Update Model
+                        </button>
+
+                        <button id="ml-rollback-model-btn" class="btn-danger">
+                            <i class="fas fa-undo mr-2"></i>Rollback Model
+                        </button>
+                    </div>
+
+                    <!-- Training Progress -->
+                    <div id="ml-training-progress" class="hidden mt-4">
+                        <div class="mb-2 flex justify-between">
+                            <span class="text-sm font-medium">Training Progress</span>
+                            <span id="ml-progress-percent" class="text-sm">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="ml-progress-bar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1" id="ml-progress-message">Initializing training...</p>
+                    </div>
+
+                    <!-- Action Status Messages -->
+                    <div id="ml-action-status" class="hidden mt-4 p-3 rounded-md"></div>
+                </div>
+
+                <!-- Model Details Table -->
+                <div class="card-enhanced p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Model Performance Details</h3>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Value</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Benchmark</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ml-performance-table-body" class="bg-white divide-y divide-gray-200">
+                                <!-- Performance data will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-4 text-sm text-gray-500" id="ml-performance-table-status">
+                        Loading ML performance data...
+                    </div>
+
+                    <!-- Refresh Button -->
+                    <div class="mt-4 flex justify-end">
+                        <button id="ml-refresh-dashboard" class="btn-primary">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh ML Data
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
+
     </div>
 
     <!-- Loading Overlay -->
