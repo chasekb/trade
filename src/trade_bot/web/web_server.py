@@ -30,7 +30,7 @@ from ..web.web_handlers.live_portfolio_handlers import LivePortfolioHandlers
 from ..web.web_handlers.ml_handler import ml_router
 from ..web.web_routes import (
     api_routes, backtest_routes, trading_routes,
-    websocket_routes, data_routes, live_portfolio_routes
+    websocket_routes, data_routes, live_portfolio_routes, ml_routes
 )
 from ..web.models import (
     SubscriptionRequest, BacktestRequest, BacktestHistoryItem,
@@ -79,6 +79,7 @@ app.include_router(trading_routes.router)
 app.include_router(websocket_routes.router)
 app.include_router(data_routes.router)
 app.include_router(live_portfolio_routes.router)
+app.include_router(ml_routes.router)
 
 # Helper function to check if handlers are ready
 def check_handlers_ready(handlers_name: str, handlers):
