@@ -255,3 +255,48 @@ export interface BacktestResultsProps {
   results: any;
   loading: boolean;
 }
+
+// ML Analytics Types
+
+export interface MLModelStatus {
+  is_trained: boolean;
+  last_training_time?: string;
+  current_model?: {
+    model_name: string;
+    version_id: string;
+  };
+  error?: string;
+}
+
+export interface MLPerformanceMetrics {
+  r2?: number;
+  rmse?: number;
+  mae?: number;
+  profit_factor?: number;
+  sharpe_ratio?: number;
+  win_rate?: number;
+  error?: string;
+}
+
+export interface MLFeatureImportance {
+  [featureName: string]: number;
+}
+
+export interface MLDashboardData {
+  status: MLModelStatus;
+  performance: MLPerformanceMetrics;
+  feature_importance: MLFeatureImportance;
+}
+
+export interface MLTrainingResponse {
+  status: 'success' | 'error';
+  message?: string;
+  error?: string;
+}
+
+export interface MLTrainingProgress {
+  is_training: boolean;
+  progress_percentage?: number;
+  current_step?: string;
+  estimated_time_remaining?: number;
+}
