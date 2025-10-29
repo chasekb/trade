@@ -1,5 +1,47 @@
 # 📝 Changelog
 
+## [2.2.0] - 2025-10-29
+
+### 📚 Documentation Updates
+
+#### Docker-Compose Deployment Alignment
+- ✅ **Archived Outdated Documentation** - Moved obsolete docs to `docs/archive/` directory
+- ✅ **Documentation Cleanup** - Removed references to deprecated JavaScript dashboard and old architecture
+- ✅ **Organized Docs Structure** - Kept only current, relevant documentation for production deployment
+
+#### Archived Files
+- ✅ **README.md** - Contained outdated local development instructions
+- ✅ **WEB_DASHBOARD_README.md** - Referenced removed JavaScript-based dashboard
+- ✅ **TYPESCRIPT_TRANSITION.md** - Completed TypeScript migration documentation
+- ✅ **TODO.md** - Comprehensive code review (now archived as completed)
+- ✅ **CLEANUP_SUMMARY.md**, **OPTIMIZATION_SUMMARY.md**, **REFACTORING_SUMMARY.md** - JavaScript-era summaries
+- ✅ **TEST_RESULTS.md** - Test artifacts moved to archive
+- ✅ **spec.md** - Basic project specification
+- ✅ **examples/** - Example scripts directory
+
+#### Maintained Documentation
+- ✅ **CHANGELOG.md** - This version history (updated)
+- ✅ **SECURITY_SETUP.md** - Security configuration guide
+- ✅ **PROJECT_OVERVIEW.md** - Current architecture overview
+- ✅ **VECTOR_DATABASE_SERVICE.md** - Vector database documentation
+- ✅ **WEBSOCKET_SUBSCRIPTIONS.md** - WebSocket integration docs
+- ✅ **ML_TRADING_OPTIMIZATION.md** - ML features documentation
+- ✅ **env.example** - Environment configuration template
+
+### 🏗️ Architecture Documentation Updates
+
+#### Current Stack Documentation
+- ✅ **Updated Deployment Focus** - All documentation now aligned with docker-compose production deployment
+- ✅ **Container Architecture** - Documented Next.js frontend (port 3000), FastAPI backend (port 8000), PostgreSQL, Redis, and Qdrant services
+- ✅ **Production Readiness** - Emphasis on containerized deployment, health checks, and monitoring
+
+### 🔧 Technical Documentation Improvements
+
+#### Repository Organization
+- ✅ **Clean Docs Structure** - Removed duplicate and outdated documentation
+- ✅ **Version Control** - Proper timestamping of archived files for reference
+- ✅ **Maintainability** - Improved documentation organization and relevance
+
 ## [2.1.0] - 2025-09-24
 
 ### 🔧 Simulated Trading Improvements
