@@ -1322,49 +1322,40 @@ This approach involves designing and building entirely new TypeScript components
    - Set up API integration tests with proper mocking and error handling
    - Implemented test utilities for consistent rendering and mock data generation
 
-3. **E2E Testing with Playwright** ✅ COMPLETED
+3. **E2E Testing with Playwright**
    ```typescript
    // Critical user journey tests
-   test.describe('Complete Trading Workflow', () => {
-     test('user can navigate through the complete trading process', async ({ page }) => {
-       await page.goto('/');
+   test('complete trading workflow', async ({ page }) => {
+     await page.goto('/dashboard');
 
-       // Check that trading statistics are loaded
-       await expect(page.locator('text=Net P&L')).toBeVisible();
-       await expect(page.locator('text=Win Rate')).toBeVisible();
+     // Start live trading
+     await page.click('button:has-text("Start Trading")');
+     await page.fill('select[name="strategy"]', 'orderbook');
+     await page.click('button:has-text("Confirm")');
 
-       // Navigate to live trading and verify interface
-       await page.click('text=Live Trading');
-       await expect(page.locator('text=Trading Strategy')).toBeVisible();
+     // Verify trading started
+     await expect(page.locator('text=Trading Active')).toBeVisible();
 
-       // Navigate to backtesting and verify interface
-       await page.click('text=Backtesting');
-       await expect(page.locator('text=Strategy Selection')).toBeVisible();
-
-       // Navigate to ML Analytics and verify interface
-       await page.click('text=ML Analytics');
-       await expect(page.locator('text=Model Status')).toBeVisible();
-     });
-
-     test('performance benchmarks are met', async ({ page }) => {
-       const startTime = Date.now();
-       await page.goto('/');
-       const loadTime = Date.now() - startTime;
-
-       // Should load within 3 seconds
-       expect(loadTime).toBeLessThan(3000);
-     });
+     // Check real-time updates
+     await expect(page.locator('.trading-stats')).toContainText('$');
    });
    ```
 
-   **Complete Testing Infrastructure Implemented:**
-   - ✅ **Jest Configuration**: Next.js compatible setup with jsdom environment
-   - ✅ **React Testing Library**: Component testing with proper TypeScript support
-   - ✅ **Playwright Configuration**: Cross-browser E2E testing with retry logic
-   - ✅ **Test Scripts**: npm scripts for unit tests, integration tests, and E2E tests
-   - ✅ **Mock Utilities**: Comprehensive test utilities and mock data generators
-   - ✅ **Coverage Reporting**: Test coverage analysis capabilities
-   - ✅ **CI/CD Ready**: Proper exit codes and reporting for automated testing
+##### Phase 6A: Performance Optimization & Deployment (3-4 days)
+
+1. **Bundle Analysis & Optimization**
+   ```javascript
+   // next.config.js optimizations
+   module.exports = {
+     experimental: {
+       optimizePackageImports: ['chart.js', '@tanstack/react-query']
+     },
+     webpack: (config) => {
+       // Custom webpack optimizations for trading charts
+       return config;
+     }
+   };
+   ```
 
 2. **Production Build Configuration**
    ```javascript
