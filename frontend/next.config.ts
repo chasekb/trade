@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
       'socket.io-client',
       'zustand'
     ],
+    serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate'],
   },
 
   webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
@@ -124,6 +125,9 @@ const nextConfig: NextConfig = {
 
   // Output configuration for standalone deployment
   output: 'standalone',
+
+  // Turbopack configuration (empty to allow webpack config)
+  turbopack: {},
 };
 
 export default nextConfig;

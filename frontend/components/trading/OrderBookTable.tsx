@@ -262,7 +262,7 @@ export default function OrderBook({ symbol, className }: OrderBookProps) {
         symbol={symbol}
         bids={orderBook.bids}
         asks={orderBook.asks}
-        lastUpdate={lastUpdate || undefined}
+        {...(lastUpdate && { lastUpdate })}
       />
     </div>
   );

@@ -100,8 +100,9 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
   const presets = getOrderBookPresets();
 
   const applyPreset = (presetName: string) => {
-    if (strategy === 'orderbook' && presets[presetName]) {
-      const presetConfig = presets[presetName];
+    if (strategy === 'orderbook' && presetName in presets) {
+      const typeSafePresetName = presetName as keyof typeof presets;
+      const presetConfig = presets[typeSafePresetName];
       onChange({ ...config, ...presetConfig });
       setSelectedPreset(presetName);
     }
@@ -167,7 +168,7 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
                     onChange={(e) => handleParameterChange(param.name, e.target.value)}
                     min={param.min}
                     max={param.max}
-                    step={param.step}
+                    step={('step' in param) ? param.step : undefined}
                     className="w-full"
                   />
                 )}

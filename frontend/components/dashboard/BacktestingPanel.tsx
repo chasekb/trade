@@ -148,7 +148,7 @@ function BacktestForm({
                       })}
                       min={param.min}
                       max={param.max}
-                      step={param.step || undefined}
+                      step={('step' in param) ? param.step : undefined}
                       className="w-full"
                     />
                   )}
