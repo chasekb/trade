@@ -22,18 +22,17 @@ RUN pip install --no-cache-dir uv
 COPY config/pyproject.toml ./
 RUN pip install --no-cache-dir -e .
 
-# Copy source code
-COPY . .
+# Copy source code, excluding unnecessary files
+COPY app.py .
+COPY main.py .
+COPY src ./src
+COPY scripts ./scripts
 
 # Create data directories
 RUN mkdir -p data/databases outputs logs
 
 # Expose port
 EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
 CMD ["python", "app.py"]

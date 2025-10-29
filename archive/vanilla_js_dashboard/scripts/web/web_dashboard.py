@@ -26,17 +26,19 @@ def main():
 
     logger = logging.getLogger("scripts.web.web_dashboard")
 
+    port = int(os.getenv("PORT", "8000"))
     logger.info("🚀 Starting Trading Dashboard...")
-    logger.info("📊 Dashboard will be available at: http://localhost:8001")
-    logger.info("🔌 WebSocket endpoint: ws://localhost:8001/ws")
-    logger.info("📈 API documentation: http://localhost:8001/docs")
+    logger.info(f"📊 Dashboard will be available at: http://localhost:{port}")
+    logger.info(f"🔌 WebSocket endpoint: ws://localhost:{port}/ws")
+    logger.info(f"📈 API documentation: http://localhost:{port}/docs")
 
     # Run the FastAPI application using import string for reload support
     try:
+        port = int(os.getenv("PORT", "8000"))
         uvicorn.run(
             "src.trade_bot.web.web_server:app",
             host="0.0.0.0",
-            port=8001,
+            port=port,
             log_level="info",
             reload=True
         )

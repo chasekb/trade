@@ -97,6 +97,11 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static"
 # Templates
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker health monitoring."""
+    return {"status": "healthy", "service": "trading-bot-backend"}
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup."""
@@ -226,10 +231,11 @@ async def startup_event():
             logger.error(f"❌ Failed to start WebSocket manager real-time data processing: {e}")
             # Don't fail startup, just log the error
 
+        port = int(os.getenv("PORT", "8000"))
         logger.info("🚀 Trading Dashboard started successfully!")
-        logger.info("📊 Dashboard available at: http://localhost:8001")
-        logger.info("🔌 WebSocket endpoint: ws://localhost:8001/ws")
-        logger.info("📈 API documentation: http://localhost:8001/docs")
+        logger.info(f"📊 Dashboard available at: http://localhost:{port}")
+        logger.info(f"🔌 WebSocket endpoint: ws://localhost:{port}/ws")
+        logger.info(f"📈 API documentation: http://localhost:{port}/docs")
 
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
@@ -252,10 +258,11 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.getenv("PORT", "8000"))
     uvicorn.run(
         "trade_bot.web_server_new:app",
         host="0.0.0.0",
-        port=8001,
+        port=port,
         log_level="info",
         reload=True
     )

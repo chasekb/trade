@@ -6,8 +6,14 @@ A comprehensive trading bot system with web dashboard, backtesting, live trading
 
 ```
 trade/
-├── main.py                     # Main entry point
+├── app.py                      # FastAPI backend server (Docker deployment)
+├── docker-compose.yml          # Docker Compose deployment configuration
+├── Dockerfile                  # Backend Docker container configuration
+├── frontend/                   # Next.js React/TypeScript frontend
 ├── README.md                   # This file
+│
+├── archive/                    # Archived unused code (see archive/README.md)
+│   └── vanilla_js_dashboard/  # Previously used vanilla JS dashboard
 │
 ├── config/                     # Configuration files
 │   ├── pyproject.toml         # Python project configuration
@@ -16,8 +22,7 @@ trade/
 │   ├── package.json          # Node.js dependencies
 │   ├── package-lock.json     # Node.js lock file
 │   ├── playwright.config.ts  # Playwright configuration
-│   ├── vector-db-config.yaml # Vector database configuration
-
+│   └── vector-db-config.yaml # Vector database configuration
 │
 ├── src/                       # Source code
 │   └── trade_bot/            # Main application package
@@ -27,12 +32,6 @@ trade/
 │       ├── trading/          # Trading strategies and execution
 │       ├── ml/               # Machine Learning components
 │       └── web/              # Web dashboard and API
-│
-├── scripts/                   # Executable scripts
-│   ├── backtest/             # Backtesting scripts
-│   ├── web/                  # Web server scripts
-│   ├── ml/                   # ML training and management scripts
-│   └── utilities/            # Utility scripts
 │
 ├── tests/                     # Test suite
 │   ├── unit/                 # Unit tests
@@ -50,18 +49,9 @@ trade/
 │   ├── PROJECT_OVERVIEW.md   # Project overview
 │   ├── spec.md               # Technical specifications
 │   ├── TEST_RESULTS.md       # Test results
-│   ├── WEB_DASHBOARD_README.md # Web dashboard documentation
+│   ├── TYPESCRIPT_TRANSITION.md # React/TypeScript transition documentation
 │   ├── WEBSOCKET_SUBSCRIPTIONS.md # WebSocket documentation
 │   └── ML_TRADING_OPTIMIZATION.md # ML system documentation
-│
-├── static/                    # Static web assets
-│   ├── css/                  # Stylesheets
-│   └── js/                   # JavaScript files
-│
-├── templates/                 # HTML templates
-│   ├── dashboard.html        # Basic dashboard
-│   ├── dashboard_enhanced.html # Enhanced dashboard
-│   └── dashboard_enhanced_modular.html # Modular dashboard with ML
 │
 └── rules/                     # Development rules and guidelines
     ├── 01-core.md
@@ -72,10 +62,10 @@ trade/
 ## ✨ Key Features
 
 ### 🎯 **Integrated ML Trading System**
-- **One Command Setup**: `uv run python main.py web` starts everything
+- **One Command Setup**: `docker-compose up` starts everything
 - **Automatic Service Management**: Vector database and ML services start automatically
 - **Seamless Trading Integration**: ML predictions available for simulated and live trading
-- **Real-time ML Dashboard**: Built-in ML management interface at `http://localhost:8001`
+- **Real-time ML Dashboard**: Built-in ML management interface at `http://localhost:3000`
 - **Health Monitoring**: Automatic service health checks and status monitoring
 - **Graceful Shutdown**: Proper cleanup when stopping the system
 
@@ -129,54 +119,36 @@ pip install scikit-learn pandas numpy joblib requests
 
 ### Running the Application
 
-#### Web Dashboard with Integrated ML Services (Recommended)
+#### Docker Compose Deployment (Recommended)
 ```bash
-# Start web dashboard with integrated vector database and ML services
-uv run python main.py web
+# Start all services using Docker Compose
+docker-compose up
 ```
 
 This single command starts:
-- Web dashboard on `http://localhost:8001`
+- **Frontend**: Next.js React dashboard on `http://localhost:3000`
+- **Backend**: FastAPI server on `http://localhost:8000`
 - Qdrant vector database on `http://localhost:6333`
-- Redis cache on `localhost:6380`
-- ML Model Server on `http://localhost:8002`
+- Redis cache on `localhost:6379`
+- PostgreSQL database on `localhost:5432`
 - All ML services available for trading
 
-#### Standalone Vector Database Services
+#### Development Mode (Individual Services)
+If you need to run services individually for development:
+
 ```bash
-# Start only vector database services (for external use)
-uv run python main.py vector-db
+# Start backend only
+docker-compose up backend
+
+# Start frontend only (requires backend running)
+cd frontend && npm run dev
+
+# Start databases only
+docker-compose up db redis qdrant
 ```
 
-#### Backtesting
-```bash
-# Basic backtest
-uv run python main.py backtest
-
-# Comprehensive backtest
-uv run python main.py backtest --comprehensive
-```
-
-#### Data Collection
-```bash
-uv run python main.py data
-```
-
-#### Live Trading
-```bash
-uv run python main.py live
-```
-
-#### Machine Learning Management
-```bash
-# Train ML models (when web dashboard is running)
-# Access ML dashboard at http://localhost:8001/ml
-
-# Or use standalone scripts
-python scripts/ml/train_models.py --days-back 30
-python scripts/ml/test_integration.py
-python scripts/ml/validate_strategy.py --start-date 2024-01-01 --end-date 2024-01-31
-```
+#### Previous CLI Commands (Archived)
+The previous CLI interface using `main.py` has been archived. If you need to restore the vanilla JavaScript dashboard for comparison or testing, see `archive/README.md` for restoration instructions.
 
 ## 📊 Features
 
@@ -226,9 +198,9 @@ npx playwright test
 
 ## 🌐 Web Dashboard
 
-Access the web dashboard at `http://localhost:8001` after running:
+Access the web dashboard at `http://localhost:3000` after running:
 ```bash
-uv run python main.py web
+docker-compose up
 ```
 
 Features:
@@ -281,14 +253,15 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 - **Model Management**: Versioning, deployment, and rollback
 - **Real-time Inference**: Sub-second ML predictions during trading
 
-### ML Services (Automatically Started with Web Dashboard)
+### ML Services (Automatically Started with Docker Compose)
 - **Qdrant Vector DB**: `http://localhost:6333` - Feature vector storage
-- **Redis Cache**: `localhost:6380` - High-performance caching
-- **ML Model Server**: `http://localhost:8002` - Real-time inference API
-- **Web Dashboard**: `http://localhost:8001` - Integrated ML management interface
+- **Redis Cache**: `localhost:6379` - High-performance caching
+- **PostgreSQL DB**: `localhost:5432` - Main database
+- **Backend API**: `http://localhost:8000` - FastAPI backend server
+- **Web Dashboard**: `http://localhost:3000` - Next.js React dashboard
 
 ### ML Service Management
-- **Automatic Startup**: All ML services start automatically with `uv run python main.py web`
+- **Automatic Startup**: All ML services start automatically with `docker-compose up`
 - **Health Monitoring**: Built-in health checks and service status monitoring
 - **Graceful Shutdown**: Proper cleanup when web dashboard stops
 - **Trading Integration**: ML predictions seamlessly integrated into trading strategies
@@ -322,34 +295,34 @@ sudo apt-get install qdrant redis-server
 ```
 
 #### Port Conflicts
-If ports 6333, 6380, 8001, or 8002 are already in use:
+If ports 3000, 8000, 6333, 6379, or 5432 are already in use:
 ```bash
 # Check what's using the ports
-lsof -i :6333
-lsof -i :6380
-lsof -i :8001
-lsof -i :8002
+lsof -i :3000  # Frontend
+lsof -i :8000  # Backend
+lsof -i :6333  # Qdrant
+lsof -i :6379  # Redis
+lsof -i :5432  # PostgreSQL
 
-# Stop conflicting services or change ports in config/vector-db-config.yaml
+# Stop conflicting services or modify ports in docker-compose.yml
 ```
 
 #### ML Model Training Issues
 ```bash
-# Check if you have sufficient trading data
-sqlite3 data/databases/trading_cache.db "SELECT COUNT(*) FROM order_book_signals;"
+# Start the application with Docker Compose
+docker-compose up
 
-# If no data, run some simulated trading first
-uv run python main.py web
-# Then use the web dashboard to start simulated trading
+# Access the dashboard at http://localhost:3000
+# Use the ML Analytics tab to start simulated trading and generate training data
 ```
 
 #### Service Health Checks
 ```bash
 # Check service status
-curl http://localhost:6333/health  # Qdrant
-redis-cli -p 6380 ping            # Redis
-curl http://localhost:8002/health  # ML Server
-curl http://localhost:8001/health  # Web Dashboard
+curl http://localhost:6333/health        # Qdrant
+redis-cli -p 6379 ping                  # Redis
+curl http://localhost:8000/health       # Backend API
+curl http://localhost:3000/api/health   # Frontend API
 ```
 
 ## 🤝 Contributing
