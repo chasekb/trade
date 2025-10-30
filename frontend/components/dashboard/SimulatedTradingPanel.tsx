@@ -250,11 +250,13 @@ function TradingConfiguration({
   const [selectedUniverseType, setSelectedUniverseType] = useState('all_usd');
 
   const handleSymbolModeChange = (mode: 'single' | 'universe') => {
+    console.log('Symbol mode change:', mode);
     setSymbolMode(mode);
     if (mode === 'single') {
       onSymbolsChange(['BTC-USD']);
     } else {
       // For universe mode, apply the current universe type
+      console.log('Applying universe type:', selectedUniverseType);
       applyUniverseType(selectedUniverseType);
     }
   };
@@ -267,30 +269,39 @@ function TradingConfiguration({
 
   // Function to filter symbols by universe type
   const applyUniverseType = (universeType: string) => {
+    console.log('applyUniverseType called with:', universeType);
+    console.log('Products data:', products);
     const allSymbols = getAllSymbols(products);
+    console.log('All symbols:', allSymbols);
 
     let filteredSymbols: string[] = [];
 
     switch (universeType) {
       case 'all_products':
         filteredSymbols = allSymbols;
+        console.log('all_products: using all symbols');
         break;
       case 'all_usd':
         filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USD'));
+        console.log('all_usd: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
         break;
       case 'all_eur':
         filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-EUR'));
+        console.log('all_eur: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
         break;
       case 'all_usdt':
         filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USDT'));
+        console.log('all_usdt: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
         break;
       case 'all_btc':
         filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-BTC'));
+        console.log('all_btc: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
         break;
       case 'major':
         // Major currency pairs
         const majorPairs = ['EUR-USD', 'GBP-USD', 'USD-JPY', 'USD-CHF', 'AUD-USD', 'USD-CAD', 'NZD-USD'];
         filteredSymbols = allSymbols.filter(symbol => majorPairs.includes(symbol));
+        console.log('major: found', filteredSymbols.length, 'major pairs from', majorPairs.length, 'candidates');
         break;
       case 'minor':
         // Minor currency pairs (excluding major pairs)
@@ -300,6 +311,7 @@ function TradingConfiguration({
           !symbol.includes('BTC') && !symbol.includes('ETH')
         ).slice(0, 21); // Limit to 21 as indicated
         filteredSymbols = minorPairs;
+        console.log('minor: found', filteredSymbols.length, 'minor pairs');
         break;
       case 'crypto':
         // Cryptocurrency pairs
@@ -307,17 +319,23 @@ function TradingConfiguration({
           symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('ADA') ||
           symbol.includes('SOL') || symbol.includes('DOT') || symbol.includes('XRP')
         ).slice(0, 35); // Limit to 35 as indicated
+        console.log('crypto: found', filteredSymbols.length, 'crypto pairs');
         filteredSymbols = filteredSymbols;
         break;
       case 'custom':
       default:
         // For custom, don't auto-populate
+        console.log('custom or default: not populating');
         return;
     }
 
     // Update symbols if filtered symbols were found
+    console.log('Final filteredSymbols:', filteredSymbols);
     if (filteredSymbols.length > 0) {
+      console.log('Calling onSymbolsChange with', filteredSymbols);
       onSymbolsChange(filteredSymbols);
+    } else {
+      console.log('No symbols found, not calling onSymbolsChange');
     }
   };
 
