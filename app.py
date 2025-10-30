@@ -35,9 +35,6 @@ async def start_services():
     try:
         logger.info("🚀 Starting Trading Bot Web Application...")
 
-        # Import and start web dashboard
-        from scripts.web.web_dashboard import main
-
         # Log environment configuration
         logger.info("📋 Configuration:")
         logger.info(f"  ENV: {os.getenv('ENV', 'development')}")
@@ -45,9 +42,12 @@ async def start_services():
         logger.info(f"  REDIS_URL: {os.getenv('REDIS_URL', 'NOT_SET')}")
         logger.info(f"  QDRANT_URL: {os.getenv('QDRANT_URL', 'NOT_SET')}")
 
-        # Start the web application
-        logger.info("🌐 Starting web dashboard...")
-        main()
+        # Import and start the web application
+        from trade_bot.web.web_server import app
+        logger.info("🌐 Web application initialized successfully")
+
+        # Return the app for the caller to run
+        return app
 
     except Exception as e:
         logger.error(f"❌ Failed to start application: {e}")
@@ -62,8 +62,9 @@ def main():
         if not os.getenv('ENV'):
             os.environ['ENV'] = 'production'
 
-        # Run the async startup
+        # Run the async startup - this initializes all services
         asyncio.run(start_services())
+        logger.info("🚀 Backend services initialized - API ready to serve frontend requests")
 
     except KeyboardInterrupt:
         logger.info("🛑 Received shutdown signal")

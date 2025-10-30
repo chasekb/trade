@@ -4,13 +4,9 @@ import os
 import asyncio
 import logging
 from fastapi import FastAPI, Request, WebSocket, HTTPException
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import time
 
 from ..core.config import TradingConfig
@@ -23,7 +19,7 @@ from ..data.websocket_client import WebSocketClient
 from ..data.data_handler import DataHandler
 from ..web.web_components import RateLimiter, WebSocketManager, ApplicationState, set_app_state, get_app_state
 from ..web.web_handlers import (
-    APIHandlers, DashboardHandlers, BacktestHandlers,
+    APIHandlers, BacktestHandlers,
     TradingHandlers, WebSocketHandlers, DataHandlers
 )
 from ..web.web_handlers.live_portfolio_handlers import LivePortfolioHandlers
@@ -31,10 +27,6 @@ from ..web.web_handlers.ml_handler import ml_router
 from ..web.web_routes import (
     api_routes, backtest_routes, trading_routes,
     websocket_routes, data_routes, live_portfolio_routes, ml_routes
-)
-from ..web.models import (
-    SubscriptionRequest, BacktestRequest, BacktestHistoryItem,
-    BacktestHistoryResponse, BacktestStatsResponse
 )
 from ..ml.vector_database_service import get_vector_db_service
 
@@ -86,16 +78,6 @@ def check_handlers_ready(handlers_name: str, handlers):
     """Check if handlers are ready, raise HTTPException if not."""
     if handlers is None:
         raise HTTPException(status_code=503, detail=f"Server not ready - {handlers_name} not initialized")
-
-# Mount static files with optimized settings using absolute paths
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
-
-# Templates
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 @app.get("/health")
 async def health_check():
@@ -194,7 +176,6 @@ async def startup_event():
 
         # Initialize handlers
         api_handlers = APIHandlers(config, data_provider, cached_data_provider, product_fetcher, database_manager, simulated_trading_manager)
-        app_state_local.dashboard_handlers = DashboardHandlers(config, templates)
         backtest_handlers = BacktestHandlers(config, database_manager)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager, websocket_manager)
         app_state_local.websocket_handlers = WebSocketHandlers(websocket_manager)
@@ -208,12 +189,9 @@ async def startup_event():
 
         logger.info(f"✅ Live portfolio handlers initialized: {app_state_local.live_portfolio_handlers is not None}")
 
-        # Set ML optimizer in ML dashboard integration
+        # ML services are handled by the ML handler routes and vector database integration
         if app_state_local.ml_optimizer:
-            from ..web.web_components.ml_dashboard import MLDashboardIntegration
-            ml_integration = MLDashboardIntegration()
-            ml_integration.set_ml_optimizer(app_state_local.ml_optimizer)
-            logger.info("✅ ML dashboard integration configured with local ML optimizer")
+            logger.info("✅ ML optimizer and vector database services available")
 
         # Mark application as initialized
         app_state_local.set_initialized(True)
@@ -232,8 +210,8 @@ async def startup_event():
             # Don't fail startup, just log the error
 
         port = int(os.getenv("PORT", "8000"))
-        logger.info("🚀 Trading Dashboard started successfully!")
-        logger.info(f"📊 Dashboard available at: http://localhost:{port}")
+        logger.info("🚀 Trading API Backend started successfully!")
+        logger.info(f"� API endpoints available at: http://localhost:{port}")
         logger.info(f"🔌 WebSocket endpoint: ws://localhost:{port}/ws")
         logger.info(f"📈 API documentation: http://localhost:{port}/docs")
 
@@ -249,20 +227,7 @@ async def shutdown_event():
         app_state_instance = get_app_state()
         if app_state_instance:
             await app_state_instance.cleanup()
-        logger.info("👋 Trading Dashboard shutdown complete")
+        logger.info("👋 Trading API Backend shutdown complete")
 
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
-
-
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run(
-        "trade_bot.web_server_new:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-        reload=True
-    )

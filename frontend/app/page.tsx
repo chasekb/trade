@@ -5,12 +5,13 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { TradingStatisticsDashboard } from '@/components/dashboard/TradingStatisticsDashboard';
 import LiveTradingPanel from '@/components/dashboard/LiveTradingPanel';
+import SimulatedTradingPanel from '@/components/dashboard/SimulatedTradingPanel';
 import BacktestingPanel from '@/components/dashboard/BacktestingPanel';
 import MLAnalyticsDashboard from '@/components/dashboard/MLAnalyticsDashboard';
 import { PositionsTable } from '@/components/dashboard/PositionsTable';
 import { cn } from '@/lib/utils';
 
-type TabType = 'overview' | 'live-trading' | 'positions' | 'backtesting' | 'ml-analytics';
+type TabType = 'overview' | 'live-trading' | 'simulated-trading' | 'positions' | 'backtesting' | 'ml-analytics';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const tabs: Array<{ id: TabType; label: string; icon: string }> = [
     { id: 'overview', label: 'Overview', icon: 'fas fa-tachometer-alt' },
     { id: 'live-trading', label: 'Live Trading', icon: 'fas fa-play-circle' },
+    { id: 'simulated-trading', label: 'Simulated Trading', icon: 'fas fa-flask' },
     { id: 'positions', label: 'Positions', icon: 'fas fa-wallet' },
     { id: 'backtesting', label: 'Backtesting', icon: 'fas fa-chart-bar' },
     { id: 'ml-analytics', label: 'ML Analytics', icon: 'fas fa-brain' },
@@ -31,6 +33,8 @@ export default function Dashboard() {
         return <TradingStatisticsDashboard />;
       case 'live-trading':
         return <LiveTradingPanel />;
+      case 'simulated-trading':
+        return <SimulatedTradingPanel />;
       case 'positions':
         return <PositionsTable />;
       case 'backtesting':
