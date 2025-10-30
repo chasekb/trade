@@ -259,8 +259,8 @@ function TradingConfiguration({
 
   useEffect(() => {
     // Update UI based on symbol mode
-    const singleConfig = document.getElementById('single-symbol-config');
-    const universeConfig = document.getElementById('universe-config');
+    const singleConfig = document.getElementById('single-symbol-config-simulated');
+    const universeConfig = document.getElementById('universe-config-simulated');
 
     if (singleConfig && universeConfig) {
       singleConfig.style.display = symbolMode === 'single' ? 'block' : 'none';
@@ -286,7 +286,7 @@ function TradingConfiguration({
             <label className="flex items-center">
               <input
                 type="radio"
-                name="trading-symbol-mode"
+                name="trading-symbol-mode-simulated"
                 value="single"
                 checked={symbolMode === 'single'}
                 onChange={() => handleSymbolModeChange('single')}
@@ -297,7 +297,7 @@ function TradingConfiguration({
             <label className="flex items-center">
               <input
                 type="radio"
-                name="trading-symbol-mode"
+                name="trading-symbol-mode-simulated"
                 value="universe"
                 checked={symbolMode === 'universe'}
                 onChange={() => handleSymbolModeChange('universe')}
@@ -309,7 +309,7 @@ function TradingConfiguration({
         </div>
 
         {/* Single Symbol Configuration */}
-        <div id="single-symbol-config" className="space-y-2">
+        <div id="single-symbol-config-simulated" className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">Trading Symbol</label>
           <select
             value={symbols.length > 1 ? symbols[0] : symbols[0] || 'BTC-USD'}
@@ -329,7 +329,7 @@ function TradingConfiguration({
         </div>
 
         {/* Universe Configuration */}
-        <div id="universe-config" className="space-y-4" style={{ display: 'none' }}>
+        <div id="universe-config-simulated" className="space-y-4" style={{ display: 'none' }}>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Universe Type</label>
             <select className="w-full border border-gray-300 rounded-md px-3 py-2">
@@ -346,7 +346,7 @@ function TradingConfiguration({
           </div>
 
           {/* Custom Symbols Configuration */}
-          <div id="custom-symbols-config" className="space-y-2">
+          <div id="custom-symbols-config-simulated" className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Custom Symbols (comma-separated)</label>
             <Input
               type="text"
@@ -375,8 +375,8 @@ function TradingConfiguration({
   );
 }
 
-// Main Live Trading Panel Component
-export default function LiveTradingPanel({ className = '' }: LiveTradingPanelProps) {
+// Main Simulated Trading Panel Component
+export default function SimulatedTradingPanel({ className = '' }: LiveTradingPanelProps) {
   const { status, startTrading, stopTrading, loading } = useLiveTrading();
   const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
     status.symbols,
