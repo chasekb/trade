@@ -247,14 +247,83 @@ function TradingConfiguration({
 }) {
   const { data: products } = useProducts();
   const [symbolMode, setSymbolMode] = useState<'single' | 'universe'>('single');
+  const [selectedUniverseType, setSelectedUniverseType] = useState('all_usd');
 
   const handleSymbolModeChange = (mode: 'single' | 'universe') => {
     setSymbolMode(mode);
     if (mode === 'single') {
       onSymbolsChange(['BTC-USD']);
     } else {
-      // For universe mode, we'll keep existing symbols but show universe options
+      // For universe mode, apply the current universe type
+      applyUniverseType(selectedUniverseType);
     }
+  };
+
+  // Function to get all available symbols
+  const getAllSymbols = (products: Record<string, string[]> | null | undefined): string[] => {
+    if (!products) return [];
+    return Object.values(products).flat().filter((symbol, index, arr) => arr.indexOf(symbol) === index);
+  };
+
+  // Function to filter symbols by universe type
+  const applyUniverseType = (universeType: string) => {
+    const allSymbols = getAllSymbols(products);
+
+    let filteredSymbols: string[] = [];
+
+    switch (universeType) {
+      case 'all_products':
+        filteredSymbols = allSymbols;
+        break;
+      case 'all_usd':
+        filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USD'));
+        break;
+      case 'all_eur':
+        filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-EUR'));
+        break;
+      case 'all_usdt':
+        filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USDT'));
+        break;
+      case 'all_btc':
+        filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-BTC'));
+        break;
+      case 'major':
+        // Major currency pairs
+        const majorPairs = ['EUR-USD', 'GBP-USD', 'USD-JPY', 'USD-CHF', 'AUD-USD', 'USD-CAD', 'NZD-USD'];
+        filteredSymbols = allSymbols.filter(symbol => majorPairs.includes(symbol));
+        break;
+      case 'minor':
+        // Minor currency pairs (excluding major pairs)
+        const minorPairs = allSymbols.filter(symbol =>
+          symbol.endsWith('-USD') &&
+          !['EUR-USD', 'GBP-USD', 'AUD-USD', 'NZD-USD'].includes(symbol) &&
+          !symbol.includes('BTC') && !symbol.includes('ETH')
+        ).slice(0, 21); // Limit to 21 as indicated
+        filteredSymbols = minorPairs;
+        break;
+      case 'crypto':
+        // Cryptocurrency pairs
+        filteredSymbols = allSymbols.filter(symbol =>
+          symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('ADA') ||
+          symbol.includes('SOL') || symbol.includes('DOT') || symbol.includes('XRP')
+        ).slice(0, 35); // Limit to 35 as indicated
+        filteredSymbols = filteredSymbols;
+        break;
+      case 'custom':
+      default:
+        // For custom, don't auto-populate
+        return;
+    }
+
+    // Update symbols if filtered symbols were found
+    if (filteredSymbols.length > 0) {
+      onSymbolsChange(filteredSymbols);
+    }
+  };
+
+  const handleUniverseTypeChange = (universeType: string) => {
+    setSelectedUniverseType(universeType);
+    applyUniverseType(universeType);
   };
 
   useEffect(() => {
@@ -332,9 +401,13 @@ function TradingConfiguration({
         <div id="universe-config-simulated" className="space-y-4" style={{ display: 'none' }}>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Universe Type</label>
-            <select className="w-full border border-gray-300 rounded-md px-3 py-2">
+            <select
+              value={selectedUniverseType}
+              onChange={(e) => handleUniverseTypeChange(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
+            >
               <option value="all_products">All Products (Complete List)</option>
-              <option value="all_usd" selected>All USD Pairs (Recommended)</option>
+              <option value="all_usd">All USD Pairs (Recommended)</option>
               <option value="all_eur">All EUR Pairs</option>
               <option value="all_usdt">All USDT Pairs</option>
               <option value="all_btc">All BTC Pairs</option>
