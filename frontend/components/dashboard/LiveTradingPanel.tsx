@@ -265,9 +265,47 @@ function TradingConfiguration({
     return Object.values(products).flat().filter((symbol, index, arr) => arr.indexOf(symbol) === index);
   };
 
+  // Fetch products directly from Coinbase API
+  const fetchCoinbaseSymbols = async (): Promise<string[]> => {
+    try {
+      console.log('Fetching products from Coinbase API...');
+      const response = await fetch('https://api.exchange.coinbase.com/products');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const products = await response.json();
+      const symbols = products
+        .filter((product: any) => product.status === 'online' && !product.trading_disabled)
+        .map((product: any) => product.id)
+        .sort();
+      console.log(`Fetched ${symbols.length} symbols from Coinbase`);
+      return symbols;
+    } catch (error) {
+      console.error('Error fetching Coinbase symbols:', error);
+      throw error;
+    }
+  };
+
   // Function to filter symbols by universe type
-  const applyUniverseType = (universeType: string) => {
-    const allSymbols = getAllSymbols(products);
+  const applyUniverseType = async (universeType: string) => {
+    console.log('applyUniverseType called with:', universeType);
+
+    let allSymbols = getAllSymbols(products);
+
+    // If no symbols from hook, try to fetch from Coinbase directly
+    if (allSymbols.length === 0) {
+      console.log('No products from hook, fetching from Coinbase API...');
+      try {
+        const symbols = await fetchCoinbaseSymbols();
+        allSymbols = symbols;
+        console.log('Fetched symbols from Coinbase:', allSymbols.length);
+      } catch (error) {
+        console.warn('Failed to fetch Coinbase symbols:', error);
+        allSymbols = ['BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 'DOT-USD', 'XRP-USD'];
+      }
+    }
+
+    console.log('All symbols available:', allSymbols.length);
 
     let filteredSymbols: string[] = [];
 
