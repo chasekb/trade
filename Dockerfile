@@ -33,4 +33,4 @@ RUN mkdir -p data/databases outputs logs
 EXPOSE 8000
 
 # Run the application
-CMD ["python", "app.py"]
+CMD ["uvicorn", "src.trade_bot.web.web_server:app", "--host", "0.0.0.0", "--port", "8000"]
