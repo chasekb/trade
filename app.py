@@ -63,8 +63,27 @@ def main():
             os.environ['ENV'] = 'production'
 
         # Run the async startup - this initializes all services
-        asyncio.run(start_services())
+        app = asyncio.run(start_services())
         logger.info("🚀 Backend services initialized - API ready to serve frontend requests")
+
+        # Now start the FastAPI server with uvicorn
+        import uvicorn
+        logger.info("🌐 Starting uvicorn server...")
+
+        # Get port from environment, default to 8000
+        port = int(os.getenv('PORT', '8000'))
+        host = os.getenv('HOST', '0.0.0.0')
+
+        logger.info(f"🌐 Server will be available at http://{host}:{port}")
+
+        # Run the server - this will block until shutdown
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level="info",
+            access_log=True
+        )
 
     except KeyboardInterrupt:
         logger.info("🛑 Received shutdown signal")

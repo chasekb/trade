@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
-import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters } from '@/hooks/useTrading';
+import { useQueryClient } from '@tanstack/react-query';
+import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useSimulatedTradingStats } from '@/hooks/useTrading';
 
 // Strategy Selector Component
 interface StrategySelectorProps {
@@ -502,16 +503,294 @@ function TradingConfiguration({
 }
 
 // Main Simulated Trading Panel Component
+// Simulated Trading Statistics Component
+function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
+  const queryClient = useQueryClient();
+  const { data: stats, isLoading, error } = useSimulatedTradingStats(isTradingActive);
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+  };
+
+  if (!isTradingActive) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Simulated Trading Statistics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <p>Start trading to see simulated trading statistics.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Simulated Trading Statistics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <p>Loading statistics...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !stats?.portfolio) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle>Simulated Trading Statistics</CardTitle>
+            <Button variant="secondary" size="sm" onClick={handleRefresh}>
+              <i className="fas fa-sync-alt mr-1"></i>Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <p>No statistics available. Trading may not be active.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const portfolio = stats.portfolio;
+  const trades = portfolio.trades || [];
+  const positions = portfolio.positions || {};
+
+  // Calculate derived statistics (similar to vanilla JS implementation)
+  const winningTrades = trades.filter((trade: any) => trade.pnl > 0);
+  const losingTrades = trades.filter((trade: any) => trade.pnl < 0);
+  const totalTrades = trades.length;
+  const winningTradesCount = winningTrades.length;
+  const losingTradesCount = losingTrades.length;
+
+  const completedTradesCount = trades.filter((t: any) => (t.side || '').toLowerCase() === 'sell').length;
+  const denom = completedTradesCount || totalTrades;
+  const winRate = denom > 0 ? (winningTradesCount / denom) * 100 : 0;
+
+  const totalVolume = trades.reduce((sum: number, trade: any) => sum + (trade.quantity * trade.price), 0);
+  const avgTradeSize = totalTrades > 0 ? totalVolume / totalTrades : 0;
+
+  const bestTrade = trades.length > 0 ? Math.max(...trades.map((t: any) => t.pnl || 0)) : 0;
+  const worstTrade = trades.length > 0 ? Math.min(...trades.map((t: any) => t.pnl || 0)) : 0;
+
+  const avgWin = winningTradesCount > 0 ? winningTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0) / winningTradesCount : 0;
+  const avgLoss = losingTradesCount > 0 ? losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0) / losingTradesCount : 0;
+
+  const grossProfit = winningTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0);
+  const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0));
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
+
+  const cashBalance = portfolio.cash_balance || 0;
+  const totalValue = portfolio.total_value || 0;
+  const totalPositionsValue = portfolio.total_positions_value || 0;
+  const unrealizedPnl = portfolio.unrealized_pnl || 0;
+  const realizedPnl = portfolio.realized_pnl || 0;
+  const netPnl = portfolio.net_pnl || (unrealizedPnl + realizedPnl);
+  const totalFees = portfolio.total_fees || 0;
+
+  const activePositions = Object.values(positions).filter((pos: any) => (pos.status || 'open') === 'open').length;
+
+  const recentTrades = (portfolio.recent_trades || trades).slice(0, 10);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-center">
+          <CardTitle>Simulated Trading Statistics</CardTitle>
+          <Button variant="secondary" size="sm" onClick={handleRefresh}>
+            <i className="fas fa-sync-alt mr-1"></i>Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Main Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="text-center p-4 bg-blue-50 rounded-lg">
+            <p className="text-sm text-gray-600">Total Net P&L</p>
+            <p className={`text-2xl font-bold ${netPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${netPnl.toFixed(2)}
+            </p>
+          </div>
+          <div className="text-center p-4 bg-green-50 rounded-lg">
+            <p className="text-sm text-gray-600">Win Rate</p>
+            <p className="text-2xl font-bold text-green-600">{winRate.toFixed(1)}%</p>
+          </div>
+          <div className="text-center p-4 bg-purple-50 rounded-lg">
+            <p className="text-sm text-gray-600">Total Trades</p>
+            <p className="text-2xl font-bold text-purple-600">{totalTrades}</p>
+          </div>
+        </div>
+
+        {/* Portfolio Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm text-gray-600">Cash Balance</p>
+            <p className="text-lg font-semibold">${cashBalance.toFixed(2)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm text-gray-600">Total Value</p>
+            <p className="text-lg font-semibold">${totalValue.toFixed(2)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm text-gray-600">Positions Value</p>
+            <p className="text-lg font-semibold">${totalPositionsValue.toFixed(2)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm text-gray-600">Active Positions</p>
+            <p className="text-lg font-semibold">{activePositions}</p>
+          </div>
+        </div>
+
+        {/* P&L Breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-gray-600">Unrealized P&L</p>
+            <p className={`text-lg font-semibold ${unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${unrealizedPnl.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-3 bg-green-50 rounded-lg">
+            <p className="text-sm text-gray-600">Realized P&L</p>
+            <p className={`text-lg font-semibold ${realizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${realizedPnl.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-3 bg-red-50 rounded-lg">
+            <p className="text-sm text-gray-600">Total Fees</p>
+            <p className="text-lg font-semibold text-red-600">${totalFees.toFixed(2)}</p>
+          </div>
+        </div>
+
+        {/* Performance Metrics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <h4 className="font-semibold text-gray-700">Trade Performance</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Average Win</span>
+                <span className="text-sm font-medium text-green-600">${avgWin.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Average Loss</span>
+                <span className="text-sm font-medium text-red-600">${avgLoss.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Best Trade</span>
+                <span className="text-sm font-medium text-green-600">${bestTrade.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Worst Trade</span>
+                <span className="text-sm font-medium text-red-600">${worstTrade.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="font-semibold text-gray-700">Risk Metrics</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Profit Factor</span>
+                <span className="text-sm font-medium">
+                  {profitFactor === Infinity ? '∞' : profitFactor.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Total Volume</span>
+                <span className="text-sm font-medium">${totalVolume.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Avg Trade Size</span>
+                <span className="text-sm font-medium">${avgTradeSize.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Winning Trades</span>
+                <span className="text-sm font-medium text-green-600">{winningTradesCount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">Losing Trades</span>
+                <span className="text-sm font-medium text-red-600">{losingTradesCount}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Trades Table */}
+        {recentTrades.length > 0 && (
+          <div className="space-y-4">
+            <h4 className="font-semibold text-gray-700">Recent Trades</h4>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Side</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">P&L</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {recentTrades.map((trade: any, index: number) => (
+                    <tr key={index}>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {new Date(trade.timestamp || Date.now()).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900">{trade.symbol || '-'}</td>
+                      <td className="px-4 py-2 text-sm">
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          (trade.side || '').toUpperCase() === 'BUY'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {(trade.side || '').toUpperCase() || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {typeof trade.quantity === 'number' ? trade.quantity.toFixed(4) : trade.quantity || 0}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        ${typeof trade.price === 'number' ? trade.price.toFixed(2) : trade.price || 0}
+                      </td>
+                      <td className={`px-4 py-2 text-sm font-medium ${
+                        (trade.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        ${(trade.pnl || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SimulatedTradingPanel({ className = '' }: LiveTradingPanelProps) {
   const { status, startTrading, stopTrading, loading } = useLiveTrading();
   const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
     status.symbols,
     status.isActive
   );
+  const queryClient = useQueryClient();
 
   const [strategy, setStrategy] = useState<TradingStrategy>('orderbook');
   const [config, setConfig] = useState<Record<string, any>>({});
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
+  const [configHidden, setConfigHidden] = useState(false);
 
   const handleStartTrading = async () => {
     try {
@@ -524,6 +803,12 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         max_positions: 10,
         position_update_interval: 5,
       });
+
+      // Immediately refresh order book signals after starting trading (like vanilla JS loadLiveTradingData)
+      queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
+
+      // Auto-hide strategy configuration when trading starts (like vanilla JS dashboard)
+      setConfigHidden(true);
     } catch (error) {
       console.error('Failed to start trading:', error);
     }
@@ -537,17 +822,40 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     }
   };
 
+  const showConfiguration = () => {
+    setConfigHidden(false);
+  };
+
+  const hideConfiguration = () => {
+    setConfigHidden(true);
+  };
+
   return (
     <div className={`space-y-6 ${className}`}>
       {/* Trading Configuration */}
-      <TradingConfiguration
-        strategy={strategy}
-        onStrategyChange={setStrategy}
-        config={config}
-        onConfigChange={setConfig}
-        symbols={symbols}
-        onSymbolsChange={setSymbols}
-      />
+      {!configHidden && (
+        <TradingConfiguration
+          strategy={strategy}
+          onStrategyChange={setStrategy}
+          config={config}
+          onConfigChange={setConfig}
+          symbols={symbols}
+          onSymbolsChange={setSymbols}
+        />
+      )}
+
+      {/* Show Strategy Configuration Button */}
+      {configHidden && (
+        <div className="text-center">
+          <Button
+            onClick={showConfiguration}
+            className="px-4 py-2"
+            variant="primary"
+          >
+            <i className="fas fa-eye mr-1"></i>Show Strategy Configuration
+          </Button>
+        </div>
+      )}
 
       {/* Trading Controls */}
       <Card>
@@ -575,38 +883,17 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         </CardContent>
       </Card>
 
+      {/* Simulated Trading Statistics */}
+      <SimulatedTradingStatistics isTradingActive={status.isActive} />
+
       {/* Order Book Signals */}
       {strategy === 'orderbook' && status.isActive && (
         <Card>
           <CardHeader>
             <CardTitle>Order Book Signals</CardTitle>
-            <div className="flex items-center space-x-4 text-sm text-gray-600">
-              {orderBookData && (
-                <>
-                  <span>Total Analyzed: {orderBookData.total_analyzed || 0}</span>
-                  <span>Active Signals: {orderBookData.active_signals || 0}</span>
-                  <span>Avg Strength: {(orderBookData.average_strength || 0).toFixed(2)}</span>
-                  <span>Last Updated: {orderBookData.last_updated ? new Date(orderBookData.last_updated).toLocaleTimeString() : 'Never'}</span>
-                </>
-              )}
-            </div>
           </CardHeader>
           <CardContent>
-            {!status.isActive ? (
-              <div className="text-center py-8 text-gray-500">
-                <p>Configure your strategy and start trading to see live signals.</p>
-              </div>
-            ) : signalsLoading ? (
-              <div className="text-center py-8">
-                <p>Loading signals...</p>
-              </div>
-            ) : orderBookData?.signals ? (
-              <OrderBookSignalsTable signals={orderBookData.signals} />
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p>No signals available.</p>
-              </div>
-            )}
+            <OrderBookSignalsTable signals={orderBookData?.signals || []} />
           </CardContent>
         </Card>
       )}

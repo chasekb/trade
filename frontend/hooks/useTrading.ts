@@ -102,8 +102,26 @@ export function useOrderBookSignals(
       return response.data;
     },
     enabled: isEnabled,
-    staleTime: 5 * 1000, // 5 seconds
-    refetchInterval: isEnabled ? 5 * 1000 : false,
+    staleTime: 2 * 1000, // 2 seconds - more responsive for real-time signals
+    refetchInterval: isEnabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for real-time signal updates
+  });
+}
+
+// Simulated Trading Statistics Hook
+
+export function useSimulatedTradingStats(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['simulated-trading-stats'],
+    queryFn: async () => {
+      const response = await apiClient.getSimulatedTradingStatus();
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch simulated trading stats');
+      }
+      return response.data;
+    },
+    enabled,
+    staleTime: 2 * 1000, // 2 seconds - consider data fresh for 2 seconds
+    refetchInterval: enabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for near real-time updates
   });
 }
 

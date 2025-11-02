@@ -586,7 +586,7 @@ class TradingHandlers:
             # Prepare signals data (use actual signals if available, otherwise default)
             try:
                 # Try to get live signals data
-                from ..data_handlers import DataHandlers
+                from .data_handlers import DataHandlers
                 # Create a data handler instance to get signals
                 data_handler = DataHandlers(
                     config=self.config,
