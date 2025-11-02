@@ -43,25 +43,36 @@ class DataHandlers:
             page = max(1, int(page))
             per_page = max(1, min(int(per_page), 1000))
             
-            # Check if trading is active (either simulated trading or async trading)
+            # Check if trading is active with orderbook strategy (either simulated trading or async trading)
             trading_active = False
+            orderbook_strategy_active = False
+
             if self.simulated_trading_manager:
                 trading_active = self.simulated_trading_manager.is_trading
-            
-            # Also check if async trading is active
+                # Check if the strategy is orderbook
+                if trading_active and hasattr(self.simulated_trading_manager, 'strategy_type'):
+                    orderbook_strategy_active = self.simulated_trading_manager.strategy_type == 'orderbook'
+
+            # Also check if async trading is active with orderbook strategy
             if not trading_active and self.trading_state:
                 async_trading_active = self.trading_state.is_trading
                 if async_trading_active:
                     trading_active = True
-                    logger.info("Async trading is active, enabling order book signals")
-            
-            # Only return signals if trading is actually active
-            if not trading_active:
-                logger.debug("Trading not active, returning empty signals")
+                    # Check if async trading strategy is orderbook
+                    async_strategy = self.trading_state.get('active_strategy', '')
+                    orderbook_strategy_active = async_strategy == 'orderbook'
+                    if orderbook_strategy_active:
+                        logger.info("Async trading is active with orderbook strategy, enabling order book signals")
+
+            # Only return signals if trading is active AND using orderbook strategy
+            if not trading_active or not orderbook_strategy_active:
+                reason = "Trading is not active" if not trading_active else "Order book strategy is not active"
+                logger.debug(f"{reason}, returning empty signals")
                 return {
                     "signals": [],
-                    "trading_active": False,
-                    "message": "Trading is not active. Configure your strategy and start trading to see live signals.",
+                    "trading_active": trading_active,
+                    "orderbook_strategy_active": orderbook_strategy_active,
+                    "message": f"{reason}. Configure order book signals strategy and start trading to see live signals.",
                     "pagination": {
                         "current_page": page,
                         "per_page": per_page,
@@ -77,7 +88,8 @@ class DataHandlers:
                 logger.warning("Received malformed symbols '[object Object]', returning empty signals")
                 return {
                     "signals": [],
-                    "trading_active": False,
+                    "trading_active": trading_active,
+                    "orderbook_strategy_active": orderbook_strategy_active,
                     "message": "Invalid symbols provided. Please refresh the page and try again.",
                     "pagination": {
                         "current_page": page,
@@ -101,7 +113,7 @@ class DataHandlers:
                 if re.fullmatch(r"[A-Z0-9\-]{3,30}", s):
                     valid.append(s)
             if not valid:
-                return {"signals": [], "trading_active": False, "message": "No valid symbols provided", "pagination": {"current_page": page, "per_page": per_page, "total_signals": 0, "total_pages": 0, "has_next": False, "has_prev": False}}
+                return {"signals": [], "trading_active": trading_active, "orderbook_strategy_active": orderbook_strategy_active, "message": "No valid symbols provided", "pagination": {"current_page": page, "per_page": per_page, "total_signals": 0, "total_pages": 0, "has_next": False, "has_prev": False}}
             symbol_list = valid
             
             # Debug logging to see what symbols we're processing
