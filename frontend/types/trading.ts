@@ -45,12 +45,66 @@ export interface Trade {
 export interface OrderBookSignal {
   symbol: string;
   timestamp: string;
-  buy_volume: number;
-  sell_volume: number;
-  imbalance_ratio: number;
+  price: number;
+  signal: 'buy' | 'sell' | 'hold';
+  signal_generated: boolean;
   signal_strength: number;
-  prediction: 'BUY' | 'SELL' | 'HOLD';
-  signal_generated?: boolean;
+  signal_type?: string;
+  signal_reason?: string;
+  data_status: 'sufficient' | 'insufficient' | 'none';
+  spread: number;
+  volume: number;
+  criteria_analysis?: {
+    bid_ask_squeeze?: {
+      enabled: boolean;
+      meets_criteria: boolean;
+      delta_to_threshold: number;
+      threshold_spread: number;
+      analysis?: string;
+    };
+    volume_imbalance_buy?: {
+      enabled: boolean;
+      meets_criteria: boolean;
+      delta_to_threshold: number;
+      threshold: number;
+      analysis?: string;
+    };
+    volume_imbalance_sell?: {
+      enabled: boolean;
+      meets_criteria: boolean;
+      delta_to_threshold: number;
+      threshold: number;
+      analysis?: string;
+    };
+    large_trade_buy?: {
+      enabled: boolean;
+      meets_criteria: boolean;
+      delta_to_threshold: number;
+      large_trades_count: number;
+      analysis?: string;
+    };
+    large_trade_sell?: {
+      enabled: boolean;
+      meets_criteria: boolean;
+      delta_to_threshold: number;
+      large_trades_count: number;
+      analysis?: string;
+    };
+  };
+  ml_analysis?: {
+    ml_enabled: boolean;
+    win_probability: number;
+    expected_return: number;
+    confidence: number;
+    model_version: string;
+    features_used?: string[];
+    prediction_timestamp: string;
+  };
+  // Legacy properties for backward compatibility
+  buy_volume?: number;
+  sell_volume?: number;
+  imbalance_ratio?: number;
+  prediction?: 'BUY' | 'SELL' | 'HOLD';
 }
 
 export interface PriceDataPoint {

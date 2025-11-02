@@ -83,19 +83,21 @@ export function useLiveTrading() {
   };
 }
 
-// Order Book Signals Hook
+// Order Book Signals Hook with Pagination Support
 
 export function useOrderBookSignals(
   symbols?: string[],
-  enabled: boolean = true
+  enabled: boolean = true,
+  page: number = 1,
+  perPage: number = 10
 ) {
   const hasSymbols = Boolean(symbols && symbols.length > 0);
   const isEnabled = Boolean(enabled && hasSymbols);
 
   return useQuery({
-    queryKey: ['orderbook-signals', symbols],
+    queryKey: ['orderbook-signals', symbols, enabled, page, perPage], // Include pagination params in key
     queryFn: async () => {
-      const response = await apiClient.getOrderBookSignals(symbols);
+      const response = await apiClient.getOrderBookSignals(symbols, { page, per_page: perPage });
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch order book signals');
       }
