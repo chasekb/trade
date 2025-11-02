@@ -311,6 +311,9 @@ async def load_remaining_symbols_background(remaining_symbols: list, batch_size:
     try:
         logger.info(f"Starting background loading of {len(remaining_symbols)} symbols")
 
+        # Get app_state for background task
+        app_state = get_app_state()
+
         # Process symbols in batches
         for i in range(0, len(remaining_symbols), batch_size):
             batch = remaining_symbols[i:i + batch_size]
@@ -324,22 +327,20 @@ async def load_remaining_symbols_background(remaining_symbols: list, batch_size:
                 # Add batch to trading
                 await app_state.trading_handlers.add_symbols_to_trading({"symbols": batch})
 
-                # Update trading state
-                current_symbols = app_state.trading_state.get("symbols", [])
-                app_state.trading_state["symbols"] = current_symbols + batch
+                # Update trading state - append new symbols to existing ones
+                current_symbols = app_state.trading_state.symbols if hasattr(app_state.trading_state, 'symbols') else []
+                app_state.trading_state.symbols = current_symbols + batch
 
-                # Update loading progress
-                loaded_count = len(app_state.trading_state["symbols"])
-                total_count = app_state.trading_state["loading_progress"]["total"]
+                # Update loading progress using the update_loading_progress method
+                loaded_count = len(app_state.trading_state.symbols)
+                total_count = app_state.trading_state.loading_progress.get("total", 0) if hasattr(app_state.trading_state, 'loading_progress') else 0
                 remaining_count = len(remaining_symbols) - (i + len(batch))
 
-                app_state.trading_state["loading_progress"] = {
-                    "status": "loading" if remaining_count > 0 else "complete",
-                    "loaded": loaded_count,
-                    "total": total_count,
-                    "remaining": remaining_count,
-                    "progress": int((loaded_count / total_count) * 100) if total_count > 0 else 100
-                }
+                app_state.update_loading_progress(
+                    loaded=loaded_count,
+                    total=total_count,
+                    status="loading" if remaining_count > 0 else "complete"
+                )
 
                 # Wait between batches to avoid overwhelming the system
                 await asyncio.sleep(2.0)
@@ -349,17 +350,33 @@ async def load_remaining_symbols_background(remaining_symbols: list, batch_size:
             except Exception as batch_error:
                 logger.error(f"Error loading batch {i//batch_size + 1}: {batch_error}")
                 # Mark progress as error and continue with next batch
-                if app_state and app_state.trading_state:
-                    app_state.trading_state["loading_progress"]["status"] = "error"
+                try:
+                    app_state_error = get_app_state()
+                    if app_state_error and app_state_error.trading_state:
+                        app_state_error.update_loading_progress(
+                            loaded=loaded_count,
+                            total=total_count,
+                            status="error"
+                        )
+                except Exception as error_update_e:
+                    logger.warning(f"Failed to update error status in batch: {error_update_e}")
                 continue
 
         # Mark loading as complete
-        if app_state and app_state.trading_state:
-            app_state.trading_state["loading_progress"]["status"] = "complete"
-
         logger.info("Background symbol loading completed")
 
     except Exception as e:
         logger.error(f"Error in background symbol loading: {e}")
-        if app_state and app_state.trading_state:
-            app_state.trading_state["loading_progress"]["status"] = "error"
+        try:
+            app_state_error = get_app_state()
+            if app_state_error and app_state_error.trading_state:
+                # Find current loaded and total counts for error state
+                current_symbols = app_state_error.trading_state.symbols if hasattr(app_state_error.trading_state, 'symbols') else []
+                total_count = app_state_error.trading_state.loading_progress.get("total", 0) if hasattr(app_state_error.trading_state, 'loading_progress') else 0
+                app_state_error.update_loading_progress(
+                    loaded=len(current_symbols),
+                    total=total_count,
+                    status="error"
+                )
+        except Exception as inner_e:
+            logger.error(f"Failed to update error status: {inner_e}")

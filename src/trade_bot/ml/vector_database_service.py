@@ -55,11 +55,11 @@ class VectorDatabaseService:
         """Load vector database configuration."""
         try:
             with open(self.config_path, 'r') as f:
-                return yaml.safe_load(f)
+                config = yaml.safe_load(f)
         except Exception as e:
             logger.error(f"Failed to load config from {self.config_path}: {e}")
             # Return default config
-            return {
+            config = {
                 'qdrant': {
                     'host': 'localhost',
                     'port': 6333,
@@ -74,6 +74,27 @@ class VectorDatabaseService:
                     'port': 8002
                 }
             }
+
+        # Override with environment variables if set
+        if os.getenv('QDRANT_URL'):
+            qdrant_url = os.getenv('QDRANT_URL')
+            # Parse URL like http://qdrant:6333
+            if '://' in qdrant_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(qdrant_url)
+                config['qdrant']['host'] = parsed.hostname or 'localhost'
+                config['qdrant']['port'] = parsed.port or 6333
+
+        if os.getenv('REDIS_URL'):
+            redis_url = os.getenv('REDIS_URL')
+            # Parse URL like redis://redis:6379
+            if '://' in redis_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(redis_url)
+                config['redis']['host'] = parsed.hostname or 'localhost'
+                config['redis']['port'] = parsed.port or 6379
+
+        return config
     
     async def start_services(self) -> bool:
         """Start all vector database services."""
@@ -117,14 +138,20 @@ class VectorDatabaseService:
         try:
             logger.info("Checking Qdrant vector database...")
 
-            # Check if Qdrant container is running via podman
+            # First, try to connect to Qdrant directly using the configured URL
+            # This handles cases where Qdrant is running externally (e.g., in another container)
+            if await self._check_qdrant():
+                logger.info("Qdrant is already running and accessible")
+                self.qdrant_process = "external_service"  # Mark as external service
+                return True
+
+            # Check if Qdrant container is running via podman (for local development)
             try:
                 result = subprocess.run([
-                    "podman", "ps", "--filter", "name=qdrant",
-                    "--format", "{{.Names}}"
+                    "podman", "ps", "--format", "{{.Names}}"
                 ], capture_output=True, text=True, timeout=10)
 
-                if "qdrant" in result.stdout:
+                if any("qdrant" in name for name in result.stdout.split()):
                     logger.info("Qdrant container is already running via podman")
                     self.qdrant_process = "podman_container"  # Mark as external process
                     return True
@@ -167,14 +194,20 @@ class VectorDatabaseService:
         try:
             logger.info("Checking Redis cache server...")
 
-            # Check if Redis container is running via podman
+            # First, try to connect to Redis directly using the configured URL
+            # This handles cases where Redis is running externally (e.g., in another container)
+            if await self._check_redis():
+                logger.info("Redis is already running and accessible")
+                self.redis_process = "external_service"  # Mark as external service
+                return True
+
+            # Check if Redis container is running via podman (for local development)
             try:
                 result = subprocess.run([
-                    "podman", "ps", "--filter", "name=redis",
-                    "--format", "{{.Names}}"
+                    "podman", "ps", "--format", "{{.Names}}"
                 ], capture_output=True, text=True, timeout=10)
 
-                if "redis" in result.stdout:
+                if any("redis" in name for name in result.stdout.split()):
                     logger.info("Redis container is already running via podman")
                     self.redis_process = "podman_container"  # Mark as external process
                     return True
