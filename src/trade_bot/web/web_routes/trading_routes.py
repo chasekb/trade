@@ -143,7 +143,7 @@ async def start_async_trading(request: dict):
             "remaining_symbols": remaining_symbols,
             "total_symbols": len(symbols),
             "loading_progress": app_state.trading_state.loading_progress,
-            "trading_active": True
+            "is_active": True
         }
 
     except Exception as e:

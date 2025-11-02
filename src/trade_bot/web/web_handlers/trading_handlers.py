@@ -421,7 +421,10 @@ class TradingHandlers:
             
             # Update position update interval
             self.simulated_trading_manager.position_update_interval = position_update_interval
-            
+
+            # Set strategy info for trade logging and signal processing
+            self.simulated_trading_manager.set_strategy_info(strategy_type, strategy_params)
+
             # Start simulated trading with position size parameters
             self.simulated_trading_manager.start_trading(
                 symbols,
