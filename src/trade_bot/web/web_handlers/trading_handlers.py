@@ -1,6 +1,7 @@
 """Trading handlers for the trading web server."""
 
 import logging
+from datetime import datetime
 import re
 import json
 from typing import Dict, Any, Optional
@@ -432,6 +433,17 @@ class TradingHandlers:
                 max_positions=max_positions
             )
 
+            # Sync websocket trading state so background auto-trader engages
+            try:
+                if self.websocket_manager:
+                    self.websocket_manager.set_trading_state({
+                        "is_active": True,
+                        "strategy_type": strategy_type,
+                        "symbols": symbols
+                    })
+            except Exception as ws_sync_err:
+                logger.warning(f"Failed to sync websocket trading state on start: {ws_sync_err}")
+
             # Broadcast initial trading state to frontend widgets
             await self._broadcast_trading_start_to_frontend()
 
@@ -454,6 +466,17 @@ class TradingHandlers:
         """Stop simulated trading session."""
         try:
             self.simulated_trading_manager.stop_trading()
+
+            # Sync websocket trading state to inactive
+            try:
+                if self.websocket_manager:
+                    self.websocket_manager.set_trading_state({
+                        "is_active": False,
+                        "strategy_type": self.simulated_trading_manager.strategy_type,
+                        "symbols": self.simulated_trading_manager.symbols_to_trade
+                    })
+            except Exception as ws_sync_err:
+                logger.warning(f"Failed to sync websocket trading state on stop: {ws_sync_err}")
             
             return {
                 "status": "stopped",

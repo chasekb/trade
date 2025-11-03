@@ -1,6 +1,7 @@
 """Trading Routes for Trading Dashboard."""
 
 import asyncio
+import random
 import logging
 from fastapi import APIRouter, HTTPException
 
@@ -114,6 +115,16 @@ async def start_async_trading(request: dict):
         app_state.trading_state.active_strategy = strategy_type
         app_state.trading_state.symbols = initial_symbols
         app_state.trading_state.session_id = session_id
+        # Propagate state to websocket manager so background auto-trader engages
+        try:
+            if hasattr(app_state, 'websocket_manager') and app_state.websocket_manager:
+                app_state.websocket_manager.set_trading_state({
+                    "is_active": True,
+                    "strategy_type": strategy_type,
+                    "symbols": initial_symbols
+                })
+        except Exception as ws_state_err:
+            logger.warning(f"Failed to sync websocket trading state: {ws_state_err}")
         app_state.update_loading_progress(
             loaded=len(initial_symbols),
             total=len(symbols),
