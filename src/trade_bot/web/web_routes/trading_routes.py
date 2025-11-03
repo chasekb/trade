@@ -307,76 +307,182 @@ async def get_trading_metrics():
     return await app_state.trading_handlers.get_trading_metrics()
 
 async def load_remaining_symbols_background(remaining_symbols: list, batch_size: int = 3):
-    """Background task to load remaining symbols progressively."""
+    """Background task to load remaining symbols progressively with improved error handling and recovery."""
     try:
         logger.info(f"Starting background loading of {len(remaining_symbols)} symbols")
 
         # Get app_state for background task
         app_state = get_app_state()
+        if app_state is None:
+            logger.error("App state not available in background loading")
+            return
 
-        # Process symbols in batches
+        # Initialize error tracking and retry logic
+        consecutive_failures = 0
+        max_consecutive_failures = 3
+        retry_delay = 5.0  # Start with 5 seconds
+        max_retry_delay = 60.0  # Max 1 minute
+
+        # Process symbols in batches with improved error handling
         for i in range(0, len(remaining_symbols), batch_size):
             batch = remaining_symbols[i:i + batch_size]
+            batch_number = i // batch_size + 1
+            total_batches = (len(remaining_symbols) + batch_size - 1) // batch_size
 
-            try:
-                # Check if app_state is available before proceeding
-                if app_state is None:
-                    logger.error("App state not available in background loading")
-                    return
+            # Retry logic for each batch
+            batch_success = False
+            batch_retry_count = 0
+            max_batch_retries = 3
 
-                # Add batch to trading
-                await app_state.trading_handlers.add_symbols_to_trading({"symbols": batch})
-
-                # Update trading state - append new symbols to existing ones
-                current_symbols = app_state.trading_state.symbols if hasattr(app_state.trading_state, 'symbols') else []
-                app_state.trading_state.symbols = current_symbols + batch
-
-                # Update loading progress using the update_loading_progress method
-                loaded_count = len(app_state.trading_state.symbols)
-                total_count = app_state.trading_state.loading_progress.get("total", 0) if hasattr(app_state.trading_state, 'loading_progress') else 0
-                remaining_count = len(remaining_symbols) - (i + len(batch))
-
-                app_state.update_loading_progress(
-                    loaded=loaded_count,
-                    total=total_count,
-                    status="loading" if remaining_count > 0 else "complete"
-                )
-
-                # Wait between batches to avoid overwhelming the system
-                await asyncio.sleep(2.0)
-
-                logger.info(f"Loaded batch {i//batch_size + 1}: {batch}")
-
-            except Exception as batch_error:
-                logger.error(f"Error loading batch {i//batch_size + 1}: {batch_error}")
-                # Mark progress as error and continue with next batch
+            while not batch_success and batch_retry_count < max_batch_retries:
                 try:
-                    app_state_error = get_app_state()
-                    if app_state_error and app_state_error.trading_state:
-                        app_state_error.update_loading_progress(
-                            loaded=loaded_count,
+                    # Check if app_state is still available
+                    current_app_state = get_app_state()
+                    if current_app_state is None:
+                        logger.error("App state became unavailable during background loading")
+                        return
+
+                    # Check if trading is still active
+                    if not current_app_state.trading_state.is_trading:
+                        logger.warning("Trading is no longer active, stopping background loading")
+                        return
+
+                    logger.info(f"Processing batch {batch_number}/{total_batches}: {batch} (attempt {batch_retry_count + 1})")
+
+                    # Add batch to trading with timeout protection
+                    try:
+                        # Add timeout to prevent hanging
+                        await asyncio.wait_for(
+                            current_app_state.trading_handlers.add_symbols_to_trading({"symbols": batch}),
+                            timeout=30.0  # 30 second timeout per batch
+                        )
+                        batch_success = True
+                        consecutive_failures = 0  # Reset on success
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Batch {batch_number} timed out after 30 seconds")
+                        batch_retry_count += 1
+                        continue
+
+                    # Update trading state - append new symbols to existing ones
+                    current_symbols = current_app_state.trading_state.symbols if hasattr(current_app_state.trading_state, 'symbols') else []
+                    current_app_state.trading_state.symbols = current_symbols + batch
+
+                    # Update loading progress
+                    loaded_count = len(current_app_state.trading_state.symbols)
+                    total_count = current_app_state.trading_state.loading_progress.get("total", 0) if hasattr(current_app_state.trading_state, 'loading_progress') else 0
+                    remaining_count = len(remaining_symbols) - (i + len(batch))
+
+                    current_app_state.update_loading_progress(
+                        loaded=loaded_count,
+                        total=total_count,
+                        status="loading" if remaining_count > 0 else "complete"
+                    )
+
+                    # Wait between batches to avoid overwhelming the system
+                    if batch_number < total_batches:  # Don't wait after last batch
+                        await asyncio.sleep(2.0)
+
+                    logger.info(f"Successfully loaded batch {batch_number}/{total_batches}: {batch}")
+
+                except asyncio.TimeoutError:
+                    logger.error(f"Batch {batch_number} failed due to timeout")
+                    batch_retry_count += 1
+                    consecutive_failures += 1
+
+                except Exception as batch_error:
+                    logger.error(f"Error loading batch {batch_number} (attempt {batch_retry_count + 1}): {batch_error}")
+                    batch_retry_count += 1
+                    consecutive_failures += 1
+
+                    # Log detailed error information
+                    if "timeout" in str(batch_error).lower():
+                        logger.warning(f"Batch {batch_number} timeout - may indicate API rate limiting")
+                    elif "connection" in str(batch_error).lower():
+                        logger.warning(f"Batch {batch_number} connection error - may indicate network issues")
+                    elif "rate" in str(batch_error).lower():
+                        logger.warning(f"Batch {batch_number} rate limited - increasing delay")
+
+                # Implement exponential backoff for retries
+                if not batch_success and batch_retry_count < max_batch_retries:
+                    # Calculate delay with exponential backoff and jitter
+                    base_delay = retry_delay * (2 ** batch_retry_count)
+                    jitter = random.uniform(0.5, 1.5)
+                    delay = min(base_delay + jitter, max_retry_delay)
+                    
+                    logger.info(f"Retrying batch {batch_number} in {delay:.2f} seconds")
+                    await asyncio.sleep(delay)
+
+            # Handle batch failure after all retries
+            if not batch_success:
+                logger.error(f"Batch {batch_number} failed after {max_batch_retries} attempts")
+                
+                # Update progress to error state but continue with next batch
+                try:
+                    error_app_state = get_app_state()
+                    if error_app_state and error_app_state.trading_state:
+                        current_symbols = error_app_state.trading_state.symbols if hasattr(error_app_state.trading_state, 'symbols') else []
+                        total_count = error_app_state.trading_state.loading_progress.get("total", 0) if hasattr(error_app_state.trading_state, 'loading_progress') else 0
+                        
+                        error_app_state.update_loading_progress(
+                            loaded=len(current_symbols),
                             total=total_count,
-                            status="error"
+                            status="error" if consecutive_failures >= max_consecutive_failures else "loading"
                         )
                 except Exception as error_update_e:
-                    logger.warning(f"Failed to update error status in batch: {error_update_e}")
-                continue
+                    logger.warning(f"Failed to update error status for batch {batch_number}: {error_update_e}")
 
-        # Mark loading as complete
-        logger.info("Background symbol loading completed")
+                # Implement circuit breaker: if too many consecutive failures, stop processing
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(f"Circuit breaker activated: {consecutive_failures} consecutive batch failures, stopping background loading")
+                    try:
+                        circuit_app_state = get_app_state()
+                        if circuit_app_state and circuit_app_state.trading_state:
+                            current_symbols = circuit_app_state.trading_state.symbols if hasattr(circuit_app_state.trading_state, 'symbols') else []
+                            total_count = circuit_app_state.trading_state.loading_progress.get("total", 0) if hasattr(circuit_app_state.trading_state, 'loading_progress') else 0
+                            
+                            circuit_app_state.update_loading_progress(
+                                loaded=len(current_symbols),
+                                total=total_count,
+                                status="error"
+                            )
+                    except Exception as circuit_error:
+                        logger.error(f"Failed to update circuit breaker status: {circuit_error}")
+                    return
+
+        # Mark loading as complete or final status
+        try:
+            final_app_state = get_app_state()
+            if final_app_state and final_app_state.trading_state:
+                current_symbols = final_app_state.trading_state.symbols if hasattr(final_app_state.trading_state, 'symbols') else []
+                total_count = final_app_state.trading_state.loading_progress.get("total", 0) if hasattr(final_app_state.trading_state, 'loading_progress') else 0
+                
+                final_status = "complete" if len(current_symbols) >= total_count else "partial"
+                logger.info(f"Background symbol loading completed with status: {final_status} ({len(current_symbols)}/{total_count} symbols loaded)")
+                
+                final_app_state.update_loading_progress(
+                    loaded=len(current_symbols),
+                    total=total_count,
+                    status=final_status
+                )
+        except Exception as final_error:
+            logger.error(f"Failed to update final loading status: {final_error}")
 
     except Exception as e:
-        logger.error(f"Error in background symbol loading: {e}")
+        logger.error(f"Critical error in background symbol loading: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Try to update error status one final time
         try:
-            app_state_error = get_app_state()
-            if app_state_error and app_state_error.trading_state:
-                # Find current loaded and total counts for error state
-                current_symbols = app_state_error.trading_state.symbols if hasattr(app_state_error.trading_state, 'symbols') else []
-                total_count = app_state_error.trading_state.loading_progress.get("total", 0) if hasattr(app_state_error.trading_state, 'loading_progress') else 0
-                app_state_error.update_loading_progress(
+            error_app_state = get_app_state()
+            if error_app_state and error_app_state.trading_state:
+                current_symbols = error_app_state.trading_state.symbols if hasattr(error_app_state.trading_state, 'symbols') else []
+                total_count = error_app_state.trading_state.loading_progress.get("total", 0) if hasattr(error_app_state.trading_state, 'loading_progress') else 0
+                
+                error_app_state.update_loading_progress(
                     loaded=len(current_symbols),
                     total=total_count,
                     status="error"
                 )
         except Exception as inner_e:
-            logger.error(f"Failed to update error status: {inner_e}")
+            logger.error(f"Failed to update critical error status: {inner_e}")

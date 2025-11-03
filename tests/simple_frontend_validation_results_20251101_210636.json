@@ -1,0 +1,67 @@
+{
+  "summary": {
+    "total_tests": 7,
+    "passed_tests": 0,
+    "failed_tests": 7,
+    "success_rate": 0.0
+  },
+  "test_results": [
+    {
+      "test_name": "Frontend HTML - Exception",
+      "expected": "No exception",
+      "actual": "Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "passed": false,
+      "details": "Exception loading frontend HTML: Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "timestamp": "2025-11-01T21:06:36.651719"
+    },
+    {
+      "test_name": "JavaScript - Exception",
+      "expected": "No exception",
+      "actual": "Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 8001), [Errno 61] Connect call failed ('::1', 8001, 0, 0)]",
+      "passed": false,
+      "details": "Exception accessing JavaScript file: Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 8001), [Errno 61] Connect call failed ('::1', 8001, 0, 0)]",
+      "timestamp": "2025-11-01T21:06:36.652571"
+    },
+    {
+      "test_name": "API Endpoint - /api/simulated-trading/status Exception",
+      "expected": "No exception",
+      "actual": "Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "passed": false,
+      "details": "Exception accessing API endpoint: Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "timestamp": "2025-11-01T21:06:36.653179"
+    },
+    {
+      "test_name": "API Endpoint - /api/orderbook/live-signals?symbols=BTC-USD Exception",
+      "expected": "No exception",
+      "actual": "Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 8001), [Errno 61] Connect call failed ('::1', 8001, 0, 0)]",
+      "passed": false,
+      "details": "Exception accessing API endpoint: Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 8001), [Errno 61] Connect call failed ('::1', 8001, 0, 0)]",
+      "timestamp": "2025-11-01T21:06:36.653767"
+    },
+    {
+      "test_name": "API Endpoint - /api/async-trading/loading-status Exception",
+      "expected": "No exception",
+      "actual": "Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "passed": false,
+      "details": "Exception accessing API endpoint: Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "timestamp": "2025-11-01T21:06:36.654470"
+    },
+    {
+      "test_name": "Backend-Frontend Sync - Exception",
+      "expected": "No exception",
+      "actual": "Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 8001), [Errno 61] Connect call failed ('::1', 8001, 0, 0)]",
+      "passed": false,
+      "details": "Exception testing sync: Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 8001), [Errno 61] Connect call failed ('::1', 8001, 0, 0)]",
+      "timestamp": "2025-11-01T21:06:36.655092"
+    },
+    {
+      "test_name": "Async Trading - Exception",
+      "expected": "No exception",
+      "actual": "Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "passed": false,
+      "details": "Exception testing async trading: Cannot connect to host localhost:8001 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 8001, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 8001)]",
+      "timestamp": "2025-11-01T21:06:36.655672"
+    }
+  ],
+  "timestamp": "2025-11-01T21:06:36.655995"
+}

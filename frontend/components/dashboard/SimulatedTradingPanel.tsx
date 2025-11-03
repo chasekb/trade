@@ -267,9 +267,12 @@ function OrderBookSignalsTable({
           ? 'text-yellow-600 bg-yellow-50'
           : 'text-gray-400 bg-gray-100';
 
+        // Get the actual signal value, fallback to 'hold' if undefined
+        const actualSignal = row.signal || 'hold';
+        
         return (
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${signalClass}`}>
-            {row.data_status === 'sufficient' ? (row.signal || 'HOLD').toUpperCase() :
+            {row.data_status === 'sufficient' ? actualSignal.toUpperCase() :
              row.data_status === 'insufficient' ? 'WAITING' : 'NO DATA'}
           </span>
         );

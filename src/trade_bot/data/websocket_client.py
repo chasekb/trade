@@ -103,35 +103,59 @@ class WebSocketClient:
                 logger.error(f"Failed to resubscribe to {channel}: {e}")
         
     async def connect(self) -> None:
-        """Connect to the WebSocket with retry logic and rate limiting."""
+        """Connect to the WebSocket with improved retry logic and connection stability."""
         retry_count = 0
+        consecutive_failures = 0
         
         while retry_count < self.max_retries:
             try:
                 # Add jitter to prevent thundering herd
                 if retry_count > 0:
+                    # Exponential backoff with jitter and circuit breaker logic
+                    base_delay = self.retry_delay * (2 ** min(retry_count, 6))  # Cap at 2^6
                     jitter = random.uniform(0.1, 0.5)
-                    delay = min(self.retry_delay * (2 ** retry_count) + jitter, self.max_retry_delay)
-                    logger.info(f"Retrying connection in {delay:.2f} seconds (attempt {retry_count + 1}/{self.max_retries})")
+                    
+                    # Add circuit breaker: if too many consecutive failures, wait longer
+                    if consecutive_failures > 3:
+                        circuit_breaker_delay = min(300, consecutive_failures * 30)  # Max 5 minutes
+                        logger.warning(f"Circuit breaker activated: {consecutive_failures} consecutive failures, waiting {circuit_breaker_delay}s")
+                        delay = min(base_delay + jitter + circuit_breaker_delay, self.max_retry_delay)
+                    else:
+                        delay = min(base_delay + jitter, self.max_retry_delay)
+                    
+                    logger.info(f"Retrying connection in {delay:.2f} seconds (attempt {retry_count + 1}/{self.max_retries}, consecutive failures: {consecutive_failures})")
                     await asyncio.sleep(delay)
                 
-                # Use public WebSocket URL for public channels
+                # Use public WebSocket URL for public channels with improved connection parameters
                 self.websocket = await websockets.connect(
                     self.public_websocket_url,
-                    ping_interval=20,
-                    ping_timeout=10,
-                    close_timeout=10
+                    ping_interval=15,  # More frequent pings for better connection health
+                    ping_timeout=8,   # Shorter timeout for faster failure detection
+                    close_timeout=10,
+                    max_size=10**7,   # 10MB max message size
+                    max_queue=100,     # Limit message queue to prevent memory issues
+                    compression=None     # Disable compression for better performance
                 )
                 logger.info(f"Connected to {self.public_websocket_url}")
                 self.running = True
                 self.authenticated = True  # Public channels don't need auth
                 self.connection_attempts = 0  # Reset on successful connection
+                consecutive_failures = 0  # Reset consecutive failures on success
                 return
 
             except Exception as e:
                 retry_count += 1
                 self.connection_attempts += 1
+                consecutive_failures += 1
                 logger.warning(f"Connection attempt {retry_count} failed: {e}")
+                
+                # Log detailed error information for debugging
+                if "timeout" in str(e).lower():
+                    logger.warning("Connection timeout - may indicate network issues or server overload")
+                elif "refused" in str(e).lower():
+                    logger.warning("Connection refused - may indicate server issues")
+                elif "ssl" in str(e).lower() or "tls" in str(e).lower():
+                    logger.warning("SSL/TLS error - may indicate certificate or network issues")
                 
                 if retry_count >= self.max_retries:
                     logger.error(f"Failed to connect after {self.max_retries} attempts: {e}")

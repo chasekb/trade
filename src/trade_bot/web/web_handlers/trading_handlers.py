@@ -728,7 +728,7 @@ class TradingHandlers:
         }
 
     async def _broadcast_trading_update_to_frontend(self, signals_result: Dict[str, Any] = None) -> None:
-        """Broadcast trading updates to frontend widgets."""
+        """Broadcast trading updates to frontend widgets with signal persistence and recovery."""
         try:
             # Get current trading status data
             trading_status = await self.get_simulated_trading_status()
@@ -742,6 +742,10 @@ class TradingHandlers:
                 websocket_manager = getattr(self.simulated_trading_manager, '_websocket_manager', None)
 
             if websocket_manager:
+                # Persist signals to database for recovery
+                if signals_result and signals_result.get('signals'):
+                    await self._persist_signals_to_database(signals_result['signals'])
+
                 # Broadcast trading statistics update
                 await websocket_manager.broadcast(json.dumps({
                     "type": "trading_statistics_update",
@@ -759,3 +763,119 @@ class TradingHandlers:
 
         except Exception as e:
             logger.error(f"Error broadcasting trading update to frontend: {e}")
+
+    async def _persist_signals_to_database(self, signals: list) -> None:
+        """Persist signals to database for recovery and analysis."""
+        try:
+            if not signals or not self.database_manager:
+                return
+
+            # Store signals in database with timestamp for recovery
+            current_time = datetime.now().isoformat()
+            
+            for signal in signals:
+                signal_data = {
+                    'symbol': signal.get('symbol'),
+                    'signal': signal.get('signal'),
+                    'signal_type': signal.get('signal_type'),
+                    'signal_strength': signal.get('signal_strength'),
+                    'price': signal.get('price'),
+                    'timestamp': signal.get('timestamp', current_time),
+                    'signal_reason': signal.get('signal_reason'),
+                    'data_status': signal.get('data_status'),
+                    'spread': signal.get('spread'),
+                    'volume': signal.get('volume'),
+                    'signal_generated': signal.get('signal_generated', False),
+                    'criteria_analysis': signal.get('criteria_analysis', {}),
+                    'ml_analysis': signal.get('ml_analysis', {}),
+                    'session_id': getattr(self.simulated_trading_manager, 'session_id', None),
+                    'strategy_type': getattr(self.simulated_trading_manager, 'strategy_type', 'orderbook'),
+                    'persisted_at': current_time
+                }
+                
+                # Store signal in database
+                if hasattr(self.database_manager, 'store_signal'):
+                    await self.database_manager.store_signal(signal_data)
+                else:
+                    # Fallback to generic storage if specific method not available
+                    logger.debug(f"Signal persistence not available for {signal.get('symbol')}")
+            
+            logger.info(f"Persisted {len(signals)} signals to database")
+            
+        except Exception as e:
+            logger.error(f"Error persisting signals to database: {e}")
+
+    async def _recover_signals_from_database(self, symbols: list = None, limit: int = 100) -> list:
+        """Recover recent signals from database for continuity."""
+        try:
+            if not self.database_manager:
+                return []
+
+            # Get recent signals from database
+            if hasattr(self.database_manager, 'get_recent_signals'):
+                recent_signals = await self.database_manager.get_recent_signals(
+                    symbols=symbols,
+                    limit=limit,
+                    hours=24  # Get signals from last 24 hours
+                )
+                logger.info(f"Recovered {len(recent_signals)} signals from database")
+                return recent_signals
+            else:
+                logger.debug("Signal recovery not available from database")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error recovering signals from database: {e}")
+            return []
+
+    async def get_signal_history(self, symbols: list = None, hours: int = 24, limit: int = 1000) -> Dict[str, Any]:
+        """Get signal history for analysis and debugging."""
+        try:
+            if not self.database_manager:
+                return {"signals": [], "error": "Database not available"}
+
+            # Get signal history from database
+            if hasattr(self.database_manager, 'get_signal_history'):
+                signals = await self.database_manager.get_signal_history(
+                    symbols=symbols,
+                    hours=hours,
+                    limit=limit
+                )
+                
+                # Calculate statistics
+                total_signals = len(signals)
+                buy_signals = len([s for s in signals if s.get('signal') == 'buy'])
+                sell_signals = len([s for s in signals if s.get('signal') == 'sell'])
+                hold_signals = len([s for s in signals if s.get('signal') == 'hold'])
+                
+                avg_strength = 0.0
+                if signals:
+                    strengths = [s.get('signal_strength', 0) for s in signals if s.get('signal_strength') is not None]
+                    avg_strength = sum(strengths) / len(strengths) if strengths else 0.0
+
+                return {
+                    "signals": signals,
+                    "statistics": {
+                        "total_signals": total_signals,
+                        "buy_signals": buy_signals,
+                        "sell_signals": sell_signals,
+                        "hold_signals": hold_signals,
+                        "average_strength": avg_strength,
+                        "signal_distribution": {
+                            "buy": buy_signals / total_signals * 100 if total_signals > 0 else 0,
+                            "sell": sell_signals / total_signals * 100 if total_signals > 0 else 0,
+                            "hold": hold_signals / total_signals * 100 if total_signals > 0 else 0
+                        }
+                    },
+                    "filters": {
+                        "symbols": symbols,
+                        "hours": hours,
+                        "limit": limit
+                    }
+                }
+            else:
+                return {"signals": [], "error": "Signal history not available"}
+                
+        except Exception as e:
+            logger.error(f"Error getting signal history: {e}")
+            return {"signals": [], "error": str(e)}
