@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useSimulatedTradingStats } from '@/hooks/useTrading';
+import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
 
 // Strategy Selector Component
 interface StrategySelectorProps {
@@ -846,6 +846,10 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
   const portfolio = stats.portfolio;
   const trades = portfolio.trades || [];
   const positions = portfolio.positions || {};
+  // Normalize positions to an array of open positions
+  const openPositions = Array.isArray(positions)
+    ? positions
+    : Object.values(positions).filter((pos: any) => (pos?.status || 'open') === 'open');
 
   // Calculate derived statistics (similar to vanilla JS implementation)
   const winningTrades = trades.filter((trade: any) => trade.pnl > 0);
@@ -879,7 +883,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
   const netPnl = portfolio.net_pnl || (unrealizedPnl + realizedPnl);
   const totalFees = portfolio.total_fees || 0;
 
-  const activePositions = Object.values(positions).filter((pos: any) => (pos.status || 'open') === 'open').length;
+  const activePositions = openPositions.length;
 
   const recentTrades = (portfolio.recent_trades || trades).slice(0, 10);
 
@@ -1005,6 +1009,53 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
           </div>
         </div>
 
+        {/* Open Positions Table */}
+        {openPositions.length > 0 && (
+          <div className="space-y-4">
+            <h4 className="font-semibold text-gray-700">Open Positions</h4>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Side</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Entry</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unrealized P&L</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Opened</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {openPositions.map((pos: any, index: number) => (
+                    <tr key={index}>
+                      <td className="px-4 py-2 text-sm text-gray-900">{pos.symbol}</td>
+                      <td className="px-4 py-2 text-sm">
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          (pos.side || '').toUpperCase() === 'LONG'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {(pos.side || '').toUpperCase() || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900">{Number(pos.quantity || 0).toFixed(4)}</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.entry_price || 0).toFixed(4)}</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.current_price || 0).toFixed(4)}</td>
+                      <td className={`px-4 py-2 text-sm font-medium ${
+                        Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        ${Number(pos.unrealized_pnl || 0).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Recent Trades Table */}
         {recentTrades.length > 0 && (
           <div className="space-y-4">
@@ -1062,6 +1113,8 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
 
 export default function SimulatedTradingPanel({ className = '' }: LiveTradingPanelProps) {
   const { status, startTrading, stopTrading, loading } = useLiveTrading();
+  // Start native WebSocket to receive live updates for stats/signals
+  useSimTradingWebSocket(status.isActive);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const queryClient = useQueryClient();

@@ -158,6 +158,81 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
   });
 }
 
+// Simulated Trading WebSocket Hook
+
+export function useSimTradingWebSocket(enabled: boolean = true) {
+  const [connected, setConnected] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+
+    const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
+    const wsUrl = base.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
+    const ws = new WebSocket(wsUrl);
+    const onOpen = () => setConnected(true);
+    const onClose = () => setConnected(false);
+
+    ws.addEventListener('open', onOpen);
+    ws.addEventListener('close', onClose);
+
+    ws.addEventListener('message', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        const type = payload?.type;
+        const data = payload?.data;
+
+        // Push trading statistics into cache for instant UI updates
+        if (type === 'trading_statistics_update' && data) {
+          // Expect { portfolio, open_positions, recent_trades, ... }
+          // Normalize to the shape expected by useSimulatedTradingStats consumer
+          const normalized = {
+            ...data,
+          };
+          // Update the stats query cache
+          // Use global variable to avoid import cycle; dynamic import of queryClient is avoided here.
+          // Rely on window.dispatchEvent for a lightweight cache invalidation signal.
+          try {
+            (window as any).__RQ_SET__?.(['simulated-trading-stats'], normalized);
+          } catch {}
+          // Also emit a custom event for components not using React Query
+          window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
+        }
+
+        // Push orderbook signals updates; invalidate or set cache
+        if (type === 'orderbook_signals_update' && data) {
+          try {
+            (window as any).__RQ_SET__?.(['orderbook-signals'], data);
+            (window as any).__RQ_INVALIDATE__?.(['orderbook-signals']);
+          } catch {}
+          window.dispatchEvent(new CustomEvent('orderbook-signals-update', { detail: data }));
+        }
+      } catch (e) {
+        // ignore malformed messages
+      }
+    });
+
+    return () => {
+      try { ws.removeEventListener('open', onOpen); } catch {}
+      try { ws.removeEventListener('close', onClose); } catch {}
+      try { ws.close(); } catch {}
+    };
+  }, [enabled]);
+
+  return { connected };
+}
+
+// React Query integration helpers (optional, set globally once in app bootstrap)
+if (typeof window !== 'undefined' && !(window as any).__RQ_SET__) {
+  try {
+    const { queryClient } = require('@/lib/api');
+    (window as any).__RQ_SET__ = (key: any, data: any) => {
+      try { queryClient.setQueryData(key, data); } catch {}
+    };
+    (window as any).__RQ_INVALIDATE__ = (key: any) => {
+      try { queryClient.invalidateQueries({ queryKey: key }); } catch {}
+    };
+  } catch {}
+}
+
 // Products/Symbols Hook
 
 export function useProducts() {
