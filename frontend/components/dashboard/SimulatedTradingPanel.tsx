@@ -1064,17 +1064,19 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const { status, startTrading, stopTrading, loading } = useLiveTrading();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
-    status.symbols,
-    status.isActive,
-    currentPage,
-    pageSize
-  );
   const queryClient = useQueryClient();
 
   const [strategy, setStrategy] = useState<TradingStrategy>('orderbook');
   const [config, setConfig] = useState<Record<string, any>>({});
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
+
+  // Use local symbols for polling; fallback to backend status if empty
+  const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
+    symbols && symbols.length > 0 ? symbols : status.symbols,
+    status.isActive,
+    currentPage,
+    pageSize
+  );
   const [configHidden, setConfigHidden] = useState(false);
 
   // Handle pagination changes
