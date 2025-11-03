@@ -218,9 +218,11 @@ class SimulatedTradingManager:
                     'session_id': self.session_id,
                     'symbol': trade.symbol,
                     'side': trade.side,
+                    # Provide both quantity (legacy) and size (current) for compatibility
                     'quantity': trade.quantity,
+                    'size': trade.quantity,
                     'price': trade.price,
-                    'timestamp': trade.timestamp.isoformat(),
+                    'timestamp': int(trade.timestamp.timestamp()),
                     'reason': trade.reason,
                     'pnl': trade.pnl,
                     'fees': trade.fees,
@@ -758,10 +760,16 @@ class SimulatedTradingManager:
             # Import here to avoid circular imports
             import json
 
-            # Prepare trading data for broadcast
+            # Prepare trading data for broadcast with JSON-safe structures
+            portfolio_dict = asdict(portfolio)
+            # Override non-serializable fields with already-serialized views
+            portfolio_dict["positions"] = open_positions
+            # Use recent trades for the portfolio view to avoid large payloads and datetime objects
+            portfolio_dict["trades"] = recent_trades
+
             trading_data = {
                 "is_trading": self.is_trading,
-                "portfolio": portfolio.__dict__ if hasattr(portfolio, '__dict__') else asdict(portfolio),
+                "portfolio": portfolio_dict,
                 "open_positions": open_positions,
                 "recent_trades": recent_trades,
                 "timestamp": datetime.now().isoformat(),
