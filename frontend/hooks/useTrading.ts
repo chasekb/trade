@@ -122,8 +122,9 @@ export function useOrderBookSignals(
   page: number = 1,
   perPage: number = 10
 ) {
-  const hasSymbols = Boolean(symbols && symbols.length > 0);
-  const isEnabled = Boolean(enabled && hasSymbols);
+  // Enable query when trading is active, even if symbols aren't loaded yet
+  // This allows WebSocket updates to populate the widget immediately
+  const isEnabled = enabled;
 
   return useQuery({
     queryKey: ['orderbook-signals', symbols, enabled, page, perPage], // Include pagination params in key
@@ -197,10 +198,15 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
 
-        // Push orderbook signals updates; invalidate or set cache
+        // Push orderbook signals updates; invalidate or set cache for all query key variations
         if (type === 'orderbook_signals_update' && data) {
           try {
+            // Set cache for all possible query key variations to ensure immediate updates
+            // This handles cases where symbols might not be loaded yet
             (window as any).__RQ_SET__?.(['orderbook-signals'], data);
+            (window as any).__RQ_SET__?.(['orderbook-signals', undefined], data);
+            (window as any).__RQ_SET__?.(['orderbook-signals', []], data);
+            // Invalidate all orderbook-signals queries to trigger refetch if needed
             (window as any).__RQ_INVALIDATE__?.(['orderbook-signals']);
           } catch {}
           window.dispatchEvent(new CustomEvent('orderbook-signals-update', { detail: data }));

@@ -1239,23 +1239,54 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
 
   // Use local symbols for polling; fallback to backend status if empty
+  // Always pass symbols (even if empty) to enable query when trading is active
+  const activeSymbols = (symbols && symbols.length > 0) ? symbols : (status.symbols || []);
   const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
-    symbols && symbols.length > 0 ? symbols : status.symbols,
+    activeSymbols,
     status.isActive,
     currentPage,
     pageSize
   );
   const [configHidden, setConfigHidden] = useState(false);
+  const [wsSignalsData, setWsSignalsData] = useState<any>(null);
 
-  // Invalidate all orderbook-signals queries when websocket broadcasts updates
+  // Handle WebSocket updates immediately - merge with query data
   useEffect(() => {
-    const handleSignalsUpdate = () => {
-      try {
-        queryClient.invalidateQueries({
-          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'orderbook-signals'
-        });
-      } catch (e) {
-        // no-op
+    const handleSignalsUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const wsData = customEvent.detail;
+      
+      if (wsData) {
+        // Store WebSocket data for immediate display
+        setWsSignalsData(wsData);
+        
+        // Also update React Query cache with the WebSocket data
+        try {
+          // Update cache for current query key
+          const queryKey = ['orderbook-signals', activeSymbols, status.isActive, currentPage, pageSize];
+          queryClient.setQueryData(queryKey, (oldData: any) => {
+            // Merge WebSocket data with existing query data
+            if (wsData.signals && Array.isArray(wsData.signals)) {
+              return {
+                ...oldData,
+                signals: wsData.signals,
+                total_analyzed: wsData.total_analyzed ?? oldData?.total_analyzed,
+                active_signals: wsData.active_signals ?? oldData?.active_signals,
+                average_strength: wsData.average_strength ?? oldData?.average_strength,
+                last_updated: wsData.last_updated ?? oldData?.last_updated,
+                pagination: oldData?.pagination, // Keep pagination from query
+              };
+            }
+            return oldData || wsData;
+          });
+          
+          // Also invalidate to trigger refetch if needed
+          queryClient.invalidateQueries({
+            predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'orderbook-signals'
+          });
+        } catch (e) {
+          // no-op
+        }
       }
     };
 
@@ -1263,7 +1294,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     return () => {
       window.removeEventListener('orderbook-signals-update', handleSignalsUpdate as EventListener);
     };
-  }, [queryClient]);
+  }, [queryClient, activeSymbols, status.isActive, currentPage, pageSize]);
 
   // Handle pagination changes
   const handlePageChange = (page: number) => {
@@ -1330,12 +1361,16 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     setConfigHidden(true);
   };
 
-  // Normalize optional summary fields for order book signals
+  // Merge WebSocket data with query data for immediate display
+  const mergedSignalsData = wsSignalsData || orderBookData;
+  const signalsToDisplay = mergedSignalsData?.signals || orderBookData?.signals || [];
+  
+  // Normalize optional summary fields for order book signals (prefer WebSocket data for real-time updates)
   const signalsSummary = {
-    ...(orderBookData?.total_analyzed !== undefined ? { total_analyzed: orderBookData.total_analyzed as number } : {}),
-    ...(orderBookData?.active_signals !== undefined ? { active_signals: orderBookData.active_signals as number } : {}),
-    ...(orderBookData?.average_strength !== undefined ? { average_strength: orderBookData.average_strength as number } : {}),
-    ...(orderBookData?.last_updated ? { last_updated: orderBookData.last_updated as string } : {}),
+    ...(mergedSignalsData?.total_analyzed !== undefined ? { total_analyzed: mergedSignalsData.total_analyzed as number } : {}),
+    ...(mergedSignalsData?.active_signals !== undefined ? { active_signals: mergedSignalsData.active_signals as number } : {}),
+    ...(mergedSignalsData?.average_strength !== undefined ? { average_strength: mergedSignalsData.average_strength as number } : {}),
+    ...(mergedSignalsData?.last_updated ? { last_updated: mergedSignalsData.last_updated as string } : {}),
   } as {
     total_analyzed?: number;
     active_signals?: number;
@@ -1408,7 +1443,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           </CardHeader>
           <CardContent>
             <OrderBookSignalsTable
-              signals={orderBookData?.signals || []}
+              signals={signalsToDisplay}
               pagination={orderBookData?.pagination}
               onPageChange={handlePageChange}
               onPageSizeChange={handlePageSizeChange}
