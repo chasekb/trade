@@ -63,26 +63,58 @@ class TradeManager(BaseDatabase):
     def save_trade(self, trade_data: Dict[str, Any]) -> bool:
         """Save individual trade record."""
         try:
-            query = """
-                INSERT OR REPLACE INTO individual_trades 
-                (trade_id, session_id, symbol, side, size, price, timestamp, 
-                 strategy_type, signal_reason, pnl, fees)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            
-            return self._execute_update(query, (
-                trade_data.get('trade_id'),
-                trade_data.get('session_id'),
-                trade_data.get('symbol'),
-                trade_data.get('side'),
-                trade_data.get('size', 0.0),
-                trade_data.get('price', 0.0),
-                trade_data.get('timestamp'),
-                trade_data.get('strategy_type'),
-                trade_data.get('signal_reason'),
-                trade_data.get('pnl', 0.0),
-                trade_data.get('fees', 0.0)
-            ))
+            # Detect legacy schemas that still require a NOT NULL quantity column
+            with self._pool.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA table_info(individual_trades)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+            has_quantity = 'quantity' in columns
+
+            if has_quantity:
+                query = """
+                    INSERT OR REPLACE INTO individual_trades 
+                    (trade_id, session_id, symbol, side, quantity, size, price, timestamp, 
+                     strategy_type, signal_reason, pnl, fees)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                params = (
+                    trade_data.get('trade_id'),
+                    trade_data.get('session_id'),
+                    trade_data.get('symbol'),
+                    trade_data.get('side'),
+                    # Backfill quantity from size/quantity input
+                    float(trade_data.get('quantity', trade_data.get('size', 0.0)) or 0.0),
+                    float(trade_data.get('size', trade_data.get('quantity', 0.0)) or 0.0),
+                    float(trade_data.get('price', 0.0) or 0.0),
+                    trade_data.get('timestamp'),
+                    trade_data.get('strategy_type'),
+                    trade_data.get('signal_reason'),
+                    float(trade_data.get('pnl', 0.0) or 0.0),
+                    float(trade_data.get('fees', 0.0) or 0.0)
+                )
+            else:
+                query = """
+                    INSERT OR REPLACE INTO individual_trades 
+                    (trade_id, session_id, symbol, side, size, price, timestamp, 
+                     strategy_type, signal_reason, pnl, fees)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                params = (
+                    trade_data.get('trade_id'),
+                    trade_data.get('session_id'),
+                    trade_data.get('symbol'),
+                    trade_data.get('side'),
+                    float(trade_data.get('size', trade_data.get('quantity', 0.0)) or 0.0),
+                    float(trade_data.get('price', 0.0) or 0.0),
+                    trade_data.get('timestamp'),
+                    trade_data.get('strategy_type'),
+                    trade_data.get('signal_reason'),
+                    float(trade_data.get('pnl', 0.0) or 0.0),
+                    float(trade_data.get('fees', 0.0) or 0.0)
+                )
+
+            return self._execute_update(query, params)
         except Exception as e:
             logger.error(f"Error saving trade: {e}")
             return False
