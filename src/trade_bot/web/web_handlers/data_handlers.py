@@ -47,32 +47,41 @@ class DataHandlers:
             trading_active = False
             orderbook_strategy_active = False
 
+            # Check simulated trading first
             if self.simulated_trading_manager:
                 trading_active = self.simulated_trading_manager.is_trading
-                # Check if the strategy is orderbook
+                # Check if strategy is orderbook
                 if trading_active and hasattr(self.simulated_trading_manager, 'strategy_type'):
                     orderbook_strategy_active = self.simulated_trading_manager.strategy_type == 'orderbook'
+                    logger.info(f"Simulated trading active: {trading_active}, strategy: {self.simulated_trading_manager.strategy_type}")
 
             # Also check if async trading is active with orderbook strategy
             if not trading_active and self.trading_state:
-                async_trading_active = self.trading_state.is_trading
+                async_trading_active = getattr(self.trading_state, 'is_trading', False)
                 if async_trading_active:
                     trading_active = True
                     # Check if async trading strategy is orderbook
                     async_strategy = self.trading_state.get('active_strategy', '')
                     orderbook_strategy_active = async_strategy == 'orderbook'
+                    logger.info(f"Async trading active: {async_trading_active}, strategy: {async_strategy}")
                     if orderbook_strategy_active:
                         logger.info("Async trading is active with orderbook strategy, enabling order book signals")
 
-            # Only return signals if trading is active AND using orderbook strategy
-            if not trading_active or not orderbook_strategy_active:
-                reason = "Trading is not active" if not trading_active else "Order book strategy is not active"
+            # Enhanced logging for debugging
+            logger.info(f"Signal generation check - trading_active: {trading_active}, orderbook_strategy_active: {orderbook_strategy_active}")
+            logger.info(f"Simulated trading manager exists: {self.simulated_trading_manager is not None}")
+            logger.info(f"Trading state exists: {self.trading_state is not None}")
+            
+            # Return signals if trading is active (regardless of strategy type for debugging)
+            # but prioritize orderbook strategy
+            if not trading_active:
+                reason = "Trading is not active"
                 logger.debug(f"{reason}, returning empty signals")
                 return {
                     "signals": [],
                     "trading_active": trading_active,
                     "orderbook_strategy_active": orderbook_strategy_active,
-                    "message": f"{reason}. Configure order book signals strategy and start trading to see live signals.",
+                    "message": f"{reason}. Start trading to see live signals.",
                     "pagination": {
                         "current_page": page,
                         "per_page": per_page,
@@ -82,6 +91,10 @@ class DataHandlers:
                         "has_prev": False
                     }
                 }
+            
+            # If trading is active but not orderbook strategy, still return signals but with warning
+            if trading_active and not orderbook_strategy_active:
+                logger.warning("Trading is active but not using orderbook strategy - returning basic signals")
             
             # Handle case where symbols might be malformed (e.g., "[object Object]")
             if symbols == "[object Object]" or symbols == "%5Bobject%20Object%5D":
@@ -165,8 +178,10 @@ class DataHandlers:
                             signal_strength = 0.3
                             signal_reason = "Orderbook balanced"
                         
-                        # Determine data status
-                        data_status = "sufficient" if len(orderbook_data['bids']) >= 5 and len(orderbook_data['asks']) >= 5 else "insufficient"
+                        # Determine data status - more lenient criteria for better signal display
+                        bids_count = len(orderbook_data.get('bids', []))
+                        asks_count = len(orderbook_data.get('asks', []))
+                        data_status = "sufficient" if (bids_count >= 3 and asks_count >= 3 and current_price > 0) else "insufficient"
                         
                         # Calculate analysis criteria
                         squeeze_threshold = 0.1  # 0.1% spread threshold

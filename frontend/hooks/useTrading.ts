@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiClient, queryKeys } from '@/lib/api';
 import {
   TradingMode,
@@ -18,6 +18,33 @@ export function useLiveTrading() {
     strategy: 'orderbook' as TradingStrategy,
     symbols: [] as string[],
   });
+
+  // Query to keep status in sync with backend (especially for symbols added in background)
+  const { data: backendStatus } = useQuery({
+    queryKey: ['trading-status'],
+    queryFn: async () => {
+      const response = await apiClient.getSimulatedTradingStatus();
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch trading status');
+      }
+      return response.data;
+    },
+    enabled: status.isActive, // Only poll when trading is active
+    refetchInterval: status.isActive ? 5000 : false, // Poll every 5 seconds when active
+    staleTime: 1000, // Consider data fresh for 1 second
+  });
+
+  // Update local status when backend status changes
+  useEffect(() => {
+    if (backendStatus) {
+      setStatus({
+        isActive: backendStatus.is_trading || false,
+        mode: 'simulated',
+        strategy: backendStatus.strategy_type || 'orderbook',
+        symbols: backendStatus.symbols || [],
+      });
+    }
+  }, [backendStatus]);
 
   const startTradingMutation = useMutation({
     mutationFn: async (config: {
@@ -54,7 +81,11 @@ export function useLiveTrading() {
       );
     },
     onSuccess: (response, variables) => {
-      if (response.status === 'success' && response.data?.is_active) {
+      // The async trading endpoint returns a plain object like:
+      // { status: 'started', is_active: true, ... }
+      // Fall back to ApiResponse shape if used in future.
+      const isStarted = (response as any)?.status === 'started' || (response as any)?.is_active === true || (response as any)?.data?.is_active === true;
+      if (isStarted) {
         setStatus({
           isActive: true,
           mode: variables.mode,
@@ -69,7 +100,7 @@ export function useLiveTrading() {
     mutationFn: () => apiClient.stopTrading(),
     onSuccess: (response) => {
       if (response.status === 'success') {
-        setStatus(prev => ({ ...prev, isActive: false }));
+        setStatus(prev => ({ ...prev, isActive: false, symbols: [] }));
       }
     },
   });
