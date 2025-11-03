@@ -16,6 +16,100 @@ interface StrategySelectorProps {
   className?: string;
 }
 
+// Open Positions section with local pagination
+function OpenPositionsSection({ positions }: { positions: any[] }) {
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+
+  const totalPages = Math.ceil(positions.length / perPage) || 1;
+  const start = (page - 1) * perPage;
+  const end = start + perPage;
+  const pageData = positions.slice(start, end);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-gray-700">Open Positions</h4>
+        <div className="flex items-center space-x-2 text-sm">
+          <label className="text-gray-700">Show</label>
+          <select
+            value={perPage}
+            onChange={(e) => { setPerPage(parseInt(e.target.value)); setPage(1); }}
+            className="border border-gray-300 rounded-md px-2 py-1"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+          </select>
+          <span className="text-gray-600">per page</span>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Side</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Entry</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unrealized P&L</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Opened</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {pageData.map((pos: any, index: number) => (
+              <tr key={`${pos.symbol}-${pos.entry_time}-${index}`}>
+                <td className="px-4 py-2 text-sm text-gray-900">{pos.symbol}</td>
+                <td className="px-4 py-2 text-sm">
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                    (pos.side || '').toUpperCase() === 'LONG'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {(pos.side || '').toUpperCase() || '-'}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-sm text-gray-900">{Number(pos.quantity || 0).toFixed(4)}</td>
+                <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.entry_price || 0).toFixed(4)}</td>
+                <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.current_price || 0).toFixed(4)}</td>
+                <td className={`px-4 py-2 text-sm font-medium ${
+                  Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  ${Number(pos.unrealized_pnl || 0).toFixed(2)}
+                </td>
+                <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between text-sm text-gray-600">
+        <div>
+          Page {page} of {totalPages} ({positions.length} total positions)
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          >
+            <i className="fas fa-chevron-left mr-1"></i>Prev
+          </button>
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          >
+            Next<i className="fas fa-chevron-right ml-1"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function StrategySelector({ value, onChange, className = '' }: StrategySelectorProps) {
   const strategies: { value: TradingStrategy; label: string }[] = [
     { value: 'orderbook', label: 'Order Book Signals' },
@@ -178,6 +272,40 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
           </div>
         </div>
       )}
+
+      {/* Risk Settings: Max Position Size */}
+      <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-700">Risk Settings</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Position Size Mode</label>
+            <select
+              value={config.position_size_mode || 'percent'}
+              onChange={(e) => handleParameterChange('position_size_mode', e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="percent">Percentage of Portfolio</option>
+              <option value="dollar">Fixed Dollar Amount</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Position Size Value</label>
+            <Input
+              type="number"
+              min={0}
+              step={config.position_size_mode === 'percent' ? 0.1 : 1}
+              value={config.position_size_value ?? (config.position_size_mode === 'percent' ? 10 : 100)}
+              onChange={(e) => handleParameterChange('position_size_value', Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+          <div className="text-xs text-gray-500">
+            {config.position_size_mode === 'percent'
+              ? 'Example: 10 means 10% of portfolio per position'
+              : 'Example: 250 means allocate $250 per position'}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -187,7 +315,8 @@ function OrderBookSignalsTable({
   signals,
   pagination,
   onPageChange,
-  onPageSizeChange
+  onPageSizeChange,
+  summary,
 }: {
   signals: OrderBookSignal[];
   pagination?: {
@@ -200,6 +329,12 @@ function OrderBookSignalsTable({
   };
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
+  summary?: {
+    total_analyzed?: number;
+    active_signals?: number;
+    average_strength?: number;
+    last_updated?: string;
+  };
 }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -208,7 +343,7 @@ function OrderBookSignalsTable({
   const activePage = pagination?.current_page || currentPage;
   const activePageSize = pagination?.per_page || pageSize;
   const totalPages = pagination?.total_pages || Math.ceil((signals?.length || 0) / activePageSize);
-  const totalSignals = pagination?.total_signals || (signals?.length || 0);
+  const totalSignals = (summary?.total_analyzed ?? pagination?.total_signals ?? (signals?.length || 0));
 
   // Calculate paginated data if no server-side pagination
   const paginatedSignals = pagination ? signals : signals?.slice(
@@ -484,24 +619,27 @@ ML Analysis:
       {signals && signals.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
           <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900">{signals.length}</div>
+            <div className="text-lg font-semibold text-gray-900">{totalSignals}</div>
             <div className="text-sm text-gray-600">Total Analyzed</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-green-600">
-              {signals.filter(s => s.signal_generated === true).length}
+              {summary?.active_signals ?? signals.filter(s => s.signal_generated === true).length}
             </div>
             <div className="text-sm text-gray-600">Active Signals</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-blue-600">
-              {signals.length > 0 ? (signals.reduce((sum, s) => sum + (s.signal_strength || 0), 0) / signals.length).toFixed(2) : '0.00'}
+              {(
+                summary?.average_strength ??
+                (signals.length > 0 ? (signals.reduce((sum, s) => sum + (s.signal_strength || 0), 0) / signals.length) : 0)
+              ).toFixed(2)}
             </div>
             <div className="text-sm text-gray-600">Avg Strength</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-gray-900">
-              {new Date().toLocaleTimeString()}
+              {(summary?.last_updated ? new Date(summary.last_updated) : new Date()).toLocaleTimeString()}
             </div>
             <div className="text-sm text-gray-600">Last Updated</div>
           </div>
@@ -519,6 +657,7 @@ function TradingConfiguration({
   onConfigChange,
   symbols,
   onSymbolsChange,
+  onHide,
 }: {
   strategy: TradingStrategy;
   onStrategyChange: (strategy: TradingStrategy) => void;
@@ -526,6 +665,7 @@ function TradingConfiguration({
   onConfigChange: (config: Record<string, any>) => void;
   symbols: string[];
   onSymbolsChange: (symbols: string[]) => void;
+  onHide?: () => void;
 }) {
   const { data: products } = useProducts();
   const [symbolMode, setSymbolMode] = useState<'single' | 'universe'>('single');
@@ -675,7 +815,14 @@ function TradingConfiguration({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Trading Configuration</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>Trading Configuration</CardTitle>
+          {onHide && (
+            <Button size="sm" variant="secondary" onClick={onHide}>
+              <i className="fas fa-eye-slash mr-1"></i>Hide Configuration
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         <StrategySelector
@@ -886,6 +1033,16 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
   const activePositions = openPositions.length;
 
   const recentTrades = (portfolio.recent_trades || trades).slice(0, 10);
+  // Merge and sort recent trades to ensure sells are included and latest first
+  const mergedRecentTrades = Array.from(
+    new Map(
+      [...(portfolio.recent_trades || []), ...trades]
+        .map((t: any) => [t.id || t.trade_id || `${t.symbol}-${t.timestamp}-${t.side}`, t])
+    ).values()
+  )
+    .filter((t: any) => t && t.timestamp)
+    .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 10);
 
   return (
     <Card>
@@ -1009,55 +1166,13 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
           </div>
         </div>
 
-        {/* Open Positions Table */}
+        {/* Open Positions Table with Pagination */}
         {openPositions.length > 0 && (
-          <div className="space-y-4">
-            <h4 className="font-semibold text-gray-700">Open Positions</h4>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Side</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Entry</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unrealized P&L</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Opened</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {openPositions.map((pos: any, index: number) => (
-                    <tr key={index}>
-                      <td className="px-4 py-2 text-sm text-gray-900">{pos.symbol}</td>
-                      <td className="px-4 py-2 text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          (pos.side || '').toUpperCase() === 'LONG'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}>
-                          {(pos.side || '').toUpperCase() || '-'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-900">{Number(pos.quantity || 0).toFixed(4)}</td>
-                      <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.entry_price || 0).toFixed(4)}</td>
-                      <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.current_price || 0).toFixed(4)}</td>
-                      <td className={`px-4 py-2 text-sm font-medium ${
-                        Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        ${Number(pos.unrealized_pnl || 0).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <OpenPositionsSection positions={openPositions} />
         )}
 
         {/* Recent Trades Table */}
-        {recentTrades.length > 0 && (
+        {mergedRecentTrades.length > 0 && (
           <div className="space-y-4">
             <h4 className="font-semibold text-gray-700">Recent Trades</h4>
             <div className="overflow-x-auto">
@@ -1073,7 +1188,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {recentTrades.map((trade: any, index: number) => (
+                  {mergedRecentTrades.map((trade: any, index: number) => (
                     <tr key={index}>
                       <td className="px-4 py-2 text-sm text-gray-900">
                         {new Date(trade.timestamp || Date.now()).toLocaleString()}
@@ -1132,6 +1247,24 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   );
   const [configHidden, setConfigHidden] = useState(false);
 
+  // Invalidate all orderbook-signals queries when websocket broadcasts updates
+  useEffect(() => {
+    const handleSignalsUpdate = () => {
+      try {
+        queryClient.invalidateQueries({
+          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'orderbook-signals'
+        });
+      } catch (e) {
+        // no-op
+      }
+    };
+
+    window.addEventListener('orderbook-signals-update', handleSignalsUpdate as EventListener);
+    return () => {
+      window.removeEventListener('orderbook-signals-update', handleSignalsUpdate as EventListener);
+    };
+  }, [queryClient]);
+
   // Handle pagination changes
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -1148,8 +1281,16 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         mode: 'simulated',
         strategy,
         symbols,
-        parameters: config,
-        position_size_percent: 10,
+        parameters: {
+          ...config,
+          ...(config.position_size_mode === 'dollar' && config.position_size_value
+            ? { position_size_usd: config.position_size_value }
+            : {}),
+        },
+        position_size_percent:
+          config.position_size_mode === 'percent' && typeof config.position_size_value === 'number'
+            ? config.position_size_value
+            : 10,
         max_positions: 10,
         position_update_interval: 5,
       });
@@ -1184,6 +1325,19 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     setConfigHidden(true);
   };
 
+  // Normalize optional summary fields for order book signals
+  const signalsSummary = {
+    ...(orderBookData?.total_analyzed !== undefined ? { total_analyzed: orderBookData.total_analyzed as number } : {}),
+    ...(orderBookData?.active_signals !== undefined ? { active_signals: orderBookData.active_signals as number } : {}),
+    ...(orderBookData?.average_strength !== undefined ? { average_strength: orderBookData.average_strength as number } : {}),
+    ...(orderBookData?.last_updated ? { last_updated: orderBookData.last_updated as string } : {}),
+  } as {
+    total_analyzed?: number;
+    active_signals?: number;
+    average_strength?: number;
+    last_updated?: string;
+  };
+
   return (
     <div className={`space-y-6 ${className}`}>
       {/* Trading Configuration */}
@@ -1195,6 +1349,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           onConfigChange={setConfig}
           symbols={symbols}
           onSymbolsChange={setSymbols}
+          onHide={hideConfiguration}
         />
       )}
 
@@ -1252,6 +1407,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
               pagination={orderBookData?.pagination}
               onPageChange={handlePageChange}
               onPageSizeChange={handlePageSizeChange}
+              summary={signalsSummary}
             />
           </CardContent>
         </Card>
