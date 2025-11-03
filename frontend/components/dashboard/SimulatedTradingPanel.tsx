@@ -1277,6 +1277,11 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   const handleStartTrading = async () => {
     try {
+      // Get max_positions from config, defaulting to 100 (max_positions_per_session default)
+      const maxPositions = config.max_positions_per_session 
+        ? Number(config.max_positions_per_session) 
+        : 100;
+      
       await startTrading({
         mode: 'simulated',
         strategy,
@@ -1291,7 +1296,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           config.position_size_mode === 'percent' && typeof config.position_size_value === 'number'
             ? config.position_size_value
             : 10,
-        max_positions: 10,
+        max_positions: maxPositions,
         position_update_interval: 5,
       });
 

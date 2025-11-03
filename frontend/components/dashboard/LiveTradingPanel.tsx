@@ -500,13 +500,18 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
 
   const handleStartTrading = async () => {
     try {
+      // Get max_positions from config, defaulting to 100 (max_positions_per_session default)
+      const maxPositions = config.max_positions_per_session 
+        ? Number(config.max_positions_per_session) 
+        : 100;
+      
       await startTrading({
         mode: 'simulated',
         strategy,
         symbols,
         parameters: config,
         position_size_percent: 10,
-        max_positions: 10,
+        max_positions: maxPositions,
         position_update_interval: 5,
       });
     } catch (error) {
