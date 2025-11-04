@@ -1,11 +1,12 @@
 """Base database class with common functionality."""
 
-import sqlite3
+import psycopg
 import json
 import hashlib
 from datetime import datetime, timedelta
 from typing import Any, Dict
 import logging
+import os
 
 from ..connection_pool import get_pool
 
@@ -14,10 +15,13 @@ logger = logging.getLogger(__name__)
 
 class BaseDatabase:
     """Base database class with common functionality."""
-    
-    def __init__(self, db_path: str = "data/databases/trading_cache.db"):
-        self.db_path = db_path
-        self._pool = get_pool(db_path)
+
+    def __init__(self, db_url: str = None):
+        # Use DATABASE_URL environment variable if not provided
+        if db_url is None:
+            db_url = os.getenv('DATABASE_URL', 'postgresql://trading_user:trading_password@db:5432/trading_db')
+        self.db_url = db_url
+        self._pool = get_pool(db_url)
         self.init_database()
     
     def init_database(self):
@@ -77,21 +81,21 @@ class BaseDatabase:
         # Whitelist allowed table names to prevent SQL injection
         allowed_tables = {
             'historical_candles',
-            'order_book_snapshots', 
+            'order_book_snapshots',
             'trade_history',
             'trading_sessions',
             'dashboard_state',
             'order_book_signals'
         }
-        
+
         if table_name not in allowed_tables:
             logger.error(f"Invalid table name for cleanup: {table_name}")
             return 0
-            
+
         # Use parameterized query with validated table name
         query = f"""
-            DELETE FROM {table_name} 
-            WHERE expires_at IS NOT NULL AND expires_at < ?
+            DELETE FROM {table_name}
+            WHERE expires_at IS NOT NULL AND expires_at < %s
         """
         try:
             with self._pool.get_connection() as conn:

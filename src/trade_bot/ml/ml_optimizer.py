@@ -19,24 +19,24 @@ logger = logging.getLogger(__name__)
 class MLTradingOptimizer:
     """Main ML trading optimization system."""
     
-    def __init__(self, db_path: str = "data/databases/trading_cache.db",
+    def __init__(self, db_url: str = None,
                  models_dir: str = "data/models",
                  vector_db_host: str = "localhost",
                  vector_db_port: int = 6333):
         """
         Initialize ML trading optimizer.
-        
+
         Args:
-            db_path: Path to trading database
+            db_url: PostgreSQL database URL
             models_dir: Directory for model storage
             vector_db_host: Vector database host
             vector_db_port: Vector database port
         """
-        self.db_path = db_path
+        self.db_url = db_url
         self.models_dir = models_dir
-        
+
         # Initialize components
-        self.data_collector = MLDataCollector(db_path)
+        self.data_collector = MLDataCollector(db_url)
         self.feature_engineer = FeatureEngineer()
         self.model_trainer = ModelTrainer()
         self.model_manager = ModelManager(models_dir)
