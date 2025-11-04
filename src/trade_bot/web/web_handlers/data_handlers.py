@@ -5,6 +5,8 @@ import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import HTTPException
+import requests
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -479,9 +481,12 @@ class DataHandlers:
             total_analyzed = 0
             if self.simulated_trading_manager and hasattr(self.simulated_trading_manager, 'get_total_signals_processed'):
                 total_analyzed = self.simulated_trading_manager.get_total_signals_processed()
+
+            # Enrich signals with ML analysis
+            enriched_signals = await self._enrich_signals_with_ml_analysis(paginated_signals)
             
             return {
-                "signals": paginated_signals,
+                "signals": enriched_signals,
                 "trading_active": trading_active,
                 "message": "Order book signals generated successfully",
                 "total_analyzed": total_analyzed,
@@ -500,6 +505,54 @@ class DataHandlers:
         except Exception as e:
             logger.error(f"Error getting live orderbook signals: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    async def _enrich_signals_with_ml_analysis(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Enrich signals with ML analysis from the ML model server."""
+        enriched_signals = []
+        for signal in signals:
+            try:
+                # Prepare request for ML server
+                prediction_request = {
+                    "symbol": signal["symbol"],
+                    "bid_ask_imbalance": signal["criteria_analysis"]["volume_imbalance_buy"]["current_value"],
+                    "spread_percent": signal["spread"],
+                    "mid_price": signal["price"],
+                    "bid_volume": signal["criteria_analysis"]["volume_imbalance_buy"]["bid_volume"],
+                    "ask_volume": signal["criteria_analysis"]["volume_imbalance_buy"]["ask_volume"],
+                    "order_book_depth": 2,  # Assuming level 2 data
+                    "large_bid_wall": False, # Placeholder
+                    "large_ask_wall": False, # Placeholder
+                    "wall_size": 0.0, # Placeholder
+                    "volume_weighted_price": signal["price"], # Placeholder
+                    "price_momentum": 0.0, # Placeholder
+                    "volatility": 0.0, # Placeholder
+                    "timestamp": int(datetime.fromisoformat(signal["timestamp"].replace("Z", "+00:00")).timestamp())
+                }
+
+                # Call ML server
+                ml_server_url = f"http://{self.config.get('ml_server_host', 'localhost')}:{self.config.get('ml_server_port', 8002)}/predict"
+                response = requests.post(ml_server_url, json=prediction_request, timeout=0.5)
+
+                if response.status_code == 200:
+                    ml_analysis = response.json()
+                    signal["ml_analysis"] = {
+                        "ml_enabled": True,
+                        "win_probability": ml_analysis.get("confidence", 0.0) * 100,
+                        "expected_return": ml_analysis.get("signal_value", 0.0),
+                        "confidence": ml_analysis.get("confidence", 0.0),
+                        "model_version": "1.0.0", # Placeholder
+                        "features_used": list(prediction_request.keys()),
+                        "prediction_timestamp": datetime.now().isoformat()
+                    }
+                else:
+                    signal["ml_analysis"] = {"ml_enabled": False}
+            except Exception as e:
+                logger.warning(f"Failed to get ML analysis for {signal['symbol']}: {e}")
+                signal["ml_analysis"] = {"ml_enabled": False}
+            
+            enriched_signals.append(signal)
+            
+        return enriched_signals
     
     async def get_loading_status(self) -> Dict[str, Any]:
         """Get data loading status."""

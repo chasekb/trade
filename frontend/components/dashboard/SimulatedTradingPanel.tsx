@@ -1331,12 +1331,14 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         position_update_interval: 5,
       });
 
-      // Immediately refresh order book signals after starting trading (like vanilla JS loadLiveTradingData)
-      queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
-      // Also invalidate with symbols for more specific cache invalidation
-      if (symbols && symbols.length > 0) {
-        queryClient.invalidateQueries({ queryKey: ['orderbook-signals', symbols] });
-      }
+      // Auto-refresh via WebSocket is now the primary mechanism for updating signals.
+      // The immediate refresh below is removed to avoid a race condition where the frontend
+      // requests data before the backend has processed the initial batch of symbols.
+      // The WebSocket will push updates as soon as signals are available.
+      // queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
+      // if (symbols && symbols.length > 0) {
+      //   queryClient.invalidateQueries({ queryKey: ['orderbook-signals', symbols] });
+      // }
 
       // Auto-hide strategy configuration when trading starts (like vanilla JS dashboard)
       setConfigHidden(true);
