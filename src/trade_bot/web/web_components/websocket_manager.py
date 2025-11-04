@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import json
+import os
 from datetime import datetime
 from typing import List, Dict, Any, Set
 
@@ -214,6 +215,8 @@ class WebSocketManager:
             class MinimalConfig:
                 def __init__(self):
                     self.max_symbols_per_request = 1000
+                    self.ml_server_host = os.getenv("ML_SERVER_HOST", "localhost")
+                    self.ml_server_port = int(os.getenv("ML_SERVER_PORT", "8002"))
 
             config = MinimalConfig()
             data_handler = DataHandlers(

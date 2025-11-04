@@ -135,38 +135,38 @@ class DataHandlers:
             # Debug logging to see what symbols we're processing
             logger.info(f"Processing symbols for order book signals: {symbol_list}")
             
-            # Fetch real orderbook data from Coinbase API
-            signals = []
-            for symbol in symbol_list:
+            # Fetch real orderbook data from Coinbase API asynchronously
+            async def generate_signal_for_symbol(symbol: str) -> Dict[str, Any]:
+                """Generate order book signal for a single symbol."""
                 try:
                     # Ensure symbol is a string and log it
                     symbol_str = str(symbol).strip()
                     logger.debug(f"Fetching order book for {symbol_str} (level 2)")
-                    
+
                     # Create a data provider instance for this symbol
                     from ...data.data_provider import CoinbaseDataProvider
                     symbol_provider = CoinbaseDataProvider(symbol_str)
-                    
+
                     # Fetch live orderbook data (using level 2 for comprehensive signal analysis)
                     orderbook_data = await symbol_provider.get_order_book(level=2)
-                    
+
                     if orderbook_data and orderbook_data.get('bids') and orderbook_data.get('asks'):
                         # Calculate orderbook metrics
                         best_bid = float(orderbook_data['bids'][0]['price']) if orderbook_data['bids'] else 0
                         best_ask = float(orderbook_data['asks'][0]['price']) if orderbook_data['asks'] else 0
                         current_price = (best_bid + best_ask) / 2 if best_bid and best_ask else 0
-                        
+
                         # Calculate spread
                         spread = ((best_ask - best_bid) / current_price * 100) if current_price > 0 else 0
-                        
+
                         # Calculate volume (sum of top 5 bids/asks)
                         bid_volume = sum(float(bid['size']) for bid in orderbook_data['bids'][:5])
                         ask_volume = sum(float(ask['size']) for ask in orderbook_data['asks'][:5])
                         total_volume = bid_volume + ask_volume
-                        
+
                         # Calculate orderbook imbalance
                         volume_imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume) if (bid_volume + ask_volume) > 0 else 0
-                        
+
                         # Determine signal based on orderbook analysis
                         if volume_imbalance > 0.1:  # More buy pressure
                             signal = "buy"
@@ -180,34 +180,34 @@ class DataHandlers:
                             signal = "hold"
                             signal_strength = 0.3
                             signal_reason = "Orderbook balanced"
-                        
+
                         # Determine data status - more lenient criteria for better signal display
                         bids_count = len(orderbook_data.get('bids', []))
                         asks_count = len(orderbook_data.get('asks', []))
                         data_status = "sufficient" if (bids_count >= 3 and asks_count >= 3 and current_price > 0) else "insufficient"
-                        
+
                         # Calculate analysis criteria
                         squeeze_threshold = 0.1  # 0.1% spread threshold
                         imbalance_threshold = 0.1  # 10% imbalance threshold
                         large_trade_threshold = 10000  # $10k trade threshold
-                        
+
                         # Bid-Ask Squeeze Analysis
                         squeeze_meets = spread < squeeze_threshold
                         squeeze_delta = squeeze_threshold - spread
-                        
+
                         # Volume Imbalance Analysis
                         imbalance_meets_buy = volume_imbalance > imbalance_threshold
                         imbalance_meets_sell = volume_imbalance < -imbalance_threshold
                         imbalance_delta_buy = volume_imbalance - imbalance_threshold if volume_imbalance > 0 else 0
                         imbalance_delta_sell = abs(volume_imbalance) - imbalance_threshold if volume_imbalance < 0 else 0
-                        
+
                         # Large Trade Analysis - get recent trade data
                         large_trade_meets_buy = False
                         large_trade_meets_sell = False
                         large_trade_count = 0
                         large_trade_analysis = "No recent trades"
                         large_trades = []  # Initialize empty list
-                        
+
                         try:
                             # Get recent trades for this symbol
                             recent_trades = await symbol_provider.get_recent_trades(limit=50)
@@ -215,14 +215,14 @@ class DataHandlers:
                                 # Analyze trades for large trade patterns
                                 buy_volume = 0.0
                                 sell_volume = 0.0
-                                
+
                                 for trade in recent_trades:
                                     try:
                                         trade_size = float(trade.get('size', 0))
                                         trade_price = float(trade.get('price', 0))
                                         trade_value = trade_size * trade_price
                                         trade_side = trade.get('side', '')
-                                        
+
                                         if trade_value >= large_trade_threshold:
                                             large_trades.append({
                                                 'side': trade_side,
@@ -230,25 +230,25 @@ class DataHandlers:
                                                 'size': trade_size,
                                                 'price': trade_price
                                             })
-                                        
+
                                         # Track buy/sell volumes
                                         if trade_side == 'buy':
                                             buy_volume += trade_value
                                         elif trade_side == 'sell':
                                             sell_volume += trade_value
-                                            
+
                                     except (ValueError, TypeError):
                                         continue
-                                
+
                                 # Calculate large trade metrics
                                 large_trade_count = len(large_trades)
                                 large_buy_trades = [t for t in large_trades if t['side'] == 'buy']
                                 large_sell_trades = [t for t in large_trades if t['side'] == 'sell']
-                                
+
                                 # Determine if large trade criteria are met
                                 large_trade_meets_buy = len(large_buy_trades) >= 2  # At least 2 large buy trades
                                 large_trade_meets_sell = len(large_sell_trades) >= 2  # At least 2 large sell trades
-                                
+
                                 # Calculate large trade pressure
                                 total_volume = buy_volume + sell_volume
                                 if total_volume > 0:
@@ -256,12 +256,12 @@ class DataHandlers:
                                     large_trade_analysis = f"Large trades: {large_trade_count} ({large_trade_pressure:.1f}% of volume)"
                                 else:
                                     large_trade_analysis = f"Large trades: {large_trade_count}"
-                                    
+
                         except Exception as e:
                             logger.warning(f"Error analyzing large trades for {symbol}: {e}")
                             large_trade_analysis = "Analysis error"
-                        
-                        signals.append({
+
+                        signal_data = {
                             "symbol": symbol,
                             "signal": signal,
                             "signal_type": signal,
@@ -323,9 +323,40 @@ class DataHandlers:
                                     "large_trades_count": len([t for t in large_trades if t['side'] == 'sell']) if large_trades else 0
                                 }
                             }
-                        })
-                        
+                        }
+
+                        # Store signal to database immediately
+                        if self.database_manager:
+                            try:
+                                db_signal_data = {
+                                    'signal_id': f"{symbol}_{int(datetime.fromisoformat(signal_data['timestamp'].replace('Z', '+00:00')).timestamp())}_{signal}",
+                                    'session_id': getattr(self.simulated_trading_manager, 'session_id', None) if self.simulated_trading_manager else None,
+                                    'symbol': symbol,
+                                    'signal_type': signal_data['signal_type'],
+                                    'strength': signal_data['signal_strength'],
+                                    'price': signal_data['price'],
+                                    'timestamp': int(datetime.fromisoformat(signal_data['timestamp'].replace('Z', '+00:00')).timestamp()),
+                                    'signal_data': {
+                                        'spread': signal_data['spread'],
+                                        'volume': signal_data['volume'],
+                                        'criteria_analysis': signal_data['criteria_analysis']
+                                    },
+                                    'processed': False
+                                }
+
+                                # Store the signal
+                                success = self.database_manager.save_order_book_signal(db_signal_data)
+                                if success:
+                                    logger.debug(f"Stored signal for {symbol}: {signal} (strength: {signal_strength:.2f})")
+                                else:
+                                    logger.warning(f"Failed to store signal for {symbol}")
+
+                            except Exception as e:
+                                logger.warning(f"Error storing signal for {symbol}: {e}")
+
                         logger.info(f"Generated live orderbook signal for {symbol}: {signal} (strength: {signal_strength:.2f})")
+                        return signal_data
+
                     else:
                         # Fallback to placeholder if no data, but rate-limit warnings per symbol
                         now_ts = datetime.now().timestamp()
@@ -333,7 +364,8 @@ class DataHandlers:
                         if now_ts - last_ts >= 60:
                             logger.warning(f"No orderbook data available for {symbol}, using placeholder")
                             self._last_no_data_warn_at[symbol] = now_ts
-                        signals.append({
+
+                        placeholder_signal = {
                             "symbol": symbol,
                             "signal": "hold",
                             "signal_type": "hold",
@@ -395,12 +427,42 @@ class DataHandlers:
                                     "large_trades_count": 0
                                 }
                             }
-                        })
-                        
+                        }
+
+                        # Store placeholder signal to database
+                        if self.database_manager:
+                            try:
+                                db_signal_data = {
+                                    'signal_id': f"{symbol}_{int(datetime.now().timestamp())}_hold",
+                                    'session_id': getattr(self.simulated_trading_manager, 'session_id', None) if self.simulated_trading_manager else None,
+                                    'symbol': symbol,
+                                    'signal_type': 'hold',
+                                    'strength': 0.0,
+                                    'price': 0.0,
+                                    'timestamp': int(datetime.now().timestamp()),
+                                    'signal_data': {
+                                        'spread': 0.0,
+                                        'volume': 0.0,
+                                        'criteria_analysis': placeholder_signal['criteria_analysis']
+                                    },
+                                    'processed': False
+                                }
+
+                                success = self.database_manager.save_order_book_signal(db_signal_data)
+                                if success:
+                                    logger.debug(f"Stored placeholder signal for {symbol}")
+                                else:
+                                    logger.warning(f"Failed to store placeholder signal for {symbol}")
+
+                            except Exception as e:
+                                logger.warning(f"Error storing placeholder signal for {symbol}: {e}")
+
+                        return placeholder_signal
+
                 except Exception as e:
                     logger.error(f"Error fetching orderbook data for {symbol}: {e}")
                     # Fallback to placeholder on error
-                    signals.append({
+                    error_signal = {
                         "symbol": symbol,
                         "signal": "hold",
                         "signal_type": "hold",
@@ -462,7 +524,41 @@ class DataHandlers:
                                 "large_trades_count": 0
                             }
                         }
-                    })
+                    }
+
+                    # Store error signal to database
+                    if self.database_manager:
+                        try:
+                            db_signal_data = {
+                                'signal_id': f"{symbol}_{int(datetime.now().timestamp())}_error",
+                                'session_id': getattr(self.simulated_trading_manager, 'session_id', None) if self.simulated_trading_manager else None,
+                                'symbol': symbol,
+                                'signal_type': 'hold',
+                                'strength': 0.0,
+                                'price': 0.0,
+                                'timestamp': int(datetime.now().timestamp()),
+                                'signal_data': {
+                                    'spread': 0.0,
+                                    'volume': 0.0,
+                                    'criteria_analysis': error_signal['criteria_analysis']
+                                },
+                                'processed': False
+                            }
+
+                            success = self.database_manager.save_order_book_signal(db_signal_data)
+                            if success:
+                                logger.debug(f"Stored error signal for {symbol}")
+                            else:
+                                logger.warning(f"Failed to store error signal for {symbol}")
+
+                        except Exception as store_error:
+                            logger.warning(f"Error storing error signal for {symbol}: {store_error}")
+
+                    return error_signal
+
+            # Generate signals concurrently for all symbols
+            import asyncio
+            signals = await asyncio.gather(*[generate_signal_for_symbol(symbol) for symbol in symbol_list])
             
             # Sort signals by signal strength (descending)
             signals.sort(key=lambda x: x.get('signal_strength', 0), reverse=True)
@@ -531,11 +627,14 @@ class DataHandlers:
                 }
 
                 # Call ML server
-                ml_server_url = f"http://{self.config.get('ml_server_host', 'localhost')}:{self.config.get('ml_server_port', 8002)}/predict"
+                ml_server_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/predict"
+                logger.info(f"Calling ML server at {ml_server_url} for symbol {signal['symbol']}")
                 response = requests.post(ml_server_url, json=prediction_request, timeout=0.5)
+                logger.info(f"ML server response status: {response.status_code} for symbol {signal['symbol']}")
 
                 if response.status_code == 200:
                     ml_analysis = response.json()
+                    logger.info(f"ML analysis received: {ml_analysis} for symbol {signal['symbol']}")
                     signal["ml_analysis"] = {
                         "ml_enabled": True,
                         "win_probability": ml_analysis.get("confidence", 0.0) * 100,
@@ -545,14 +644,19 @@ class DataHandlers:
                         "features_used": list(prediction_request.keys()),
                         "prediction_timestamp": datetime.now().isoformat()
                     }
+                    logger.info(f"Set ml_enabled=True for symbol {signal['symbol']}")
                 else:
+                    logger.warning(f"ML server returned status {response.status_code} for symbol {signal['symbol']}")
                     signal["ml_analysis"] = {"ml_enabled": False}
             except Exception as e:
                 logger.warning(f"Failed to get ML analysis for {signal['symbol']}: {e}")
+                logger.warning(f"Exception type: {type(e).__name__}")
+                import traceback
+                logger.warning(f"Traceback: {traceback.format_exc()}")
                 signal["ml_analysis"] = {"ml_enabled": False}
-            
+
             enriched_signals.append(signal)
-            
+
         return enriched_signals
     
     async def get_loading_status(self) -> Dict[str, Any]:

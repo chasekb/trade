@@ -120,7 +120,7 @@ async def startup_event():
                 try:
                     from ..ml.ml_optimizer import MLTradingOptimizer
                     ml_optimizer = MLTradingOptimizer(
-                        db_path="data/databases/trading_cache.db",
+                        db_url=os.getenv('DATABASE_URL'),
                         models_dir="data/models",
                         vector_db_host=vector_db_service.config['qdrant']['host'],
                         vector_db_port=vector_db_service.config['qdrant']['port']
@@ -148,7 +148,7 @@ async def startup_event():
 
         # Initialize core components
         data_provider = CoinbaseDataProvider(config)
-        cached_data_provider = CachedDataProvider(config, "data/databases/trading_cache.db")
+        cached_data_provider = CachedDataProvider(config, db_url=os.getenv('DATABASE_URL'))
         product_fetcher = ProductFetcher()
         database_manager = DatabaseManager()
         simulated_trading_manager = SimulatedTradingManager(

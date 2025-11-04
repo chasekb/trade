@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 class CachedDataProvider(CoinbaseDataProvider):
     """Data provider with database caching for improved performance."""
     
-    def __init__(self, config, db_path: str = "data/databases/trading_cache.db"):
+    def __init__(self, config, db_url: str = None):
         super().__init__(config)
-        self.db_manager = DatabaseManager(db_path)
+        self.db_manager = DatabaseManager(db_url)
         self.cache_hits = 0
         self.cache_misses = 0
         self.api_calls = 0

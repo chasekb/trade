@@ -1,6 +1,6 @@
 """Session manager for trading sessions and dashboard state."""
 
-import sqlite3
+import psycopg
 import json
 from datetime import datetime
 from typing import List, Dict, Optional, Any
@@ -19,12 +19,12 @@ class SessionManager(BaseDatabase):
         # Trading session state table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS trading_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT UNIQUE NOT NULL,
-                is_active BOOLEAN DEFAULT 1,
-                trading_mode TEXT NOT NULL,
-                symbol_mode TEXT NOT NULL,
-                strategy_type TEXT,
+                id SERIAL PRIMARY KEY,
+                session_id VARCHAR(255) UNIQUE NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                trading_mode VARCHAR(50) NOT NULL,
+                symbol_mode VARCHAR(50) NOT NULL,
+                strategy_type VARCHAR(50),
                 strategy_params TEXT,
                 symbols TEXT,
                 universe_config TEXT,
@@ -35,14 +35,14 @@ class SessionManager(BaseDatabase):
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Dashboard UI state table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dashboard_state (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                current_symbol TEXT,
-                current_timeframe TEXT,
+                id SERIAL PRIMARY KEY,
+                session_id VARCHAR(255) NOT NULL,
+                current_symbol VARCHAR(255),
+                current_timeframe VARCHAR(50),
                 chart_settings TEXT,
                 ui_preferences TEXT,
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -54,13 +54,25 @@ class SessionManager(BaseDatabase):
         """Save trading session state."""
         try:
             query = """
-                INSERT OR REPLACE INTO trading_sessions 
-                (session_id, is_active, trading_mode, symbol_mode, strategy_type, 
-                 strategy_params, symbols, universe_config, portfolio_state, 
+                INSERT INTO trading_sessions
+                (session_id, is_active, trading_mode, symbol_mode, strategy_type,
+                 strategy_params, symbols, universe_config, portfolio_state,
                  positions, recent_trades, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (session_id)
+                DO UPDATE SET is_active = EXCLUDED.is_active,
+                              trading_mode = EXCLUDED.trading_mode,
+                              symbol_mode = EXCLUDED.symbol_mode,
+                              strategy_type = EXCLUDED.strategy_type,
+                              strategy_params = EXCLUDED.strategy_params,
+                              symbols = EXCLUDED.symbols,
+                              universe_config = EXCLUDED.universe_config,
+                              portfolio_state = EXCLUDED.portfolio_state,
+                              positions = EXCLUDED.positions,
+                              recent_trades = EXCLUDED.recent_trades,
+                              updated_at = EXCLUDED.updated_at
             """
-            
+
             return self._execute_update(query, (
                 session_id,
                 session_data.get('is_active', True),
@@ -78,19 +90,19 @@ class SessionManager(BaseDatabase):
         except Exception as e:
             logger.error(f"Error saving trading session: {e}")
             return False
-    
+
     def load_trading_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Load trading session state."""
         try:
             query = """
-                SELECT is_active, trading_mode, symbol_mode, strategy_type, 
-                       strategy_params, symbols, universe_config, portfolio_state, 
+                SELECT is_active, trading_mode, symbol_mode, strategy_type,
+                       strategy_params, symbols, universe_config, portfolio_state,
                        positions, recent_trades, created_at, updated_at
-                FROM trading_sessions WHERE session_id = ?
+                FROM trading_sessions WHERE session_id = %s
             """
-            
+
             results = self._execute_query(query, (session_id,))
-            
+
             if results:
                 row = results[0]
                 return {
@@ -108,22 +120,28 @@ class SessionManager(BaseDatabase):
                     'created_at': row[10],
                     'updated_at': row[11]
                 }
-            
+
             return None
         except Exception as e:
             logger.error(f"Error loading trading session: {e}")
             return None
-    
+
     def save_dashboard_state(self, session_id: str, state_data: Dict[str, Any]) -> bool:
         """Save dashboard UI state."""
         try:
             query = """
-                INSERT OR REPLACE INTO dashboard_state 
-                (session_id, current_symbol, current_timeframe, chart_settings, 
+                INSERT INTO dashboard_state
+                (session_id, current_symbol, current_timeframe, chart_settings,
                  ui_preferences, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (session_id)
+                DO UPDATE SET current_symbol = EXCLUDED.current_symbol,
+                              current_timeframe = EXCLUDED.current_timeframe,
+                              chart_settings = EXCLUDED.chart_settings,
+                              ui_preferences = EXCLUDED.ui_preferences,
+                              last_updated = EXCLUDED.last_updated
             """
-            
+
             return self._execute_update(query, (
                 session_id,
                 state_data.get('current_symbol'),
@@ -135,18 +153,18 @@ class SessionManager(BaseDatabase):
         except Exception as e:
             logger.error(f"Error saving dashboard state: {e}")
             return False
-    
+
     def load_dashboard_state(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Load dashboard UI state."""
         try:
             query = """
-                SELECT current_symbol, current_timeframe, chart_settings, 
+                SELECT current_symbol, current_timeframe, chart_settings,
                        ui_preferences, last_updated
-                FROM dashboard_state WHERE session_id = ?
+                FROM dashboard_state WHERE session_id = %s
             """
-            
+
             results = self._execute_query(query, (session_id,))
-            
+
             if results:
                 row = results[0]
                 return {
@@ -157,26 +175,26 @@ class SessionManager(BaseDatabase):
                     'ui_preferences': json.loads(row[3]) if row[3] else {},
                     'last_updated': row[4]
                 }
-            
+
             return None
         except Exception as e:
             logger.error(f"Error loading dashboard state: {e}")
             return None
-    
+
     def get_active_sessions(self) -> List[Dict[str, Any]]:
         """Get all active trading sessions."""
         try:
             query = """
-                SELECT session_id, trading_mode, symbol_mode, strategy_type, 
+                SELECT session_id, trading_mode, symbol_mode, strategy_type,
                        created_at, updated_at
-                FROM trading_sessions 
-                WHERE is_active = 1 
+                FROM trading_sessions
+                WHERE is_active = TRUE
                 ORDER BY updated_at DESC
             """
-            
+
             results = self._execute_query(query)
             sessions = []
-            
+
             for row in results:
                 sessions.append({
                     'session_id': row[0],
@@ -186,21 +204,21 @@ class SessionManager(BaseDatabase):
                     'created_at': row[4],
                     'updated_at': row[5]
                 })
-            
+
             return sessions
         except Exception as e:
             logger.error(f"Error getting active sessions: {e}")
             return []
-    
+
     def deactivate_session(self, session_id: str) -> bool:
         """Deactivate a trading session."""
         try:
             query = """
-                UPDATE trading_sessions 
-                SET is_active = 0, updated_at = ? 
-                WHERE session_id = ?
+                UPDATE trading_sessions
+                SET is_active = FALSE, updated_at = %s
+                WHERE session_id = %s
             """
-            
+
             return self._execute_update(query, (datetime.now(), session_id))
         except Exception as e:
             logger.error(f"Error deactivating session: {e}")

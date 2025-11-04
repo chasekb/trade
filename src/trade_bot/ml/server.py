@@ -97,14 +97,14 @@ async def health_check():
 async def predict_trading_signal(request: PredictionRequest):
     """Predict optimal trading signal."""
     global ml_optimizer
-    
+
     if ml_optimizer is None:
         raise HTTPException(status_code=503, detail="ML optimizer not initialized")
-    
+
     try:
         # Convert request to OrderBookFeatures
         from ..ml.data_collector import OrderBookFeatures
-        
+
         features = OrderBookFeatures(
             timestamp=request.timestamp,
             symbol=request.symbol,
@@ -121,12 +121,63 @@ async def predict_trading_signal(request: PredictionRequest):
             price_momentum=request.price_momentum,
             volatility=request.volatility
         )
-        
+
+        # Check if model is trained, if not, try to train one
+        if not ml_optimizer.is_trained:
+            logger.info("No trained model available, attempting to train a model...")
+            try:
+                # Collect and train a model
+                features_data, outcomes = ml_optimizer.collect_and_preprocess_data(days_back=30)
+                if features_data and outcomes:
+                    training_results = ml_optimizer.train_ml_models(features_data, outcomes)
+                    if training_results and ml_optimizer.is_trained:
+                        logger.info("Model trained successfully")
+                    else:
+                        logger.warning("Failed to train model, returning hold signal")
+                        return PredictionResponse(
+                            action="hold",
+                            confidence=0.0,
+                            signal_value=0.0,
+                            reason="No training data available",
+                            similar_conditions=0,
+                            timestamp=datetime.now().isoformat()
+                        )
+                else:
+                    logger.warning("No training data available, returning hold signal")
+                    return PredictionResponse(
+                        action="hold",
+                        confidence=0.0,
+                        signal_value=0.0,
+                        reason="No training data available",
+                        similar_conditions=0,
+                        timestamp=datetime.now().isoformat()
+                    )
+            except Exception as train_error:
+                logger.error(f"Error training model: {train_error}")
+                return PredictionResponse(
+                    action="hold",
+                    confidence=0.0,
+                    signal_value=0.0,
+                    reason=f"Model training failed: {str(train_error)}",
+                    similar_conditions=0,
+                    timestamp=datetime.now().isoformat()
+                )
+
         # Get prediction
         prediction = ml_optimizer.predict_trading_signal(features)
-        
-        return PredictionResponse(**prediction)
-        
+
+        # Ensure all required fields are present
+        complete_prediction = {
+            'action': prediction.get('action', 'hold'),
+            'confidence': prediction.get('confidence', 0.0),
+            'signal_value': prediction.get('signal_value', 0.0),
+            'reason': prediction.get('reason', 'ML prediction'),
+            'similar_conditions': prediction.get('similar_conditions', 0),
+            'timestamp': prediction.get('timestamp', datetime.now().isoformat())
+        }
+
+        return PredictionResponse(**complete_prediction)
+
     except Exception as e:
         logger.error(f"Error making prediction: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -10,13 +10,16 @@ logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     """Modular database manager using component architecture."""
-    
-    def __init__(self, db_path: str = "data/databases/trading_cache.db"):
-        self.db_path = db_path
-        self.cache_manager = CacheManager(db_path)
-        self.session_manager = SessionManager(db_path)
-        self.trade_manager = TradeManager(db_path)
-        self.signal_manager = SignalManager(db_path)
+
+    def __init__(self, db_url: str = None):
+        import os
+        if db_url is None:
+            db_url = os.getenv('DATABASE_URL', 'postgresql://trading_user:trading_password@db:5432/trading_db')
+        self.db_url = db_url
+        self.cache_manager = CacheManager(db_url)
+        self.session_manager = SessionManager(db_url)
+        self.trade_manager = TradeManager(db_url)
+        self.signal_manager = SignalManager(db_url)
         logger.info("Database initialized successfully")
     
     # Cache Manager Methods

@@ -32,6 +32,10 @@ class TradingConfig:
     max_symbols_per_request: int = 1000  # Maximum symbols per API request
     max_universe_size: int = 500  # Maximum universe size for trading
     max_positions_per_session: int = 100  # Maximum positions per trading session
+
+    # ML server configuration
+    ml_server_host: str = "localhost"  # ML server host
+    ml_server_port: int = 8002  # ML server port
     
     # Dollar Cost Averaging (DCA) settings
     enable_dca: bool = False
@@ -64,6 +68,8 @@ class TradingConfig:
             max_symbols_per_request=int(os.getenv("MAX_SYMBOLS_PER_REQUEST", "1000")),
             max_universe_size=int(os.getenv("MAX_UNIVERSE_SIZE", "500")),
             max_positions_per_session=int(os.getenv("MAX_POSITIONS_PER_SESSION", "100")),
+            ml_server_host=os.getenv("ML_SERVER_HOST", "localhost"),
+            ml_server_port=int(os.getenv("ML_SERVER_PORT", "8002")),
             enable_dca=os.getenv("ENABLE_DCA", "false").lower() == "true",
             dca_amount=float(os.getenv("DCA_AMOUNT", "100.0")),
             dca_frequency=int(os.getenv("DCA_FREQUENCY", "7")),
