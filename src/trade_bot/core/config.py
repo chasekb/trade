@@ -33,6 +33,11 @@ class TradingConfig:
     max_universe_size: int = 500  # Maximum universe size for trading
     max_positions_per_session: int = 100  # Maximum positions per trading session
 
+    # API Rate limiting (configurable)
+    coinbase_max_concurrent_requests: int = 5  # Maximum concurrent requests to Coinbase API
+    coinbase_min_request_interval: float = 0.1  # Minimum seconds between requests (100ms)
+    coinbase_rate_limit_enabled: bool = True  # Enable/disable rate limiting
+
     # ML server configuration
     ml_server_host: str = "localhost"  # ML server host
     ml_server_port: int = 8002  # ML server port
@@ -68,6 +73,9 @@ class TradingConfig:
             max_symbols_per_request=int(os.getenv("MAX_SYMBOLS_PER_REQUEST", "1000")),
             max_universe_size=int(os.getenv("MAX_UNIVERSE_SIZE", "500")),
             max_positions_per_session=int(os.getenv("MAX_POSITIONS_PER_SESSION", "100")),
+            coinbase_max_concurrent_requests=int(os.getenv("COINBASE_MAX_CONCURRENT_REQUESTS", "5")),
+            coinbase_min_request_interval=float(os.getenv("COINBASE_MIN_REQUEST_INTERVAL", "0.1")),
+            coinbase_rate_limit_enabled=os.getenv("COINBASE_RATE_LIMIT_ENABLED", "true").lower() == "true",
             ml_server_host=os.getenv("ML_SERVER_HOST", "localhost"),
             ml_server_port=int(os.getenv("ML_SERVER_PORT", "8002")),
             enable_dca=os.getenv("ENABLE_DCA", "false").lower() == "true",

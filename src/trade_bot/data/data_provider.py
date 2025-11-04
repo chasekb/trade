@@ -22,12 +22,13 @@ class CoinbaseDataProvider:
     # Class-level host state to avoid per-instance spam and enable shared cooldowns
     _host_state: Dict[str, Dict[str, Any]] = {}
 
-    def __init__(self, config_or_product_id: Any = "BTC-USD"):
+    def __init__(self, config_or_product_id: Any = "BTC-USD", config: Any = None):
         """Initialize the data provider.
 
         Args:
             config_or_product_id: Either a product ID string like "BTC-USD" or an
                 object with a "product_id" attribute (e.g., TradingConfig).
+            config: TradingConfig object for rate limiting configuration.
         """
         # Allow both product_id string and TradingConfig-like objects
         if isinstance(config_or_product_id, str):
@@ -36,10 +37,26 @@ class CoinbaseDataProvider:
             # Fallback: try to pull product_id attribute from the object
             self.product_id = getattr(config_or_product_id, "product_id", "BTC-USD")
 
+        # Store config for rate limiting
+        self.config = config
+
         # Allow overriding public base URL via environment to support proxies/region issues
         self.base_url = os.getenv("COINBASE_PUBLIC_BASE_URL", "https://api.exchange.coinbase.com")
         self.logger = logging.getLogger(__name__)
         self._host: str = urlsplit(self.base_url).hostname or "api.exchange.coinbase.com"
+
+        # Initialize rate limiting from config
+        self._rate_limiter_enabled = getattr(config, 'coinbase_rate_limit_enabled', True) if config else True
+        self._max_concurrent_requests = getattr(config, 'coinbase_max_concurrent_requests', 5) if config else 5
+        self._min_request_interval = getattr(config, 'coinbase_min_request_interval', 0.1) if config else 0.1
+
+        # Initialize rate limiting components
+        if self._rate_limiter_enabled:
+            if CoinbaseDataProvider._rate_limiter is None:
+                CoinbaseDataProvider._rate_limiter = asyncio.Semaphore(self._max_concurrent_requests)
+            if CoinbaseDataProvider._last_request_time is None:
+                CoinbaseDataProvider._last_request_time = datetime.now()
+
         # Ensure host state exists
         CoinbaseDataProvider._host_state.setdefault(
             self._host, {"failures": 0, "cooldown_until": None}
@@ -71,6 +88,28 @@ class CoinbaseDataProvider:
         state = self._get_state()
         state["failures"] = 0
         state["cooldown_until"] = None
+
+    async def _enforce_rate_limit(self) -> None:
+        """Enforce rate limiting for API requests."""
+        if not self._rate_limiter_enabled:
+            return
+
+        # Acquire semaphore for concurrent request limiting
+        await CoinbaseDataProvider._rate_limiter.acquire()
+
+        try:
+            # Enforce minimum interval between requests
+            now = datetime.now()
+            if CoinbaseDataProvider._last_request_time:
+                time_since_last_request = (now - CoinbaseDataProvider._last_request_time).total_seconds()
+                if time_since_last_request < self._min_request_interval:
+                    sleep_time = self._min_request_interval - time_since_last_request
+                    await asyncio.sleep(sleep_time)
+
+            CoinbaseDataProvider._last_request_time = datetime.now()
+        finally:
+            # Always release the semaphore
+            CoinbaseDataProvider._rate_limiter.release()
 
     def _host_resolves(self) -> bool:
         try:
@@ -295,10 +334,10 @@ class CoinbaseDataProvider:
     
     async def get_order_book(self, level: int = 2) -> Dict[str, Any]:
         """Get current order book data.
-        
+
         Args:
             level: Order book level (1, 2, or 3)
-            
+
         Returns:
             Order book data with bids and asks
         """
@@ -308,11 +347,14 @@ class CoinbaseDataProvider:
             )
             return {}
 
+        # Enforce rate limiting before making the request
+        await self._enforce_rate_limit()
+
         self.logger.info(f"Fetching order book for {self.product_id} (level {level})")
-        
+
         url = f"{self.base_url}/products/{self.product_id}/book"
         params = {'level': level}
-        
+
         try:
             # DNS preflight to avoid tight error loops on name resolution failures
             if not await asyncio.to_thread(self._host_resolves):
