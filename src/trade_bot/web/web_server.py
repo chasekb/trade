@@ -147,7 +147,7 @@ async def startup_event():
             logger.info("📊 Application will run in basic trading mode (ML features disabled)")
 
         # Initialize core components
-        data_provider = CoinbaseDataProvider(config)
+        data_provider = CoinbaseDataProvider(config, config)
         cached_data_provider = CachedDataProvider(config, db_url=os.getenv('DATABASE_URL'))
         product_fetcher = ProductFetcher()
         database_manager = DatabaseManager()
