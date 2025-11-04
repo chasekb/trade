@@ -120,6 +120,33 @@ class SimulatedTradingManager:
         """Set database manager and session ID for trade logging."""
         self.db_manager = db_manager
         self.session_id = session_id
+
+        # Create the session in the database if it doesn't exist
+        try:
+            session_data = {
+                'is_active': True,
+                'trading_mode': 'simulated',
+                'symbol_mode': 'manual',
+                'strategy_type': getattr(self, 'strategy_type', 'orderbook'),
+                'strategy_params': getattr(self, 'strategy_params', {}),
+                'symbols': getattr(self, 'symbols_to_trade', []),
+                'universe_config': {},
+                'portfolio_state': {
+                    'cash_balance': self.cash_balance,
+                    'total_value': self.cash_balance,
+                    'max_drawdown': self.max_drawdown
+                },
+                'positions': {},
+                'recent_trades': []
+            }
+            success = self.db_manager.save_trading_session(session_id, session_data)
+            if success:
+                logger.info(f"Session created in database: {session_id}")
+            else:
+                logger.warning(f"Failed to create session in database: {session_id}")
+        except Exception as e:
+            logger.error(f"Error creating session in database: {e}")
+
         logger.info(f"Session info set: {session_id}")
     
     def set_strategy_info(self, strategy_type: str, strategy_params: Dict[str, Any]) -> None:

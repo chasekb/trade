@@ -52,6 +52,11 @@ class CoinbaseDataProvider:
         cooldown_until = self._get_state().get("cooldown_until")
         return cooldown_until is not None and datetime.now() < cooldown_until
 
+    @property
+    def _cooldown_until(self):
+        """Get the cooldown until timestamp."""
+        return self._get_state().get("cooldown_until")
+
     def _begin_cooldown(self) -> None:
         state = self._get_state()
         failures = state.get("failures", 0)
@@ -452,4 +457,3 @@ class CoinbaseDataProvider:
             'timestamp': raw_data.get('time', datetime.now().isoformat()),
             'product_id': self.product_id
         }
-
