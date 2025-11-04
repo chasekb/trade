@@ -1,3 +1,4 @@
+from typing import List
 """ML-Enhanced Order Book trading strategy."""
 
 import logging

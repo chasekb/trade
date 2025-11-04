@@ -1,3 +1,4 @@
+from typing import List
 """Bollinger Bands trading strategy."""
 
 import logging

@@ -1,3 +1,4 @@
+from typing import List
 """CSV export functionality for data handlers."""
 
 import csv

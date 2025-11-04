@@ -1,10 +1,11 @@
+from typing import List
 """Application State Management for Web Server.
 
 This module provides a centralized application state class to replace global variables,
 making the code more testable, maintainable, and thread-safe.
 """
 import asyncio
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, Set, List
 from dataclasses import dataclass, field
 
 from ..web_handlers import (
@@ -20,7 +21,7 @@ class TradingState:
     """Trading state data class."""
     is_trading: bool = False
     active_strategy: Optional[str] = None
-    symbols: list = field(default_factory=list)
+    symbols: List[str] = field(default_factory=list)
     session_id: Optional[str] = None
     loading_progress: Dict[str, Any] = field(default_factory=lambda: {
         "status": "idle",
@@ -101,7 +102,7 @@ class ApplicationState:
             "progress": int((loaded / total) * 100) if total > 0 else 100
         }
 
-    def add_symbols_to_trading(self, symbols: list):
+    def add_symbols_to_trading(self, symbols: List[str]):
         """Add symbols to the current trading symbols list."""
         current_symbols = self.trading_state.symbols
         self.trading_state.symbols = list(set(current_symbols + symbols))

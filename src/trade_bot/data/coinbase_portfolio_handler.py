@@ -1,3 +1,4 @@
+from typing import List
 """
 Coinbase Advanced Trade API portfolio data handler.
 

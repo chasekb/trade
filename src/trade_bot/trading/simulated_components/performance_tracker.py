@@ -1,3 +1,4 @@
+from typing import List
 """Performance tracking for simulated trading."""
 
 import logging

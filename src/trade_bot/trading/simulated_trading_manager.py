@@ -1,3 +1,4 @@
+from typing import List
 """
 Simulated Trading Manager for Live Order Book Signals.
 

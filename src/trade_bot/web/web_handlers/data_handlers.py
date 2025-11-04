@@ -1,3 +1,4 @@
+from typing import List
 """Data handlers for the trading web server."""
 
 import logging

@@ -1,3 +1,4 @@
+from typing import List
 """Trading signal data handler."""
 
 import logging

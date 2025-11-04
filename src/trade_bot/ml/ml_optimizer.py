@@ -1,3 +1,4 @@
+from typing import List
 """ML Trading Optimization System - Main Integration."""
 
 import logging

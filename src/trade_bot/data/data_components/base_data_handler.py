@@ -1,3 +1,4 @@
+from typing import List
 """Base data handler with common functionality."""
 
 import logging

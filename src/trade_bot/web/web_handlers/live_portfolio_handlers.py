@@ -1,3 +1,4 @@
+from typing import List
 """
 Live portfolio handlers for the trading web server.
 
