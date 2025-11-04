@@ -1,3 +1,4 @@
+from typing import List
 """ML Data Collector for extracting and preprocessing trading data."""
 
 import logging

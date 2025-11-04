@@ -1,3 +1,4 @@
+from typing import List
 """Model Manager for ML model versioning and deployment."""
 
 import logging

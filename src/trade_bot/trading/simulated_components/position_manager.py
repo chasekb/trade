@@ -1,3 +1,4 @@
+from typing import List
 """Position management for simulated trading."""
 
 import logging

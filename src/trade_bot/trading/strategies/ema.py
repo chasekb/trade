@@ -1,3 +1,4 @@
+from typing import List
 """EMA (Exponential Moving Average) trading strategy."""
 
 import logging

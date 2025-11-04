@@ -1,3 +1,4 @@
+from typing import List
 """Base classes for trading strategies."""
 
 import logging

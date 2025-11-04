@@ -1,3 +1,4 @@
+from typing import List
 """Trade execution for simulated trading."""
 
 import logging

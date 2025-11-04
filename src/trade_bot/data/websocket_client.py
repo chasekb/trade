@@ -1,3 +1,4 @@
+from typing import List
 """WebSocket client for real-time market data and trading with full subscription support."""
 
 import asyncio

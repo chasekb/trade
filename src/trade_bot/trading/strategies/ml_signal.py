@@ -1,3 +1,4 @@
+from typing import List
 """Machine Learning Signal for Trade Prediction.
 
 This module implements a machine learning-based signal generator that learns

@@ -1,3 +1,4 @@
+from typing import List
 """MACD (Moving Average Convergence Divergence) trading strategy."""
 
 import logging

@@ -1,3 +1,4 @@
+from typing import List
 """RSI (Relative Strength Index) trading strategy."""
 
 import logging

@@ -1,3 +1,4 @@
+from typing import List
 """ML-Enhanced Trading Strategy.
 
 This strategy combines traditional technical analysis with machine learning

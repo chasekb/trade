@@ -1,3 +1,4 @@
+from typing import List
 """Ticker data handler."""
 
 import logging

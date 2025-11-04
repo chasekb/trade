@@ -1,3 +1,4 @@
+from typing import List
 """
 Pydantic models for API requests and responses.
 """

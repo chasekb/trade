@@ -1,3 +1,4 @@
+from typing import List
 """Portfolio management for simulated trading."""
 
 from dataclasses import dataclass

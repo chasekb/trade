@@ -1,3 +1,4 @@
+from typing import List
 """New modular data handler using component architecture."""
 
 import logging
