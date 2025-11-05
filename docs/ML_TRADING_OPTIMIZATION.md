@@ -102,86 +102,32 @@ Integrates ML predictions into trading decisions:
 - **Confidence Thresholds**: Only act on high-confidence predictions
 - **Performance Tracking**: Monitor ML vs baseline performance
 
-## Setup and Installation
 
-### Prerequisites
+## 🚀 Usage
 
-- Python 3.11+
-- Podman or Docker
-- Redis
-- Qdrant Vector Database
+The ML Trading Optimization system is integrated into the main application and can be managed through the web dashboard and API endpoints.
 
-### 1. Install Dependencies
+### 1. Starting the ML Services
+
+The vector database and ML model server are started automatically when you run the main application:
 
 ```bash
-pip install -r config/requirements.txt
-pip install scikit-learn pandas numpy joblib requests
+python main.py web
 ```
 
-### 2. Start Vector Database Services
+This command will start all the necessary services, including Qdrant, Redis, and the ML model server.
 
-```bash
-# Start Qdrant, Redis, and ML Model Server
-./scripts/ml/start_vector_db.sh
-```
+### 2. Training Models
 
-### 3. Train Initial Models
+Models can be trained through the web dashboard or by calling the `/api/ml/train` API endpoint.
 
-```bash
-# Train ML models on historical data
-python scripts/ml/train_models.py --days-back 30 --model-type ensemble
-```
+### 3. Model Management
 
-### 4. Test Integration
+Model management, including deploying, rolling back, and evaluating models, can be done through the web dashboard.
 
-```bash
-# Run comprehensive integration tests
-python scripts/ml/test_integration.py
-```
+### 4. Strategy Validation
 
-## Usage
-
-### Training Models
-
-```bash
-# Train with default settings
-python scripts/ml/train_models.py
-
-# Train with custom parameters
-python scripts/ml/train_models.py \
-    --days-back 60 \
-    --model-type ensemble \
-    --min-samples 200
-```
-
-### Model Management
-
-```bash
-# List all models
-python scripts/ml/manage_models.py list
-
-# Deploy a specific model version
-python scripts/ml/manage_models.py deploy trading_optimizer --version v20241201_143022
-
-# Rollback to previous version
-python scripts/ml/manage_models.py rollback trading_optimizer
-
-# Evaluate current model
-python scripts/ml/manage_models.py evaluate
-
-# Clean up old versions
-python scripts/ml/manage_models.py cleanup trading_optimizer --keep 3
-```
-
-### Strategy Validation
-
-```bash
-# Compare ML-enhanced vs baseline strategy
-python scripts/ml/validate_strategy.py \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31 \
-    --symbol BTC-USD
-```
+The performance of the ML-enhanced strategy can be validated through the backtesting interface in the web dashboard.
 
 ### Web Dashboard
 
