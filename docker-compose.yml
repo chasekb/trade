@@ -115,6 +115,22 @@ services:
       timeout: 10s
       retries: 3
 
+  # ML Model Server
+  ml-server:
+    build:
+      context: ./src/trade_bot/ml
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
   postgres_data:

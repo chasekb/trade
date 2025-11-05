@@ -9,6 +9,8 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlsplit
 import aiohttp
 import json
+import time
+from collections import deque
 
 
 class CoinbaseDataProvider:
@@ -21,8 +23,8 @@ class CoinbaseDataProvider:
 
     # Class-level host state to avoid per-instance spam and enable shared cooldowns
     _host_state: Dict[str, Dict[str, Any]] = {}
-    _rate_limiter: Optional[asyncio.Semaphore] = None
-    _last_request_time: Optional[datetime] = None
+    _requests_deque: Optional['deque'] = None
+    _limiter_lock: Optional[asyncio.Lock] = None
 
     def __init__(self, config_or_product_id: Any = "BTC-USD", config: Any = None):
         """Initialize the data provider.
@@ -49,15 +51,15 @@ class CoinbaseDataProvider:
 
         # Initialize rate limiting from config
         self._rate_limiter_enabled = getattr(config, 'coinbase_rate_limit_enabled', True) if config else True
-        self._max_concurrent_requests = getattr(config, 'coinbase_max_concurrent_requests', 5) if config else 5
-        self._min_request_interval = getattr(config, 'coinbase_min_request_interval', 0.1) if config else 0.1
+        self._rate_limit_requests = getattr(config, 'coinbase_rate_limit_requests', 10) if config else 10
+        self._rate_limit_period = getattr(config, 'coinbase_rate_limit_period', 1.0) if config else 1.0
 
-        # Initialize rate limiting components
+        # Initialize shared rate limiting components if they don't exist
         if self._rate_limiter_enabled:
-            if CoinbaseDataProvider._rate_limiter is None:
-                CoinbaseDataProvider._rate_limiter = asyncio.Semaphore(self._max_concurrent_requests)
-            if CoinbaseDataProvider._last_request_time is None:
-                CoinbaseDataProvider._last_request_time = datetime.now()
+            if not hasattr(CoinbaseDataProvider, '_requests_deque') or CoinbaseDataProvider._requests_deque is None:
+                CoinbaseDataProvider._requests_deque = deque()
+            if not hasattr(CoinbaseDataProvider, '_limiter_lock') or CoinbaseDataProvider._limiter_lock is None:
+                CoinbaseDataProvider._limiter_lock = asyncio.Lock()
 
         # Ensure host state exists
         CoinbaseDataProvider._host_state.setdefault(
@@ -92,26 +94,28 @@ class CoinbaseDataProvider:
         state["cooldown_until"] = None
 
     async def _enforce_rate_limit(self) -> None:
-        """Enforce rate limiting for API requests."""
+        """Enforce a rate limit of N requests per second."""
         if not self._rate_limiter_enabled:
             return
 
-        # Acquire semaphore for concurrent request limiting
-        await CoinbaseDataProvider._rate_limiter.acquire()
+        async with CoinbaseDataProvider._limiter_lock:
+            now = time.time()
+            
+            # Remove old timestamps
+            while (CoinbaseDataProvider._requests_deque and 
+                   CoinbaseDataProvider._requests_deque[0] < now - self._rate_limit_period):
+                CoinbaseDataProvider._requests_deque.popleft()
 
-        try:
-            # Enforce minimum interval between requests
-            now = datetime.now()
-            if CoinbaseDataProvider._last_request_time:
-                time_since_last_request = (now - CoinbaseDataProvider._last_request_time).total_seconds()
-                if time_since_last_request < self._min_request_interval:
-                    sleep_time = self._min_request_interval - time_since_last_request
-                    await asyncio.sleep(sleep_time)
-
-            CoinbaseDataProvider._last_request_time = datetime.now()
-        finally:
-            # Always release the semaphore
-            CoinbaseDataProvider._rate_limiter.release()
+            if len(CoinbaseDataProvider._requests_deque) >= self._rate_limit_requests:
+                # Calculate sleep time
+                oldest_request_time = CoinbaseDataProvider._requests_deque[0]
+                time_to_wait = (oldest_request_time + self._rate_limit_period) - now
+                if time_to_wait > 0:
+                    self.logger.debug(f"Rate limit reached. Sleeping for {time_to_wait:.4f} seconds.")
+                    await asyncio.sleep(time_to_wait)
+            
+            # Add current request timestamp
+            CoinbaseDataProvider._requests_deque.append(time.time())
 
     def _host_resolves(self) -> bool:
         try:
@@ -168,6 +172,7 @@ class CoinbaseDataProvider:
     
     async def _fetch_candles_single(self, start_time: datetime, end_time: datetime, granularity: int) -> List[Dict[str, Any]]:
         """Fetch candles with a single API request."""
+        await self._enforce_rate_limit()
         start_iso = start_time.isoformat()
         end_iso = end_time.isoformat()
         
@@ -292,6 +297,7 @@ class CoinbaseDataProvider:
         """
         self.logger.info(f"Fetching historical trades for {self.product_id}")
         
+        await self._enforce_rate_limit()
         url = f"{self.base_url}/products/{self.product_id}/trades"
         params = {
             'start': start_time.isoformat(),
@@ -439,6 +445,7 @@ class CoinbaseDataProvider:
         """
         self.logger.info(f"Fetching recent trades for {self.product_id} (limit: {limit})")
         
+        await self._enforce_rate_limit()
         url = f"{self.base_url}/products/{self.product_id}/trades"
         params = {'limit': limit}
         
@@ -465,6 +472,7 @@ class CoinbaseDataProvider:
         """
         self.logger.info(f"Fetching product stats for {self.product_id}")
         
+        await self._enforce_rate_limit()
         url = f"{self.base_url}/products/{self.product_id}/stats"
         
         try:

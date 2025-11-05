@@ -667,8 +667,6 @@ class SimulatedTradingManager:
         """Close a position."""
         if symbol in self.positions:
             self.positions[symbol].status = 'closed'
-            # Remove the position from the active positions dictionary
-            del self.positions[symbol]
             logger.info(f"Closed position for {symbol}: {reason}")
 
     async def force_close_all_positions(self, reason: str = "Server shutdown") -> None:
