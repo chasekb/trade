@@ -21,6 +21,8 @@ class CoinbaseDataProvider:
 
     # Class-level host state to avoid per-instance spam and enable shared cooldowns
     _host_state: Dict[str, Dict[str, Any]] = {}
+    _rate_limiter: Optional[asyncio.Semaphore] = None
+    _last_request_time: Optional[datetime] = None
 
     def __init__(self, config_or_product_id: Any = "BTC-USD", config: Any = None):
         """Initialize the data provider.
