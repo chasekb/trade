@@ -629,7 +629,7 @@ class DataHandlers:
                 # Call ML server
                 ml_server_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/predict"
                 logger.info(f"Calling ML server at {ml_server_url} for symbol {signal['symbol']}")
-                response = requests.post(ml_server_url, json=prediction_request, timeout=0.5)
+                response = requests.post(ml_server_url, json=prediction_request, timeout=10.0)
                 logger.info(f"ML server response status: {response.status_code} for symbol {signal['symbol']}")
 
                 if response.status_code == 200:

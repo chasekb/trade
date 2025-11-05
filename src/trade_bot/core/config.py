@@ -39,7 +39,7 @@ class TradingConfig:
     coinbase_rate_limit_enabled: bool = True  # Enable/disable rate limiting
 
     # ML server configuration
-    ml_server_host: str = "localhost"  # ML server host
+    ml_server_host: str = "ml-server"  # ML server host
     ml_server_port: int = 8002  # ML server port
     
     # Dollar Cost Averaging (DCA) settings
@@ -76,7 +76,7 @@ class TradingConfig:
             coinbase_max_concurrent_requests=int(os.getenv("COINBASE_MAX_CONCURRENT_REQUESTS", "5")),
             coinbase_min_request_interval=float(os.getenv("COINBASE_MIN_REQUEST_INTERVAL", "0.1")),
             coinbase_rate_limit_enabled=os.getenv("COINBASE_RATE_LIMIT_ENABLED", "true").lower() == "true",
-            ml_server_host=os.getenv("ML_SERVER_HOST", "localhost"),
+            ml_server_host=os.getenv("ML_SERVER_HOST", "ml-server"),
             ml_server_port=int(os.getenv("ML_SERVER_PORT", "8002")),
             enable_dca=os.getenv("ENABLE_DCA", "false").lower() == "true",
             dca_amount=float(os.getenv("DCA_AMOUNT", "100.0")),
