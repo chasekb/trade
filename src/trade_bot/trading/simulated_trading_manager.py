@@ -516,11 +516,11 @@ class SimulatedTradingManager:
         # Check if we have reached max positions
         open_positions = sum(1 for p in self.positions.values() if p.status == 'open')
         if open_positions >= self.max_positions:
-            logger.debug(f"Max positions ({self.max_positions}) reached, skipping buy signal for {symbol}")
+            logger.warning(f"Max positions ({self.max_positions}) reached, skipping buy signal for {symbol}")
             return None
         
         # Calculate position size based on total portfolio value
-        # This ensures each position represents a fixed percentage of the total portfolio
+        # This ensures each position represents a fixed percentage of total portfolio
         total_portfolio_value = self.cash_balance + sum(
             pos.quantity * pos.current_price for pos in self.positions.values() 
             if pos.status == 'open'
@@ -529,7 +529,7 @@ class SimulatedTradingManager:
         quantity = position_value / price
         
         if quantity < 0.001:  # Minimum quantity threshold
-            logger.debug(f"Insufficient cash for {symbol} position")
+            logger.warning(f"Insufficient quantity for {symbol} position: {quantity:.6f} < 0.001")
             return None
         
         # Calculate fees
@@ -541,11 +541,12 @@ class SimulatedTradingManager:
             # If we don't have enough cash, reduce the quantity to fit within available cash
             max_quantity = (self.cash_balance * 0.99) / (price * (1 + self.trading_fee))  # 99% to account for fees
             if max_quantity < 0.001:
-                logger.debug(f"Insufficient cash for {symbol} position: need ${total_cost:.2f}, have ${self.cash_balance:.2f}")
+                logger.warning(f"Insufficient cash for {symbol} position: need ${total_cost:.2f}, have ${self.cash_balance:.2f}")
                 return None
             quantity = max_quantity
             fees = price * quantity * self.trading_fee
             total_cost = (price * quantity) + fees
+            logger.info(f"Adjusted {symbol} position size to fit cash: {quantity:.6f} shares, cost: ${total_cost:.2f}")
         
         # Execute buy trade
         return await self._execute_buy_trade(symbol, price, quantity, fees, signal)
