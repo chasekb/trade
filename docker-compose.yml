@@ -22,6 +22,7 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - ENV=production
       - PORT=8000
+      - PYTHONPATH=/app/src
     depends_on:
       - db
       - redis

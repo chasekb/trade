@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from .ml_optimizer import MLTradingOptimizer
+from ml_optimizer import MLTradingOptimizer
 
 app = FastAPI()
 
