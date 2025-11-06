@@ -75,3 +75,37 @@ class BaseStrategy(ABC):
         self.signal_count = 0
         self.signals_by_type = {}
         self.no_signal_count = 0
+
+    def calculate_position_size(self, current_price: float, portfolio_size: float = None, position_size_mode: str = None, position_size_value: float = None) -> float:
+        """Calculate position size based on current price and portfolio configuration.
+
+        Args:
+            current_price: Current price of the asset
+            portfolio_size: Total portfolio value (configurable from risk management section)
+            position_size_mode: 'percent' or 'dollar' sizing mode
+            position_size_value: Position size value (percentage or dollar amount)
+
+        Returns:
+            Position size in asset units
+        """
+        # Use default values if not provided
+        if portfolio_size is None:
+            portfolio_size = 10000.0  # Default $10,000 portfolio
+
+        if position_size_mode is None:
+            position_size_mode = 'percent'
+
+        if position_size_value is None:
+            position_size_value = 10.0  # Default 10%
+
+        if position_size_mode == 'percent':
+            # Calculate position value as percentage of portfolio
+            position_value = portfolio_size * (position_size_value / 100.0)
+            return position_value / current_price
+        elif position_size_mode == 'dollar':
+            # Use fixed dollar amount
+            return position_size_value / current_price
+        else:
+            # Fallback to default percentage-based sizing
+            position_value = portfolio_size * 0.10  # 10% of portfolio
+            return position_value / current_price
