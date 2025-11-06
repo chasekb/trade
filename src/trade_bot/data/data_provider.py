@@ -436,33 +436,78 @@ class CoinbaseDataProvider:
     
     async def get_recent_trades(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Get recent trade data.
-        
+
         Args:
             limit: Maximum number of trades to fetch
-            
+
         Returns:
             List of recent trade data
         """
-        self.logger.info(f"Fetching recent trades for {self.product_id} (limit: {limit})")
-        
+        if self._in_cooldown():
+            self.logger.debug(f"Skipping recent trades fetch for {self.product_id} - in cooldown")
+            return []
+
+        self.logger.debug(f"Fetching recent trades for {self.product_id} (limit: {limit})")
+
         await self._enforce_rate_limit()
         url = f"{self.base_url}/products/{self.product_id}/trades"
         params = {'limit': limit}
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        self.logger.info(f"Retrieved {len(data)} recent trades")
-                        return self._process_trade_data(data)
-                    else:
-                        error_text = await response.text()
-                        self.logger.error(f"Failed to fetch recent trades: {response.status} - {error_text}")
-                        return []
-        except Exception as e:
-            self.logger.error(f"Error fetching recent trades: {e}")
-            return []
+
+        # Implement retry logic with exponential backoff
+        max_retries = 3
+        base_timeout = 5.0
+
+        for attempt in range(max_retries):
+            try:
+                # DNS preflight
+                if not await asyncio.to_thread(self._host_resolves):
+                    st = self._get_state()
+                    st["failures"] = st.get("failures", 0) + 1
+                    self._begin_cooldown()
+                    return []
+
+                timeout = aiohttp.ClientTimeout(total=base_timeout * (2 ** attempt), connect=3, sock_read=5)
+
+                async with aiohttp.ClientSession(timeout=timeout, trust_env=True,
+                                               headers={"User-Agent": "trade-bot/1.0 (+https://github.com/) aiohttp",
+                                                       "Accept": "application/json"}) as session:
+                    async with session.get(url, params=params) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            self.logger.debug(f"Retrieved {len(data)} recent trades")
+                            self._reset_cooldown()
+                            return self._process_trade_data(data)
+                        elif response.status == 429:  # Rate limited
+                            self.logger.warning(f"Rate limited for recent trades {self.product_id}, attempt {attempt+1}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(2 ** attempt)
+                                continue
+                        else:
+                            error_text = await response.text()
+                            self.logger.warning(f"Failed to fetch recent trades (attempt {attempt+1}): {response.status}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(0.5 * (2 ** attempt))
+                                continue
+
+            except asyncio.TimeoutError:
+                self.logger.warning(f"Timeout fetching recent trades for {self.product_id} (attempt {attempt+1})")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(0.5 * (2 ** attempt))
+                    continue
+
+            except Exception as e:
+                self.logger.warning(f"Error fetching recent trades for {self.product_id} (attempt {attempt+1}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(0.5 * (2 ** attempt))
+                    continue
+
+        # All retries failed
+        st = self._get_state()
+        st["failures"] = st.get("failures", 0) + 1
+        self.logger.error(f"All {max_retries} attempts failed for recent trades: {self.product_id}")
+        if st["failures"] >= 3:
+            self._begin_cooldown()
+        return []
     
     async def get_product_stats(self) -> Dict[str, Any]:
         """Get product statistics.

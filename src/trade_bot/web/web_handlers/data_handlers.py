@@ -606,6 +606,17 @@ class DataHandlers:
     async def _enrich_signals_with_ml_analysis(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Enrich signals with ML analysis from the ML model server."""
         enriched_signals = []
+
+        # Check ML server health first
+        ml_server_healthy = await self._check_ml_server_health()
+
+        if not ml_server_healthy:
+            logger.warning("ML server is not healthy, skipping ML analysis for all signals")
+            for signal in signals:
+                signal["ml_analysis"] = {"ml_enabled": False, "reason": "ML server unavailable"}
+                enriched_signals.append(signal)
+            return enriched_signals
+
         for signal in signals:
             try:
                 # Prepare request for ML server
@@ -626,38 +637,102 @@ class DataHandlers:
                     "timestamp": int(datetime.fromisoformat(signal["timestamp"].replace("Z", "+00:00")).timestamp())
                 }
 
-                # Call ML server
+                # Call ML server with improved timeout and retry logic
                 ml_server_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/predict"
-                logger.info(f"Calling ML server at {ml_server_url} for symbol {signal['symbol']}")
-                response = requests.post(ml_server_url, json=prediction_request, timeout=10.0)
-                logger.info(f"ML server response status: {response.status_code} for symbol {signal['symbol']}")
+                logger.debug(f"Calling ML server at {ml_server_url} for symbol {signal['symbol']}")
 
-                if response.status_code == 200:
-                    ml_analysis = response.json()
-                    logger.info(f"ML analysis received: {ml_analysis} for symbol {signal['symbol']}")
-                    signal["ml_analysis"] = {
-                        "ml_enabled": True,
-                        "win_probability": ml_analysis.get("confidence", 0.0) * 100,
-                        "expected_return": ml_analysis.get("signal_value", 0.0),
-                        "confidence": ml_analysis.get("confidence", 0.0),
-                        "model_version": "1.0.0", # Placeholder
-                        "features_used": list(prediction_request.keys()),
-                        "prediction_timestamp": datetime.now().isoformat()
-                    }
-                    logger.info(f"Set ml_enabled=True for symbol {signal['symbol']}")
-                else:
-                    logger.warning(f"ML server returned status {response.status_code} for symbol {signal['symbol']}")
-                    signal["ml_analysis"] = {"ml_enabled": False}
+                # Use shorter timeout and implement retry with backoff
+                max_retries = 2
+                base_timeout = 5.0  # Reduced from 10.0
+
+                for attempt in range(max_retries + 1):
+                    try:
+                        timeout = base_timeout * (2 ** attempt)  # Exponential backoff for timeout
+                        response = requests.post(ml_server_url, json=prediction_request, timeout=timeout)
+
+                        if response.status_code == 200:
+                            ml_analysis = response.json()
+                            logger.debug(f"ML analysis received for {signal['symbol']}: confidence={ml_analysis.get('confidence', 0.0):.3f}")
+
+                            signal["ml_analysis"] = {
+                                "ml_enabled": True,
+                                "win_probability": ml_analysis.get("confidence", 0.0) * 100,
+                                "expected_return": ml_analysis.get("signal_value", 0.0),
+                                "confidence": ml_analysis.get("confidence", 0.0),
+                                "model_version": "1.0.0",
+                                "features_used": list(prediction_request.keys()),
+                                "prediction_timestamp": datetime.now().isoformat(),
+                                "response_time_ms": response.elapsed.total_seconds() * 1000
+                            }
+                            break  # Success, exit retry loop
+
+                        elif response.status_code == 503:
+                            # ML server not ready (no trained model)
+                            logger.debug(f"ML server not ready for {signal['symbol']} (503)")
+                            signal["ml_analysis"] = {"ml_enabled": False, "reason": "Model not trained"}
+                            break
+
+                        else:
+                            logger.warning(f"ML server returned status {response.status_code} for {signal['symbol']}")
+                            if attempt == max_retries:
+                                signal["ml_analysis"] = {"ml_enabled": False, "reason": f"HTTP {response.status_code}"}
+
+                    except requests.exceptions.Timeout:
+                        logger.warning(f"ML server timeout (attempt {attempt+1}/{max_retries+1}) for {signal['symbol']}")
+                        if attempt == max_retries:
+                            signal["ml_analysis"] = {"ml_enabled": False, "reason": "Timeout"}
+
+                    except requests.exceptions.ConnectionError:
+                        logger.warning(f"ML server connection error (attempt {attempt+1}/{max_retries+1}) for {signal['symbol']}")
+                        if attempt == max_retries:
+                            signal["ml_analysis"] = {"ml_enabled": False, "reason": "Connection failed"}
+
+                    except Exception as e:
+                        logger.warning(f"ML analysis error for {signal['symbol']}: {e}")
+                        if attempt == max_retries:
+                            signal["ml_analysis"] = {"ml_enabled": False, "reason": str(e)}
+
+                    # Wait before retry (exponential backoff)
+                    if attempt < max_retries:
+                        await asyncio.sleep(0.1 * (2 ** attempt))
+
+                # Ensure ml_analysis is set
+                if "ml_analysis" not in signal:
+                    signal["ml_analysis"] = {"ml_enabled": False, "reason": "Unknown error"}
+
             except Exception as e:
                 logger.warning(f"Failed to get ML analysis for {signal['symbol']}: {e}")
-                logger.warning(f"Exception type: {type(e).__name__}")
-                import traceback
-                logger.warning(f"Traceback: {traceback.format_exc()}")
-                signal["ml_analysis"] = {"ml_enabled": False}
+                signal["ml_analysis"] = {"ml_enabled": False, "reason": str(e)}
 
             enriched_signals.append(signal)
 
         return enriched_signals
+
+    async def _check_ml_server_health(self) -> bool:
+        """Check if ML server is healthy and has a trained model."""
+        try:
+            ml_server_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/health"
+            response = requests.get(ml_server_url, timeout=2.0)
+
+            if response.status_code == 200:
+                # Also check if model is trained
+                status_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/status"
+                status_response = requests.get(status_url, timeout=2.0)
+
+                if status_response.status_code == 200:
+                    status_data = status_response.json()
+                    is_trained = status_data.get('is_trained', False)
+                    if is_trained:
+                        return True
+                    else:
+                        logger.debug("ML server healthy but no trained model available")
+                        return False
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"ML server health check failed: {e}")
+            return False
     
     async def get_loading_status(self) -> Dict[str, Any]:
         """Get data loading status."""
