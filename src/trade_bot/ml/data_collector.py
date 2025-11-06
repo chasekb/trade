@@ -9,8 +9,17 @@ import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
+import os
 
 logger = logging.getLogger(__name__)
+
+# Try to import PostgreSQL support
+try:
+    import psycopg
+    PSYCOPG_AVAILABLE = True
+except ImportError:
+    PSYCOPG_AVAILABLE = False
+    logger.warning("psycopg not available, PostgreSQL support disabled")
 
 
 @dataclass
@@ -53,104 +62,219 @@ class TradeOutcome:
 class MLDataCollector:
     """Collects and preprocesses trading data for ML training."""
     
-    def __init__(self, db_path: str = "data/databases/trading_cache.db"):
+    def __init__(self, db_path: str = None):
+        """
+        Initialize ML data collector.
+        
+        Args:
+            db_path: Database path (SQLite) or URL (PostgreSQL).
+                    If None, uses DATABASE_URL env var or defaults to SQLite.
+        """
+        if db_path is None:
+            db_path = os.getenv("DATABASE_URL", "data/databases/trading_cache.db")
+        
         self.db_path = db_path
+        self.is_postgres = db_path.startswith("postgresql://") or db_path.startswith("postgres://")
+        
+        if self.is_postgres and not PSYCOPG_AVAILABLE:
+            raise ImportError("PostgreSQL support requires psycopg. Install with: pip install psycopg")
         
     def extract_order_book_signals(self, days_back: int = 30) -> List[Dict[str, Any]]:
         """Extract order book signals from database."""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
             # Calculate timestamp threshold
             threshold_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
             
-            query = """
-                SELECT signal_id, session_id, symbol, signal_type, strength, price, 
-                       timestamp, signal_data, spread, imbalance, mid_price, 
-                       best_bid, best_ask, order_book_depth, volume, total_signals
-                FROM order_book_signals 
-                WHERE timestamp >= ?
-                ORDER BY timestamp ASC
-            """
-            
-            cursor.execute(query, (threshold_timestamp,))
-            results = cursor.fetchall()
-            
-            signals = []
-            for row in results:
-                signal_data = json.loads(row[7]) if row[7] else {}
-                signals.append({
-                    'signal_id': row[0],
-                    'session_id': row[1],
-                    'symbol': row[2],
-                    'signal_type': row[3],
-                    'strength': row[4],
-                    'price': row[5],
-                    'timestamp': row[6],
-                    'signal_data': signal_data,
-                    'spread': row[8],
-                    'imbalance': row[9],
-                    'mid_price': row[10],
-                    'best_bid': row[11],
-                    'best_ask': row[12],
-                    'order_book_depth': row[13],
-                    'volume': row[14],
-                    'total_signals': row[15]
-                })
-            
-            conn.close()
-            logger.info(f"Extracted {len(signals)} order book signals")
-            return signals
-            
+            if self.is_postgres:
+                return self._extract_signals_from_postgres(threshold_timestamp)
+            else:
+                return self._extract_signals_from_sqlite(threshold_timestamp)
+                
         except Exception as e:
             logger.error(f"Error extracting order book signals: {e}")
             return []
     
+    def _extract_signals_from_postgres(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
+        """Extract signals from PostgreSQL database."""
+        conn = psycopg.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # PostgreSQL schema: signal_id, session_id, symbol, signal_type, strength, price, 
+        #                    timestamp, signal_data (JSON), processed, created_at
+        query = """
+            SELECT signal_id, session_id, symbol, signal_type, strength, price, 
+                   timestamp, signal_data
+            FROM order_book_signals 
+            WHERE timestamp >= %s
+            ORDER BY timestamp ASC
+        """
+        
+        cursor.execute(query, (threshold_timestamp,))
+        results = cursor.fetchall()
+        
+        signals = []
+        for row in results:
+            # Parse signal_data JSON
+            signal_data_json = json.loads(row[7]) if row[7] else {}
+            
+            # Extract fields from signal_data JSON (stored in criteria_analysis or directly)
+            criteria_analysis = signal_data_json.get('criteria_analysis', {})
+            volume_imbalance = criteria_analysis.get('volume_imbalance_buy', {})
+            
+            signals.append({
+                'signal_id': row[0],
+                'session_id': row[1],
+                'symbol': row[2],
+                'signal_type': row[3],
+                'strength': row[4],
+                'price': row[5],
+                'timestamp': row[6],
+                'signal_data': signal_data_json,
+                'spread': signal_data_json.get('spread', 0.0),
+                'imbalance': volume_imbalance.get('current_value', 0.0) if isinstance(volume_imbalance, dict) else 0.0,
+                'mid_price': row[5],  # Use price as mid_price
+                'best_bid': signal_data_json.get('best_bid', row[5] * 0.999),  # Estimate if not available
+                'best_ask': signal_data_json.get('best_ask', row[5] * 1.001),  # Estimate if not available
+                'order_book_depth': 2,  # Default depth
+                'volume': signal_data_json.get('volume', 0.0),
+                'total_signals': 1  # Not stored in PostgreSQL
+            })
+        
+        conn.close()
+        logger.info(f"Extracted {len(signals)} order book signals from PostgreSQL")
+        return signals
+    
+    def _extract_signals_from_sqlite(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
+        """Extract signals from SQLite database."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT signal_id, session_id, symbol, signal_type, strength, price, 
+                   timestamp, signal_data, spread, imbalance, mid_price, 
+                   best_bid, best_ask, order_book_depth, volume, total_signals
+            FROM order_book_signals 
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC
+        """
+        
+        cursor.execute(query, (threshold_timestamp,))
+        results = cursor.fetchall()
+        
+        signals = []
+        for row in results:
+            signal_data = json.loads(row[7]) if row[7] else {}
+            signals.append({
+                'signal_id': row[0],
+                'session_id': row[1],
+                'symbol': row[2],
+                'signal_type': row[3],
+                'strength': row[4],
+                'price': row[5],
+                'timestamp': row[6],
+                'signal_data': signal_data,
+                'spread': row[8],
+                'imbalance': row[9],
+                'mid_price': row[10],
+                'best_bid': row[11],
+                'best_ask': row[12],
+                'order_book_depth': row[13],
+                'volume': row[14],
+                'total_signals': row[15]
+            })
+        
+        conn.close()
+        logger.info(f"Extracted {len(signals)} order book signals from SQLite")
+        return signals
+    
     def extract_trade_outcomes(self, days_back: int = 30) -> List[Dict[str, Any]]:
         """Extract trade outcomes for ML training."""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
             # Calculate timestamp threshold
             threshold_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
             
-            query = """
-                SELECT trade_id, session_id, symbol, side, size, price, timestamp,
-                       strategy_type, signal_reason, pnl, fees, created_at
-                FROM individual_trades 
-                WHERE timestamp >= ?
-                ORDER BY timestamp ASC
-            """
-            
-            cursor.execute(query, (threshold_timestamp,))
-            results = cursor.fetchall()
-            
-            trades = []
-            for row in results:
-                trades.append({
-                    'trade_id': row[0],
-                    'session_id': row[1],
-                    'symbol': row[2],
-                    'side': row[3],
-                    'size': row[4],
-                    'price': row[5],
-                    'timestamp': row[6],
-                    'strategy_type': row[7],
-                    'signal_reason': row[8],
-                    'pnl': row[9],
-                    'fees': row[10],
-                    'created_at': row[11]
-                })
-            
-            conn.close()
-            logger.info(f"Extracted {len(trades)} trade outcomes")
-            return trades
-            
+            if self.is_postgres:
+                return self._extract_trades_from_postgres(threshold_timestamp)
+            else:
+                return self._extract_trades_from_sqlite(threshold_timestamp)
+                
         except Exception as e:
             logger.error(f"Error extracting trade outcomes: {e}")
             return []
+    
+    def _extract_trades_from_postgres(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
+        """Extract trades from PostgreSQL database."""
+        conn = psycopg.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT trade_id, session_id, symbol, side, quantity, price, timestamp,
+                   strategy_type, reason, pnl, fees, created_at
+            FROM individual_trades 
+            WHERE timestamp >= %s
+            ORDER BY timestamp ASC
+        """
+        
+        cursor.execute(query, (threshold_timestamp,))
+        results = cursor.fetchall()
+        
+        trades = []
+        for row in results:
+            trades.append({
+                'trade_id': row[0],
+                'session_id': row[1],
+                'symbol': row[2],
+                'side': row[3],
+                'size': float(row[4]) if row[4] else 0.0,  # quantity -> size
+                'price': float(row[5]),
+                'timestamp': int(row[6]),
+                'strategy_type': row[7],
+                'signal_reason': row[8],  # reason -> signal_reason
+                'pnl': float(row[9]) if row[9] else 0.0,
+                'fees': float(row[10]) if row[10] else 0.0,
+                'created_at': row[11].isoformat() if row[11] else None
+            })
+        
+        conn.close()
+        logger.info(f"Extracted {len(trades)} trade outcomes from PostgreSQL")
+        return trades
+    
+    def _extract_trades_from_sqlite(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
+        """Extract trades from SQLite database."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT trade_id, session_id, symbol, side, size, price, timestamp,
+                   strategy_type, signal_reason, pnl, fees, created_at
+            FROM individual_trades 
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC
+        """
+        
+        cursor.execute(query, (threshold_timestamp,))
+        results = cursor.fetchall()
+        
+        trades = []
+        for row in results:
+            trades.append({
+                'trade_id': row[0],
+                'session_id': row[1],
+                'symbol': row[2],
+                'side': row[3],
+                'size': row[4],
+                'price': row[5],
+                'timestamp': row[6],
+                'strategy_type': row[7],
+                'signal_reason': row[8],
+                'pnl': row[9],
+                'fees': row[10],
+                'created_at': row[11]
+            })
+        
+        conn.close()
+        logger.info(f"Extracted {len(trades)} trade outcomes from SQLite")
+        return trades
     
     def extract_order_book_snapshots(self, symbol: str, days_back: int = 7) -> List[Dict[str, Any]]:
         """Extract order book snapshots for feature engineering."""
