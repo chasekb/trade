@@ -32,6 +32,8 @@ export function useLiveTrading() {
     enabled: status.isActive, // Only poll when trading is active
     refetchInterval: status.isActive ? 5000 : false, // Poll every 5 seconds when active
     staleTime: 1000, // Consider data fresh for 1 second
+    refetchOnWindowFocus: true, // Refetch when tab becomes visible again
+    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 
   // Update local status when backend status changes
@@ -138,6 +140,8 @@ export function useOrderBookSignals(
     enabled: isEnabled,
     staleTime: 2 * 1000, // 2 seconds - more responsive for real-time signals
     refetchInterval: isEnabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for real-time signal updates
+    refetchOnWindowFocus: true, // Refetch when tab becomes visible again
+    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 }
 
@@ -156,6 +160,8 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
     enabled,
     staleTime: 2 * 1000, // 2 seconds - consider data fresh for 2 seconds
     refetchInterval: enabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for near real-time updates
+    refetchOnWindowFocus: true, // Refetch when tab becomes visible again
+    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 }
 
