@@ -5,11 +5,13 @@ from .feature_engineer import FeatureEngineer
 from .model_trainer import ModelTrainer
 from .model_manager import ModelManager
 from .vector_db_client import VectorDBClient
+from .ml_optimizer import MLTradingOptimizer
 
 __all__ = [
     'MLDataCollector',
     'FeatureEngineer', 
     'ModelTrainer',
     'ModelManager',
-    'VectorDBClient'
+    'VectorDBClient',
+    'MLTradingOptimizer'
 ]

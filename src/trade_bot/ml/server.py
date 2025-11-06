@@ -63,7 +63,7 @@ async def startup_event():
         
         # Initialize ML optimizer
         ml_optimizer = MLTradingOptimizer(
-            db_path=os.getenv("DB_PATH", "data/databases/trading_cache.db"),
+            db_url=os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/trading_db"),
             models_dir=os.getenv("MODELS_DIR", "data/models"),
             vector_db_host=os.getenv("QDRANT_HOST", "localhost"),
             vector_db_port=int(os.getenv("QDRANT_PORT", "6333"))
