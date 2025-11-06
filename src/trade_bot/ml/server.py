@@ -209,14 +209,25 @@ async def train_model():
     try:
         logger.info("Starting model training")
         
-        # Collect and preprocess data
+        # Check if we have sufficient data before attempting training
         features, outcomes = ml_optimizer.collect_and_preprocess_data(days_back=30)
         
         if not features or not outcomes:
-            raise HTTPException(status_code=400, detail="Insufficient training data")
+            logger.warning("Insufficient training data available")
+            return {
+                "status": "insufficient_data",
+                "message": "Not enough historical data to train model",
+                "timestamp": datetime.now().isoformat()
+            }
         
         # Train models
         training_results = ml_optimizer.train_ml_models(features, outcomes)
+        
+        # Mark as trained if successful
+        if training_results and training_results.get('model_performance'):
+            ml_optimizer.is_trained = True
+            ml_optimizer.last_training_time = datetime.now()
+            logger.info("Model training completed successfully")
         
         return {
             "status": "success",
