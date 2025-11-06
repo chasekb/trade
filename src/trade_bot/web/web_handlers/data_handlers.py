@@ -3,6 +3,7 @@ from typing import List
 
 import logging
 import re
+import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import HTTPException
@@ -168,11 +169,13 @@ class DataHandlers:
                         volume_imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume) if (bid_volume + ask_volume) > 0 else 0
 
                         # Determine signal based on orderbook analysis
-                        if volume_imbalance > 0.1:  # More buy pressure
+                        # Lower threshold from 0.1 to 0.05 (5%) for more sensitive signal detection
+                        volume_imbalance_threshold = 0.05
+                        if volume_imbalance > volume_imbalance_threshold:  # More buy pressure
                             signal = "buy"
                             signal_strength = min(abs(volume_imbalance), 1.0)
                             signal_reason = f"Buy pressure detected (imbalance: {volume_imbalance:.2f})"
-                        elif volume_imbalance < -0.1:  # More sell pressure
+                        elif volume_imbalance < -volume_imbalance_threshold:  # More sell pressure
                             signal = "sell"
                             signal_strength = min(abs(volume_imbalance), 1.0)
                             signal_reason = f"Sell pressure detected (imbalance: {volume_imbalance:.2f})"
@@ -188,8 +191,8 @@ class DataHandlers:
 
                         # Calculate analysis criteria
                         squeeze_threshold = 0.1  # 0.1% spread threshold
-                        imbalance_threshold = 0.1  # 10% imbalance threshold
-                        large_trade_threshold = 10000  # $10k trade threshold
+                        imbalance_threshold = 0.05  # 5% imbalance threshold (lowered for more sensitive detection)
+                        large_trade_threshold = 5000  # $5k trade threshold (lowered from $10k)
 
                         # Bid-Ask Squeeze Analysis
                         squeeze_meets = spread < squeeze_threshold
@@ -246,8 +249,9 @@ class DataHandlers:
                                 large_sell_trades = [t for t in large_trades if t['side'] == 'sell']
 
                                 # Determine if large trade criteria are met
-                                large_trade_meets_buy = len(large_buy_trades) >= 2  # At least 2 large buy trades
-                                large_trade_meets_sell = len(large_sell_trades) >= 2  # At least 2 large sell trades
+                                # Reduced from 2 to 1 to allow more signals
+                                large_trade_meets_buy = len(large_buy_trades) >= 1  # At least 1 large buy trade
+                                large_trade_meets_sell = len(large_sell_trades) >= 1  # At least 1 large sell trade
 
                                 # Calculate large trade pressure
                                 total_volume = buy_volume + sell_volume
@@ -274,7 +278,7 @@ class DataHandlers:
                             "data_status": data_status,
                             "spread": spread,
                             "volume": total_volume,
-                            "signal_generated": signal != "hold" and signal_strength > 0.1,  # Only process strong signals
+                            "signal_generated": signal != "hold" and signal_strength >= 0.05,  # Lowered threshold from 0.1 to 0.05 for more signals
                             "criteria_analysis": {
                                 "bid_ask_squeeze": {
                                     "enabled": True,
@@ -307,7 +311,7 @@ class DataHandlers:
                                 "large_trade_buy": {
                                     "enabled": True,
                                     "meets_criteria": large_trade_meets_buy,
-                                    "delta_to_threshold": len([t for t in large_trades if t['side'] == 'buy']) - 2 if large_trades else 0,
+                                    "delta_to_threshold": len([t for t in large_trades if t['side'] == 'buy']) - 1 if large_trades else 0,
                                     "analysis": large_trade_analysis,
                                     "threshold": large_trade_threshold,
                                     "current_value": len([t for t in large_trades if t['side'] == 'buy']) if large_trades else 0,
@@ -316,7 +320,7 @@ class DataHandlers:
                                 "large_trade_sell": {
                                     "enabled": True,
                                     "meets_criteria": large_trade_meets_sell,
-                                    "delta_to_threshold": len([t for t in large_trades if t['side'] == 'sell']) - 2 if large_trades else 0,
+                                    "delta_to_threshold": len([t for t in large_trades if t['side'] == 'sell']) - 1 if large_trades else 0,
                                     "analysis": large_trade_analysis,
                                     "threshold": large_trade_threshold,
                                     "current_value": len([t for t in large_trades if t['side'] == 'sell']) if large_trades else 0,
@@ -413,7 +417,7 @@ class DataHandlers:
                                     "meets_criteria": False,
                                     "delta_to_threshold": 0,
                                     "analysis": "No data available",
-                                    "threshold": 10000,
+                                    "threshold": 5000,
                                     "current_value": 0,
                                     "large_trades_count": 0
                                 },
@@ -422,7 +426,7 @@ class DataHandlers:
                                     "meets_criteria": False,
                                     "delta_to_threshold": 0,
                                     "analysis": "No data available",
-                                    "threshold": 10000,
+                                    "threshold": 5000,
                                     "current_value": 0,
                                     "large_trades_count": 0
                                 }
@@ -510,7 +514,7 @@ class DataHandlers:
                                 "meets_criteria": False,
                                 "delta_to_threshold": 0,
                                 "analysis": "Error fetching data",
-                                "threshold": 10000,
+                                    "threshold": 5000,
                                 "current_value": 0,
                                 "large_trades_count": 0
                             },
@@ -519,7 +523,7 @@ class DataHandlers:
                                 "meets_criteria": False,
                                 "delta_to_threshold": 0,
                                 "analysis": "Error fetching data",
-                                "threshold": 10000,
+                                    "threshold": 5000,
                                 "current_value": 0,
                                 "large_trades_count": 0
                             }
@@ -654,8 +658,12 @@ class DataHandlers:
                             ml_analysis = response.json()
                             logger.debug(f"ML analysis received for {signal['symbol']}: confidence={ml_analysis.get('confidence', 0.0):.3f}")
 
+                            # Check if model is actually trained (not just returning hold with 0 confidence)
+                            reason = ml_analysis.get("reason", "")
+                            is_model_trained = "No trained model" not in reason and "not trained" not in reason.lower()
+                            
                             signal["ml_analysis"] = {
-                                "ml_enabled": True,
+                                "ml_enabled": is_model_trained,
                                 "win_probability": ml_analysis.get("confidence", 0.0) * 100,
                                 "expected_return": ml_analysis.get("signal_value", 0.0),
                                 "confidence": ml_analysis.get("confidence", 0.0),
@@ -664,6 +672,8 @@ class DataHandlers:
                                 "prediction_timestamp": datetime.now().isoformat(),
                                 "response_time_ms": response.elapsed.total_seconds() * 1000
                             }
+                            if not is_model_trained:
+                                signal["ml_analysis"]["reason"] = reason
                             break  # Success, exit retry loop
 
                         elif response.status_code == 503:
@@ -715,18 +725,36 @@ class DataHandlers:
             response = requests.get(ml_server_url, timeout=2.0)
 
             if response.status_code == 200:
-                # Also check if model is trained
+                # Try to check if model is trained via /status endpoint
+                # If /status doesn't exist (404), we'll still allow predictions
+                # since the server is healthy and /predict endpoint exists
                 status_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/status"
-                status_response = requests.get(status_url, timeout=2.0)
+                try:
+                    status_response = requests.get(status_url, timeout=2.0)
 
-                if status_response.status_code == 200:
-                    status_data = status_response.json()
-                    is_trained = status_data.get('is_trained', False)
-                    if is_trained:
+                    if status_response.status_code == 200:
+                        status_data = status_response.json()
+                        is_trained = status_data.get('is_trained', False)
+                        if is_trained:
+                            return True
+                        else:
+                            logger.debug("ML server healthy but no trained model available")
+                            # Still return True - let /predict handle untrained model case
+                            return True
+                    elif status_response.status_code == 404:
+                        # /status endpoint doesn't exist (e.g., running main.py instead of server.py)
+                        # Server is healthy, so allow predictions
+                        logger.debug("ML server /status endpoint not available, but server is healthy")
                         return True
                     else:
-                        logger.debug("ML server healthy but no trained model available")
-                        return False
+                        logger.debug(f"ML server /status returned {status_response.status_code}")
+                        # Server is healthy, allow predictions
+                        return True
+                except requests.exceptions.RequestException as status_error:
+                    # /status endpoint may not exist or be unreachable
+                    # But /health worked, so server is up - allow predictions
+                    logger.debug(f"ML server /status check failed: {status_error}, but server is healthy")
+                    return True
 
             return False
 
