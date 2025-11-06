@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from ml_optimizer import MLTradingOptimizer
+from data_collector import OrderBookFeatures
 
 app = FastAPI()
 
@@ -25,22 +26,23 @@ class PredictionRequest(BaseModel):
 
 @app.post("/predict")
 async def predict(request: PredictionRequest):
-    features = {
-        "symbol": request.symbol,
-        "bid_ask_imbalance": request.bid_ask_imbalance,
-        "spread_percent": request.spread_percent,
-        "mid_price": request.mid_price,
-        "bid_volume": request.bid_volume,
-        "ask_volume": request.ask_volume,
-        "order_book_depth": request.order_book_depth,
-        "large_bid_wall": request.large_bid_wall,
-        "large_ask_wall": request.large_ask_wall,
-        "wall_size": request.wall_size,
-        "volume_weighted_price": request.volume_weighted_price,
-        "price_momentum": request.price_momentum,
-        "volatility": request.volatility,
-        "timestamp": request.timestamp
-    }
+    # Convert request to OrderBookFeatures object
+    features = OrderBookFeatures(
+        timestamp=request.timestamp,
+        symbol=request.symbol,
+        bid_ask_imbalance=request.bid_ask_imbalance,
+        spread_percent=request.spread_percent,
+        mid_price=request.mid_price,
+        bid_volume=request.bid_volume,
+        ask_volume=request.ask_volume,
+        order_book_depth=request.order_book_depth,
+        large_bid_wall=request.large_bid_wall,
+        large_ask_wall=request.large_ask_wall,
+        wall_size=request.wall_size,
+        volume_weighted_price=request.volume_weighted_price,
+        price_momentum=request.price_momentum,
+        volatility=request.volatility
+    )
     prediction = optimizer.predict_trading_signal(features)
     return prediction
 

@@ -7,11 +7,20 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import os
 
-from .data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
-from .feature_engineer import FeatureEngineer
-from .model_trainer import ModelTrainer
-from .model_manager import ModelManager
-from .vector_db_client import VectorDBClient
+# Support both relative imports (when used as module) and absolute imports (when run standalone)
+try:
+    from .data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
+    from .feature_engineer import FeatureEngineer
+    from .model_trainer import ModelTrainer
+    from .model_manager import ModelManager
+    from .vector_db_client import VectorDBClient
+except ImportError:
+    # Fallback to absolute imports when running as standalone script
+    from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
+    from feature_engineer import FeatureEngineer
+    from model_trainer import ModelTrainer
+    from model_manager import ModelManager
+    from vector_db_client import VectorDBClient
 
 logger = logging.getLogger(__name__)
 
