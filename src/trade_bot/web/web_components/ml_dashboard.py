@@ -9,16 +9,20 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+import os
+
 class MLDashboardIntegration:
     """Integration between ML system and web dashboard."""
     
-    def __init__(self, ml_server_url: str = "http://localhost:8002"):
+    def __init__(self, ml_server_url: str = None):
         """
         Initialize ML dashboard integration.
         
         Args:
             ml_server_url: URL of the ML model server (fallback for external ML server)
         """
+        if ml_server_url is None:
+            ml_server_url = os.getenv("ML_SERVER_URL", "http://localhost:8002")
         self.ml_server_url = ml_server_url
         self.ml_optimizer = None
     

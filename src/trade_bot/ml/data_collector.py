@@ -208,8 +208,8 @@ class MLDataCollector:
         cursor = conn.cursor()
         
         query = """
-            SELECT trade_id, session_id, symbol, side, quantity, price, timestamp,
-                   strategy_type, reason, pnl, fees, created_at
+            SELECT trade_id, session_id, symbol, side, size, price, timestamp,
+                   strategy_type, signal_reason, pnl, fees, created_at
             FROM individual_trades 
             WHERE timestamp >= %s
             ORDER BY timestamp ASC
@@ -225,11 +225,11 @@ class MLDataCollector:
                 'session_id': row[1],
                 'symbol': row[2],
                 'side': row[3],
-                'quantity': float(row[4]) if row[4] else 0.0,
+                'size': float(row[4]) if row[4] else 0.0,
                 'price': float(row[5]),
                 'timestamp': int(row[6]),
                 'strategy_type': row[7],
-                'reason': row[8],
+                'signal_reason': row[8],
                 'pnl': float(row[9]) if row[9] else 0.0,
                 'fees': float(row[10]) if row[10] else 0.0,
                 'created_at': row[11].isoformat() if row[11] else None
@@ -395,7 +395,7 @@ class MLDataCollector:
                     side=trade['side'],
                     entry_price=float(trade['price']),
                     exit_price=float(trade['price']),  # Simplified - would need actual exit price
-                    quantity=float(trade['quantity']),
+                    quantity=float(trade['size']),
                     pnl=float(trade['pnl']),
                     fees=float(trade['fees']),
                     duration_seconds=int(trade['timestamp']) - features.timestamp,
@@ -542,7 +542,7 @@ class MLDataCollector:
                 return 0.0
             
             prices = recent_signals['price'].values
-            if len(prices) < 2:
+            if len(prices) < 2 or prices[0] == 0:
                 return 0.0
             
             # Calculate momentum as price change percentage
@@ -566,7 +566,14 @@ class MLDataCollector:
                 return 0.0
             
             # Calculate volatility as standard deviation of price changes
-            price_changes = np.diff(prices) / prices[:-1]
+            # Avoid division by zero
+            safe_prices = prices[:-1].copy()
+            safe_prices[safe_prices == 0] = 1e-9  # Replace zeros with a small number
+            price_changes = np.diff(prices) / safe_prices
+            
+            # Replace NaNs and Infs that might result from the operation
+            price_changes = np.nan_to_num(price_changes, nan=0.0, posinf=0.0, neginf=0.0)
+
             return float(np.std(price_changes)) * 100
         except Exception:
             return 0.0

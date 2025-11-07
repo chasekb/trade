@@ -1254,7 +1254,11 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const queryClient = useQueryClient();
 
   const [strategy, setStrategy] = useState<TradingStrategy>('orderbook');
-  const [config, setConfig] = useState<Record<string, any>>({});
+  const [config, setConfig] = useState<Record<string, any>>({
+    position_size_mode: 'percent',
+    position_size_value: 1,
+    initial_portfolio_size: 10000,
+  });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
 
   // Use local symbols for polling; fallback to backend status if empty
@@ -1328,11 +1332,11 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const handleStartTrading = async () => {
     try {
       // Get max_positions from config, defaulting to 100 (max_positions_per_session default)
-      const maxPositions = config.max_positions_per_session 
-        ? Number(config.max_positions_per_session) 
+      const maxPositions = config.max_positions_per_session
+        ? Number(config.max_positions_per_session)
         : 100;
-      
-      await startTrading({
+
+      const tradingPayload: Parameters<typeof startTrading>[0] = {
         mode: 'simulated',
         strategy,
         symbols,
@@ -1342,22 +1346,15 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
             ? { position_size_usd: config.position_size_value }
             : {}),
         },
-        position_size_percent:
-          config.position_size_mode === 'percent' && typeof config.position_size_value === 'number'
-            ? config.position_size_value
-            : 10,
         max_positions: maxPositions,
         position_update_interval: 5,
-      });
+      };
 
-      // Auto-refresh via WebSocket is now the primary mechanism for updating signals.
-      // The immediate refresh below is removed to avoid a race condition where the frontend
-      // requests data before the backend has processed the initial batch of symbols.
-      // The WebSocket will push updates as soon as signals are available.
-      // queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
-      // if (symbols && symbols.length > 0) {
-      //   queryClient.invalidateQueries({ queryKey: ['orderbook-signals', symbols] });
-      // }
+      if (config.position_size_mode === 'percent' && typeof config.position_size_value === 'number') {
+        tradingPayload.position_size_percent = config.position_size_value;
+      }
+
+      await startTrading(tradingPayload);
 
       // Auto-hide strategy configuration when trading starts (like vanilla JS dashboard)
       setConfigHidden(true);

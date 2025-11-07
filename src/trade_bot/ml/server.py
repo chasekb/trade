@@ -7,11 +7,11 @@ import asyncio
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import numpy as np
 
-from ..ml.ml_optimizer import MLTradingOptimizer
+from ml_optimizer import MLTradingOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ app = FastAPI(title="ML Trading Model Server", version="1.0.0")
 
 # Global ML optimizer instance
 ml_optimizer = None
+training_status: str = "idle"  # "idle", "training", "success", "failed"
 
 # Request/Response models
 class PredictionRequest(BaseModel):
@@ -103,7 +104,7 @@ async def predict_trading_signal(request: PredictionRequest):
 
     try:
         # Convert request to OrderBookFeatures
-        from ..ml.data_collector import OrderBookFeatures
+        from data_collector import OrderBookFeatures
 
         features = OrderBookFeatures(
             timestamp=request.timestamp,
@@ -182,16 +183,89 @@ async def predict_trading_signal(request: PredictionRequest):
         logger.error(f"Error making prediction: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def train_model_background():
+    """Train model in the background."""
+    global ml_optimizer, training_status
+    
+    logger.info("Starting background model training")
+    training_status = "training"
+    
+    try:
+        features, outcomes = ml_optimizer.collect_and_preprocess_data(days_back=30)
+        
+        if not features or not outcomes:
+            logger.warning("Insufficient training data available for background training")
+            training_status = "failed"
+            return
+
+        training_results = ml_optimizer.train_ml_models(features, outcomes)
+        
+        if training_results and training_results.get('model_performance'):
+            ml_optimizer.is_trained = True
+            ml_optimizer.last_training_time = datetime.now()
+            training_status = "success"
+            logger.info("Background model training completed successfully")
+        else:
+            training_status = "failed"
+            logger.warning("Background model training failed")
+            
+    except Exception as e:
+        logger.error(f"Error during background model training: {e}")
+        training_status = "failed"
+
+
 @app.get("/status", response_model=ModelStatusResponse)
-async def get_model_status():
+async def get_model_status(background_tasks: BackgroundTasks):
     """Get current model status."""
-    global ml_optimizer
+    global ml_optimizer, training_status
     
     if ml_optimizer is None:
         raise HTTPException(status_code=503, detail="ML optimizer not initialized")
     
     try:
-        status = ml_optimizer.get_system_status()
+        is_trained = ml_optimizer.model_manager.get_current_model() is not None
+        
+        if is_trained:
+            if training_status != "success":
+                training_status = "success"
+            status = ml_optimizer.get_system_status()
+            return ModelStatusResponse(**status)
+
+        if training_status == "idle":
+            logger.info("No trained model found. Starting background training.")
+            background_tasks.add_task(train_model_background)
+            return ModelStatusResponse(
+                is_trained=False,
+                last_training_time=None,
+                current_model={"status": "training_started"},
+                model_performance={},
+                vector_db_status=ml_optimizer.vector_db_client.get_collection_info()
+            )
+        elif training_status == "training":
+            return ModelStatusResponse(
+                is_trained=False,
+                last_training_time=None,
+                current_model={"status": "training_in_progress"},
+                model_performance={},
+                vector_db_status=ml_optimizer.vector_db_client.get_collection_info()
+            )
+        elif training_status == "failed":
+             return ModelStatusResponse(
+                is_trained=False,
+                last_training_time=None,
+                current_model={"status": "training_failed"},
+                model_performance={},
+                vector_db_status=ml_optimizer.vector_db_client.get_collection_info()
+            )
+        
+        # Fallback for any other state, including "success" before is_trained is reflected
+        status = {
+            'is_trained': False,
+            'last_training_time': None,
+            'current_model': None,
+            'model_performance': {},
+            'vector_db_status': ml_optimizer.vector_db_client.get_collection_info()
+        }
         return ModelStatusResponse(**status)
         
     except Exception as e:

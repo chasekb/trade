@@ -150,8 +150,9 @@ class MLTradingOptimizer:
             feature_vector = self.feature_engineer._extract_features(current_features)
             X = np.array([feature_vector])
             
-            # Preprocess features (using fitted scaler and selector)
-            X_scaled = self.feature_engineer.transform_features(X)
+            # Preprocess features (using fitted imputer, scaler, and selector)
+            X_imputed = self.feature_engineer.impute_features(X)
+            X_scaled = self.feature_engineer.transform_features(X_imputed)
             X_selected = self.feature_engineer.transform_features_selected(X_scaled)
             X_ts = self.feature_engineer.create_time_series_features(X_selected)
             X_final = self.feature_engineer.create_interaction_features(X_ts)
