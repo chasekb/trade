@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.feature_selection import SelectKBest, f_regression
+from sklearn.impute import SimpleImputer
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class FeatureEngineer:
         self.scaler = None
         self.feature_selector = None
         self.feature_names = []
+        self.imputer = None
         
     def create_feature_matrix(self, feature_vectors: List[Any], 
                              trade_outcomes: List[Any]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
@@ -204,6 +206,12 @@ class FeatureEngineer:
             return self.scaler.transform(X)
         return X
     
+    def impute_features(self, X: np.ndarray) -> np.ndarray:
+        """Impute missing values using fitted imputer."""
+        if self.imputer is not None:
+            return self.imputer.transform(X)
+        return X
+    
     def fit_feature_selector(self, X: np.ndarray, y: np.ndarray, k: int = 20) -> None:
         """Fit feature selector to choose most important features."""
         self.feature_selector = SelectKBest(score_func=f_regression, k=k)
@@ -286,20 +294,27 @@ class FeatureEngineer:
         """Complete preprocessing pipeline."""
         logger.info("Starting preprocessing pipeline")
         
-        # Step 1: Feature scaling
+        # Step 1: Handle missing values
         if fit_transform:
-            self.fit_scaler(X)
-        X_scaled = self.transform_features(X)
+            self.imputer = SimpleImputer(strategy='mean')
+            X_imputed = self.imputer.fit_transform(X)
+        else:
+            X_imputed = self.imputer.transform(X)
+
+        # Step 2: Feature scaling
+        if fit_transform:
+            self.fit_scaler(X_imputed)
+        X_scaled = self.transform_features(X_imputed)
         
-        # Step 2: Feature selection
+        # Step 3: Feature selection
         if fit_transform:
             self.fit_feature_selector(X_scaled, y)
         X_selected = self.transform_features_selected(X_scaled)
         
-        # Step 3: Time series features
+        # Step 4: Time series features
         X_ts = self.create_time_series_features(X_selected)
         
-        # Step 4: Interaction features
+        # Step 5: Interaction features
         X_final = self.create_interaction_features(X_ts)
         
         logger.info(f"Preprocessing complete: {X_final.shape}")

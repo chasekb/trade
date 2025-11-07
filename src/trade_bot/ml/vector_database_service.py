@@ -94,6 +94,14 @@ class VectorDatabaseService:
                 config['redis']['host'] = parsed.hostname or 'localhost'
                 config['redis']['port'] = parsed.port or 6379
 
+        if os.getenv('ML_SERVER_URL'):
+            ml_server_url = os.getenv('ML_SERVER_URL')
+            if '://' in ml_server_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(ml_server_url)
+                config['ml_server']['host'] = parsed.hostname or 'localhost'
+                config['ml_server']['port'] = parsed.port or 8002
+
         return config
     
     async def start_services(self) -> bool:
@@ -244,38 +252,19 @@ class VectorDatabaseService:
             return False
     
     async def _start_ml_server(self) -> bool:
-        """Start ML Model Server."""
+        """Check if ML Model Server is available."""
         try:
-            logger.info("Starting ML Model Server...")
-            
-            # Set environment variables
-            env = os.environ.copy()
-            env.update({
-                'ML_SERVER_HOST': self.config['ml_server']['host'],
-                'ML_SERVER_PORT': str(self.config['ml_server']['port']),
-                'QDRANT_HOST': self.config['qdrant']['host'],
-                'QDRANT_PORT': str(self.config['qdrant']['port']),
-                'REDIS_HOST': self.config['redis']['host'],
-                'REDIS_PORT': str(self.config['redis']['port']),
-                'DB_PATH': 'data/databases/trading_cache.db',
-                'MODELS_DIR': 'data/models'
-            })
-            
-            # Start ML server process
-            cmd = [
-                "python", "-m", "src.trade_bot.ml.server"
-            ]
-            
-            self.ml_server_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env,
-                preexec_fn=os.setsid if os.name != 'nt' else None
-            )
-            
-            logger.info(f"ML Model Server started with PID: {self.ml_server_process.pid}")
-            return True
+            logger.info("Checking ML Model Server...")
+
+            # First, try to connect to the ML server directly
+            if await self._check_ml_server():
+                logger.info("ML Model Server is already running and accessible")
+                self.ml_server_process = "external_service"  # Mark as external service
+                return True
+
+            # This part should not be reached in the docker-compose setup
+            logger.warning("ML Model Server not found. The backend service should not be responsible for starting it in a containerized environment.")
+            return False
             
         except Exception as e:
             logger.error(f"Error starting ML Model Server: {e}")

@@ -20,6 +20,7 @@ services:
       - DATABASE_URL=postgresql://trading_user:trading_password@db:5432/trading_db
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
+      - ML_SERVER_URL=http://ml-server:8002
       - ENV=production
       - PORT=8000
       - PYTHONPATH=/app/src
@@ -123,6 +124,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://trading_user:trading_password@db:5432/trading_db
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+    depends_on:
+      - db
+      - qdrant
     networks:
       - trading-network
     restart: unless-stopped
