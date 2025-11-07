@@ -225,11 +225,11 @@ class MLDataCollector:
                 'session_id': row[1],
                 'symbol': row[2],
                 'side': row[3],
-                'size': float(row[4]) if row[4] else 0.0,  # quantity -> size
+                'quantity': float(row[4]) if row[4] else 0.0,
                 'price': float(row[5]),
                 'timestamp': int(row[6]),
                 'strategy_type': row[7],
-                'signal_reason': row[8],  # reason -> signal_reason
+                'reason': row[8],
                 'pnl': float(row[9]) if row[9] else 0.0,
                 'fees': float(row[10]) if row[10] else 0.0,
                 'created_at': row[11].isoformat() if row[11] else None
@@ -395,7 +395,7 @@ class MLDataCollector:
                     side=trade['side'],
                     entry_price=float(trade['price']),
                     exit_price=float(trade['price']),  # Simplified - would need actual exit price
-                    quantity=float(trade['size']),
+                    quantity=float(trade['quantity']),
                     pnl=float(trade['pnl']),
                     fees=float(trade['fees']),
                     duration_seconds=int(trade['timestamp']) - features.timestamp,
