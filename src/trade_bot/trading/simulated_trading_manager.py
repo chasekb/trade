@@ -519,14 +519,30 @@ class SimulatedTradingManager:
             logger.warning(f"Max positions ({self.max_positions}) reached, skipping buy signal for {symbol}")
             return None
         
-        # Calculate position size based on total portfolio value
-        # This ensures each position represents a fixed percentage of total portfolio
+        # Get position sizing configuration from strategy parameters
+        position_size_mode = self.strategy_params.get('position_size_mode', 'percent')
+        position_size_value = self.strategy_params.get('position_size_value')
+
+        # Fallback for older configs that used position_size_percent directly
+        if position_size_value is None:
+            position_size_value = self.position_size_percent * 100  # convert back to percentage
+        
+        # Calculate total portfolio value for percentage-based sizing
         total_portfolio_value = self.cash_balance + sum(
             pos.quantity * pos.current_price for pos in self.positions.values() 
             if pos.status == 'open'
         )
-        position_value = total_portfolio_value * self.position_size_percent
-        quantity = position_value / price
+
+        # Calculate position value based on mode
+        position_value = 0
+        if position_size_mode == 'percent':
+            position_value = total_portfolio_value * (float(position_size_value) / 100.0)
+        elif position_size_mode == 'dollar':
+            position_value = float(position_size_value)
+        else:  # Fallback
+            position_value = total_portfolio_value * self.position_size_percent
+
+        quantity = position_value / price if price > 0 else 0
         
         if quantity < 0.001:  # Minimum quantity threshold
             logger.warning(f"Insufficient quantity for {symbol} position: {quantity:.6f} < 0.001")

@@ -387,7 +387,14 @@ class TradingHandlers:
             position_size_percent = request_data.get('position_size_percent', 20.0)
             max_positions = request_data.get('max_positions', 5)
             position_update_interval = request_data.get('position_update_interval', 5)
+            
+            # Default initial_balance, but override with initial_portfolio_size if present
             initial_balance = request_data.get('initial_balance', 10000.0)
+            if 'initial_portfolio_size' in strategy_params:
+                try:
+                    initial_balance = float(strategy_params['initial_portfolio_size'])
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid initial_portfolio_size provided: {strategy_params['initial_portfolio_size']}. Using default.")
             
             # Validate universe size limit
             if len(symbols) > self.max_universe_size:

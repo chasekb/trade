@@ -276,12 +276,31 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
       {/* Risk Settings: Max Position Size */}
       <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
         <h4 className="text-md font-semibold text-gray-700">Risk Settings</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Initial Portfolio Size ($)</label>
+            <Input
+              type="number"
+              min={1}
+              step={100}
+              value={config.initial_portfolio_size || 10000}
+              onChange={(e) => handleParameterChange('initial_portfolio_size', Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Position Size Mode</label>
             <select
               value={config.position_size_mode || 'percent'}
-              onChange={(e) => handleParameterChange('position_size_mode', e.target.value)}
+              onChange={(e) => {
+                const newMode = e.target.value;
+                const newValue = newMode === 'percent' ? 1 : 100;
+                onChange({
+                  ...config,
+                  position_size_mode: newMode,
+                  position_size_value: newValue,
+                });
+              }}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             >
               <option value="percent">Percentage of Portfolio</option>
@@ -293,15 +312,15 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
             <Input
               type="number"
               min={0}
-              step={config.position_size_mode === 'percent' ? 0.1 : 1}
-              value={config.position_size_value ?? (config.position_size_mode === 'percent' ? 10 : 100)}
+              step={(config.position_size_mode || 'percent') === 'percent' ? 0.1 : 1}
+              value={config.position_size_value ?? ((config.position_size_mode || 'percent') === 'percent' ? 1 : 100)}
               onChange={(e) => handleParameterChange('position_size_value', Number(e.target.value))}
               className="w-full"
             />
           </div>
           <div className="text-xs text-gray-500">
-            {config.position_size_mode === 'percent'
-              ? 'Example: 10 means 10% of portfolio per position'
+            {(config.position_size_mode || 'percent') === 'percent'
+              ? 'Example: 1 means 1% of portfolio per position'
               : 'Example: 250 means allocate $250 per position'}
           </div>
         </div>
