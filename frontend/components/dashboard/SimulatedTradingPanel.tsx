@@ -435,25 +435,40 @@ function OrderBookSignalsTable({
     },
     {
       key: 'signal_strength',
-      header: (
-        <Tooltip text="A score from 0.0 to 1.0 indicating the confidence in the trading signal, based on the number of criteria met and ML model output.">
-          Strength
-        </Tooltip>
-      ),
+      header: 'Strength',
       sortable: true,
-      render: (value) => (
-        <div className="flex items-center">
-          <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
-            <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(value || 0) * 100}%` }}></div>
+      render: (value, row) => {
+        const composition = row.strength_composition || {};
+        const tooltipContent = (
+          <div>
+            <p className="font-bold mb-1">Signal Strength: {(value || 0).toFixed(2)}</p>
+            <p className="text-xs mb-2">This is the ML model's confidence in the signal. It is composed of the following features, weighted by their learned importance:</p>
+            <ul className="list-disc list-inside text-xs">
+              {Object.entries(composition).map(([key, val]) => (
+                <li key={key}>
+                  <span className="font-semibold">{key.replace(/_/g, ' ')}:</span> {val.importance_percent.toFixed(1)}%
+                </li>
+              ))}
+            </ul>
           </div>
-          <span className={`text-sm font-medium ${
-            (value || 0) >= 0.7 ? 'text-green-600' :
-            (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
-          }`}>
-            {(value || 0).toFixed(2)}
-          </span>
-        </div>
-      ),
+        );
+
+        return (
+          <Tooltip text={tooltipContent}>
+            <div className="flex items-center">
+              <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(value || 0) * 100}%` }}></div>
+              </div>
+              <span className={`text-sm font-medium ${
+                (value || 0) >= 0.7 ? 'text-green-600' :
+                (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
+              }`}>
+                {(value || 0).toFixed(2)}
+              </span>
+            </div>
+          </Tooltip>
+        );
+      },
     },
     {
       key: 'spread',
@@ -469,69 +484,95 @@ function OrderBookSignalsTable({
     },
     {
       key: 'criteria_analysis',
-      header: (
-        <Tooltip text="Specific market conditions met for signal generation, like bid-ask squeeze or volume imbalance.">
-          Criteria
-        </Tooltip>
-      ),
+      header: 'Criteria',
       render: (value, row) => {
         const criteria = value || {};
         const squeeze = criteria.bid_ask_squeeze || {};
         const imbalanceBuy = criteria.volume_imbalance_buy || {};
         const largeTradeBuy = criteria.large_trade_buy || {};
 
-        return (
-          <div className="text-xs space-y-1">
-            <div className="flex items-center space-x-1">
-              <span className={squeeze.meets_criteria ? 'text-green-600' : 'text-red-600'}>
-                {squeeze.enabled ? (squeeze.meets_criteria ? '✓' : '✗') : '○'}
-              </span>
-              <span className="text-gray-600">Squeeze</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span className={imbalanceBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
-                {imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? '✓' : '✗') : '○'}
-              </span>
-              <span className="text-gray-600">Imbalance</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span className={largeTradeBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
-                {largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? '✓' : '✗') : '○'}
-              </span>
-              <span className="text-gray-600">Large Trade</span>
-            </div>
+        const composition = row.strength_composition || {};
+        const squeeze_importance = composition['spread_percent']?.importance_percent || 0;
+        const imbalance_importance = composition['bid_ask_imbalance']?.importance_percent || 0;
+
+        const tooltipContent = (
+          <div>
+            <p className="font-bold mb-1">Market Criteria</p>
+            <p className="text-xs mb-2">These are market conditions used as features for the ML model. A checkmark (✓) means the condition was met.</p>
+            <ul className="list-disc list-inside text-xs">
+              <li>Bid-Ask Squeeze ({(squeeze_importance).toFixed(1)}% importance)</li>
+              <li>Volume Imbalance ({(imbalance_importance).toFixed(1)}% importance)</li>
+              <li>Large Trade Detection</li>
+            </ul>
           </div>
+        );
+
+        return (
+          <Tooltip text={tooltipContent}>
+            <div className="text-xs space-y-1">
+              <div className="flex items-center space-x-1">
+                <span className={squeeze.meets_criteria ? 'text-green-600' : 'text-red-600'}>
+                  {squeeze.enabled ? (squeeze.meets_criteria ? '✓' : '✗') : '○'}
+                </span>
+                <span className="text-gray-600">Squeeze</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className={imbalanceBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
+                  {imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? '✓' : '✗') : '○'}
+                </span>
+                <span className="text-gray-600">Imbalance</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className={largeTradeBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
+                  {largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? '✓' : '✗') : '○'}
+                </span>
+                <span className="text-gray-600">Large Trade</span>
+              </div>
+            </div>
+          </Tooltip>
         );
       },
     },
     {
       key: 'ml_analysis',
-      header: (
-        <Tooltip text="Machine learning model's prediction, including win probability and expected return.">
-          ML Analysis
-        </Tooltip>
-      ),
+      header: 'ML Analysis',
       render: (value, row) => {
         const ml = value || {};
         if (!ml.ml_enabled) {
           return <span className="text-xs text-gray-400">No ML</span>;
         }
 
-        return (
-          <div className="text-xs space-y-1">
-            <div className="flex items-center space-x-1">
-              <span className="text-blue-600">🤖</span>
-              <span className={`font-medium ${
-                (ml.win_probability || 0) >= 0.6 ? 'text-green-600' :
-                (ml.win_probability || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
-              }`}>
-                {(ml.win_probability || 0).toFixed(1)}%
-              </span>
-            </div>
-            <div className="text-gray-500">
-              Exp: ${(ml.expected_return || 0).toFixed(2)}
-            </div>
+        const composition = row.strength_composition || {};
+        const ml_importance = composition['ml_confidence']?.importance_percent || 50; // Default to 50 if not available
+
+        const tooltipContent = (
+          <div>
+            <p className="font-bold mb-1">ML Model Prediction</p>
+            <p className="text-xs mb-2">The model's confidence is the primary driver of the signal strength, contributing {ml_importance.toFixed(1)}% to the score.</p>
+            <ul className="list-disc list-inside text-xs">
+              <li>Win Probability: The model's prediction of a successful trade.</li>
+              <li>Expected Return: The potential profit from the trade.</li>
+            </ul>
           </div>
+        );
+
+        return (
+          <Tooltip text={tooltipContent}>
+            <div className="text-xs space-y-1">
+              <div className="flex items-center space-x-1">
+                <span className="text-blue-600">🤖</span>
+                <span className={`font-medium ${
+                  (ml.win_probability || 0) >= 0.6 ? 'text-green-600' :
+                  (ml.win_probability || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                  {(ml.win_probability || 0).toFixed(1)}%
+                </span>
+              </div>
+              <div className="text-gray-500">
+                Exp: ${(ml.expected_return || 0).toFixed(2)}
+              </div>
+            </div>
+          </Tooltip>
         );
       },
     },

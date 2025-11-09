@@ -28,6 +28,9 @@ class DataHandlers:
         self._last_no_data_warn_at: dict[str, float] = {}
         # Get configurable symbol limits
         self.max_symbols_per_request = getattr(config, 'max_symbols_per_request', 1000)
+        # Cache for feature importances
+        self._feature_importance_cache: Dict[str, Any] = {}
+        self._feature_importance_cache_ttl: int = 300  # Cache for 5 minutes
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -607,6 +610,31 @@ class DataHandlers:
             logger.error(f"Error getting live orderbook signals: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    async def _get_feature_importance(self) -> Dict[str, float]:
+        """Get feature importance from ML server and cache it."""
+        now = datetime.now().timestamp()
+        if self._feature_importance_cache and (now - self._feature_importance_cache.get("timestamp", 0)) < self._feature_importance_cache_ttl:
+            return self._feature_importance_cache.get("data", {})
+
+        try:
+            importance_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/features/importance"
+            response = requests.get(importance_url, timeout=5.0)
+            if response.status_code == 200:
+                importance_data = response.json()
+                # Ensure we have a flat dictionary of feature: importance
+                if 'feature_importance' in importance_data:
+                    importance_data = {item['feature']: item['importance'] for item in importance_data['feature_importance']}
+                
+                self._feature_importance_cache = {"timestamp": now, "data": importance_data}
+                logger.info(f"Successfully fetched and cached feature importances: {list(importance_data.keys())}")
+                return importance_data
+            else:
+                logger.warning(f"Failed to get feature importance, status code: {response.status_code}")
+                return {}
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting feature importance: {e}")
+            return {}
+
     async def _enrich_signals_with_ml_analysis(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Enrich signals with ML analysis from the ML model server."""
         enriched_signals = []
@@ -621,9 +649,34 @@ class DataHandlers:
                 enriched_signals.append(signal)
             return enriched_signals
 
+        # Get learned feature importances to calculate contributions
+        feature_importances = await self._get_feature_importance()
+        if not feature_importances:
+            logger.warning("Could not retrieve feature importances. Tooltips will not show detailed contributions.")
+
+        # Normalize importance scores for percentage display
+        total_importance = sum(feature_importances.values())
+
         for signal in signals:
             try:
                 # Prepare request for ML server
+                # These features must match the keys in feature_importances
+                raw_features_for_ml = {
+                    "symbol": signal["symbol"],
+                    "bid_ask_imbalance": signal["criteria_analysis"]["volume_imbalance_buy"]["current_value"],
+                    "spread_percent": signal["spread"],
+                    "mid_price": signal["price"],
+                    "bid_volume": signal["criteria_analysis"]["volume_imbalance_buy"]["bid_volume"],
+                    "ask_volume": signal["criteria_analysis"]["volume_imbalance_buy"]["ask_volume"],
+                    "order_book_depth": 2,  # Assuming level 2 data
+                    "large_bid_wall": False, # Placeholder
+                    "large_ask_wall": False, # Placeholder
+                    "wall_size": 0.0, # Placeholder
+                    "volume_weighted_price": signal["price"], # Placeholder
+                    "price_momentum": 0.0, # Placeholder
+                    "volatility": 0.0, # Placeholder
+                    "timestamp": int(datetime.fromisoformat(signal["timestamp"].replace("Z", "+00:00")).timestamp())
+                }
                 prediction_request = {
                     "symbol": signal["symbol"],
                     "bid_ask_imbalance": signal["criteria_analysis"]["volume_imbalance_buy"]["current_value"],
@@ -652,13 +705,12 @@ class DataHandlers:
                 for attempt in range(max_retries + 1):
                     try:
                         timeout = base_timeout * (2 ** attempt)  # Exponential backoff for timeout
-                        response = requests.post(ml_server_url, json=prediction_request, timeout=timeout)
+                        response = requests.post(ml_server_url, json=raw_features_for_ml, timeout=timeout)
 
                         if response.status_code == 200:
                             ml_analysis = response.json()
                             logger.debug(f"ML analysis received for {signal['symbol']}: confidence={ml_analysis.get('confidence', 0.0):.3f}")
 
-                            # Check if model is actually trained (not just returning hold with 0 confidence)
                             reason = ml_analysis.get("reason", "")
                             is_model_trained = "No trained model" not in reason and "not trained" not in reason.lower()
                             
@@ -668,51 +720,72 @@ class DataHandlers:
                                 "expected_return": ml_analysis.get("signal_value", 0.0),
                                 "confidence": ml_analysis.get("confidence", 0.0),
                                 "model_version": "1.0.0",
-                                "features_used": list(prediction_request.keys()),
+                                "features_used": list(raw_features_for_ml.keys()),
                                 "prediction_timestamp": datetime.now().isoformat(),
                                 "response_time_ms": response.elapsed.total_seconds() * 1000
                             }
                             if not is_model_trained:
                                 signal["ml_analysis"]["reason"] = reason
-                            break  # Success, exit retry loop
+                            
+                            # The definitive signal strength is the ML model's confidence
+                            final_strength = ml_analysis.get("confidence", 0.0)
+                            signal['signal_strength'] = final_strength
+                            signal['strength'] = final_strength
+
+                            # Calculate and attach strength composition using learned weights
+                            composition = {}
+                            if feature_importances and total_importance > 0:
+                                for feature_name, importance_score in feature_importances.items():
+                                    raw_value = raw_features_for_ml.get(feature_name)
+                                    if raw_value is not None:
+                                        composition[feature_name] = {
+                                            'value': raw_value,
+                                            'importance_percent': (importance_score / total_importance) * 100
+                                        }
+                            signal['strength_composition'] = composition
+                            break
 
                         elif response.status_code == 503:
-                            # ML server not ready (no trained model)
                             logger.debug(f"ML server not ready for {signal['symbol']} (503)")
                             signal["ml_analysis"] = {"ml_enabled": False, "reason": "Model not trained"}
+                            signal['strength_composition'] = {}
                             break
 
                         else:
                             logger.warning(f"ML server returned status {response.status_code} for {signal['symbol']}")
                             if attempt == max_retries:
                                 signal["ml_analysis"] = {"ml_enabled": False, "reason": f"HTTP {response.status_code}"}
+                                signal['strength_composition'] = {}
 
                     except requests.exceptions.Timeout:
                         logger.warning(f"ML server timeout (attempt {attempt+1}/{max_retries+1}) for {signal['symbol']}")
                         if attempt == max_retries:
                             signal["ml_analysis"] = {"ml_enabled": False, "reason": "Timeout"}
+                            signal['strength_composition'] = {}
 
                     except requests.exceptions.ConnectionError:
                         logger.warning(f"ML server connection error (attempt {attempt+1}/{max_retries+1}) for {signal['symbol']}")
                         if attempt == max_retries:
                             signal["ml_analysis"] = {"ml_enabled": False, "reason": "Connection failed"}
+                            signal['strength_composition'] = {}
 
                     except Exception as e:
                         logger.warning(f"ML analysis error for {signal['symbol']}: {e}")
                         if attempt == max_retries:
                             signal["ml_analysis"] = {"ml_enabled": False, "reason": str(e)}
+                            signal['strength_composition'] = {}
 
-                    # Wait before retry (exponential backoff)
                     if attempt < max_retries:
                         await asyncio.sleep(0.1 * (2 ** attempt))
 
-                # Ensure ml_analysis is set
                 if "ml_analysis" not in signal:
                     signal["ml_analysis"] = {"ml_enabled": False, "reason": "Unknown error"}
+                    signal['strength_composition'] = {}
 
             except Exception as e:
                 logger.warning(f"Failed to get ML analysis for {signal['symbol']}: {e}")
                 signal["ml_analysis"] = {"ml_enabled": False, "reason": str(e)}
+                signal['strength_composition'] = {}
 
             enriched_signals.append(signal)
 
