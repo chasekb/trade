@@ -100,6 +100,12 @@ export interface OrderBookSignal {
     features_used?: string[];
     prediction_timestamp: string;
   };
+  strength_composition?: {
+    [featureName: string]: {
+      value: number;
+      importance_percent: number;
+    };
+  };
   // Legacy properties for backward compatibility
   buy_volume?: number;
   sell_volume?: number;
