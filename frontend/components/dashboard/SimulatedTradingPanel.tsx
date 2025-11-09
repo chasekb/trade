@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
+import Tooltip from '@/components/ui/Tooltip';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
@@ -434,7 +435,11 @@ function OrderBookSignalsTable({
     },
     {
       key: 'signal_strength',
-      header: 'Strength',
+      header: (
+        <Tooltip text="A score from 0.0 to 1.0 indicating the confidence in the trading signal, based on the number of criteria met and ML model output.">
+          Strength
+        </Tooltip>
+      ),
       sortable: true,
       render: (value) => (
         <div className="flex items-center">
@@ -464,7 +469,11 @@ function OrderBookSignalsTable({
     },
     {
       key: 'criteria_analysis',
-      header: 'Criteria',
+      header: (
+        <Tooltip text="Specific market conditions met for signal generation, like bid-ask squeeze or volume imbalance.">
+          Criteria
+        </Tooltip>
+      ),
       render: (value, row) => {
         const criteria = value || {};
         const squeeze = criteria.bid_ask_squeeze || {};
@@ -497,7 +506,11 @@ function OrderBookSignalsTable({
     },
     {
       key: 'ml_analysis',
-      header: 'ML Analysis',
+      header: (
+        <Tooltip text="Machine learning model's prediction, including win probability and expected return.">
+          ML Analysis
+        </Tooltip>
+      ),
       render: (value, row) => {
         const ml = value || {};
         if (!ml.ml_enabled) {

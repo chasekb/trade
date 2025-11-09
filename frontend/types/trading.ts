@@ -175,7 +175,7 @@ export interface StatCardProps {
 
 export interface DataTableColumn<T> {
   key: keyof T;
-  header: string;
+  header: React.ReactNode;
   render?: (value: any, item: T) => React.ReactNode;
   sortable?: boolean;
   className?: string;
