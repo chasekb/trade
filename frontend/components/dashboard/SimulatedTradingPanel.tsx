@@ -1373,6 +1373,21 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     };
   }, [queryClient, activeSymbols, status.isActive, currentPage, pageSize]);
 
+  // Refetch data when tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && status.isActive) {
+        queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [queryClient, status.isActive]);
+
   // Handle pagination changes
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
