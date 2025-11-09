@@ -542,11 +542,12 @@ class MLDataCollector:
                 return 0.0
             
             prices = recent_signals['price'].values
-            if len(prices) < 2 or prices[0] == 0:
+            if len(prices) < 2:
                 return 0.0
             
             # Calculate momentum as price change percentage
-            return ((prices[-1] - prices[0]) / prices[0]) * 100
+            initial_price = prices[0] if prices[0] != 0 else 1e-9
+            return ((prices[-1] - initial_price) / initial_price) * 100
         except Exception:
             return 0.0
     
@@ -566,14 +567,7 @@ class MLDataCollector:
                 return 0.0
             
             # Calculate volatility as standard deviation of price changes
-            # Avoid division by zero
-            safe_prices = prices[:-1].copy()
-            safe_prices[safe_prices == 0] = 1e-9  # Replace zeros with a small number
-            price_changes = np.diff(prices) / safe_prices
-            
-            # Replace NaNs and Infs that might result from the operation
-            price_changes = np.nan_to_num(price_changes, nan=0.0, posinf=0.0, neginf=0.0)
-
+            price_changes = np.diff(prices) / (prices[:-1] + 1e-9)  # Avoid division by zero
             return float(np.std(price_changes)) * 100
         except Exception:
             return 0.0

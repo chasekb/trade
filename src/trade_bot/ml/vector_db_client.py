@@ -29,29 +29,40 @@ class VectorDBClient:
         self.collection_name = collection_name
         self.base_url = f"http://{host}:{port}"
         
-    def create_collection(self, vector_size: int = 128) -> bool:
+    def create_collection(self, vector_size: int) -> bool:
         """Create a new collection in Qdrant."""
         try:
             url = f"{self.base_url}/collections/{self.collection_name}"
-            
             payload = {
                 "vectors": {
                     "size": vector_size,
                     "distance": "Cosine"
                 }
             }
-            
             response = requests.put(url, json=payload)
-            
             if response.status_code in [200, 201]:
-                logger.info(f"Collection '{self.collection_name}' created successfully")
+                logger.info(f"Collection '{self.collection_name}' created with vector size {vector_size}")
                 return True
             else:
                 logger.error(f"Failed to create collection: {response.text}")
                 return False
-                
         except Exception as e:
             logger.error(f"Error creating collection: {e}")
+            return False
+
+    def delete_collection(self) -> bool:
+        """Delete the collection."""
+        try:
+            url = f"{self.base_url}/collections/{self.collection_name}"
+            response = requests.delete(url)
+            if response.status_code == 200:
+                logger.info(f"Collection '{self.collection_name}' deleted successfully")
+                return True
+            else:
+                logger.error(f"Failed to delete collection: {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting collection: {e}")
             return False
     
     def check_collection_exists(self) -> bool:
@@ -250,19 +261,18 @@ class VectorDBClient:
             
             url = f"{self.base_url}/collections/{self.collection_name}/points/search"
             
+            must_conditions = []
+            for key, value in filter_conditions.items():
+                if isinstance(value, dict):
+                    must_conditions.append({"key": key, "range": value})
+                else:
+                    must_conditions.append({"key": key, "match": {"value": value}})
+
             payload = {
                 "vector": query_vector.tolist(),
                 "limit": limit,
                 "with_payload": True,
-                "filter": {
-                    "must": [
-                        {
-                            "key": key,
-                            "match": {"value": value}
-                        }
-                        for key, value in filter_conditions.items()
-                    ]
-                }
+                "filter": {"must": must_conditions},
             }
             
             response = requests.post(url, json=payload)
@@ -308,20 +318,36 @@ class VectorDBClient:
     
     def get_historical_patterns(self, symbol: str, 
                                days_back: int = 30) -> List[Dict[str, Any]]:
-        """Get historical patterns for a symbol."""
+        """Get historical patterns for a symbol using the scroll API."""
         try:
+            if not self.check_collection_exists():
+                logger.warning("Collection does not exist")
+                return []
+
             # Calculate timestamp threshold
             threshold_time = datetime.now().timestamp() - (days_back * 24 * 3600)
             
-            filter_conditions = {
-                "symbol": symbol,
-                "timestamp": {"gte": threshold_time}
+            must_conditions = [
+                {"key": "symbol", "match": {"value": symbol}},
+                {"key": "timestamp", "range": {"gte": threshold_time}}
+            ]
+
+            url = f"{self.base_url}/collections/{self.collection_name}/points/scroll"
+            payload = {
+                "filter": {"must": must_conditions},
+                "limit": 1000,  # Max limit for scrolling
+                "with_payload": True,
+                "with_vectors": True
             }
             
-            # Use a dummy vector for filtering
-            dummy_vector = np.zeros(128)  # Adjust size as needed
+            response = requests.post(url, json=payload)
             
-            return self.filter_search(dummy_vector, filter_conditions, limit=1000)
+            if response.status_code == 200:
+                results = response.json()
+                return results.get("result", {}).get("points", [])
+            else:
+                logger.error(f"Failed to get historical patterns: {response.text}")
+                return []
             
         except Exception as e:
             logger.error(f"Error getting historical patterns: {e}")

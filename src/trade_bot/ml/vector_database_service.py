@@ -256,18 +256,17 @@ class VectorDatabaseService:
         try:
             logger.info("Checking ML Model Server...")
 
-            # First, try to connect to the ML server directly
+            # In a containerized environment, we simply check if the service is available.
+            # The orchestration tool (podman-compose) is responsible for starting it.
             if await self._check_ml_server():
-                logger.info("ML Model Server is already running and accessible")
-                self.ml_server_process = "external_service"  # Mark as external service
+                logger.info("ML Model Server is accessible.")
+                self.ml_server_process = "external_service"
                 return True
-
-            # This part should not be reached in the docker-compose setup
-            logger.warning("ML Model Server not found. The backend service should not be responsible for starting it in a containerized environment.")
-            return False
-            
+            else:
+                logger.warning("ML Model Server is not yet available. The backend will wait for it to start.")
+                return False
         except Exception as e:
-            logger.error(f"Error starting ML Model Server: {e}")
+            logger.error(f"Error checking ML Model Server: {e}")
             return False
     
     async def _wait_for_services(self) -> bool:
