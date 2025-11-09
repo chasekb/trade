@@ -92,20 +92,22 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    logger.info("Health check requested")
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_trading_signal(request: PredictionRequest):
     """Predict optimal trading signal."""
     global ml_optimizer
+    logger.info(f"Prediction requested for {request.symbol}")
 
     if ml_optimizer is None:
+        logger.error("ML optimizer not initialized")
         raise HTTPException(status_code=503, detail="ML optimizer not initialized")
 
     try:
         # Convert request to OrderBookFeatures
         from data_collector import OrderBookFeatures
-
         features = OrderBookFeatures(
             timestamp=request.timestamp,
             symbol=request.symbol,
@@ -123,64 +125,25 @@ async def predict_trading_signal(request: PredictionRequest):
             volatility=request.volatility
         )
 
-        # Check if model is trained, if not, try to train one
+        # Check if model is trained
         if not ml_optimizer.is_trained:
-            logger.info("No trained model available, attempting to train a model...")
-            try:
-                # Collect and train a model
-                features_data, outcomes = ml_optimizer.collect_and_preprocess_data(days_back=30)
-                if features_data and outcomes:
-                    training_results = ml_optimizer.train_ml_models(features_data, outcomes)
-                    if training_results and ml_optimizer.is_trained:
-                        logger.info("Model trained successfully")
-                    else:
-                        logger.warning("Failed to train model, returning hold signal")
-                        return PredictionResponse(
-                            action="hold",
-                            confidence=0.0,
-                            signal_value=0.0,
-                            reason="No training data available",
-                            similar_conditions=0,
-                            timestamp=datetime.now().isoformat()
-                        )
-                else:
-                    logger.warning("No training data available, returning hold signal")
-                    return PredictionResponse(
-                        action="hold",
-                        confidence=0.0,
-                        signal_value=0.0,
-                        reason="No training data available",
-                        similar_conditions=0,
-                        timestamp=datetime.now().isoformat()
-                    )
-            except Exception as train_error:
-                logger.error(f"Error training model: {train_error}")
-                return PredictionResponse(
-                    action="hold",
-                    confidence=0.0,
-                    signal_value=0.0,
-                    reason=f"Model training failed: {str(train_error)}",
-                    similar_conditions=0,
-                    timestamp=datetime.now().isoformat()
-                )
+            logger.warning("Prediction requested, but model is not trained")
+            return PredictionResponse(
+                action="hold",
+                confidence=0.0,
+                signal_value=0.0,
+                reason="Model not trained",
+                similar_conditions=0,
+                timestamp=datetime.now().isoformat()
+            )
 
         # Get prediction
         prediction = ml_optimizer.predict_trading_signal(features)
-
-        # Ensure all required fields are present
-        complete_prediction = {
-            'action': prediction.get('action', 'hold'),
-            'confidence': prediction.get('confidence', 0.0),
-            'signal_value': prediction.get('signal_value', 0.0),
-            'reason': prediction.get('reason', 'ML prediction'),
-            'similar_conditions': prediction.get('similar_conditions', 0),
-            'timestamp': prediction.get('timestamp', datetime.now().isoformat())
-        }
-
-        return PredictionResponse(**complete_prediction)
+        logger.info(f"Prediction for {request.symbol}: {prediction}")
+        return PredictionResponse(**prediction)
 
     except Exception as e:
-        logger.error(f"Error making prediction: {e}")
+        logger.error(f"Error making prediction for {request.symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 async def train_model_background():
@@ -218,22 +181,23 @@ async def train_model_background():
 async def get_model_status(background_tasks: BackgroundTasks):
     """Get current model status."""
     global ml_optimizer, training_status
-    
+    logger.info("Status requested")
+
     if ml_optimizer is None:
+        logger.error("ML optimizer not initialized")
         raise HTTPException(status_code=503, detail="ML optimizer not initialized")
-    
+
     try:
-        is_trained = ml_optimizer.model_manager.get_current_model() is not None
-        
+        is_trained = ml_optimizer.is_trained
         if is_trained:
-            if training_status != "success":
-                training_status = "success"
             status = ml_optimizer.get_system_status()
+            logger.info(f"Current status: {status}")
             return ModelStatusResponse(**status)
 
         if training_status == "idle":
             logger.info("No trained model found. Starting background training.")
             background_tasks.add_task(train_model_background)
+            training_status = "training"
             return ModelStatusResponse(
                 is_trained=False,
                 last_training_time=None,
@@ -241,33 +205,14 @@ async def get_model_status(background_tasks: BackgroundTasks):
                 model_performance={},
                 vector_db_status=ml_optimizer.vector_db_client.get_collection_info()
             )
-        elif training_status == "training":
+        else:
             return ModelStatusResponse(
                 is_trained=False,
                 last_training_time=None,
-                current_model={"status": "training_in_progress"},
+                current_model={"status": f"training_{training_status}"},
                 model_performance={},
                 vector_db_status=ml_optimizer.vector_db_client.get_collection_info()
             )
-        elif training_status == "failed":
-             return ModelStatusResponse(
-                is_trained=False,
-                last_training_time=None,
-                current_model={"status": "training_failed"},
-                model_performance={},
-                vector_db_status=ml_optimizer.vector_db_client.get_collection_info()
-            )
-        
-        # Fallback for any other state, including "success" before is_trained is reflected
-        status = {
-            'is_trained': False,
-            'last_training_time': None,
-            'current_model': None,
-            'model_performance': {},
-            'vector_db_status': ml_optimizer.vector_db_client.get_collection_info()
-        }
-        return ModelStatusResponse(**status)
-        
     except Exception as e:
         logger.error(f"Error getting model status: {e}")
         raise HTTPException(status_code=500, detail=str(e))

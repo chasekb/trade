@@ -3,6 +3,7 @@ from typing import List
 
 import logging
 import numpy as np
+import pandas as pd
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import os
@@ -30,6 +31,7 @@ class MLTradingOptimizer:
     
     def __init__(self, db_url: str = None,
                  models_dir: str = "data/models",
+                 transformers_dir: str = "data/transformers",
                  vector_db_host: str = "localhost",
                  vector_db_port: int = 6333):
         """
@@ -38,11 +40,13 @@ class MLTradingOptimizer:
         Args:
             db_url: PostgreSQL database URL
             models_dir: Directory for model storage
+            transformers_dir: Directory for transformer storage
             vector_db_host: Vector database host
             vector_db_port: Vector database port
         """
         self.db_url = db_url
         self.models_dir = models_dir
+        self.transformers_dir = transformers_dir
 
         # Initialize components
         self.data_collector = MLDataCollector(db_url)
@@ -54,6 +58,9 @@ class MLTradingOptimizer:
         # Training state
         self.is_trained = False
         self.last_training_time = None
+
+        # Load transformers on initialization
+        self.load_transformers()
         
     def collect_and_preprocess_data(self, days_back: int = 30) -> Tuple[List[OrderBookFeatures], List[TradeOutcome]]:
         """Collect and preprocess trading data for ML training."""
@@ -107,6 +114,9 @@ class MLTradingOptimizer:
         # Preprocess features
         X_processed, y_processed = self.feature_engineer.preprocess_pipeline(X, y, fit_transform=True)
         
+        # Save the fitted transformers
+        self.feature_engineer.save_transformers(self.transformers_dir)
+        
         # Train models
         self.model_trainer.model_type = model_type
         training_results = self.model_trainer.train_models(X_processed, y_processed)
@@ -146,19 +156,28 @@ class MLTradingOptimizer:
             return {'action': 'hold', 'confidence': 0.0, 'reason': 'No trained model'}
         
         try:
-            # Extract features
-            feature_vector = self.feature_engineer._extract_features(current_features)
-            X = np.array([feature_vector])
+            # Extract features into a dictionary
+            feature_dict = self.feature_engineer._extract_features(current_features)
             
-            # Preprocess features (using fitted imputer, scaler, and selector)
-            X_imputed = self.feature_engineer.impute_features(X)
-            X_scaled = self.feature_engineer.transform_features(X_imputed)
-            X_selected = self.feature_engineer.transform_features_selected(X_scaled)
-            X_ts = self.feature_engineer.create_time_series_features(X_selected)
-            X_final = self.feature_engineer.create_interaction_features(X_ts)
+            # Convert to DataFrame for consistent processing
+            X = pd.DataFrame([feature_dict])
+
+            # Fetch historical data for time-series features
+            historical_data = self.vector_db_client.get_historical_patterns(current_features.symbol, days_back=1)
+            
+            historical_vectors = []
+            if historical_data:
+                # Sort by timestamp to ensure correct order
+                sorted_data = sorted(historical_data, key=lambda p: p['payload']['timestamp'])
+                historical_vectors = [p['vector'] for p in sorted_data]
+
+            # Preprocess features using the same pipeline as training
+            X_processed, _ = self.feature_engineer.preprocess_pipeline(
+                X.values, y=None, fit_transform=False, historical_data=np.array(historical_vectors)
+            )
             
             # Make prediction
-            prediction = self.model_manager.predict(X_final)
+            prediction = self.model_manager.predict(X_processed)
             
             if prediction is None:
                 return {'action': 'hold', 'confidence': 0.0, 'reason': 'Prediction failed'}
@@ -176,7 +195,7 @@ class MLTradingOptimizer:
             
             # Find similar market conditions
             similar_conditions = self.vector_db_client.find_similar_market_conditions(
-                X_final[0], current_features.symbol, limit=3
+                X_processed[0], current_features.symbol, limit=3
             )
             
             return {
@@ -190,7 +209,14 @@ class MLTradingOptimizer:
             
         except Exception as e:
             logger.error(f"Error predicting trading signal: {e}")
-            return {'action': 'hold', 'confidence': 0.0, 'reason': f'Error: {str(e)}'}
+            return {
+                'action': 'hold',
+                'confidence': 0.0,
+                'signal_value': 0.0,
+                'reason': f'Error: {str(e)}',
+                'similar_conditions': 0,
+                'timestamp': datetime.now().isoformat()
+            }
     
     def update_model_with_new_data(self, new_features: List[OrderBookFeatures],
                                   new_outcomes: List[TradeOutcome]) -> bool:
@@ -262,14 +288,16 @@ class MLTradingOptimizer:
             for i, feature in enumerate(features):
                 if i < processed_features.shape[0]:
                     vector = processed_features[i]
+                    # Extract all features for metadata storage
+                    feature_dict = self.feature_engineer._extract_features(feature)
+                    
+                    # Convert all values to native Python types for JSON serialization
+                    serializable_features = {k: v.item() if isinstance(v, np.generic) else v for k, v in feature_dict.items()}
+                    
                     metadata = {
                         'symbol': feature.symbol,
                         'timestamp': feature.timestamp,
-                        'bid_ask_imbalance': feature.bid_ask_imbalance,
-                        'spread_percent': feature.spread_percent,
-                        'mid_price': feature.mid_price,
-                        'volatility': feature.volatility,
-                        'price_momentum': feature.price_momentum
+                        **serializable_features
                     }
                     
                     vectors.append(vector)
@@ -285,9 +313,32 @@ class MLTradingOptimizer:
     def initialize_vector_database(self) -> bool:
         """Initialize vector database for feature storage."""
         try:
-            # Create collection if it doesn't exist
-            if not self.vector_db_client.check_collection_exists():
-                return self.vector_db_client.create_collection(vector_size=128)
+            # A sample feature vector is created to determine the correct vector size
+            sample_features, _ = self.collect_and_preprocess_data(days_back=1)
+            if not sample_features:
+                # Fallback to a default size if no data is available
+                vector_size = 20
+            else:
+                # Create dummy outcomes with default values
+                dummy_outcomes = [
+                    TradeOutcome(
+                        trade_id="", symbol="", side="", entry_price=0.0, exit_price=0.0,
+                        quantity=0.0, pnl=0.0, fees=0.0, duration_seconds=0,
+                        signal_type="", signal_strength=0.0, entry_timestamp=0, exit_timestamp=0
+                    )
+                ] * len(sample_features)
+                X, _, _ = self.feature_engineer.create_feature_matrix(sample_features, dummy_outcomes)
+                X_processed, _ = self.feature_engineer.preprocess_pipeline(X, y=np.zeros(len(X)), fit_transform=True)
+                vector_size = X_processed.shape[1]
+
+            if self.vector_db_client.check_collection_exists():
+                info = self.vector_db_client.get_collection_info()
+                if info['result']['config']['params']['vectors']['size'] != vector_size:
+                    logger.warning(f"Vector DB dimension mismatch. Deleting and recreating collection.")
+                    self.vector_db_client.delete_collection()
+                    return self.vector_db_client.create_collection(vector_size)
+            else:
+                return self.vector_db_client.create_collection(vector_size)
             
             return True
             
@@ -297,11 +348,29 @@ class MLTradingOptimizer:
     
     def get_system_status(self) -> Dict[str, Any]:
         """Get overall system status."""
+        current_model = self.model_manager.get_current_model()
+        
         return {
             'is_trained': self.is_trained,
             'last_training_time': self.last_training_time.isoformat() if self.last_training_time else None,
-            'current_model': self.model_manager.get_current_model(),
+            'current_model': {
+                'model_name': current_model.get('model_name'),
+                'version_id': current_model.get('version_id'),
+                'deployed_at': current_model.get('deployed_at'),
+            } if current_model else None,
             'model_performance': self.get_model_performance(),
             'vector_db_status': self.vector_db_client.get_collection_info(),
             'vector_db_stats': self.vector_db_client.get_collection_stats()
         }
+
+    def load_transformers(self) -> None:
+        """Load transformers from disk."""
+        try:
+            self.feature_engineer.load_transformers(self.transformers_dir)
+            # If transformers are loaded, we can assume a model has been trained
+            if self.feature_engineer.scaler and self.feature_engineer.feature_selector:
+                self.is_trained = True
+                logger.info("Transformers loaded, ML Optimizer is ready for predictions.")
+        except Exception as e:
+            logger.error(f"Error loading transformers: {e}")
+            self.is_trained = False

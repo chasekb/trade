@@ -718,49 +718,32 @@ class DataHandlers:
 
         return enriched_signals
 
+    async def _get_ml_server_status(self) -> Dict[str, Any]:
+        """Get ML server status and cache it."""
+        # Simple in-memory cache with a short TTL
+        cache_key = "ml_server_status"
+        cached_status = getattr(self, "_ml_status_cache", None)
+        if cached_status and (datetime.now() - cached_status["timestamp"]).total_seconds() < 10:
+            return cached_status["data"]
+
+        status_data = {"healthy": False, "is_trained": False}
+        try:
+            status_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/status"
+            response = requests.get(status_url, timeout=2.0)
+            if response.status_code == 200:
+                data = response.json()
+                status_data["healthy"] = True
+                status_data["is_trained"] = data.get("is_trained", False)
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"ML server status check failed: {e}")
+
+        self._ml_status_cache = {"timestamp": datetime.now(), "data": status_data}
+        return status_data
+
     async def _check_ml_server_health(self) -> bool:
         """Check if ML server is healthy and has a trained model."""
-        try:
-            ml_server_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/health"
-            response = requests.get(ml_server_url, timeout=2.0)
-
-            if response.status_code == 200:
-                # Try to check if model is trained via /status endpoint
-                # If /status doesn't exist (404), we'll still allow predictions
-                # since the server is healthy and /predict endpoint exists
-                status_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/status"
-                try:
-                    status_response = requests.get(status_url, timeout=2.0)
-
-                    if status_response.status_code == 200:
-                        status_data = status_response.json()
-                        is_trained = status_data.get('is_trained', False)
-                        if is_trained:
-                            return True
-                        else:
-                            logger.debug("ML server healthy but no trained model available")
-                            # Still return True - let /predict handle untrained model case
-                            return True
-                    elif status_response.status_code == 404:
-                        # /status endpoint doesn't exist (e.g., running main.py instead of server.py)
-                        # Server is healthy, so allow predictions
-                        logger.debug("ML server /status endpoint not available, but server is healthy")
-                        return True
-                    else:
-                        logger.debug(f"ML server /status returned {status_response.status_code}")
-                        # Server is healthy, allow predictions
-                        return True
-                except requests.exceptions.RequestException as status_error:
-                    # /status endpoint may not exist or be unreachable
-                    # But /health worked, so server is up - allow predictions
-                    logger.debug(f"ML server /status check failed: {status_error}, but server is healthy")
-                    return True
-
-            return False
-
-        except Exception as e:
-            logger.debug(f"ML server health check failed: {e}")
-            return False
+        status = await self._get_ml_server_status()
+        return status["healthy"] and status["is_trained"]
     
     async def get_loading_status(self) -> Dict[str, Any]:
         """Get data loading status."""
