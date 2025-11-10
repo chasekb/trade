@@ -7,7 +7,6 @@ from datetime import datetime
 import json
 
 from coinbase.rest import RESTClient
-from coinbase.rest.api_error import ApiError
 
 from ..core.config import TradingConfig
 from ..data.websocket_client import WebSocketClient
@@ -129,8 +128,6 @@ class TradingBot:
             }
             self.data_handler.add_trade_data(trade_data)
             
-        except ApiError as e:
-            logger.error(f"API error executing trade: {e}")
         except Exception as e:
             logger.error(f"Error executing trade: {e}")
     

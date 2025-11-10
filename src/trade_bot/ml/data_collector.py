@@ -417,15 +417,15 @@ class MLDataCollector:
             symbol_signals = signals_df[signals_df['symbol'] == symbol].copy()
             symbol_trades = trades_df[trades_df['symbol'] == symbol].copy() if not trades_df.empty else pd.DataFrame()
             
-            # Sort by timestamp
-            symbol_signals = symbol_signals.sort_values('timestamp')
+            # Sort by timestamp and reset index for positional access
+            symbol_signals = symbol_signals.sort_values('timestamp').reset_index(drop=True)
             
-            for i, signal in symbol_signals.iterrows():
+            for pos_idx, (df_idx, signal) in enumerate(symbol_signals.iterrows()):
                 try:
                     # Get previous signal's ML analysis if available
                     prev_ml_analysis = {}
-                    if i > 0:
-                        prev_signal = symbol_signals.iloc[i-1]
+                    if pos_idx > 0:
+                        prev_signal = symbol_signals.iloc[pos_idx - 1]
                         if 'ml_analysis' in prev_signal and prev_signal['ml_analysis']:
                             prev_ml_analysis = prev_signal['ml_analysis']
 

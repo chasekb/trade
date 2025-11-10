@@ -217,32 +217,33 @@ class FeatureEngineer:
         # Update feature names to selected features
         selected_indices = self.feature_selector.get_support(indices=True)
         
-        # We need to generate new names for the expanded features
-        original_feature_count = 0
-        if self.scaler:
-            original_feature_count = self.scaler.n_features_in_
-            
-        if original_feature_count > 0:
-            base_names = self.feature_names[:original_feature_count]
-            ts_mean_names = [f"{name}_mean" for name in base_names]
-            ts_std_names = [f"{name}_std" for name in base_names]
-            
-            # Approximate interaction feature names
-            interaction_names = []
-            key_features_indices = list(range(min(5, original_feature_count)))
-            
-            for i in key_features_indices:
-                for j in range(i, len(key_features_indices)):
-                    if i == j:
-                        interaction_names.append(f"{base_names[i]}^2")
-                    else:
-                        interaction_names.append(f"{base_names[i]}*{base_names[j]}")
+        # Generate new names for the expanded features
+        base_names = self.feature_names
+        
+        # Names for time series features
+        ts_mean_names = [f"{name}_mean" for name in base_names]
+        ts_std_names = [f"{name}_std" for name in base_names]
+        
+        # Names for interaction features
+        interaction_names = []
+        key_features_indices = list(range(min(5, len(base_names))))
+        
+        for i in key_features_indices:
+            for j in range(i, len(key_features_indices)):
+                if i == j:
+                    interaction_names.append(f"{base_names[i]}_sq")
+                else:
+                    interaction_names.append(f"{base_names[i]}_x_{base_names[j]}")
 
-            extended_feature_names = base_names + ts_mean_names + ts_std_names + interaction_names
-        else:
+        # Combine all feature names in the correct order
+        extended_feature_names = base_names + ts_mean_names + ts_std_names + interaction_names
+        
+        # Ensure the generated names match the number of features
+        if len(extended_feature_names) != X.shape[1]:
+            logger.warning(f"Mismatch in feature names ({len(extended_feature_names)}) and feature count ({X.shape[1]}). Using generic names.")
             extended_feature_names = [f"feature_{i}" for i in range(X.shape[1])]
 
-        self.feature_names = [extended_feature_names[i] for i in selected_indices if i < len(extended_feature_names)]
+        self.feature_names = [extended_feature_names[i] for i in selected_indices]
         
         logger.info(f"Selected {len(self.feature_names)} most important features")
     
