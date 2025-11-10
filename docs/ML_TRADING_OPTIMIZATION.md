@@ -131,12 +131,15 @@ The performance of the ML-enhanced strategy can be validated through the backtes
 
 ### Web Dashboard
 
-The ML system integrates with the web dashboard at `http://localhost:8001`:
+The ML system integrates with the web dashboard at `http://localhost:3000`:
 
 - **ML Status**: Model training status and performance
 - **Feature Importance**: Most important trading features
 - **Model Controls**: Train, update, and rollback models
 - **Performance Metrics**: Real-time model performance
+- **PnL Tracking**: Display top and bottom trades by PnL
+- **Model Selection**: Switch between different ML models
+- **Prediction Comparison**: Compare predictions from all models
 
 ## Web Dashboard Integration Plan
 
@@ -481,9 +484,15 @@ The ML Model Server provides REST API endpoints:
 - `POST /train` - Trigger model training
 - `POST /update` - Update model with new data
 - `POST /rollback` - Rollback to previous version
+- `GET /models` - Get a list of available models
+- `POST /models/set_active` - Set the active model
 
 ### Prediction
 - `POST /predict` - Get trading signal prediction
+- `POST /prediction-comparison` - Get a comparison of predictions from all models
+
+### PnL Tracking
+- `GET /pnl-trades` - Get top and bottom trades by PnL
 
 ## Configuration
 
