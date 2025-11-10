@@ -233,6 +233,7 @@ export type TradingStrategy =
   | 'stochastic'
   | 'fibonacci'
   | 'orderbook'
+  | 'ml_enhanced_orderbook'
   | 'dca'
   | 'buyandhold';
 

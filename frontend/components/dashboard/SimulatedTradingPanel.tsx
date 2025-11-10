@@ -113,6 +113,7 @@ function OpenPositionsSection({ positions }: { positions: any[] }) {
 }
 function StrategySelector({ value, onChange, className = '' }: StrategySelectorProps) {
   const strategies: { value: TradingStrategy; label: string }[] = [
+    { value: 'ml_enhanced_orderbook', label: 'ML-Enhanced Order Book' },
     { value: 'orderbook', label: 'Order Book Signals' },
     { value: 'sma', label: 'Simple Moving Average' },
     { value: 'ema', label: 'Exponential Moving Average' },
@@ -214,6 +215,43 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {strategy === 'ml_enhanced_orderbook' && (
+        <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+          <h4 className="text-md font-semibold text-gray-700">ML Configuration</h4>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">ML Server URL</label>
+            <Input
+              type="text"
+              value={config.ml_server_url || 'http://localhost:8002'}
+              onChange={(e) => handleParameterChange('ml_server_url', e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Confidence Threshold</label>
+            <Input
+              type="number"
+              min={0}
+              max={1}
+              step={0.1}
+              value={config.confidence_threshold || 0.6}
+              onChange={(e) => handleParameterChange('confidence_threshold', Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="fallback_to_baseline"
+              checked={config.fallback_to_baseline !== false}
+              onChange={(e) => handleParameterChange('fallback_to_baseline', e.target.checked)}
+            />
+            <label htmlFor="fallback_to_baseline" className="text-sm font-medium text-gray-700">
+              Fallback to Baseline Strategy
+            </label>
+          </div>
+        </div>
+      )}
       {strategy === 'orderbook' && (
         <div className="p-4 bg-gray-50 rounded-lg">
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1307,7 +1345,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const [pageSize, setPageSize] = useState(10);
   const queryClient = useQueryClient();
 
-  const [strategy, setStrategy] = useState<TradingStrategy>('orderbook');
+  const [strategy, setStrategy] = useState<TradingStrategy>('ml_enhanced_orderbook');
   const [config, setConfig] = useState<Record<string, any>>({
     position_size_mode: 'percent',
     position_size_value: 1,
@@ -1526,7 +1564,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
       <SimulatedTradingStatistics isTradingActive={status.isActive} />
 
       {/* Order Book Signals */}
-      {strategy === 'orderbook' && status.isActive && (
+      {(strategy === 'orderbook' || strategy === 'ml_enhanced_orderbook') && status.isActive && (
         <Card>
           <CardHeader>
             <CardTitle>Order Book Signals</CardTitle>
