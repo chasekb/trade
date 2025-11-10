@@ -10,6 +10,10 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 
+from ...core.trading_bot import TradingBot
+from ...trading.live_components.trade_executor import LiveTradeExecutor
+from ...data.data_components.trade_handler import TradeHandler
+
 class TradingHandlers:
     """Handles trading-related functionality for the trading web server."""
 
@@ -58,8 +62,13 @@ class TradingHandlers:
             if not isinstance(strategy_params, dict):
                 raise HTTPException(status_code=400, detail="strategy_params must be an object")
             
-            # Start simulated trading
-            self.simulated_trading_manager.start_trading(symbols)
+            # Start live trading
+            trade_handler = TradeHandler(self.database_manager)
+            live_trade_executor = LiveTradeExecutor(self.config, trade_handler)
+            trading_bot = TradingBot(self.config)
+            trading_bot.trade_executor = live_trade_executor
+            
+            asyncio.create_task(trading_bot.start())
             
             return {
                 "status": "started",

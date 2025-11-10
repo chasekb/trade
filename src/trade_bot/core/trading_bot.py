@@ -93,7 +93,7 @@ class TradingBot:
             self.strategy.update_position(signal)
             
             # In a real bot, you would call the REST API to place orders
-            # await self._execute_trade(signal)
+            await self._execute_trade(signal)
             
         except Exception as e:
             logger.error(f"Error processing signal: {e}")
