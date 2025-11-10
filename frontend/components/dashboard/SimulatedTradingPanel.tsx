@@ -1390,17 +1390,6 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     };
   }, [queryClient, status.isActive]);
 
-  // Refetch data when component mounts/remounts (React tab switching)
-  // This ensures data is refreshed when switching back to this tab
-  useEffect(() => {
-    if (status.isActive && strategy === 'orderbook') {
-      // Refetch order book signals when component mounts and trading is active
-      queryClient.invalidateQueries({ 
-        queryKey: ['orderbook-signals'],
-        exact: false 
-      });
-    }
-  }, [queryClient, status.isActive, strategy]); // Run on mount and when status/strategy changes
 
   // Handle pagination changes
   const handlePageChange = (page: number) => {

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime
 
 from ..web_components.ml_dashboard import MLDashboardIntegration
+from ..web_components import get_app_state
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +17,24 @@ ml_router = APIRouter(prefix="/api/ml", tags=["ml"])
 ml_integration = MLDashboardIntegration()
 
 
+def _get_ml_integration() -> MLDashboardIntegration:
+    """Get ML integration with optimizer from app state."""
+    try:
+        app_state = get_app_state()
+        if app_state and app_state.ml_optimizer:
+            ml_integration.set_ml_optimizer(app_state.ml_optimizer)
+    except RuntimeError:
+        # App state not initialized yet, will use HTTP fallback
+        pass
+    return ml_integration
+
+
 @ml_router.get("/status")
 async def get_ml_status():
     """Get ML system status."""
     try:
-        status = ml_integration.get_ml_status()
+        integration = _get_ml_integration()
+        status = integration.get_ml_status()
         return status
     except Exception as e:
         logger.error(f"Error getting ML status: {e}")
@@ -31,7 +45,8 @@ async def get_ml_status():
 async def get_ml_performance():
     """Get ML model performance metrics."""
     try:
-        performance = ml_integration.get_ml_performance()
+        integration = _get_ml_integration()
+        performance = integration.get_ml_performance()
         return performance
     except Exception as e:
         logger.error(f"Error getting ML performance: {e}")
@@ -42,7 +57,8 @@ async def get_ml_performance():
 async def get_feature_importance():
     """Get feature importance scores."""
     try:
-        importance = ml_integration.get_feature_importance()
+        integration = _get_ml_integration()
+        importance = integration.get_feature_importance()
         return importance
     except Exception as e:
         logger.error(f"Error getting feature importance: {e}")
@@ -53,7 +69,8 @@ async def get_feature_importance():
 async def trigger_model_training():
     """Trigger ML model training."""
     try:
-        result = ml_integration.trigger_model_training()
+        integration = _get_ml_integration()
+        result = integration.trigger_model_training()
         if 'error' in result:
             raise HTTPException(status_code=500, detail=result['error'])
         return result
@@ -66,7 +83,8 @@ async def trigger_model_training():
 async def trigger_model_update():
     """Trigger model update with new data."""
     try:
-        result = ml_integration.trigger_model_update()
+        integration = _get_ml_integration()
+        result = integration.trigger_model_update()
         if 'error' in result:
             raise HTTPException(status_code=500, detail=result['error'])
         return result
@@ -79,7 +97,8 @@ async def trigger_model_update():
 async def rollback_model():
     """Rollback to previous model version."""
     try:
-        result = ml_integration.rollback_model()
+        integration = _get_ml_integration()
+        result = integration.rollback_model()
         if 'error' in result:
             raise HTTPException(status_code=500, detail=result['error'])
         return result
@@ -92,7 +111,8 @@ async def rollback_model():
 async def get_ml_dashboard_data():
     """Get comprehensive ML data for dashboard."""
     try:
-        dashboard_data = ml_integration.get_ml_dashboard_data()
+        integration = _get_ml_integration()
+        dashboard_data = integration.get_ml_dashboard_data()
         return dashboard_data
     except Exception as e:
         logger.error(f"Error getting ML dashboard data: {e}")
@@ -103,7 +123,8 @@ async def get_ml_dashboard_data():
 async def get_pnl_trades_data(sort_by: str = 'pnl'):
     """Get top and bottom trades by PnL."""
     try:
-        pnl_data = ml_integration.get_pnl_tracking_data(sort_by=sort_by)
+        integration = _get_ml_integration()
+        pnl_data = integration.get_pnl_tracking_data(sort_by=sort_by)
         return pnl_data
     except Exception as e:
         logger.error(f"Error getting PnL trades data: {e}")
@@ -114,7 +135,8 @@ async def get_pnl_trades_data(sort_by: str = 'pnl'):
 async def get_available_models():
     """Get a list of available ML models."""
     try:
-        models = ml_integration.list_available_models()
+        integration = _get_ml_integration()
+        models = integration.list_available_models()
         return models
     except Exception as e:
         logger.error(f"Error getting available models: {e}")
@@ -125,7 +147,8 @@ async def get_available_models():
 async def set_active_model(model_name: str):
     """Set the active ML model."""
     try:
-        result = ml_integration.set_active_model(model_name)
+        integration = _get_ml_integration()
+        result = integration.set_active_model(model_name)
         if 'error' in result:
             raise HTTPException(status_code=400, detail=result['error'])
         return result
@@ -138,7 +161,8 @@ async def set_active_model(model_name: str):
 async def get_prediction_comparison(features: Dict[str, Any]):
     """Get a comparison of predictions from all models."""
     try:
-        comparison = ml_integration.get_prediction_comparison(features)
+        integration = _get_ml_integration()
+        comparison = integration.get_prediction_comparison(features)
         return comparison
     except Exception as e:
         logger.error(f"Error getting prediction comparison: {e}")
