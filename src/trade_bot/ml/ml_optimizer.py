@@ -7,6 +7,7 @@ import pandas as pd
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import os
+import glob
 
 # Support both relative imports (when used as module) and absolute imports (when run standalone)
 try:
@@ -123,6 +124,40 @@ class MLTradingOptimizer:
         
         # Store feature vectors in vector database
         self._store_feature_vectors_in_db(features, X_processed)
+        
+        # Register and deploy the best model
+        if training_results and training_results.get('best_model') and training_results.get('best_score') is not None:
+            best_model_name = max(training_results['model_performance'].keys(), 
+                                key=lambda k: training_results['model_performance'][k]['score'])
+            
+            # Find the saved model file for the best model
+            model_files = glob.glob(os.path.join(self.models_dir, f"{best_model_name}_*.pkl"))
+            if model_files:
+                # Get the most recent file
+                latest_model_file = max(model_files, key=os.path.getctime)
+                
+                # Register the best model as "trading_optimizer"
+                best_performance = training_results['model_performance'][best_model_name]
+                version_id = self.model_manager.register_model(
+                    model_name="trading_optimizer",
+                    model_path=latest_model_file,
+                    performance_metrics=best_performance,
+                    metadata={
+                        'original_model_name': best_model_name,
+                        'best_score': training_results['best_score'],
+                        'training_samples': training_results['training_samples'],
+                        'test_samples': training_results['test_samples']
+                    }
+                )
+                
+                if version_id:
+                    # Deploy the registered model
+                    if self.model_manager.deploy_model("trading_optimizer", version_id):
+                        logger.info(f"Registered and deployed best model ({best_model_name}) as trading_optimizer")
+                    else:
+                        logger.warning("Failed to deploy registered model")
+                else:
+                    logger.warning("Failed to register best model")
         
         self.is_trained = True
         self.last_training_time = datetime.now()
@@ -367,6 +402,19 @@ class MLTradingOptimizer:
         """Get overall system status."""
         current_model = self.model_manager.get_current_model()
         
+        # Get vector DB status with timeout protection
+        vector_db_status = None
+        vector_db_stats = None
+        try:
+            vector_db_status = self.vector_db_client.get_collection_info()
+        except Exception as e:
+            logger.warning(f"Could not get vector DB status: {e}")
+        
+        try:
+            vector_db_stats = self.vector_db_client.get_collection_stats()
+        except Exception as e:
+            logger.warning(f"Could not get vector DB stats: {e}")
+        
         return {
             'is_trained': self.is_trained,
             'last_training_time': self.last_training_time.isoformat() if self.last_training_time else None,
@@ -376,8 +424,8 @@ class MLTradingOptimizer:
                 'deployed_at': current_model.get('deployed_at'),
             } if current_model else None,
             'model_performance': self.get_model_performance(),
-            'vector_db_status': self.vector_db_client.get_collection_info(),
-            'vector_db_stats': self.vector_db_client.get_collection_stats()
+            'vector_db_status': vector_db_status,
+            'vector_db_stats': vector_db_stats
         }
 
     def load_transformers(self) -> None:

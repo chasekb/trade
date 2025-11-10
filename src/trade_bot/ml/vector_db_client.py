@@ -186,7 +186,7 @@ class VectorDBClient:
         try:
             url = f"{self.base_url}/collections/{self.collection_name}"
             
-            response = requests.get(url)
+            response = requests.get(url, timeout=2.0)
             
             if response.status_code == 200:
                 return response.json()
@@ -194,6 +194,9 @@ class VectorDBClient:
                 logger.error(f"Failed to get collection info: {response.text}")
                 return None
                 
+        except requests.exceptions.Timeout:
+            logger.warning("Timeout getting collection info from Qdrant")
+            return None
         except Exception as e:
             logger.error(f"Error getting collection info: {e}")
             return None
@@ -203,7 +206,7 @@ class VectorDBClient:
         try:
             url = f"{self.base_url}/collections/{self.collection_name}/points/count"
             
-            response = requests.post(url, json={})
+            response = requests.post(url, json={}, timeout=2.0)
             
             if response.status_code == 200:
                 return response.json()
@@ -211,6 +214,9 @@ class VectorDBClient:
                 logger.error(f"Failed to get collection stats: {response.text}")
                 return None
                 
+        except requests.exceptions.Timeout:
+            logger.warning("Timeout getting collection stats from Qdrant")
+            return None
         except Exception as e:
             logger.error(f"Error getting collection stats: {e}")
             return None
