@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
-import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters } from '@/hooks/useTrading';
+import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLivePortfolio } from '@/hooks/useTrading';
 
 // Strategy Selector Component
 interface StrategySelectorProps {
@@ -177,6 +177,59 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
           </div>
         </div>
       )}
+
+      {/* Risk Settings: Max Position Size */}
+      <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-700">Risk Settings</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Initial Portfolio Size ($)</label>
+            <Input
+              type="number"
+              min={1}
+              step={100}
+              value={config.initial_portfolio_size || 10000}
+              onChange={(e) => handleParameterChange('initial_portfolio_size', Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Position Size Mode</label>
+            <select
+              value={config.position_size_mode || 'percent'}
+              onChange={(e) => {
+                const newMode = e.target.value;
+                const newValue = newMode === 'percent' ? 1 : 100;
+                onChange({
+                  ...config,
+                  position_size_mode: newMode,
+                  position_size_value: newValue,
+                });
+              }}
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="percent">Percentage of Portfolio</option>
+              <option value="dollar">Fixed Dollar Amount</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Position Size Value</label>
+            <Input
+              type="number"
+              min={0}
+              step={(config.position_size_mode || 'percent') === 'percent' ? 0.1 : 1}
+              value={config.position_size_value ?? ((config.position_size_mode || 'percent') === 'percent' ? 1 : 100)}
+              onChange={(e) => handleParameterChange('position_size_value', Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+          <div className="text-xs text-gray-500">
+            {(config.position_size_mode || 'percent') === 'percent'
+              ? 'Example: 1 means 1% of portfolio per position'
+              : 'Example: 250 means allocate $250 per position'}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -493,27 +546,51 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     status.symbols,
     status.isActive
   );
+  const { data: portfolioData } = useLivePortfolio(true);
 
   const [strategy, setStrategy] = useState<TradingStrategy>('orderbook');
-  const [config, setConfig] = useState<Record<string, any>>({});
+  const [config, setConfig] = useState<Record<string, any>>({
+    position_size_mode: 'percent',
+    position_size_value: 1,
+    initial_portfolio_size: 10000,
+  });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
+
+  useEffect(() => {
+    if (portfolioData?.total_balance_usd) {
+      setConfig(prevConfig => ({
+        ...prevConfig,
+        initial_portfolio_size: portfolioData.total_balance_usd,
+      }));
+    }
+  }, [portfolioData]);
 
   const handleStartTrading = async () => {
     try {
       // Get max_positions from config, defaulting to 100 (max_positions_per_session default)
-      const maxPositions = config.max_positions_per_session 
-        ? Number(config.max_positions_per_session) 
+      const maxPositions = config.max_positions_per_session
+        ? Number(config.max_positions_per_session)
         : 100;
-      
-      await startTrading({
-        mode: 'simulated',
+
+      const tradingPayload: Parameters<typeof startTrading>[0] = {
+        mode: 'live',
         strategy,
         symbols,
-        parameters: config,
-        position_size_percent: 10,
+        parameters: {
+          ...config,
+          ...(config.position_size_mode === 'dollar' && config.position_size_value
+            ? { position_size_usd: config.position_size_value }
+            : {}),
+        },
         max_positions: maxPositions,
         position_update_interval: 5,
-      });
+      };
+
+      if (config.position_size_mode === 'percent' && typeof config.position_size_value === 'number') {
+        tradingPayload.position_size_percent = config.position_size_value;
+      }
+
+      await startTrading(tradingPayload);
     } catch (error) {
       console.error('Failed to start trading:', error);
     }
