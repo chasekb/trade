@@ -1381,6 +1381,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
       }
     };
 
+    handleVisibilityChange(); // Immediately check on mount or when status changes
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
