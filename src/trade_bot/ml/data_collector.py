@@ -276,6 +276,78 @@ class MLDataCollector:
         logger.info(f"Extracted {len(trades)} trade outcomes from SQLite")
         return trades
     
+    def get_trades_by_pnl(self, limit: int = 10) -> Dict[str, List[Dict[str, Any]]]:
+        """Get top and bottom trades by PnL."""
+        try:
+            if self.is_postgres:
+                return self._get_pnl_trades_from_postgres(limit)
+            else:
+                return self._get_pnl_trades_from_sqlite(limit)
+        except Exception as e:
+            logger.error(f"Error getting trades by PnL: {e}")
+            return {"top_trades": [], "bottom_trades": []}
+
+    def _get_pnl_trades_from_postgres(self, limit: int) -> Dict[str, List[Dict[str, Any]]]:
+        """Get top/bottom PnL trades from PostgreSQL."""
+        conn = psycopg.connect(self.db_path)
+        cursor = conn.cursor()
+
+        query_top = """
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+            FROM individual_trades
+            WHERE pnl IS NOT NULL
+            ORDER BY pnl DESC
+            LIMIT %s
+        """
+        cursor.execute(query_top, (limit,))
+        top_trades = cursor.fetchall()
+
+        query_bottom = """
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+            FROM individual_trades
+            WHERE pnl IS NOT NULL
+            ORDER BY pnl ASC
+            LIMIT %s
+        """
+        cursor.execute(query_bottom, (limit,))
+        bottom_trades = cursor.fetchall()
+
+        conn.close()
+        
+        return {
+            "top_trades": [dict(zip([c.name for c in cursor.description], row)) for row in top_trades],
+            "bottom_trades": [dict(zip([c.name for c in cursor.description], row)) for row in bottom_trades]
+        }
+
+    def _get_pnl_trades_from_sqlite(self, limit: int) -> Dict[str, List[Dict[str, Any]]]:
+        """Get top/bottom PnL trades from SQLite."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        query_top = """
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+            FROM individual_trades
+            WHERE pnl IS NOT NULL
+            ORDER BY pnl DESC
+            LIMIT ?
+        """
+        cursor.execute(query_top, (limit,))
+        top_trades = [dict(row) for row in cursor.fetchall()]
+
+        query_bottom = """
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+            FROM individual_trades
+            WHERE pnl IS NOT NULL
+            ORDER BY pnl ASC
+            LIMIT ?
+        """
+        cursor.execute(query_bottom, (limit,))
+        bottom_trades = [dict(row) for row in cursor.fetchall()]
+
+        conn.close()
+        return {"top_trades": top_trades, "bottom_trades": bottom_trades}
+        
     def extract_order_book_snapshots(self, symbol: str, days_back: int = 7) -> List[Dict[str, Any]]:
         """Extract order book snapshots for feature engineering."""
         try:

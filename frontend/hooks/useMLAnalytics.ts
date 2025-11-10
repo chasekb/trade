@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { MLDashboardData } from '@/types/trading';
 import { apiClient } from '@/lib/api';
 
@@ -21,6 +21,33 @@ export function useMLAnalytics() {
     staleTime: 25000, // Consider data stale after 25 seconds
   });
 
+  const {
+    data: pnlTradesData,
+    isLoading: isPnlLoading,
+    error: pnlError,
+  } = useQuery({
+    queryKey: ['ml', 'pnlTrades'],
+    queryFn: async () => {
+      const response = await apiClient.getPnlTrades();
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to fetch PnL trades data');
+      }
+      return response.data;
+    },
+    refetchInterval: 60000, // Refetch every 60 seconds
+    staleTime: 55000,
+  });
+
+  const comparePredictionsMutation = useMutation({
+    mutationFn: async (features: any) => {
+      const response = await apiClient.getPredictionComparison(features);
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to fetch prediction comparison');
+      }
+      return response.data;
+    },
+  });
+
   return {
     mlData,
     isLoading,
@@ -30,5 +57,11 @@ export function useMLAnalytics() {
     modelStatus: mlData?.status,
     performance: mlData?.performance,
     featureImportance: mlData?.feature_importance,
+    pnlTrades: pnlTradesData,
+    isPnlLoading,
+    pnlError,
+    comparePredictions: comparePredictionsMutation.mutate,
+    isComparing: comparePredictionsMutation.isPending,
+    comparisonData: comparePredictionsMutation.data,
   };
 }

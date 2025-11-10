@@ -170,6 +170,57 @@ class MLDashboardIntegration:
         except Exception as e:
             logger.error(f"Error rolling back model: {e}")
             return {'error': str(e)}
+            
+    def get_pnl_tracking_data(self) -> Dict[str, Any]:
+        """Get PnL tracking data for dashboard."""
+        try:
+            if self.ml_optimizer:
+                return self.ml_optimizer.get_top_pnl_trades()
+            else:
+                return {'error': 'ML optimizer not available'}
+        except Exception as e:
+            logger.error(f"Error getting PnL tracking data: {e}")
+            return {'error': str(e)}
+
+    def list_available_models(self) -> Dict[str, Any]:
+        """List available models for dashboard."""
+        try:
+            if self.ml_optimizer:
+                return {"models": self.ml_optimizer.list_available_models()}
+            else:
+                return {'error': 'ML optimizer not available'}
+        except Exception as e:
+            logger.error(f"Error listing available models: {e}")
+            return {'error': str(e)}
+
+    def set_active_model(self, model_name: str) -> Dict[str, Any]:
+        """Set the active model for predictions."""
+        try:
+            if self.ml_optimizer:
+                success = self.ml_optimizer.set_active_model(model_name)
+                if success:
+                    return {'status': 'success', 'message': f'Model {model_name} activated'}
+                else:
+                    return {'error': f'Failed to activate model {model_name}'}
+            else:
+                return {'error': 'ML optimizer not available'}
+        except Exception as e:
+            logger.error(f"Error setting active model: {e}")
+            return {'error': str(e)}
+
+    def get_prediction_comparison(self, features: Dict[str, Any]) -> Dict[str, Any]:
+        """Get prediction comparison from all models."""
+        try:
+            if self.ml_optimizer:
+                # The features are passed in as a dictionary, so we need to convert them to an OrderBookFeatures object
+                from ..ml.data_collector import OrderBookFeatures
+                feature_obj = OrderBookFeatures(**features)
+                return self.ml_optimizer.get_prediction_comparison(feature_obj)
+            else:
+                return {'error': 'ML optimizer not available'}
+        except Exception as e:
+            logger.error(f"Error getting prediction comparison: {e}")
+            return {'error': str(e)}
     
     def get_ml_dashboard_data(self) -> Dict[str, Any]:
         """Get comprehensive ML data for dashboard."""

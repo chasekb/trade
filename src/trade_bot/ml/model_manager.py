@@ -82,6 +82,30 @@ class ModelManager:
             logger.error(f"Error registering model: {e}")
             return None
     
+    def set_active_model(self, model_name: str) -> bool:
+        """Set the active model by name."""
+        try:
+            # Find the model file
+            model_path = os.path.join(self.models_dir, f"{model_name}.pkl")
+            if not os.path.exists(model_path):
+                logger.error(f"Model file not found for {model_name}")
+                return False
+
+            # Load the model
+            model = joblib.load(model_path)
+
+            # Set as current model
+            self.current_model = {
+                'model': model,
+                'model_name': model_name,
+                'deployed_at': datetime.now().isoformat(),
+            }
+            logger.info(f"Set active model to {model_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting active model: {e}")
+            return False
+
     def deploy_model(self, model_name: str, version_id: str = None) -> bool:
         """Deploy a model version as the current model."""
         try:
@@ -181,15 +205,12 @@ class ModelManager:
     def list_models(self) -> List[Dict[str, Any]]:
         """List all registered models."""
         models = []
-        for model_name, versions in self.model_versions.items():
-            latest_version = versions[-1] if versions else None
-            models.append({
-                'model_name': model_name,
-                'versions': len(versions),
-                'latest_version': latest_version['version_id'] if latest_version else None,
-                'latest_performance': latest_version['performance_metrics'] if latest_version else {},
-                'status': latest_version['status'] if latest_version else 'unknown'
-            })
+        for model_file in os.listdir(self.models_dir):
+            if model_file.endswith(".pkl"):
+                model_name = model_file.replace(".pkl", "")
+                models.append({
+                    'model_name': model_name,
+                })
         return models
     
     def get_current_model(self) -> Optional[Dict[str, Any]]:

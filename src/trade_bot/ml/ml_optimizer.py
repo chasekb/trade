@@ -124,27 +124,8 @@ class MLTradingOptimizer:
         # Store feature vectors in vector database
         self._store_feature_vectors_in_db(features, X_processed)
         
-        # Register the best model
-        if self.model_trainer.best_model is not None:
-            model_path = os.path.join(self.models_dir, f"best_model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
-            if self.model_trainer.save_model(model_path):
-                version_id = self.model_manager.register_model(
-                    model_name="trading_optimizer",
-                    model_path=model_path,
-                    performance_metrics=training_results['model_performance'].get('best_model', {}),
-                    metadata={
-                        'feature_names': feature_names,
-                        'training_samples': X_processed.shape[0],
-                        'feature_count': X_processed.shape[1],
-                        'model_type': model_type
-                    }
-                )
-                
-                if version_id:
-                    # Deploy the new model
-                    self.model_manager.deploy_model("trading_optimizer", version_id)
-                    self.is_trained = True
-                    self.last_training_time = datetime.now()
+        self.is_trained = True
+        self.last_training_time = datetime.now()
         
         logger.info("ML model training completed")
         return training_results
@@ -277,7 +258,29 @@ class MLTradingOptimizer:
     def rollback_model(self) -> bool:
         """Rollback to the previous model version."""
         return self.model_manager.rollback_model("trading_optimizer")
+
+    def list_available_models(self) -> List[Dict[str, Any]]:
+        """List all available models."""
+        return self.model_manager.list_models()
+
+    def set_active_model(self, model_name: str) -> bool:
+        """Set the active model for predictions."""
+        return self.model_manager.set_active_model(model_name)
+
+    def get_prediction_comparison(self, features: OrderBookFeatures) -> Dict[str, Any]:
+        """Get predictions from all models for comparison."""
+        predictions = {}
+        for model_info in self.model_manager.list_models():
+            model_name = model_info['model_name']
+            self.model_manager.set_active_model(model_name)
+            prediction = self.predict_trading_signal(features)
+            predictions[model_name] = prediction
+        return predictions
     
+    def get_top_pnl_trades(self, limit: int = 10) -> Dict[str, List[Dict[str, Any]]]:
+        """Get top and bottom trades by PnL."""
+        return self.data_collector.get_trades_by_pnl(limit)
+        
     def _store_feature_vectors_in_db(self, features: List[OrderBookFeatures], 
                                     processed_features: np.ndarray) -> None:
         """Store feature vectors in vector database."""
