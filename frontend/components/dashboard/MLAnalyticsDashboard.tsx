@@ -5,6 +5,8 @@ import { DashboardGrid } from '@/components/layout/DashboardGrid';
 import { cn } from '@/lib/utils';
 import { useMLAnalytics } from '@/hooks/useMLAnalytics';
 import { useModelTraining } from '@/hooks/useModelTraining';
+import { PnlTradesTable } from './PnlTradesTable';
+import { PredictionComparisonChart } from './PredictionComparisonChart';
 
 interface ModelStatusCardProps {
   status: import('@/types/trading').MLModelStatus;
@@ -186,7 +188,13 @@ function FeatureImportanceChart({ features }: FeatureImportanceChartProps) {
 }
 
 function ModelControls() {
-  const { trainModel, isTraining, updateModel, isUpdating, rollbackModel, isRollingBack } = useModelTraining();
+  const {
+    trainModel, isTraining,
+    updateModel, isUpdating,
+    rollbackModel, isRollingBack,
+    availableModels, isLoadingModels,
+    setActiveModel, isSettingActiveModel
+  } = useModelTraining();
 
   return (
     <Card>
@@ -194,33 +202,63 @@ function ModelControls() {
         <CardTitle>Model Controls</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Button
-            onClick={() => trainModel()}
-            disabled={isTraining}
-            className="flex-1"
-            variant="primary"
-          >
-            {isTraining ? 'Training...' : 'Train Model'}
-          </Button>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              onClick={() => trainModel()}
+              disabled={isTraining}
+              className="flex-1"
+              variant="primary"
+            >
+              {isTraining ? 'Training...' : 'Train Model'}
+            </Button>
 
-          <Button
-            onClick={() => updateModel()}
-            disabled={isUpdating}
-            className="flex-1"
-            variant="secondary"
-          >
-            {isUpdating ? 'Updating...' : 'Update Model'}
-          </Button>
+            <Button
+              onClick={() => updateModel()}
+              disabled={isUpdating}
+              className="flex-1"
+              variant="secondary"
+            >
+              {isUpdating ? 'Updating...' : 'Update Model'}
+            </Button>
 
-          <Button
-            onClick={() => rollbackModel()}
-            disabled={isRollingBack}
-            className="flex-1"
-            variant="outline"
-          >
-            {isRollingBack ? 'Rolling Back...' : 'Rollback'}
-          </Button>
+            <Button
+              onClick={() => rollbackModel()}
+              disabled={isRollingBack}
+              className="flex-1"
+              variant="outline"
+            >
+              {isRollingBack ? 'Rolling Back...' : 'Rollback'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              className="flex-1"
+              onChange={(e) => setActiveModel(e.target.value)}
+              disabled={isLoadingModels || isSettingActiveModel}
+            >
+              {isLoadingModels ? (
+                <option>Loading models...</option>
+              ) : (
+                availableModels?.map((model: any) => (
+                  <option key={model.model_name} value={model.model_name}>
+                    {model.model_name}
+                  </option>
+                ))
+              )}
+            </select>
+            <Button
+              onClick={() => {
+                const select = document.querySelector('select');
+                if (select) {
+                  setActiveModel(select.value);
+                }
+              }}
+              disabled={isSettingActiveModel}
+            >
+              {isSettingActiveModel ? 'Activating...' : 'Set Active'}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -232,7 +270,7 @@ interface MLAnalyticsDashboardProps {
 }
 
 export default function MLAnalyticsDashboard({ className }: MLAnalyticsDashboardProps) {
-  const { mlData, isLoading, error } = useMLAnalytics();
+  const { mlData, isLoading, error, pnlTrades, isPnlLoading, pnlError } = useMLAnalytics();
 
   if (error) {
     return (
@@ -267,6 +305,10 @@ export default function MLAnalyticsDashboard({ className }: MLAnalyticsDashboard
         <FeatureImportanceChart features={mlData.feature_importance} />
         <ModelControls />
       </DashboardGrid>
+
+      <PnlTradesTable data={pnlTrades} isLoading={isPnlLoading} error={pnlError} />
+
+      <PredictionComparisonChart />
     </div>
   );
 }

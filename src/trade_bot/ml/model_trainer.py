@@ -86,7 +86,8 @@ class ModelTrainer:
         rf_score = self._evaluate_model(rf_model, X_test, y_test)
         self.models['random_forest'] = rf_model
         self.model_performance['random_forest'] = rf_score
-        
+        self.save_model(rf_model, f"data/models/random_forest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
+
         # Gradient Boosting
         gb_model = GradientBoostingRegressor(
             n_estimators=100,
@@ -98,7 +99,8 @@ class ModelTrainer:
         gb_score = self._evaluate_model(gb_model, X_test, y_test)
         self.models['gradient_boosting'] = gb_model
         self.model_performance['gradient_boosting'] = gb_score
-        
+        self.save_model(gb_model, f"data/models/gradient_boosting_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
+
         # Neural Network
         nn_model = MLPRegressor(
             hidden_layer_sizes=(100, 50),
@@ -113,13 +115,15 @@ class ModelTrainer:
         nn_score = self._evaluate_model(nn_model, X_test, y_test)
         self.models['neural_network'] = nn_model
         self.model_performance['neural_network'] = nn_score
-        
+        self.save_model(nn_model, f"data/models/neural_network_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
+
         # Ridge Regression
         ridge_model = Ridge(alpha=1.0, random_state=self.random_state)
         ridge_model.fit(X_train, y_train)
         ridge_score = self._evaluate_model(ridge_model, X_test, y_test)
         self.models['ridge'] = ridge_model
         self.model_performance['ridge'] = ridge_score
+        self.save_model(ridge_model, f"data/models/ridge_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
         
         logger.info(f"Ensemble training complete. Scores: {self.model_performance}")
     
@@ -305,9 +309,9 @@ class ModelTrainer:
         else:
             return None
     
-    def save_model(self, filepath: str) -> bool:
-        """Save the best model to disk."""
-        if self.best_model is None:
+    def save_model(self, model: Any, filepath: str) -> bool:
+        """Save a model to disk."""
+        if model is None:
             logger.error("No model to save")
             return False
         
@@ -316,7 +320,7 @@ class ModelTrainer:
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
             
             # Save model
-            joblib.dump(self.best_model, filepath)
+            joblib.dump(model, filepath)
             
             # Save metadata
             metadata = {

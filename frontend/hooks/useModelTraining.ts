@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MLTrainingResponse } from '@/types/trading';
 import { apiClient } from '@/lib/api';
 
@@ -92,6 +92,38 @@ export function useModelTraining() {
     },
   });
 
+  const { data: availableModels, isLoading: isLoadingModels } = useQuery({
+    queryKey: ['ml', 'models'],
+    queryFn: async () => {
+      const response = await apiClient.getAvailableModels();
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to fetch available models');
+      }
+      return response.data.models;
+    },
+  });
+
+  const setActiveModelMutation = useMutation({
+    mutationFn: async (modelName: string) => {
+      const response = await apiClient.setActiveModel(modelName);
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to set active model');
+      }
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (data.status === 'success') {
+        showSuccess(data.message || 'Model activated successfully');
+        queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+      } else {
+        showError(data.error || 'Failed to activate model');
+      }
+    },
+    onError: (error) => {
+      showError(error.message || 'Failed to set active model');
+    },
+  });
+
   return {
     // Training
     trainModel: trainMutation.mutate,
@@ -107,5 +139,11 @@ export function useModelTraining() {
     rollbackModel: rollbackMutation.mutate,
     isRollingBack: rollbackMutation.isPending,
     rollbackError: rollbackMutation.error as Error | null,
+
+    // Model Selection
+    availableModels,
+    isLoadingModels,
+    setActiveModel: setActiveModelMutation.mutate,
+    isSettingActiveModel: setActiveModelMutation.isPending,
   };
 }

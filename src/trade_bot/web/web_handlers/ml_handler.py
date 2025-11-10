@@ -97,3 +97,49 @@ async def get_ml_dashboard_data():
     except Exception as e:
         logger.error(f"Error getting ML dashboard data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@ml_router.get("/pnl-trades")
+async def get_pnl_trades_data():
+    """Get top and bottom trades by PnL."""
+    try:
+        pnl_data = ml_integration.get_pnl_tracking_data()
+        return pnl_data
+    except Exception as e:
+        logger.error(f"Error getting PnL trades data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@ml_router.get("/models")
+async def get_available_models():
+    """Get a list of available ML models."""
+    try:
+        models = ml_integration.list_available_models()
+        return models
+    except Exception as e:
+        logger.error(f"Error getting available models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@ml_router.post("/models/set_active")
+async def set_active_model(model_name: str):
+    """Set the active ML model."""
+    try:
+        result = ml_integration.set_active_model(model_name)
+        if 'error' in result:
+            raise HTTPException(status_code=400, detail=result['error'])
+        return result
+    except Exception as e:
+        logger.error(f"Error setting active model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@ml_router.post("/prediction-comparison")
+async def get_prediction_comparison(features: Dict[str, Any]):
+    """Get a comparison of predictions from all models."""
+    try:
+        comparison = ml_integration.get_prediction_comparison(features)
+        return comparison
+    except Exception as e:
+        logger.error(f"Error getting prediction comparison: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
