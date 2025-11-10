@@ -59,7 +59,7 @@ class DataHandlers:
                 trading_active = self.simulated_trading_manager.is_trading
                 # Check if strategy is orderbook
                 if trading_active and hasattr(self.simulated_trading_manager, 'strategy_type'):
-                    orderbook_strategy_active = self.simulated_trading_manager.strategy_type == 'orderbook'
+                    orderbook_strategy_active = self.simulated_trading_manager.strategy_type in ['orderbook', 'ml_enhanced_orderbook']
                     logger.info(f"Simulated trading active: {trading_active}, strategy: {self.simulated_trading_manager.strategy_type}")
 
             # Also check if async trading is active with orderbook strategy
@@ -69,7 +69,7 @@ class DataHandlers:
                     trading_active = True
                     # Check if async trading strategy is orderbook
                     async_strategy = self.trading_state.get('active_strategy', '')
-                    orderbook_strategy_active = async_strategy == 'orderbook'
+                    orderbook_strategy_active = async_strategy in ['orderbook', 'ml_enhanced_orderbook']
                     logger.info(f"Async trading active: {async_trading_active}, strategy: {async_strategy}")
                     if orderbook_strategy_active:
                         logger.info("Async trading is active with orderbook strategy, enabling order book signals")

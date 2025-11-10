@@ -245,13 +245,13 @@ class ModelTrainer:
         sharpe_ratio = self._calculate_sharpe_ratio(y_test, y_pred)
         
         return {
-            'mse': mse,
-            'rmse': rmse,
-            'mae': mae,
-            'r2': r2,
-            'profit_factor': profit_factor,
-            'sharpe_ratio': sharpe_ratio,
-            'score': r2  # Use R² as primary score
+            'mse': float(mse),
+            'rmse': float(rmse),
+            'mae': float(mae),
+            'r2': float(r2),
+            'profit_factor': float(profit_factor),
+            'sharpe_ratio': float(sharpe_ratio),
+            'score': float(r2)
         }
     
     def _calculate_profit_factor(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
