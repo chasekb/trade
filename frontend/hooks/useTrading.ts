@@ -142,6 +142,7 @@ export function useOrderBookSignals(
     refetchInterval: isEnabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for real-time signal updates
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
     refetchIntervalInBackground: true, // Continue polling even when tab is hidden
+    refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
 
@@ -224,12 +225,8 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         // Push orderbook signals updates; invalidate or set cache for all query key variations
         if (type === 'orderbook_signals_update' && data) {
           try {
-            // Set cache for all possible query key variations to ensure immediate updates
-            // This handles cases where symbols might not be loaded yet
-            (window as any).__RQ_SET__?.(['orderbook-signals'], data);
-            (window as any).__RQ_SET__?.(['orderbook-signals', undefined], data);
-            (window as any).__RQ_SET__?.(['orderbook-signals', []], data);
-            // Invalidate all orderbook-signals queries to trigger refetch if needed
+            // Do not set cache with partial keys, as it can overwrite paginated data.
+            // Instead, just invalidate to trigger a refetch from the API.
             (window as any).__RQ_INVALIDATE__?.(['orderbook-signals']);
           } catch {}
           window.dispatchEvent(new CustomEvent('orderbook-signals-update', { detail: data }));

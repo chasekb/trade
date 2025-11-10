@@ -53,6 +53,7 @@ class ModelStatusResponse(BaseModel):
     current_model: Optional[Dict[str, Any]]
     model_performance: Dict[str, Any]
     vector_db_status: Optional[Dict[str, Any]]
+    vector_db_stats: Optional[Dict[str, Any]] = None
 
 @app.on_event("startup")
 async def startup_event():

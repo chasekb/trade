@@ -177,7 +177,12 @@ class MLDashboardIntegration:
             if self.ml_optimizer:
                 return self.ml_optimizer.get_top_pnl_trades(sort_by=sort_by)
             else:
-                return {'error': 'ML optimizer not available'}
+                # PnL data requires database access, return empty structure if ML optimizer not available
+                return {
+                    'top_trades': [],
+                    'bottom_trades': [],
+                    'message': 'ML optimizer not available - PnL data requires local database access'
+                }
         except Exception as e:
             logger.error(f"Error getting PnL tracking data: {e}")
             return {'error': str(e)}
@@ -188,7 +193,18 @@ class MLDashboardIntegration:
             if self.ml_optimizer:
                 return {"models": self.ml_optimizer.list_available_models()}
             else:
-                return {'error': 'ML optimizer not available'}
+                # Fallback: try to get from ML server status
+                try:
+                    response = requests.get(f"{self.ml_server_url}/status", timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        current_model = data.get('current_model')
+                        if current_model:
+                            return {"models": [{"model_name": current_model.get('model_name', 'trading_optimizer')}]}
+                    return {"models": []}
+                except Exception as e:
+                    logger.warning(f"Could not get models from ML server: {e}")
+                    return {"models": []}
         except Exception as e:
             logger.error(f"Error listing available models: {e}")
             return {'error': str(e)}
