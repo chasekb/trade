@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { MLDashboardData } from '@/types/trading';
 import { apiClient } from '@/lib/api';
 
 export function useMLAnalytics() {
+  const [sortBy, setSortBy] = useState('pnl');
   const {
     data: mlData,
     isLoading,
@@ -26,9 +28,9 @@ export function useMLAnalytics() {
     isLoading: isPnlLoading,
     error: pnlError,
   } = useQuery({
-    queryKey: ['ml', 'pnlTrades'],
+    queryKey: ['ml', 'pnlTrades', sortBy],
     queryFn: async () => {
-      const response = await apiClient.getPnlTrades();
+      const response = await apiClient.getPnlTrades(sortBy);
       if (response.status === 'error' || !response.data) {
         throw new Error(response.error || 'Failed to fetch PnL trades data');
       }
@@ -60,6 +62,8 @@ export function useMLAnalytics() {
     pnlTrades: pnlTradesData,
     isPnlLoading,
     pnlError,
+    sortBy,
+    setSortBy,
     comparePredictions: comparePredictionsMutation.mutate,
     isComparing: comparePredictionsMutation.isPending,
     comparisonData: comparePredictionsMutation.data,

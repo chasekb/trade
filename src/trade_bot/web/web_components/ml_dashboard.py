@@ -171,11 +171,11 @@ class MLDashboardIntegration:
             logger.error(f"Error rolling back model: {e}")
             return {'error': str(e)}
             
-    def get_pnl_tracking_data(self) -> Dict[str, Any]:
+    def get_pnl_tracking_data(self, sort_by: str = 'pnl') -> Dict[str, Any]:
         """Get PnL tracking data for dashboard."""
         try:
             if self.ml_optimizer:
-                return self.ml_optimizer.get_top_pnl_trades()
+                return self.ml_optimizer.get_top_pnl_trades(sort_by=sort_by)
             else:
                 return {'error': 'ML optimizer not available'}
         except Exception as e:

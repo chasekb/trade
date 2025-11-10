@@ -1,15 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
-
-interface PnlTradesTableProps {
-  data: {
-    top_trades: any[];
-    bottom_trades: any[];
-  };
-  isLoading: boolean;
-  error: Error | null;
-}
+import { useMLAnalytics } from '@/hooks/useMLAnalytics';
 
 const columns = [
   {
@@ -33,6 +25,15 @@ const columns = [
     },
   },
   {
+    key: 'pnl_percent',
+    header: 'PnL %',
+    render: (pnlPercent: number) => {
+      const formatted = `${pnlPercent.toFixed(2)}%`;
+      const textColor = pnlPercent >= 0 ? 'text-green-600' : 'text-red-600';
+      return <div className={textColor}>{formatted}</div>;
+    },
+  },
+  {
     key: 'timestamp',
     header: 'Timestamp',
     render: (timestamp: number) => {
@@ -42,31 +43,41 @@ const columns = [
   },
 ];
 
-export function PnlTradesTable({ data, isLoading, error }: PnlTradesTableProps) {
-  if (isLoading) {
+export function PnlTradesTable() {
+  const { pnlTrades, isPnlLoading, pnlError, sortBy, setSortBy } = useMLAnalytics();
+
+  if (isPnlLoading) {
     return <div>Loading PnL trades...</div>;
   }
 
-  if (error) {
-    return <div className="text-red-600">Error: {error.message}</div>;
+  if (pnlError) {
+    return <div className="text-red-600">Error: {pnlError.message}</div>;
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Top 10 Trades by PnL</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Top 10 Trades</CardTitle>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+            <option value="pnl">Sort by PnL</option>
+            <option value="pnl_percent">Sort by PnL %</option>
+          </select>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} data={data?.top_trades || []} />
+          <DataTable columns={columns} data={pnlTrades?.top_trades || []} />
         </CardContent>
       </Card>
       <Card>
-        <CardHeader>
-          <CardTitle>Bottom 10 Trades by PnL</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Bottom 10 Trades</CardTitle>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+            <option value="pnl">Sort by PnL</option>
+            <option value="pnl_percent">Sort by PnL %</option>
+          </select>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} data={data?.bottom_trades || []} />
+          <DataTable columns={columns} data={pnlTrades?.bottom_trades || []} />
         </CardContent>
       </Card>
     </div>
