@@ -332,22 +332,31 @@ class DataHandlers:
                             }
                         }
 
+                        # Enrich with ML analysis before saving
+                        enriched_signal_list = await self._enrich_signals_with_ml_analysis([signal_data])
+                        enriched_signal = enriched_signal_list[0] if enriched_signal_list else signal_data
+
                         # Store signal to database immediately
                         if self.database_manager:
                             try:
+                                # Merge ml_analysis into signal_data
+                                signal_details = {
+                                    'spread': enriched_signal['spread'],
+                                    'volume': enriched_signal['volume'],
+                                    'criteria_analysis': enriched_signal['criteria_analysis']
+                                }
+                                if 'ml_analysis' in enriched_signal:
+                                    signal_details['ml_analysis'] = enriched_signal['ml_analysis']
+
                                 db_signal_data = {
-                                    'signal_id': f"{symbol}_{int(datetime.fromisoformat(signal_data['timestamp'].replace('Z', '+00:00')).timestamp())}_{signal}",
+                                    'signal_id': f"{symbol}_{int(datetime.fromisoformat(enriched_signal['timestamp'].replace('Z', '+00:00')).timestamp())}_{signal}",
                                     'session_id': getattr(self.simulated_trading_manager, 'session_id', None) if self.simulated_trading_manager else None,
                                     'symbol': symbol,
-                                    'signal_type': signal_data['signal_type'],
-                                    'strength': signal_data['signal_strength'],
-                                    'price': signal_data['price'],
-                                    'timestamp': int(datetime.fromisoformat(signal_data['timestamp'].replace('Z', '+00:00')).timestamp()),
-                                    'signal_data': {
-                                        'spread': signal_data['spread'],
-                                        'volume': signal_data['volume'],
-                                        'criteria_analysis': signal_data['criteria_analysis']
-                                    },
+                                    'signal_type': enriched_signal['signal_type'],
+                                    'strength': enriched_signal['signal_strength'],
+                                    'price': enriched_signal['price'],
+                                    'timestamp': int(datetime.fromisoformat(enriched_signal['timestamp'].replace('Z', '+00:00')).timestamp()),
+                                    'signal_data': signal_details,
                                     'processed': False
                                 }
 
@@ -362,7 +371,7 @@ class DataHandlers:
                                 logger.warning(f"Error storing signal for {symbol}: {e}")
 
                         logger.info(f"Generated live orderbook signal for {symbol}: {signal} (strength: {signal_strength:.2f})")
-                        return signal_data
+                        return enriched_signal
 
                     else:
                         # Fallback to placeholder if no data, but rate-limit warnings per symbol
@@ -586,11 +595,8 @@ class DataHandlers:
             if self.simulated_trading_manager and hasattr(self.simulated_trading_manager, 'get_total_signals_processed'):
                 total_analyzed = self.simulated_trading_manager.get_total_signals_processed()
 
-            # Enrich signals with ML analysis
-            enriched_signals = await self._enrich_signals_with_ml_analysis(paginated_signals)
-            
             return {
-                "signals": enriched_signals,
+                "signals": paginated_signals,
                 "trading_active": trading_active,
                 "message": "Order book signals generated successfully",
                 "total_analyzed": total_analyzed,

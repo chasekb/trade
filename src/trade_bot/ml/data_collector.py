@@ -39,6 +39,10 @@ class OrderBookFeatures:
     volume_weighted_price: float
     price_momentum: float
     volatility: float
+    # Features from previous ML analysis
+    prev_win_probability: float = 0.0
+    prev_expected_return: float = 0.0
+    prev_confidence: float = 0.0
 
 
 @dataclass
@@ -120,6 +124,7 @@ class MLDataCollector:
             # Extract fields from signal_data JSON (stored in criteria_analysis or directly)
             criteria_analysis = signal_data_json.get('criteria_analysis', {})
             volume_imbalance = criteria_analysis.get('volume_imbalance_buy', {})
+            ml_analysis = signal_data_json.get('ml_analysis', {})
             
             signals.append({
                 'signal_id': row[0],
@@ -130,6 +135,7 @@ class MLDataCollector:
                 'price': row[5],
                 'timestamp': row[6],
                 'signal_data': signal_data_json,
+                'ml_analysis': ml_analysis,
                 'spread': signal_data_json.get('spread', 0.0),
                 'imbalance': volume_imbalance.get('current_value', 0.0) if isinstance(volume_imbalance, dict) else 0.0,
                 'mid_price': row[5],  # Use price as mid_price
@@ -414,8 +420,15 @@ class MLDataCollector:
             # Sort by timestamp
             symbol_signals = symbol_signals.sort_values('timestamp')
             
-            for _, signal in symbol_signals.iterrows():
+            for i, signal in symbol_signals.iterrows():
                 try:
+                    # Get previous signal's ML analysis if available
+                    prev_ml_analysis = {}
+                    if i > 0:
+                        prev_signal = symbol_signals.iloc[i-1]
+                        if 'ml_analysis' in prev_signal and prev_signal['ml_analysis']:
+                            prev_ml_analysis = prev_signal['ml_analysis']
+
                     # Extract order book features
                     features = OrderBookFeatures(
                         timestamp=int(signal['timestamp']),
@@ -431,7 +444,10 @@ class MLDataCollector:
                         wall_size=self._calculate_wall_size(signal),
                         volume_weighted_price=self._calculate_vwap(signal),
                         price_momentum=self._calculate_price_momentum(symbol_signals, signal),
-                        volatility=self._calculate_volatility(symbol_signals, signal)
+                        volatility=self._calculate_volatility(symbol_signals, signal),
+                        prev_win_probability=float(prev_ml_analysis.get('win_probability', 0.0) / 100.0), # Normalize to 0-1
+                        prev_expected_return=float(prev_ml_analysis.get('expected_return', 0.0)),
+                        prev_confidence=float(prev_ml_analysis.get('confidence', 0.0))
                     )
                     
                     feature_vectors.append(features)
