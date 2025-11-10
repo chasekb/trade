@@ -134,7 +134,14 @@ class MLTradingOptimizer:
         """Predict optimal trading signal using ML model."""
         if not self.is_trained:
             logger.warning("No trained model available")
-            return {'action': 'hold', 'confidence': 0.0, 'reason': 'No trained model'}
+            return {
+                'action': 'hold',
+                'confidence': 0.0,
+                'signal_value': 0.0,
+                'reason': 'No trained model',
+                'similar_conditions': 0,
+                'timestamp': datetime.now().isoformat()
+            }
         
         try:
             # Extract features into a dictionary
@@ -161,7 +168,14 @@ class MLTradingOptimizer:
             prediction = self.model_manager.predict(X_processed)
             
             if prediction is None:
-                return {'action': 'hold', 'confidence': 0.0, 'reason': 'Prediction failed'}
+                return {
+                    'action': 'hold',
+                    'confidence': 0.0,
+                    'signal_value': 0.0,
+                    'reason': 'Prediction failed',
+                    'similar_conditions': 0,
+                    'timestamp': datetime.now().isoformat()
+                }
             
             # Convert prediction to trading signal
             signal_value = prediction[0]
