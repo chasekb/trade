@@ -64,4 +64,6 @@ The following diagram illustrates the flow of data through the system:
 
 ## 🚀 Deployment
 
-The system is designed to be deployed using Docker and Docker Compose. The `Dockerfile` and `docker-compose.yml` files in the root directory provide the necessary configuration for building and running the application in a containerized environment.
+The system is designed for a flexible, container-based deployment using Docker and Docker Compose. The root `docker-compose.yml` orchestrates the entire project, while component-specific `docker-compose.yml` files (e.g., in `frontend/`) allow for individual services to be run independently.
+
+For a comprehensive guide on the deployment options, please see the [DEPLOYMENT.md](DEPLOYMENT.md) file.

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The vector database services (Qdrant, Redis, and ML Model Server) have been integrated into the main trading bot application, replacing the previous podman-compose container approach.
+The vector database services (Qdrant, Redis, and ML Model Server) are managed through a hybrid approach that supports both integrated local processes and container-based deployments, providing flexibility for development and production environments.
 
 ## Architecture
 
@@ -112,19 +112,25 @@ Services support graceful shutdown with proper cleanup:
 
 ## Migration from Container Approach
 
-The previous podman-compose approach has been replaced with this integrated service management:
+The system can be run using either an integrated service manager or a container-based approach with podman-compose.
 
-**Before:**
-```bash
-podman-compose -f podman-compose-vector-db.yml up -d
-```
+### Integrated Service Management (Recommended for Local Development)
 
-**After:**
+The `main.py` script can manage the services directly:
 ```bash
 python main.py vector-db
 ```
+This command will check for running services and start them as local processes if they are not found.
 
-**Note:** The `Dockerfile.ml-server` and `podman-compose-vector-db.yml` files have been removed as they are no longer needed with the integrated service approach.
+### Container-Based Deployment (Recommended for Production)
+
+For a more robust and isolated environment, the services can be run using podman-compose:
+```bash
+podman-compose -f podman-compose-vector-db.yml up -d
+```
+This will build and run the ML server in a container, as defined in `src/trade_bot/ml/Dockerfile`.
+
+**Note:** The `src/trade_bot/ml/Dockerfile` and `podman-compose-vector-db.yml` files are part of the container-based deployment option and should be used for production or isolated development environments.
 
 ## Benefits
 
