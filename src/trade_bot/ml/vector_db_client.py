@@ -1,6 +1,7 @@
 """Vector Database Client for ML feature storage and retrieval."""
 
 import logging
+import os
 import numpy as np
 import json
 from typing import List, Dict, Any, Optional, Tuple
@@ -24,10 +25,14 @@ class VectorDBClient:
             port: Qdrant server port
             collection_name: Name of the collection to use
         """
-        self.host = os.environ.get("QDRANT_URL", host)
+        self.host = host
         self.port = port
         self.collection_name = collection_name
-        self.base_url = f"http://{self.host}:{port}"
+        qdrant_url = os.environ.get("QDRANT_URL")
+        if qdrant_url:
+            self.base_url = qdrant_url
+        else:
+            self.base_url = f"http://{self.host}:{port}"
         
     def create_collection(self, vector_size: int) -> bool:
         """Create a new collection in Qdrant."""
