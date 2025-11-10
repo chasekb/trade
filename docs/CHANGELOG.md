@@ -1,5 +1,47 @@
 # 📝 Changelog
 
+## [2.3.0] - 2025-11-10
+
+### 🚀 Features
+- **Order Book Signals**: Implemented comprehensive order book signals functionality.
+- **Dynamic Universe Population**: Added a feature to dynamically populate the trading universe from the Coinbase API.
+- **Initial Portfolio Size**: Added initial portfolio size and updated position sizing.
+- **Rate Limiting**: Implemented configurable rate limiting for the Coinbase API.
+- **Tooltips**: Added tooltips to the order book signals table, with model-driven contributions.
+- **Live WebSocket Updates**: Implemented live WebSocket updates for simulated trading, including an open positions table and signals refresh.
+
+### 🐛 Bug Fixes
+- **Frontend**:
+    - Repopulated order book signals on tab switch.
+    - Correctly initialized and sent position size.
+    - Fixed order book signals widget not updating after tab switch.
+    - Fixed symbol input functionality in live and simulated trading tabs.
+- **Backend**:
+    - Resolved cascading failures in the ML pipeline.
+    - Corrected column names in the data collector.
+    - Fixed ML server container import errors with dual import support.
+    - Resolved ML server timeout and training issues.
+    - Fixed trade execution failures with detailed logging and cash management.
+    - Resolved `AttributeError` in `CoinbaseDataProvider`.
+    - Fixed WebSocket JSON import, implemented JSON-safe trading broadcast, and robust trade saves.
+    - Fixed backend container errors related to Qdrant/Redis detection and data handler `NoneType`.
+    - Fixed `Dockerfile` CMD to start the uvicorn web server.
+- **Database**:
+    - Fixed critical errors in PostgreSQL migration.
+
+### 🏗️ Infrastructure
+- **Database Migration**: Migrated from SQLite to PostgreSQL.
+- **Docker-Optimized Entry Point**: Created a Docker-optimized entry point (`app.py`).
+- **Full-Stack Deployment**: Created a comprehensive `docker-compose.yml` for full-stack deployment.
+
+### 📚 Documentation
+- **Deployment Guide**: Created `docs/DEPLOYMENT.md` to provide a clear and accurate guide to the various deployment options.
+- **Architecture and Service Documentation**:
+    - Updated `docs/ARCHITECTURE.md` to accurately reflect the container-based deployment model.
+    - Corrected `docs/VECTOR_DATABASE_SERVICE.md` to describe the hybrid approach to service management.
+- **Removed Broken Links**: Updated `docs/PROJECT_OVERVIEW.md` to remove a broken link.
+- **Archival of Legacy Components**: Moved the outdated `vanilla_js_dashboard` to `docs/archive/vanilla_js_dashboard_legacy`.
+
 ## [2.2.0] - 2025-10-29
 
 ### 📚 Documentation Updates
