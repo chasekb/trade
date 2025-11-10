@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class VectorDBClient:
     """Client for Qdrant vector database operations."""
     
-    def __init__(self, host: str = "localhost", port: int = 6333, 
+    def __init__(self, host: str = "qdrant", port: int = 6333, 
                  collection_name: str = "trading_features"):
         """
         Initialize vector database client.
@@ -24,10 +24,10 @@ class VectorDBClient:
             port: Qdrant server port
             collection_name: Name of the collection to use
         """
-        self.host = host
+        self.host = os.environ.get("QDRANT_URL", host)
         self.port = port
         self.collection_name = collection_name
-        self.base_url = f"http://{host}:{port}"
+        self.base_url = f"http://{self.host}:{port}"
         
     def create_collection(self, vector_size: int) -> bool:
         """Create a new collection in Qdrant."""
