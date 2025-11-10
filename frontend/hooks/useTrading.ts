@@ -145,6 +145,23 @@ export function useOrderBookSignals(
   });
 }
 
+// Live Portfolio Hook
+export function useLivePortfolio(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['live-portfolio-status'],
+    queryFn: async () => {
+      const response = await apiClient.getLivePortfolioStatus();
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch live portfolio status');
+      }
+      return response.data;
+    },
+    enabled,
+    staleTime: 5 * 1000, // 5 seconds
+    refetchInterval: enabled ? 10 * 1000 : false, // Refresh every 10 seconds
+  });
+}
+
 // Simulated Trading Statistics Hook
 
 export function useSimulatedTradingStats(enabled: boolean = true) {
