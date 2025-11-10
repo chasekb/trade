@@ -9,6 +9,7 @@ import Tooltip from '@/components/ui/Tooltip';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
+import { useModelTraining } from '@/hooks/useModelTraining';
 
 // Strategy Selector Component
 interface StrategySelectorProps {
@@ -191,6 +192,9 @@ interface StrategyConfigFormProps {
 
 function StrategyConfigForm({ strategy, config, onChange, className = '' }: StrategyConfigFormProps) {
   const { getStrategyParameters, getOrderBookPresets } = useStrategyParameters();
+  const { availableModels, setActiveModel, trainModel, isTraining } = useModelTraining();
+  const [selectedModel, setSelectedModel] = useState('');
+
   const [selectedPreset, setSelectedPreset] = useState('aggressive');
 
   const parameters = getStrategyParameters(strategy);
@@ -218,6 +222,30 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
       {strategy === 'ml_enhanced_orderbook' && (
         <div className="p-4 bg-gray-50 rounded-lg space-y-4">
           <h4 className="text-md font-semibold text-gray-700">ML Configuration</h4>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Available Models</label>
+            <div className="flex items-center space-x-2">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2"
+              >
+                {availableModels?.map((model: any) => (
+                  <option key={model.model_id} value={model.model_id}>
+                    {model.model_id} ({new Date(model.trained_at).toLocaleDateString()})
+                  </option>
+                ))}
+              </select>
+              <Button onClick={() => setActiveModel(selectedModel)} disabled={!selectedModel}>
+                Set Active
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Button onClick={() => trainModel()} disabled={isTraining}>
+              {isTraining ? 'Training...' : 'Train New Model'}
+            </Button>
+          </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">ML Server URL</label>
             <Input
