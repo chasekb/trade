@@ -306,7 +306,7 @@ export default function MLAnalyticsDashboard({ className }: MLAnalyticsDashboard
         <ModelControls />
       </DashboardGrid>
 
-      <PnlTradesTable data={pnlTrades} isLoading={isPnlLoading} error={pnlError} />
+      <PnlTradesTable />
 
       <PredictionComparisonChart />
     </div>

@@ -277,9 +277,9 @@ class MLTradingOptimizer:
             predictions[model_name] = prediction
         return predictions
     
-    def get_top_pnl_trades(self, limit: int = 10) -> Dict[str, List[Dict[str, Any]]]:
+    def get_top_pnl_trades(self, limit: int = 10, sort_by: str = 'pnl') -> Dict[str, List[Dict[str, Any]]]:
         """Get top and bottom trades by PnL."""
-        return self.data_collector.get_trades_by_pnl(limit)
+        return self.data_collector.get_trades_by_pnl(limit, sort_by)
         
     def _store_feature_vectors_in_db(self, features: List[OrderBookFeatures], 
                                     processed_features: np.ndarray) -> None:

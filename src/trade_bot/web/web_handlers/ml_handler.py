@@ -100,10 +100,10 @@ async def get_ml_dashboard_data():
 
 
 @ml_router.get("/pnl-trades")
-async def get_pnl_trades_data():
+async def get_pnl_trades_data(sort_by: str = 'pnl'):
     """Get top and bottom trades by PnL."""
     try:
-        pnl_data = ml_integration.get_pnl_tracking_data()
+        pnl_data = ml_integration.get_pnl_tracking_data(sort_by=sort_by)
         return pnl_data
     except Exception as e:
         logger.error(f"Error getting PnL trades data: {e}")

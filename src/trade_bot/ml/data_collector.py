@@ -276,37 +276,41 @@ class MLDataCollector:
         logger.info(f"Extracted {len(trades)} trade outcomes from SQLite")
         return trades
     
-    def get_trades_by_pnl(self, limit: int = 10) -> Dict[str, List[Dict[str, Any]]]:
+    def get_trades_by_pnl(self, limit: int = 10, sort_by: str = 'pnl') -> Dict[str, List[Dict[str, Any]]]:
         """Get top and bottom trades by PnL."""
         try:
             if self.is_postgres:
-                return self._get_pnl_trades_from_postgres(limit)
+                return self._get_pnl_trades_from_postgres(limit, sort_by)
             else:
-                return self._get_pnl_trades_from_sqlite(limit)
+                return self._get_pnl_trades_from_sqlite(limit, sort_by)
         except Exception as e:
             logger.error(f"Error getting trades by PnL: {e}")
             return {"top_trades": [], "bottom_trades": []}
 
-    def _get_pnl_trades_from_postgres(self, limit: int) -> Dict[str, List[Dict[str, Any]]]:
+    def _get_pnl_trades_from_postgres(self, limit: int, sort_by: str) -> Dict[str, List[Dict[str, Any]]]:
         """Get top/bottom PnL trades from PostgreSQL."""
         conn = psycopg.connect(self.db_path)
         cursor = conn.cursor()
 
-        query_top = """
-            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+        order_by = 'pnl' if sort_by == 'pnl' else '(pnl / (price * size)) * 100'
+
+        query_top = f"""
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp,
+                   (pnl / (price * size)) * 100 as pnl_percent
             FROM individual_trades
-            WHERE pnl IS NOT NULL
-            ORDER BY pnl DESC
+            WHERE pnl IS NOT NULL AND price > 0 AND size > 0
+            ORDER BY {order_by} DESC
             LIMIT %s
         """
         cursor.execute(query_top, (limit,))
         top_trades = cursor.fetchall()
 
-        query_bottom = """
-            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+        query_bottom = f"""
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp,
+                   (pnl / (price * size)) * 100 as pnl_percent
             FROM individual_trades
-            WHERE pnl IS NOT NULL
-            ORDER BY pnl ASC
+            WHERE pnl IS NOT NULL AND price > 0 AND size > 0
+            ORDER BY {order_by} ASC
             LIMIT %s
         """
         cursor.execute(query_bottom, (limit,))
@@ -319,27 +323,31 @@ class MLDataCollector:
             "bottom_trades": [dict(zip([c.name for c in cursor.description], row)) for row in bottom_trades]
         }
 
-    def _get_pnl_trades_from_sqlite(self, limit: int) -> Dict[str, List[Dict[str, Any]]]:
+    def _get_pnl_trades_from_sqlite(self, limit: int, sort_by: str) -> Dict[str, List[Dict[str, Any]]]:
         """Get top/bottom PnL trades from SQLite."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        query_top = """
-            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+        order_by = 'pnl' if sort_by == 'pnl' else 'pnl_percent'
+
+        query_top = f"""
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp,
+                   (pnl / (price * size)) * 100 as pnl_percent
             FROM individual_trades
-            WHERE pnl IS NOT NULL
-            ORDER BY pnl DESC
+            WHERE pnl IS NOT NULL AND price > 0 AND size > 0
+            ORDER BY {order_by} DESC
             LIMIT ?
         """
         cursor.execute(query_top, (limit,))
         top_trades = [dict(row) for row in cursor.fetchall()]
 
-        query_bottom = """
-            SELECT trade_id, symbol, side, price, size, pnl, timestamp
+        query_bottom = f"""
+            SELECT trade_id, symbol, side, price, size, pnl, timestamp,
+                   (pnl / (price * size)) * 100 as pnl_percent
             FROM individual_trades
-            WHERE pnl IS NOT NULL
-            ORDER BY pnl ASC
+            WHERE pnl IS NOT NULL AND price > 0 AND size > 0
+            ORDER BY {order_by} ASC
             LIMIT ?
         """
         cursor.execute(query_bottom, (limit,))
