@@ -78,9 +78,13 @@ async def startup_event():
         models = ml_optimizer.model_manager.list_models()
         if models:
             latest_model = models[0]  # Assuming first is latest
-            ml_optimizer.model_manager.deploy_model("trading_optimizer")
-            ml_optimizer.is_trained = True
-            logger.info("Loaded existing trained model")
+            deployment_success = ml_optimizer.model_manager.deploy_model("trading_optimizer")
+            if deployment_success:
+                ml_optimizer.is_trained = True
+                logger.info("Loaded existing trained model")
+            else:
+                logger.warning("Failed to deploy existing model, will train on first request")
+                ml_optimizer.is_trained = False
         else:
             logger.info("No existing model found, will train on first request")
         
@@ -125,14 +129,14 @@ async def predict_trading_signal(request: PredictionRequest):
             volatility=request.volatility
         )
 
-        # Check if model is trained
-        if not ml_optimizer.is_trained:
-            logger.warning("Prediction requested, but model is not trained")
+        # Check if model is trained and deployed
+        if not ml_optimizer.is_trained or ml_optimizer.model_manager.current_model is None:
+            logger.warning("Prediction requested, but model is not trained or deployed")
             return PredictionResponse(
                 action="hold",
                 confidence=0.0,
                 signal_value=0.0,
-                reason="Model not trained",
+                reason="Model not trained or deployed",
                 similar_conditions=0,
                 timestamp=datetime.now().isoformat()
             )
