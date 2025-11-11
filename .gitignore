@@ -69,6 +69,10 @@ htmlcov/
 outputs/
 data/outputs/
 
+# ML artifacts
+data/models/
+data/transformers/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
