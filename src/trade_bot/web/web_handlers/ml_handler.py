@@ -60,16 +60,53 @@ async def get_feature_importance():
 
 @ml_router.post("/train")
 async def trigger_model_training():
-    """Trigger ML model training."""
+    """Trigger ML model training asynchronously."""
     try:
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        import functools
+
         optimizer = _get_ml_optimizer()
+
+        # Run training in a thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=1)
+        loop.run_in_executor(executor, train_model_background, optimizer)
+
+        return {"status": "training_started", "message": "Model training started in background"}
+    except Exception as e:
+        logger.error(f"Error starting model training: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def train_model_background(optimizer):
+    """Background task to train ML model."""
+    try:
+        logger.info("Starting background ML model training")
         features, outcomes = optimizer.collect_and_preprocess_data(days_back=30)
         if not features or not outcomes:
-            raise HTTPException(status_code=400, detail="Insufficient data for training")
+            logger.error("Insufficient data for training")
+            return
+
         result = optimizer.train_ml_models(features, outcomes)
-        return {"status": "training_completed", "results": result}
+        logger.info(f"Background ML training completed: {result}")
     except Exception as e:
-        logger.error(f"Error triggering model training: {e}")
+        logger.error(f"Error in background ML training: {e}")
+
+@ml_router.get("/train/status")
+async def get_training_status():
+    """Get ML training status."""
+    try:
+        optimizer = _get_ml_optimizer()
+        # For now, just return if a model is trained
+        # In a production system, you'd track training progress
+        is_trained = optimizer.is_trained
+        return {
+            "is_training": False,  # We don't track ongoing training status yet
+            "is_trained": is_trained,
+            "last_training_time": optimizer.last_training_time.isoformat() if optimizer.last_training_time else None
+        }
+    except Exception as e:
+        logger.error(f"Error getting training status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
