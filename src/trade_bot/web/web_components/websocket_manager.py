@@ -184,7 +184,9 @@ class WebSocketManager:
         while True:
             try:
                 # Check if trading is active
-                if self.trading_state.get("is_active") and self.trading_state.get("strategy_type") == "orderbook":
+                strategy_type = self.trading_state.get("strategy_type")
+                if (self.trading_state.get("is_active") and
+                    strategy_type in ["orderbook", "ml_enhanced_orderbook"]):
                     # Get live order book signals
                     symbols = self.trading_state.get("symbols", [])
                     if symbols and self.simulated_trading:
