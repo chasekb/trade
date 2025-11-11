@@ -33,8 +33,13 @@ The system is divided into several core components, each with a specific respons
 
 ### 5. **Machine Learning System** (`src/trade_bot/ml/`)
 
-- **`VectorDatabaseService`**: A service that manages the lifecycle of the vector database (Qdrant) and Redis cache, which are used for storing and retrieving feature vectors for machine learning models.
-- **`MLTradingOptimizer`**: A component that uses machine learning to optimize trading strategies and improve their performance.
+- **`MLTradingOptimizer`**: Main orchestration system for ML trading optimization
+- **`DataCollector`**: Extracts and preprocesses trading data from databases (SQLite/PostgreSQL)
+- **`FeatureEngineer`**: Transforms raw trading data into ML-ready features with scaling and selection
+- **`ModelTrainer`**: Trains ensemble ML models (Random Forest, Gradient Boosting, Neural Networks)
+- **`ModelManager`**: Handles model versioning, deployment, rollback, and performance monitoring
+- **`VectorDBClient`**: Manages Qdrant vector database for feature vector storage and similarity search
+- **`MLServer`**: FastAPI server providing REST API for model inference and management
 
 ### 6. **Web Interface** (`src/trade_bot/web/`)
 
