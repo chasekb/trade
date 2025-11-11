@@ -57,11 +57,15 @@ class MLTradingOptimizer:
         self.vector_db_client = VectorDBClient(vector_db_host, vector_db_port)
         
         # Training state
-        self.is_trained = False
         self.last_training_time = None
 
         # Load transformers on initialization
         self.load_transformers()
+
+    @property
+    def is_trained(self) -> bool:
+        """Check if a model is currently loaded in the model manager."""
+        return self.model_manager.current_model is not None
         
     def collect_and_preprocess_data(self, days_back: int = 30) -> Tuple[List[OrderBookFeatures], List[TradeOutcome]]:
         """Collect and preprocess trading data for ML training."""
@@ -159,7 +163,6 @@ class MLTradingOptimizer:
                 else:
                     logger.warning("Failed to register best model")
         
-        self.is_trained = True
         self.last_training_time = datetime.now()
         
         logger.info("ML model training completed")
@@ -432,10 +435,7 @@ class MLTradingOptimizer:
         """Load transformers from disk."""
         try:
             self.feature_engineer.load_transformers(self.transformers_dir)
-            # If transformers are loaded, we can assume a model has been trained
             if self.feature_engineer.scaler and self.feature_engineer.feature_selector:
-                self.is_trained = True
                 logger.info("Transformers loaded, ML Optimizer is ready for predictions.")
         except Exception as e:
             logger.error(f"Error loading transformers: {e}")
-            self.is_trained = False

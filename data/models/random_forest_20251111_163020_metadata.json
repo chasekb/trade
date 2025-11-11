@@ -1,0 +1,17 @@
+{
+  "model_type": "ensemble",
+  "model_performance": {
+    "random_forest": {
+      "mse": 0.2368891969100045,
+      "rmse": 0.48671264305543216,
+      "mae": 0.18937709221326013,
+      "r2": 0.11387218062957716,
+      "profit_factor": 3.4109850347859405,
+      "sharpe_ratio": 4.110698547564516,
+      "score": 0.11387218062957716
+    }
+  },
+  "best_score": -Infinity,
+  "timestamp": "2025-11-11T16:30:20.537705",
+  "random_state": 42
+}

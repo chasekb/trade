@@ -1,0 +1,22 @@
+{
+  "version_id": "v20251111_163042",
+  "model_name": "trading_optimizer",
+  "model_path": "data/models/trading_optimizer/v20251111_163042/trading_optimizer_v20251111_163042.pkl",
+  "performance_metrics": {
+    "mse": 0.2176939308515224,
+    "rmse": 0.46657682202561496,
+    "mae": 0.20195640279312682,
+    "r2": 0.1856756207041359,
+    "profit_factor": 4.387198321917428,
+    "sharpe_ratio": 4.780713261076729,
+    "score": 0.1856756207041359
+  },
+  "metadata": {
+    "original_model_name": "gradient_boosting",
+    "best_score": 0.1856756207041359,
+    "training_samples": 2220,
+    "test_samples": 556
+  },
+  "created_at": "2025-11-11T16:30:42.856374",
+  "status": "registered"
+}
