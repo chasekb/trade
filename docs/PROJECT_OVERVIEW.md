@@ -37,6 +37,7 @@ For a detailed overview of the system architecture, please see the [ARCHITECTURE
 - **[ARCHITECTURE.md](ARCHITECTURE.md)**: A detailed overview of the system architecture.
 - **[CHANGELOG.md](CHANGELOG.md)**: A log of all changes made to the project.
 - **[ML_TRADING_OPTIMIZATION.md](ML_TRADING_OPTIMIZATION.md)**: An overview of the machine learning trading optimization system.
+- **[ML_DATA_FLOW.md](ML_DATA_FLOW.md)**: Comprehensive data flow into and out of ML models.
 - **[SECURITY_SETUP.md](SECURITY_SETUP.md)**: A guide to setting up and managing API credentials.
 - **[VECTOR_DATABASE_SERVICE.md](VECTOR_DATABASE_SERVICE.md)**: An overview of the vector database service integration.
 - **[WEBSOCKET_SUBSCRIPTIONS.md](WEBSOCKET_SUBSCRIPTIONS.md)**: A guide to the WebSocket subscription system.

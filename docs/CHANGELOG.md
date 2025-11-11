@@ -41,6 +41,11 @@
     - Corrected `docs/VECTOR_DATABASE_SERVICE.md` to describe the hybrid approach to service management.
 - **Removed Broken Links**: Updated `docs/PROJECT_OVERVIEW.md` to remove a broken link.
 - **Archival of Legacy Components**: Moved the outdated `vanilla_js_dashboard` to `docs/archive/vanilla_js_dashboard_legacy`.
+- **ML System Documentation Updates**:
+    - Enhanced `docs/ML_TRADING_OPTIMIZATION.md` with current implementation details including database abstraction, component descriptions, and API endpoints.
+    - Updated `docs/ARCHITECTURE.md` with detailed ML system component descriptions.
+    - Created comprehensive `docs/ML_DATA_FLOW.md` documenting the complete data flow into and out of ML models (8-stage pipeline, database schemas, API formats, monitoring).
+    - Updated `docs/PROJECT_OVERVIEW.md` to reference the new ML data flow documentation.
 
 ## [2.2.0] - 2025-10-29
 

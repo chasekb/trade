@@ -48,14 +48,17 @@ The ML Trading Optimization system consists of several key components:
 
 Extracts and preprocesses trading data from the database:
 
-- **Order Book Signals**: Bid-ask imbalances, spreads, wall detection
-- **Trade Outcomes**: P&L, fees, duration, signal effectiveness
-- **Feature Vectors**: Structured data for ML training
+- **Order Book Signals**: Bid-ask imbalances, spreads, wall detection, volume analysis
+- **Trade Outcomes**: P&L, fees, duration, signal effectiveness, trade types
+- **Feature Vectors**: Structured data for ML training with historical ML analysis
 
 Key features:
-- Historical data extraction with configurable time windows
-- Feature vector creation from order book patterns
+- Support for both SQLite and PostgreSQL databases
+- Historical data extraction with configurable time windows (default 30 days)
+- Feature vector creation from order book patterns with ML analysis integration
 - Trade outcome labeling for supervised learning
+- Top/bottom P&L trade analysis for performance insights
+- Order book snapshot extraction for feature engineering
 
 ### 2. Feature Engineering (`src/trade_bot/ml/feature_engineer.py`)
 
