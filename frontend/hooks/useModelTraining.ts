@@ -99,7 +99,7 @@ export function useModelTraining() {
       if (response.status === 'error' || !response.data) {
         throw new Error(response.error || 'Failed to fetch available models');
       }
-      return response.data.models;
+      return response.data;
     },
   });
 
