@@ -222,13 +222,9 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
 
-        // Push orderbook signals updates; invalidate or set cache for all query key variations
+        // Push orderbook signals updates; emit event for component-level handling
         if (type === 'orderbook_signals_update' && data) {
-          try {
-            // Do not set cache with partial keys, as it can overwrite paginated data.
-            // Instead, just invalidate to trigger a refetch from the API.
-            (window as any).__RQ_INVALIDATE__?.(['orderbook-signals']);
-          } catch {}
+          // Let the component handle the WebSocket data merging with proper pagination
           window.dispatchEvent(new CustomEvent('orderbook-signals-update', { detail: data }));
         }
       } catch (e) {

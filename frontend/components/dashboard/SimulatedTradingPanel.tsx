@@ -1369,8 +1369,26 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const { status, startTrading, stopTrading, loading } = useLiveTrading();
   // Start native WebSocket to receive live updates for stats/signals
   useSimTradingWebSocket(status.isActive);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+
+  // Use sessionStorage to persist pagination state across tab switches and component remounts
+  const getStoredPage = () => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('orderbook-signals-page');
+      return stored ? parseInt(stored, 10) : 1;
+    }
+    return 1;
+  };
+
+  const getStoredPageSize = () => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('orderbook-signals-pageSize');
+      return stored ? parseInt(stored, 10) : 10;
+    }
+    return 10;
+  };
+
+  const [currentPage, setCurrentPage] = useState(getStoredPage);
+  const [pageSize, setPageSize] = useState(getStoredPageSize);
   const queryClient = useQueryClient();
 
   const [strategy, setStrategy] = useState<TradingStrategy>('ml_enhanced_orderbook');
@@ -1398,37 +1416,44 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     const handleSignalsUpdate = (event: Event) => {
       const customEvent = event as CustomEvent;
       const wsData = customEvent.detail;
-      
-      if (wsData) {
+
+      if (wsData && wsData.signals && Array.isArray(wsData.signals)) {
         // Store WebSocket data for immediate display
         setWsSignalsData(wsData);
-        
-        // Also update React Query cache with the WebSocket data
+
+        // Update React Query cache for the current pagination state
         try {
-          // Update cache for current query key
           const queryKey = ['orderbook-signals', activeSymbols, status.isActive, currentPage, pageSize];
-          queryClient.setQueryData(queryKey, (oldData: any) => {
-            // Merge WebSocket data with existing query data
-            if (wsData.signals && Array.isArray(wsData.signals)) {
-              return {
-                ...oldData,
-                signals: wsData.signals,
-                total_analyzed: wsData.total_analyzed ?? oldData?.total_analyzed,
-                active_signals: wsData.active_signals ?? oldData?.active_signals,
-                average_strength: wsData.average_strength ?? oldData?.average_strength,
-                last_updated: wsData.last_updated ?? oldData?.last_updated,
-                pagination: oldData?.pagination, // Keep pagination from query
-              };
-            }
-            return oldData || wsData;
-          });
-          
-          // Also invalidate to trigger refetch if needed
-          queryClient.invalidateQueries({
-            predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'orderbook-signals'
+
+          // Calculate the slice of WebSocket data that matches current pagination
+          const startIdx = (currentPage - 1) * pageSize;
+          const endIdx = startIdx + pageSize;
+          const paginatedSignals = wsData.signals.slice(startIdx, endIdx);
+
+          // Calculate pagination metadata
+          const totalSignals = wsData.signals.length;
+          const totalPages = Math.ceil(totalSignals / pageSize);
+
+          const paginationData = {
+            current_page: currentPage,
+            per_page: pageSize,
+            total_pages: totalPages,
+            total_signals: totalSignals,
+            has_next: currentPage < totalPages,
+            has_prev: currentPage > 1
+          };
+
+          // Update cache with properly paginated WebSocket data
+          queryClient.setQueryData(queryKey, {
+            signals: paginatedSignals,
+            total_analyzed: wsData.total_analyzed ?? totalSignals,
+            active_signals: wsData.active_signals ?? wsData.signals.filter((s: any) => s.signal_generated).length,
+            average_strength: wsData.average_strength ?? (wsData.signals.length > 0 ? (wsData.signals.reduce((sum: number, s: any) => sum + (s.signal_strength || 0), 0) / wsData.signals.length) : 0),
+            last_updated: wsData.last_updated ?? new Date().toISOString(),
+            pagination: paginationData
           });
         } catch (e) {
-          // no-op
+          console.warn('Error updating WebSocket data in cache:', e);
         }
       }
     };
@@ -1457,14 +1482,21 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   }, [queryClient, status.isActive]);
 
 
-  // Handle pagination changes
+  // Handle pagination changes with persistence
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('orderbook-signals-page', page.toString());
+    }
   };
 
   const handlePageSizeChange = (newPageSize: number) => {
     setPageSize(newPageSize);
     setCurrentPage(1); // Reset to first page when changing page size
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('orderbook-signals-pageSize', newPageSize.toString());
+      sessionStorage.setItem('orderbook-signals-page', '1');
+    }
   };
 
   const handleStartTrading = async () => {
