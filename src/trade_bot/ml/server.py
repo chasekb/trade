@@ -75,71 +75,25 @@ async def startup_event():
         if not ml_optimizer.initialize_vector_database():
             logger.warning("Failed to initialize vector database")
         
-        # Try to load existing model
-        # First check if trading_optimizer is already registered
-        if "trading_optimizer" in ml_optimizer.model_manager.model_versions:
-            deployment_success = ml_optimizer.model_manager.deploy_model("trading_optimizer")
-            if deployment_success:
-                ml_optimizer.is_trained = True
-                logger.info("Loaded existing registered trading_optimizer model")
-            else:
-                logger.warning("Failed to deploy registered trading_optimizer model")
-                ml_optimizer.is_trained = False
-        else:
-            # Check for existing model files and auto-register the best one
-            import glob
-            model_files = glob.glob(os.path.join(ml_optimizer.models_dir, "*_*.pkl"))
-            if model_files:
-                logger.info(f"Found {len(model_files)} model files, attempting to auto-register best model")
-                
-                # Find the most recent model file (assuming it's the best)
-                latest_model_file = max(model_files, key=os.path.getctime)
-                model_filename = os.path.basename(latest_model_file)
-                
-                # Extract model name (e.g., "random_forest_20251110_192925.pkl" -> "random_forest")
-                model_name_parts = model_filename.replace(".pkl", "").split("_")
-                if len(model_name_parts) >= 3:
-                    # Reconstruct model name (everything except the last 2 parts which are date/time)
-                    base_model_name = "_".join(model_name_parts[:-2])
-                    
-                    # Try to load metadata if it exists
-                    metadata_file = latest_model_file.replace(".pkl", "_metadata.json")
-                    performance_metrics = {}
-                    if os.path.exists(metadata_file):
-                        try:
-                            import json
-                            with open(metadata_file, 'r') as f:
-                                metadata = json.load(f)
-                                performance_metrics = metadata.get('performance_metrics', {})
-                        except Exception as e:
-                            logger.warning(f"Could not load metadata: {e}")
-                    
-                    # Register as trading_optimizer
-                    version_id = ml_optimizer.model_manager.register_model(
-                        model_name="trading_optimizer",
-                        model_path=latest_model_file,
-                        performance_metrics=performance_metrics,
-                        metadata={'auto_registered': True, 'original_file': model_filename, 'base_model': base_model_name}
-                    )
-                    
-                    if version_id:
-                        # Deploy the registered model
-                        if ml_optimizer.model_manager.deploy_model("trading_optimizer", version_id):
-                            ml_optimizer.is_trained = True
-                            logger.info(f"Auto-registered and deployed model from {model_filename}")
-                        else:
-                            logger.warning("Failed to deploy auto-registered model")
-                            ml_optimizer.is_trained = False
-                    else:
-                        logger.warning("Failed to auto-register existing model")
-                        ml_optimizer.is_trained = False
-                else:
-                    logger.warning(f"Could not parse model filename: {model_filename}")
-                    ml_optimizer.is_trained = False
-            else:
-                logger.info("No existing model found, will train on first request")
-                ml_optimizer.is_trained = False
+        # On startup, load the registry and deploy the configured model if it exists
+        ml_optimizer.model_manager.load_model_registry()
         
+        active_model_name = None
+        try:
+            with open("data/ml_config.json", "r") as f:
+                config = json.load(f)
+                active_model_name = config.get("active_model")
+        except (FileNotFoundError, json.JSONDecodeError):
+            logger.info("No active model configured in ml_config.json.")
+        
+        if active_model_name:
+            logger.info(f"Attempting to deploy configured model '{active_model_name}' on startup.")
+            success = ml_optimizer.model_manager.set_active_model(active_model_name)
+            if not success:
+                logger.warning(f"Failed to deploy configured model '{active_model_name}' on startup.")
+        else:
+            logger.info("No active model configured. Server will wait for model selection.")
+
         logger.info("ML Trading Optimizer initialized successfully")
         
     except Exception as e:
@@ -220,7 +174,6 @@ async def train_model_background():
         training_results = ml_optimizer.train_ml_models(features, outcomes)
         
         if training_results and training_results.get('model_performance'):
-            ml_optimizer.is_trained = True
             ml_optimizer.last_training_time = datetime.now()
             training_status = "success"
             logger.info("Background model training completed successfully")
@@ -244,6 +197,28 @@ async def get_model_status(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=503, detail="ML optimizer not initialized")
 
     try:
+        # Always reload the model registry to get the latest state
+        ml_optimizer.model_manager.load_model_registry()
+
+        # Check for a configured active model
+        active_model_name = None
+        try:
+            with open("data/ml_config.json", "r") as f:
+                config = json.load(f)
+                active_model_name = config.get("active_model")
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass  # No config file, that's fine
+
+        # If a model is configured, ensure it's the one that's deployed
+        current_model_info = ml_optimizer.model_manager.get_current_model()
+        current_model_id = None
+        if current_model_info and 'model_name' in current_model_info and 'version_id' in current_model_info:
+            current_model_id = f"{current_model_info['model_name']}:{current_model_info['version_id']}"
+
+        if active_model_name and active_model_name != current_model_id:
+            logger.info(f"Configuration changed. Setting new active model: {active_model_name}")
+            ml_optimizer.model_manager.set_active_model(active_model_name)
+
         is_trained = ml_optimizer.is_trained
         if is_trained:
             status = ml_optimizer.get_system_status()
@@ -300,7 +275,6 @@ async def train_model():
         
         # Mark as trained if successful
         if training_results and training_results.get('model_performance'):
-            ml_optimizer.is_trained = True
             ml_optimizer.last_training_time = datetime.now()
             logger.info("Model training completed successfully")
         

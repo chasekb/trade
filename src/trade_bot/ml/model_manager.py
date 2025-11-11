@@ -32,7 +32,7 @@ class ModelManager:
         os.makedirs(models_dir, exist_ok=True)
         
         # Load existing model information
-        self._load_model_registry()
+        self.load_model_registry()
     
     def register_model(self, model_name: str, model_path: str, 
                       performance_metrics: Dict[str, Any],
@@ -83,25 +83,32 @@ class ModelManager:
             return None
     
     def set_active_model(self, model_name: str) -> bool:
-        """Set the active model by name."""
+        """Set the active model by name, supporting versioned models."""
         try:
-            # Find the model file
-            model_path = os.path.join(self.models_dir, f"{model_name}.pkl")
-            if not os.path.exists(model_path):
-                logger.error(f"Model file not found for {model_name}")
-                return False
+            if ':' in model_name:
+                name, version_id = model_name.split(':', 1)
+                logger.info(f"Setting active model to {name} version {version_id}")
+                return self.deploy_model(name, version_id)
+            else:
+                logger.warning(f"Setting active model using fallback for non-versioned model: {model_name}")
+                # Fallback for non-versioned models - this path may be deprecated
+                model_path = os.path.join(self.models_dir, f"{model_name}.pkl")
 
-            # Load the model
-            model = joblib.load(model_path)
+                if not os.path.exists(model_path):
+                    logger.error(f"Model file not found for {model_name} at {model_path}")
+                    return False
 
-            # Set as current model
-            self.current_model = {
-                'model': model,
-                'model_name': model_name,
-                'deployed_at': datetime.now().isoformat(),
-            }
-            logger.info(f"Set active model to {model_name}")
-            return True
+                # Load the model
+                model = joblib.load(model_path)
+
+                # Set as current model
+                self.current_model = {
+                    'model': model,
+                    'model_name': model_name,
+                    'deployed_at': datetime.now().isoformat(),
+                }
+                logger.info(f"Set active model to {model_name}")
+                return True
         except Exception as e:
             logger.error(f"Error setting active model: {e}")
             return False
@@ -205,12 +212,21 @@ class ModelManager:
     def list_models(self) -> List[Dict[str, Any]]:
         """List all registered models."""
         models = []
-        for model_file in os.listdir(self.models_dir):
-            if model_file.endswith(".pkl"):
-                model_name = model_file.replace(".pkl", "")
-                models.append({
-                    'model_name': model_name,
-                })
+        for model_name in os.listdir(self.models_dir):
+            model_dir = os.path.join(self.models_dir, model_name)
+            if os.path.isdir(model_dir):
+                for version_id in os.listdir(model_dir):
+                    version_dir = os.path.join(model_dir, version_id)
+                    metadata_path = os.path.join(version_dir, 'metadata.json')
+                    if os.path.exists(metadata_path):
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                            models.append({
+                                'model_id': f"{model_name}:{version_id}",
+                                'model_name': model_name,
+                                'version_id': version_id,
+                                'trained_at': metadata.get('created_at'),
+                            })
         return models
     
     def get_current_model(self) -> Optional[Dict[str, Any]]:
@@ -311,7 +327,7 @@ class ModelManager:
         
         return None
     
-    def _load_model_registry(self) -> None:
+    def load_model_registry(self) -> None:
         """Load model registry from disk."""
         registry_path = os.path.join(self.models_dir, 'model_registry.json')
         

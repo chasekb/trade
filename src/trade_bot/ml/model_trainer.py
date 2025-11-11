@@ -60,10 +60,15 @@ class ModelTrainer:
         
         # Select best model
         self._select_best_model()
+
+        best_model_name = None
+        if self.model_performance:
+            best_model_name = max(self.model_performance.keys(),
+                                key=lambda k: self.model_performance[k]['score'])
         
         return {
             'model_performance': self.model_performance,
-            'best_model': self.best_model,
+            'best_model': best_model_name,
             'best_score': self.best_score,
             'test_size': test_size,
             'training_samples': X_train.shape[0],

@@ -5,7 +5,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 
-from ..web_components.ml_dashboard import MLDashboardIntegration
+from ...ml.ml_optimizer import MLTradingOptimizer
 from ..web_components import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -13,29 +13,24 @@ logger = logging.getLogger(__name__)
 # Create router for ML endpoints
 ml_router = APIRouter(prefix="/api/ml", tags=["ml"])
 
-# Initialize ML dashboard integration
-ml_integration = MLDashboardIntegration()
-
-
-def _get_ml_integration() -> MLDashboardIntegration:
-    """Get ML integration with optimizer from app state."""
+def _get_ml_optimizer() -> MLTradingOptimizer:
+    """Get the shared MLTradingOptimizer instance from the app state."""
     try:
         app_state = get_app_state()
         if app_state and app_state.ml_optimizer:
-            ml_integration.set_ml_optimizer(app_state.ml_optimizer)
+            return app_state.ml_optimizer
     except RuntimeError:
-        # App state not initialized yet, will use HTTP fallback
+        # App state not initialized yet
         pass
-    return ml_integration
+    raise HTTPException(status_code=503, detail="ML service not available")
 
 
 @ml_router.get("/status")
 async def get_ml_status():
     """Get ML system status."""
     try:
-        integration = _get_ml_integration()
-        status = integration.get_ml_status()
-        return status
+        optimizer = _get_ml_optimizer()
+        return optimizer.get_system_status()
     except Exception as e:
         logger.error(f"Error getting ML status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -45,9 +40,8 @@ async def get_ml_status():
 async def get_ml_performance():
     """Get ML model performance metrics."""
     try:
-        integration = _get_ml_integration()
-        performance = integration.get_ml_performance()
-        return performance
+        optimizer = _get_ml_optimizer()
+        return optimizer.get_model_performance()
     except Exception as e:
         logger.error(f"Error getting ML performance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -57,9 +51,8 @@ async def get_ml_performance():
 async def get_feature_importance():
     """Get feature importance scores."""
     try:
-        integration = _get_ml_integration()
-        importance = integration.get_feature_importance()
-        return importance
+        optimizer = _get_ml_optimizer()
+        return optimizer.get_feature_importance()
     except Exception as e:
         logger.error(f"Error getting feature importance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -69,27 +62,14 @@ async def get_feature_importance():
 async def trigger_model_training():
     """Trigger ML model training."""
     try:
-        integration = _get_ml_integration()
-        result = integration.trigger_model_training()
-        if 'error' in result:
-            raise HTTPException(status_code=500, detail=result['error'])
-        return result
+        optimizer = _get_ml_optimizer()
+        features, outcomes = optimizer.collect_and_preprocess_data(days_back=30)
+        if not features or not outcomes:
+            raise HTTPException(status_code=400, detail="Insufficient data for training")
+        result = optimizer.train_ml_models(features, outcomes)
+        return {"status": "training_completed", "results": result}
     except Exception as e:
         logger.error(f"Error triggering model training: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@ml_router.post("/update")
-async def trigger_model_update():
-    """Trigger model update with new data."""
-    try:
-        integration = _get_ml_integration()
-        result = integration.trigger_model_update()
-        if 'error' in result:
-            raise HTTPException(status_code=500, detail=result['error'])
-        return result
-    except Exception as e:
-        logger.error(f"Error triggering model update: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -97,11 +77,11 @@ async def trigger_model_update():
 async def rollback_model():
     """Rollback to previous model version."""
     try:
-        integration = _get_ml_integration()
-        result = integration.rollback_model()
-        if 'error' in result:
-            raise HTTPException(status_code=500, detail=result['error'])
-        return result
+        optimizer = _get_ml_optimizer()
+        success = optimizer.rollback_model()
+        if not success:
+            raise HTTPException(status_code=500, detail="Model rollback failed")
+        return {"status": "success", "message": "Model rolled back successfully"}
     except Exception as e:
         logger.error(f"Error rolling back model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -111,9 +91,17 @@ async def rollback_model():
 async def get_ml_dashboard_data():
     """Get comprehensive ML data for dashboard."""
     try:
-        integration = _get_ml_integration()
-        dashboard_data = integration.get_ml_dashboard_data()
-        return dashboard_data
+        optimizer = _get_ml_optimizer()
+        status = optimizer.get_system_status()
+        performance = optimizer.get_model_performance()
+        feature_importance = optimizer.get_feature_importance()
+        
+        return {
+            'status': status,
+            'performance': performance,
+            'feature_importance': feature_importance,
+            'timestamp': datetime.now().isoformat()
+        }
     except Exception as e:
         logger.error(f"Error getting ML dashboard data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -123,9 +111,8 @@ async def get_ml_dashboard_data():
 async def get_pnl_trades_data(sort_by: str = 'pnl'):
     """Get top and bottom trades by PnL."""
     try:
-        integration = _get_ml_integration()
-        pnl_data = integration.get_pnl_tracking_data(sort_by=sort_by)
-        return pnl_data
+        optimizer = _get_ml_optimizer()
+        return optimizer.get_top_pnl_trades(sort_by=sort_by)
     except Exception as e:
         logger.error(f"Error getting PnL trades data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -135,9 +122,8 @@ async def get_pnl_trades_data(sort_by: str = 'pnl'):
 async def get_available_models():
     """Get a list of available ML models."""
     try:
-        integration = _get_ml_integration()
-        models = integration.list_available_models()
-        return models
+        optimizer = _get_ml_optimizer()
+        return optimizer.list_available_models()
     except Exception as e:
         logger.error(f"Error getting available models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -147,23 +133,20 @@ async def get_available_models():
 async def set_active_model(model_name: str):
     """Set the active ML model."""
     try:
-        integration = _get_ml_integration()
-        result = integration.set_active_model(model_name)
-        if 'error' in result:
-            raise HTTPException(status_code=400, detail=result['error'])
-        return result
+        optimizer = _get_ml_optimizer()
+        success = optimizer.set_active_model(model_name)
+        if not success:
+            raise HTTPException(status_code=400, detail=f"Failed to set active model: {model_name}")
+
+        # Persist the active model choice
+        try:
+            with open("data/ml_config.json", "w") as f:
+                json.dump({"active_model": model_name}, f)
+        except Exception as e:
+            logger.error(f"Error saving active model to config: {e}")
+            # Don't fail the request, but log the error
+
+        return {"status": "success", "message": f"Active model set to {model_name}"}
     except Exception as e:
         logger.error(f"Error setting active model: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@ml_router.post("/prediction-comparison")
-async def get_prediction_comparison(features: Dict[str, Any]):
-    """Get a comparison of predictions from all models."""
-    try:
-        integration = _get_ml_integration()
-        comparison = integration.get_prediction_comparison(features)
-        return comparison
-    except Exception as e:
-        logger.error(f"Error getting prediction comparison: {e}")
         raise HTTPException(status_code=500, detail=str(e))

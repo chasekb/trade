@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import Tooltip from '@/components/ui/Tooltip';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
-import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLivePortfolio } from '@/hooks/useTrading';
+import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLivePortfolio, useMLModels } from '@/hooks/useTrading';
 
 // Strategy Selector Component
 interface StrategySelectorProps {
@@ -95,6 +95,7 @@ interface StrategyConfigFormProps {
 
 function StrategyConfigForm({ strategy, config, onChange, className = '' }: StrategyConfigFormProps) {
   const { getStrategyParameters, getOrderBookPresets } = useStrategyParameters();
+  const { data: mlModels } = useMLModels(strategy === 'ml_enhanced_orderbook');
   const [selectedPreset, setSelectedPreset] = useState('aggressive');
 
   const parameters = getStrategyParameters(strategy);
@@ -138,6 +139,24 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
           <p className="text-xs text-gray-500">
             Select a preset to automatically configure parameters for different signal frequencies
           </p>
+        </div>
+      )}
+
+      {strategy === 'ml_enhanced_orderbook' && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Active Model</label>
+          <select
+            value={config.active_model || ''}
+            onChange={(e) => handleParameterChange('active_model', e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-3 py-2"
+          >
+            <option value="">-- Select a Model --</option>
+            {mlModels?.map((model: any) => (
+              <option key={model.model_name} value={model.model_name}>
+                {model.model_name} (v{model.version_id})
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

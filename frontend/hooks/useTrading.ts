@@ -275,6 +275,23 @@ export function useProducts() {
   });
 }
 
+// ML Models Hook
+
+export function useMLModels(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['ml-models'],
+    queryFn: async () => {
+      const response = await apiClient.getMLModels();
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch ML models');
+      }
+      return response.data;
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
 // Backtesting Hook
 
 export function useBacktest() {
