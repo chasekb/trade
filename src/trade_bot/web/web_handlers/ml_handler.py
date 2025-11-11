@@ -1,5 +1,6 @@
 """ML API endpoints for web server."""
 
+import json
 import logging
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
