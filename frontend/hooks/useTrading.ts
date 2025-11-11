@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { apiClient, queryKeys } from '@/lib/api';
 import {
@@ -290,6 +290,63 @@ export function useMLModels(enabled: boolean = true) {
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
+}
+
+// ML Model Training Hook
+
+export function useModelTraining() {
+  const queryClient = useQueryClient();
+
+  const { data: availableModels, isLoading: modelsLoading, error: modelsError } = useMLModels();
+
+  // Query for training status
+  const { data: trainingStatus, refetch: refetchTrainingStatus } = useQuery({
+    queryKey: ['ml-training-status'],
+    queryFn: async () => {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/ml/train/status`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch training status');
+      }
+      return response.json();
+    },
+    refetchInterval: 5000, // Poll every 5 seconds
+    staleTime: 1000,
+  });
+
+  const trainModelMutation = useMutation({
+    mutationFn: () => apiClient.trainMLModel(),
+    onSuccess: (response) => {
+      if (response.status === 'success' || (response.data && typeof response.data === 'object' && 'status' in response.data && (response.data as any).status === 'training_started')) {
+        // Start polling for training status
+        refetchTrainingStatus();
+        // Invalidate models query after a delay to allow training to complete
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['ml-models'] });
+        }, 10000); // Check after 10 seconds initially
+      }
+    },
+  });
+
+  const setActiveModelMutation = useMutation({
+    mutationFn: (modelId: string) => apiClient.setActiveModel(modelId),
+    onSuccess: () => {
+      // Invalidate models query to refresh active status
+      queryClient.invalidateQueries({ queryKey: ['ml-models'] });
+    },
+  });
+
+  return {
+    availableModels,
+    isLoading: modelsLoading,
+    error: modelsError,
+    trainModel: trainModelMutation.mutateAsync,
+    setActiveModel: setActiveModelMutation.mutateAsync,
+    isTraining: trainingStatus?.is_training || trainModelMutation.isPending,
+    trainingError: trainModelMutation.error,
+    settingActive: setActiveModelMutation.isPending,
+    setActiveError: setActiveModelMutation.error,
+    trainingStatus,
+  };
 }
 
 // Backtesting Hook
