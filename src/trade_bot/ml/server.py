@@ -102,8 +102,17 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    logger.info("Health check requested")
+    # Log asynchronously to avoid blocking the HTTP response.
+    # Synchronous logging in FastAPI endpoints can interfere with response handling,
+    # causing timeouts even when the server appears to be working correctly.
+    # This ensures health checks remain fast and reliable for container orchestration.
+    import asyncio
+    asyncio.create_task(_log_health_check())
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+async def _log_health_check():
+    """Log health check asynchronously to avoid blocking the response."""
+    logger.info("Health check requested")
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_trading_signal(request: PredictionRequest):
