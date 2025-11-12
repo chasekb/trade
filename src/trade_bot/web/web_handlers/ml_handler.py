@@ -30,8 +30,22 @@ def _get_ml_optimizer() -> MLTradingOptimizer:
 async def get_ml_status():
     """Get ML system status."""
     try:
-        optimizer = _get_ml_optimizer()
-        return optimizer.get_system_status()
+        app_state = get_app_state()
+        if not app_state or not app_state.model_manager:
+            raise HTTPException(status_code=503, detail="Model manager not available")
+
+        model_manager = app_state.model_manager
+        current_model_info = model_manager.get_current_model_info()
+        
+        is_trained = current_model_info is not None
+        
+        status = {
+            "is_trained": is_trained,
+            "current_model": current_model_info,
+            "last_training_time": app_state.training_manager.async_trainer.last_training_time if app_state.training_manager else None,
+            "is_training": app_state.training_manager.async_trainer.is_running if app_state.training_manager else False
+        }
+        return status
     except Exception as e:
         logger.error(f"Error getting ML status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -166,6 +180,34 @@ async def get_available_models():
         logger.error(f"Error getting available models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@ml_router.get("/config")
+async def get_ml_config():
+    """Get the ML configuration."""
+    try:
+        app_state = get_app_state()
+        if not app_state or not app_state.training_manager:
+            raise HTTPException(status_code=503, detail="Training manager not available")
+        return app_state.training_manager.config
+    except Exception as e:
+        logger.error(f"Error getting ML config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@ml_router.post("/config")
+async def update_ml_config(new_config: Dict[str, Any]):
+    """Update the ML configuration."""
+    try:
+        app_state = get_app_state()
+        if not app_state or not app_state.training_manager:
+            raise HTTPException(status_code=503, detail="Training manager not available")
+        
+        training_manager = app_state.training_manager
+        training_manager.update_config(new_config)
+        
+        return {"status": "success", "message": "ML configuration updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating ML config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @ml_router.post("/models/set_active")
 async def set_active_model(model_name: str):

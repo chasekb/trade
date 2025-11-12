@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { MLDashboardData } from '@/types/trading';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MLDashboardData, MLConfig } from '@/types/trading';
 import { apiClient } from '@/lib/api';
 
 export function useMLAnalytics() {
+  const queryClient = useQueryClient();
   const [sortBy, setSortBy] = useState('pnl');
   const {
     data: mlData,
@@ -50,6 +51,30 @@ export function useMLAnalytics() {
     },
   });
 
+  const { data: mlConfig, isLoading: isConfigLoading } = useQuery<MLConfig, Error>({
+    queryKey: ['mlConfig'],
+    queryFn: async () => {
+      const response = await apiClient.getMLConfig();
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to fetch ML config');
+      }
+      return response.data;
+    },
+  });
+
+  const updateConfigMutation = useMutation({
+    mutationFn: async (newConfig: Partial<MLConfig>) => {
+      const response = await apiClient.updateMLConfig(newConfig);
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to update ML config');
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mlConfig'] });
+    },
+  });
+
   return {
     mlData,
     isLoading,
@@ -67,5 +92,9 @@ export function useMLAnalytics() {
     comparePredictions: comparePredictionsMutation.mutate,
     isComparing: comparePredictionsMutation.isPending,
     comparisonData: comparePredictionsMutation.data,
+    mlConfig,
+    isConfigLoading,
+    updateMlConfig: updateConfigMutation.mutate,
+    isUpdatingConfig: updateConfigMutation.isPending,
   };
 }

@@ -237,9 +237,23 @@ class ModelManager:
                             })
         return models
     
-    def get_current_model(self) -> Optional[Dict[str, Any]]:
+    def get_current_model_info(self) -> Optional[Dict[str, Any]]:
         """Get information about the currently deployed model."""
-        return self.current_model
+        if not self.current_model:
+            return None
+        
+        return {
+            'model_name': self.current_model.get('model_name'),
+            'version_id': self.current_model.get('version_id'),
+            'deployed_at': self.current_model.get('deployed_at'),
+            'performance_metrics': self.current_model.get('performance_metrics')
+        }
+
+    def get_current_model(self) -> Optional[Any]:
+        """Get the currently deployed model instance."""
+        if self.current_model:
+            return self.current_model.get('model')
+        return None
     
     def predict(self, X: np.ndarray) -> Optional[np.ndarray]:
         """Make predictions using the current model."""

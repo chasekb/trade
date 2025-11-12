@@ -73,13 +73,17 @@ class Portfolio:
     position_count: int = 0
 
 
+from trade_bot.ml.model_manager import ModelManager
+
+
 class SimulatedTradingManager:
     """Manages simulated trading based on live order book signals."""
     
     def __init__(self, initial_balance: float = 10000.0, max_positions: int = 5, 
                  position_size_percent: float = 20.0, trading_fee: float = 0.001,
-                 db_manager=None, session_id: str = None):
+                 db_manager=None, session_id: str = None, model_manager: ModelManager = None):
         self.initial_balance = initial_balance
+        self.model_manager = model_manager
         self.max_positions = max_positions
         self.position_size_percent = position_size_percent / 100.0  # Convert to decimal
         self.trading_fee = trading_fee
