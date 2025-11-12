@@ -266,6 +266,17 @@ async def add_symbols_to_trading(request: dict):
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.add_symbols_to_trading(request)
 
+
+@router.post("/api/trading/simulated/update-strategy-params")
+async def update_strategy_parameters(request: dict):
+    """Update strategy parameters during a trading session."""
+    try:
+        app_state = get_app_state()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.update_strategy_parameters(request)
+
 # Trading Statistics Routes
 @router.get("/api/trades/stats")
 async def get_trades_stats():

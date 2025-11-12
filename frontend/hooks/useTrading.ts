@@ -107,10 +107,18 @@ export function useLiveTrading() {
     },
   });
 
+  const updateStrategyParamsMutation = useMutation({
+    mutationFn: (params: Record<string, any>) => apiClient.updateStrategyParameters(params),
+    onSuccess: () => {
+      // Optionally refetch status or handle success
+    },
+  });
+
   return {
     status,
     startTrading: startTradingMutation.mutateAsync,
     stopTrading: stopTradingMutation.mutateAsync,
+    updateStrategyParameters: updateStrategyParamsMutation.mutateAsync,
     loading: startTradingMutation.isPending || stopTradingMutation.isPending,
     error: startTradingMutation.error || stopTradingMutation.error,
   };
