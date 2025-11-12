@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -424,6 +424,36 @@ function OrderBookSignalsTable({
 }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortKey, setSortKey] = useState<keyof OrderBookSignal | null>('timestamp');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (key: string) => {
+    const newDirection = sortKey === key && sortDirection === 'asc' ? 'desc' : 'asc';
+    setSortKey(key as keyof OrderBookSignal);
+    setSortDirection(newDirection);
+  };
+
+  const sortedSignals = useMemo(() => {
+    if (!sortKey || !signals) return signals || [];
+
+    return [...signals].sort((a, b) => {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+
+      // Handle null/undefined values to be consistently at the start or end
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+
+      let comparison = 0;
+      if (aVal < bVal) {
+        comparison = -1;
+      } else if (aVal > bVal) {
+        comparison = 1;
+      }
+
+      return sortDirection === 'desc' ? comparison * -1 : comparison;
+    });
+  }, [signals, sortKey, sortDirection]);
 
   // Use pagination from props if available, otherwise use local state
   const activePage = pagination?.current_page || currentPage;
@@ -432,7 +462,7 @@ function OrderBookSignalsTable({
   const totalSignals = (summary?.total_analyzed ?? pagination?.total_signals ?? (signals?.length || 0));
 
   // Calculate paginated data if no server-side pagination
-  const paginatedSignals = pagination ? signals : signals?.slice(
+  const paginatedSignals = pagination ? sortedSignals : sortedSignals?.slice(
     (activePage - 1) * activePageSize,
     activePage * activePageSize
   ) || [];
@@ -751,6 +781,11 @@ ML Analysis:
         data={paginatedSignals}
         columns={columns}
         loading={false}
+        sorting={{
+          key: sortKey || 'timestamp',
+          direction: sortDirection,
+          onSort: handleSort,
+        }}
         className="w-full"
       />
 
@@ -1409,77 +1444,9 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     pageSize
   );
   const [configHidden, setConfigHidden] = useState(false);
-  const [wsSignalsData, setWsSignalsData] = useState<any>(null);
 
-  // Handle WebSocket updates immediately - merge with query data
-  useEffect(() => {
-    const handleSignalsUpdate = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const wsData = customEvent.detail;
-
-      if (wsData && wsData.signals && Array.isArray(wsData.signals)) {
-        // Store WebSocket data for immediate display
-        setWsSignalsData(wsData);
-
-        // Update React Query cache for the current pagination state
-        try {
-          const queryKey = ['orderbook-signals', activeSymbols, status.isActive, currentPage, pageSize];
-
-          // Calculate the slice of WebSocket data that matches current pagination
-          const startIdx = (currentPage - 1) * pageSize;
-          const endIdx = startIdx + pageSize;
-          const paginatedSignals = wsData.signals.slice(startIdx, endIdx);
-
-          // Calculate pagination metadata
-          const totalSignals = wsData.signals.length;
-          const totalPages = Math.ceil(totalSignals / pageSize);
-
-          const paginationData = {
-            current_page: currentPage,
-            per_page: pageSize,
-            total_pages: totalPages,
-            total_signals: totalSignals,
-            has_next: currentPage < totalPages,
-            has_prev: currentPage > 1
-          };
-
-          // Update cache with properly paginated WebSocket data
-          queryClient.setQueryData(queryKey, {
-            signals: paginatedSignals,
-            total_analyzed: wsData.total_analyzed ?? totalSignals,
-            active_signals: wsData.active_signals ?? wsData.signals.filter((s: any) => s.signal_generated).length,
-            average_strength: wsData.average_strength ?? (wsData.signals.length > 0 ? (wsData.signals.reduce((sum: number, s: any) => sum + (s.signal_strength || 0), 0) / wsData.signals.length) : 0),
-            last_updated: wsData.last_updated ?? new Date().toISOString(),
-            pagination: paginationData
-          });
-        } catch (e) {
-          console.warn('Error updating WebSocket data in cache:', e);
-        }
-      }
-    };
-
-    window.addEventListener('orderbook-signals-update', handleSignalsUpdate as EventListener);
-    return () => {
-      window.removeEventListener('orderbook-signals-update', handleSignalsUpdate as EventListener);
-    };
-  }, [queryClient, activeSymbols, status.isActive, currentPage, pageSize]);
-
-  // Refetch data when tab becomes visible (browser tab)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && status.isActive) {
-        queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
-      }
-    };
-
-    handleVisibilityChange(); // Immediately check on mount or when status changes
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [queryClient, status.isActive]);
+  // The client-side merging logic has been removed.
+  // The useOrderBookSignals hook will now refetch from the backend cache when the component mounts.
 
 
   // Handle pagination changes with persistence
@@ -1549,16 +1516,14 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     setConfigHidden(true);
   };
 
-  // Merge WebSocket data with query data for immediate display
-  const mergedSignalsData = wsSignalsData || orderBookData;
-  const signalsToDisplay = mergedSignalsData?.signals || orderBookData?.signals || [];
+  const signalsToDisplay = orderBookData?.signals || [];
   
   // Normalize optional summary fields for order book signals (prefer WebSocket data for real-time updates)
   const signalsSummary = {
-    ...(mergedSignalsData?.total_analyzed !== undefined ? { total_analyzed: mergedSignalsData.total_analyzed as number } : {}),
-    ...(mergedSignalsData?.active_signals !== undefined ? { active_signals: mergedSignalsData.active_signals as number } : {}),
-    ...(mergedSignalsData?.average_strength !== undefined ? { average_strength: mergedSignalsData.average_strength as number } : {}),
-    ...(mergedSignalsData?.last_updated ? { last_updated: mergedSignalsData.last_updated as string } : {}),
+    ...(orderBookData?.total_analyzed !== undefined ? { total_analyzed: orderBookData.total_analyzed as number } : {}),
+    ...(orderBookData?.active_signals !== undefined ? { active_signals: orderBookData.active_signals as number } : {}),
+    ...(orderBookData?.average_strength !== undefined ? { average_strength: orderBookData.average_strength as number } : {}),
+    ...(orderBookData?.last_updated ? { last_updated: orderBookData.last_updated as string } : {}),
   } as {
     total_analyzed?: number;
     active_signals?: number;

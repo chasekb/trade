@@ -126,6 +126,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8002:8002"
+    volumes:
+      - ./data:/app/data
     environment:
       - DATABASE_URL=postgresql://trading_user:trading_password@db:5432/trading_db
       - QDRANT_HOST=qdrant
@@ -137,7 +139,7 @@ services:
       - trading-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "curl", "-f", "http://ml-server:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3

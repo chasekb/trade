@@ -17,11 +17,12 @@ from ...data.data_components.trade_handler import TradeHandler
 class TradingHandlers:
     """Handles trading-related functionality for the trading web server."""
 
-    def __init__(self, config, simulated_trading_manager, database_manager, websocket_manager=None):
+    def __init__(self, config, simulated_trading_manager, database_manager, websocket_manager=None, data_handlers=None):
         self.config = config
         self.simulated_trading_manager = simulated_trading_manager
         self.database_manager = database_manager
         self.websocket_manager = websocket_manager
+        self.data_handlers = data_handlers
         # Set websocket manager reference in simulated trading manager for direct access
         if websocket_manager:
             self.simulated_trading_manager._websocket_manager = websocket_manager
@@ -482,6 +483,10 @@ class TradingHandlers:
         """Stop simulated trading session."""
         try:
             self.simulated_trading_manager.stop_trading()
+
+            # Clear the signal cache
+            if self.data_handlers:
+                self.data_handlers.clear_signal_cache()
 
             # Sync websocket trading state to inactive
             try:
