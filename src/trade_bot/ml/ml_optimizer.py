@@ -404,20 +404,10 @@ class MLTradingOptimizer:
     def get_system_status(self) -> Dict[str, Any]:
         """Get overall system status."""
         current_model = self.model_manager.get_current_model()
-        
-        # Get vector DB status with timeout protection
-        vector_db_status = None
-        vector_db_stats = None
-        try:
-            vector_db_status = self.vector_db_client.get_collection_info()
-        except Exception as e:
-            logger.warning(f"Could not get vector DB status: {e}")
-        
-        try:
-            vector_db_stats = self.vector_db_client.get_collection_stats()
-        except Exception as e:
-            logger.warning(f"Could not get vector DB stats: {e}")
-        
+
+        # Skip vector DB status calls that might hang - just check if collection exists
+        vector_db_status = {"exists": self.vector_db_client.check_collection_exists()}
+
         return {
             'is_trained': self.is_trained,
             'last_training_time': self.last_training_time.isoformat() if self.last_training_time else None,
@@ -428,7 +418,7 @@ class MLTradingOptimizer:
             } if current_model else None,
             'model_performance': self.get_model_performance(),
             'vector_db_status': vector_db_status,
-            'vector_db_stats': vector_db_stats
+            'vector_db_stats': None  # Skip stats to avoid hanging
         }
 
     def load_transformers(self) -> None:
