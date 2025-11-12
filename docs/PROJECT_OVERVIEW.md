@@ -16,10 +16,11 @@ This is a comprehensive Python trading bot system built with modern technologies
 
 ### Machine Learning Optimization System
 - **ML Trading Optimization**: Integrated machine learning system for signal optimization and pattern recognition
+- **Hot-Swappable Feature Generation**: ML-based feature generation from raw order book data with hot-swappable models.
 - **Vector Database Integration**: Qdrant + Redis architecture for ML feature storage and similarity search
 - **Automated Service Management**: Integrated startup of vector database, ML model server, and Redis cache
 - **Real-time Model Inference**: Sub-second ML predictions integrated into live trading strategies
-- **Model Management Framework**: Versioning, hot-swapping, and performance monitoring
+- **Model Management Framework**: Versioning, hot-swapping, and performance monitoring for both signal prediction and feature generation models.
 - **Feature Engineering Pipeline**: Advanced order book feature extraction and trading fee optimization
 
 ### Data Architecture
@@ -38,6 +39,7 @@ For a detailed overview of the system architecture, please see the [ARCHITECTURE
 - **[CHANGELOG.md](CHANGELOG.md)**: A log of all changes made to the project.
 - **[ML_TRADING_OPTIMIZATION.md](ML_TRADING_OPTIMIZATION.md)**: An overview of the machine learning trading optimization system.
 - **[ML_DATA_FLOW.md](ML_DATA_FLOW.md)**: Comprehensive data flow into and out of ML models.
+- **[FEATURE_GENERATION.md](FEATURE_GENERATION.md)**: A detailed overview of the hot-swappable ML-based feature generation system.
 - **[SECURITY_SETUP.md](SECURITY_SETUP.md)**: A guide to setting up and managing API credentials.
 - **[VECTOR_DATABASE_SERVICE.md](VECTOR_DATABASE_SERVICE.md)**: An overview of the vector database service integration.
 - **[WEBSOCKET_SUBSCRIPTIONS.md](WEBSOCKET_SUBSCRIPTIONS.md)**: A guide to the WebSocket subscription system.
