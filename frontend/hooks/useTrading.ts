@@ -138,10 +138,10 @@ export function useOrderBookSignals(
       return response.data;
     },
     enabled: isEnabled,
-    staleTime: 2 * 1000, // 2 seconds - more responsive for real-time signals
-    refetchInterval: isEnabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for real-time signal updates
-    refetchOnWindowFocus: true, // Refetch when tab becomes visible again
-    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
+    staleTime: Infinity,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchIntervalInBackground: false,
     refetchOnMount: 'always', // Always refetch when component mounts
   });
 }

@@ -79,12 +79,13 @@ async def startup_event():
         ml_optimizer.model_manager.load_model_registry()
         
         active_model_name = None
+        config_path = os.path.abspath("data/ml_config.json")
         try:
-            with open("data/ml_config.json", "r") as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
                 active_model_name = config.get("active_model")
         except (FileNotFoundError, json.JSONDecodeError):
-            logger.info("No active model configured in ml_config.json.")
+            logger.info(f"No active model configured in {config_path}.")
         
         if active_model_name:
             logger.info(f"Attempting to deploy configured model '{active_model_name}' on startup.")
@@ -138,15 +139,28 @@ async def predict_trading_signal(request: PredictionRequest):
 
         # Check if model is trained and deployed
         if not ml_optimizer.is_trained or ml_optimizer.model_manager.current_model is None:
-            logger.warning("Prediction requested, but model is not trained or deployed")
-            return PredictionResponse(
-                action="hold",
-                confidence=0.0,
-                signal_value=0.0,
-                reason="Model not trained or deployed",
-                similar_conditions=0,
-                timestamp=datetime.now().isoformat()
-            )
+            logger.warning("Prediction requested, but model is not trained or deployed in this worker. Checking config.")
+            # Attempt to load from config
+            config_path = os.path.abspath("data/ml_config.json")
+            try:
+                with open(config_path, "r") as f:
+                    config = json.load(f)
+                    active_model_name = config.get("active_model")
+                    if active_model_name:
+                        logger.info(f"Found active model in {config_path}: {active_model_name}. Deploying...")
+                        ml_optimizer.model_manager.set_active_model(active_model_name)
+                    else:
+                        raise FileNotFoundError
+            except (FileNotFoundError, json.JSONDecodeError):
+                logger.error("No active model configured and model not loaded in memory.")
+                return PredictionResponse(
+                    action="hold",
+                    confidence=0.0,
+                    signal_value=0.0,
+                    reason="Model not trained or deployed",
+                    similar_conditions=0,
+                    timestamp=datetime.now().isoformat()
+                )
 
         # Get prediction
         prediction = ml_optimizer.predict_trading_signal(features)
@@ -203,8 +217,9 @@ async def get_model_status(background_tasks: BackgroundTasks):
 
         # Check for a configured active model
         active_model_name = None
+        config_path = os.path.abspath("data/ml_config.json")
         try:
-            with open("data/ml_config.json", "r") as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
                 active_model_name = config.get("active_model")
         except (FileNotFoundError, json.JSONDecodeError):

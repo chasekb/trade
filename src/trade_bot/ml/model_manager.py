@@ -85,6 +85,14 @@ class ModelManager:
     def set_active_model(self, model_name: str) -> bool:
         """Set the active model by name, supporting versioned models."""
         try:
+            # Persist the active model choice to an absolute path
+            config_path = os.path.abspath("data/ml_config.json")
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            with open(config_path, "w") as f:
+                json.dump({"active_model": model_name}, f)
+            
+            logger.info(f"Active model '{model_name}' saved to {config_path}")
+
             if ':' in model_name:
                 name, version_id = model_name.split(':', 1)
                 logger.info(f"Setting active model to {name} version {version_id}")

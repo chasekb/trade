@@ -2,6 +2,7 @@ from typing import List
 """Data handlers for the trading web server."""
 
 import logging
+import os
 import re
 import asyncio
 from datetime import datetime
@@ -31,6 +32,7 @@ class DataHandlers:
         # Cache for feature importances
         self._feature_importance_cache: Dict[str, Any] = {}
         self._feature_importance_cache_ttl: int = 300  # Cache for 5 minutes
+        self._signal_cache: List[Dict[str, Any]] = []
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -41,9 +43,37 @@ class DataHandlers:
             logger.error(f"Error getting cache stats: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
+    def clear_signal_cache(self):
+        """Clear the in-memory signal cache."""
+        self._signal_cache = []
+        logger.info("In-memory signal cache cleared.")
+
     async def get_live_orderbook_signals(self, symbols: str = None, page: int = 1, per_page: int = 10) -> Dict[str, Any]:
         """Get live order book signals."""
         try:
+            # Always serve from cache if it's populated
+            if self._signal_cache:
+                # Apply pagination to the cached signals
+                total_signals = len(self._signal_cache)
+                total_pages = (total_signals + per_page - 1) // per_page
+                start_idx = (page - 1) * per_page
+                end_idx = start_idx + per_page
+                paginated_signals = self._signal_cache[start_idx:end_idx]
+
+                return {
+                    "signals": paginated_signals,
+                    "trading_active": True,
+                    "message": "Order book signals from cache",
+                    "pagination": {
+                        "current_page": page,
+                        "per_page": per_page,
+                        "total_signals": total_signals,
+                        "total_pages": total_pages,
+                        "has_next": page < total_pages,
+                        "has_prev": page > 1,
+                    },
+                }
+
             if not symbols:
                 return {"error": "No symbols provided"}
             # basic pagination guardrails
@@ -579,6 +609,9 @@ class DataHandlers:
             # Sort signals by signal strength (descending)
             signals.sort(key=lambda x: x.get('signal_strength', 0), reverse=True)
             
+            # Update the cache
+            self._signal_cache = signals
+
             # Calculate pagination
             total_signals = len(signals)
             total_pages = (total_signals + per_page - 1) // per_page
@@ -623,7 +656,8 @@ class DataHandlers:
             return self._feature_importance_cache.get("data", {})
 
         try:
-            importance_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/features/importance"
+            ml_server_url = os.getenv("ML_SERVER_URL", f"http://{self.config.ml_server_host}:{self.config.ml_server_port}")
+            importance_url = f"{ml_server_url}/features/importance"
             response = requests.get(importance_url, timeout=5.0)
             if response.status_code == 200:
                 importance_data = response.json()
@@ -701,7 +735,8 @@ class DataHandlers:
                 }
 
                 # Call ML server with improved timeout and retry logic
-                ml_server_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/predict"
+                ml_server_base_url = os.getenv("ML_SERVER_URL", f"http://{self.config.ml_server_host}:{self.config.ml_server_port}")
+                ml_server_url = f"{ml_server_base_url}/predict"
                 logger.debug(f"Calling ML server at {ml_server_url} for symbol {signal['symbol']}")
 
                 # Use shorter timeout and implement retry with backoff
@@ -807,7 +842,8 @@ class DataHandlers:
 
         status_data = {"healthy": False, "is_trained": False}
         try:
-            status_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/status"
+            ml_server_url = os.getenv("ML_SERVER_URL", f"http://{self.config.ml_server_host}:{self.config.ml_server_port}")
+            status_url = f"{ml_server_url}/status"
             response = requests.get(status_url, timeout=2.0)
             if response.status_code == 200:
                 data = response.json()
@@ -822,11 +858,19 @@ class DataHandlers:
     async def _check_ml_server_health(self) -> bool:
         """Check if ML server is healthy."""
         try:
-            # Just check if server responds to health endpoint - if it does, consider it healthy
-            # The /status endpoint can be slow due to vector DB calls, so we skip that for health checks
-            health_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/health"
+            # Use environment variable for the ML server URL for robustness in containerized setups
+            ml_server_url = os.getenv("ML_SERVER_URL", f"http://{self.config.ml_server_host}:{self.config.ml_server_port}")
+            health_url = f"{ml_server_url}/health"
+            
+            logger.info(f"Checking ML server health at {health_url}")
             response = requests.get(health_url, timeout=3.0)
-            return response.status_code == 200
+            
+            if response.status_code == 200:
+                logger.info("ML server is healthy")
+                return True
+            else:
+                logger.warning(f"ML server health check failed with status code: {response.status_code}")
+                return False
         except requests.exceptions.Timeout:
             logger.warning("ML server health check timed out")
             return False

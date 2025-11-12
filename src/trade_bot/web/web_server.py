@@ -144,9 +144,11 @@ async def startup_event():
         # Initialize handlers
         api_handlers = APIHandlers(config, data_provider, cached_data_provider, product_fetcher, database_manager, simulated_trading_manager)
         backtest_handlers = BacktestHandlers(config, database_manager)
-        trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager, websocket_manager)
+        data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, None, app_state_local.trading_state)
+        trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager, websocket_manager, data_handlers)
+        data_handlers.trading_handlers = trading_handlers
         app_state_local.websocket_handlers = WebSocketHandlers(websocket_manager)
-        app_state_local.data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, trading_handlers, app_state_local.trading_state)
+        app_state_local.data_handlers = data_handlers
         app_state_local.live_portfolio_handlers = LivePortfolioHandlers(config)
 
         # Store handlers in application state
