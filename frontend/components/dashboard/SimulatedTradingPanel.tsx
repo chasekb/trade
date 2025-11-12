@@ -192,8 +192,22 @@ interface StrategyConfigFormProps {
 
 function StrategyConfigForm({ strategy, config, onChange, className = '' }: StrategyConfigFormProps) {
   const { getStrategyParameters, getOrderBookPresets } = useStrategyParameters();
-  const { availableModels, setActiveModel, trainModel, isTraining } = useModelTraining();
+  const { availableModels, setActiveModel, trainModel, isTraining, isSettingActiveModel } = useModelTraining();
   const [selectedModel, setSelectedModel] = useState('');
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleSetActiveModel = () => {
+    if (!selectedModel) return;
+    setFeedback(null);
+    setActiveModel(selectedModel, {
+      onSuccess: (data: any) => {
+        setFeedback({ type: 'success', message: data.message || 'Model activated successfully' });
+      },
+      onError: (error: any) => {
+        setFeedback({ type: 'error', message: error.message || 'Failed to set active model' });
+      },
+    });
+  };
 
   const [selectedPreset, setSelectedPreset] = useState('aggressive');
 
@@ -236,10 +250,15 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
                   </option>
                 ))}
               </select>
-              <Button onClick={() => setActiveModel(selectedModel)} disabled={!selectedModel}>
-                Set Active
+              <Button onClick={handleSetActiveModel} disabled={!selectedModel || isSettingActiveModel}>
+                {isSettingActiveModel ? 'Setting...' : 'Set Active'}
               </Button>
             </div>
+            {feedback && (
+              <div className={`mt-2 text-sm ${feedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                {feedback.message}
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Button onClick={() => trainModel()} disabled={isTraining}>
