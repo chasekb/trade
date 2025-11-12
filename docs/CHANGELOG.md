@@ -1,5 +1,20 @@
 # 📝 Changelog
 
+## [2.4.0] - 2025-11-12
+
+### 🚀 Features
+- **Hot-Swappable ML-Based Feature Generation**: Implemented a new system for generating features from raw order book data using hot-swappable machine learning models. This enhances the predictive power of the trading bot by moving from hand-crafted statistical features to learned representations of market microstructures.
+- **FeatureModelManager**: Added a new manager for the lifecycle of feature generation models, including registration, versioning, and hot-swapping.
+- **API Endpoints for Feature Generation**: Added new API endpoints to manage the feature generation models, allowing operators to list available models, switch the active model, and monitor their performance.
+- **ML-Enhanced Order Book Strategy**: Integrated ML predictions into the order book trading strategy, allowing for more intelligent trading decisions.
+
+### 📚 Documentation
+- **Updated Architecture Documentation**: Updated `docs/ARCHITECTURE.md` to include the new `FeatureModelManager` and the revised data flow.
+- **Updated ML Trading Optimization Documentation**: Updated `docs/ML_TRADING_OPTIMIZATION.md` to describe the new ML-based feature generation system, the role of the `FeatureModelManager`, and the updated workflow.
+- **Updated ML Data Flow Documentation**: Updated `docs/ML_DATA_FLOW.md` to incorporate the new feature generation model.
+- **New Feature Generation Documentation**: Created `docs/FEATURE_GENERATION.md` to provide a detailed explanation of the new feature generation system.
+- **Updated Project Overview**: Updated `docs/PROJECT_OVERVIEW.md` to include the new feature and a link to the new documentation.
+
 ## [2.3.0] - 2025-11-10
 
 ### 🚀 Features

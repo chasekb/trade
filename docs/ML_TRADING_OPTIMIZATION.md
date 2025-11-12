@@ -17,29 +17,33 @@ The ML Trading Optimization system consists of several key components:
 ## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Trading Bot   │    │  ML Optimizer   │    │ Vector Database │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │ Order Book  │ │───▶│ │ Data        │ │───▶│ │ Qdrant      │ │
-│ │ Strategy    │ │    │ │ Collector   │ │    │ │ Vector DB   │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │ ML Enhanced │ │◀───│ │ Model       │ │◀───│ │ Redis       │ │
-│ │ Strategy    │ │    │ │ Manager     │ │    │ │ Cache       │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │ ML Model Server │
-                       │                 │
-                       │ ┌─────────────┐ │
-                       │ │ FastAPI     │ │
-                       │ │ Endpoints   │ │
-                       │ └─────────────┘ │
-                       └─────────────────┘
+┌─────────────────┐    ┌───────────────────────────┐    ┌─────────────────┐
+│   Trading Bot   │    │       ML Optimizer        │    │ Vector Database │
+│                 │    │                           │    │                 │
+│ ┌─────────────┐ │    │ ┌───────────────────────┐ │    │ ┌─────────────┐ │
+│ │ Order Book  │ │───▶│ │     Data Collector    │ │───▶│ │ Qdrant      │ │
+│ │ Strategy    │ │    │ └───────────────────────┘ │    │ │ Vector DB   │ │
+│ └─────────────┘ │    │            │              │    │ └─────────────┘ │
+│                 │    │            ▼              │    │                 │
+│                 │    │ ┌───────────────────────┐ │    │ ┌─────────────┐ │
+│                 │    │ │ Feature Model Manager │ │    │ │ Redis       │ │
+│                 │    │ └───────────────────────┘ │    │ │ Cache       │ │
+│                 │    │            │              │    │ └─────────────┘ │
+│                 │    │            ▼              │    └─────────────────┘
+│ ┌─────────────┐ │    │ ┌───────────────────────┐ │
+│ │ ML Enhanced │ │◀───│ │   Signal Model Mgr    │ │
+│ │ Strategy    │ │    │ └───────────────────────┘ │
+│ └─────────────┘ │    └───────────────────────────┘
+└─────────────────┘                 │
+                                     ▼
+                            ┌─────────────────┐
+                            │ ML Model Server │
+                            │                 │
+                            │ ┌─────────────┐ │
+                            │ │ FastAPI     │ │
+                            │ │ Endpoints   │ │
+                            │ └─────────────┘ │
+                            └─────────────────┘
 ```
 
 ## Components
@@ -60,11 +64,20 @@ Key features:
 - Top/bottom P&L trade analysis for performance insights
 - Order book snapshot extraction for feature engineering
 
-### 2. Feature Engineering (`src/trade_bot/ml/feature_engineer.py`)
+### 2. Hot-Swappable Feature Generation (`src/trade_bot/ml/feature_model_manager.py`)
 
-Transforms raw trading data into ML-ready features:
+This new layer introduces a hot-swappable machine learning model to process raw order book data and generate insightful features.
+
+- **Feature Generation Model**: A dedicated ML model (e.g., CNN or Autoencoder) that processes raw order book snapshots and outputs a dense feature vector.
+- **`FeatureModelManager`**: Manages the lifecycle of feature generation models, including registration, versioning, and hot-swapping.
+- **Integration**: The `MLDataCollector` now uses the active feature generation model to create learned features from raw order book data, which are then combined with the original statistical features.
+
+### 3. Feature Engineering (`src/trade_bot/ml/feature_engineer.py`)
+
+Transforms raw and ML-generated trading data into ML-ready features:
 
 - **Order Book Features**: Imbalance ratios, spread metrics, volume analysis
+- **ML-Generated Features**: Learned representations of market microstructures from the feature generation model.
 - **Technical Indicators**: Momentum, volatility, trend strength
 - **Derived Features**: Interaction terms, time series features
 - **Scaling & Selection**: Standardization and feature importance selection
@@ -87,14 +100,20 @@ Manages feature vector storage and similarity search:
 - **Real-time Updates**: Continuous feature vector storage
 - **Pattern Matching**: Historical pattern recognition
 
-### 5. Model Management (`src/trade_bot/ml/model_manager.py`)
+### 5. Model Management
 
-Handles model lifecycle management:
+The system now includes two distinct model managers:
 
-- **Versioning**: Track model versions and performance
-- **Deployment**: Hot-swap models without trading interruption
-- **Rollback**: Revert to previous model versions
-- **Performance Monitoring**: Continuous model evaluation
+- **`ModelManager` (`src/trade_bot/ml/model_manager.py`)**: Handles the lifecycle of the downstream signal prediction models.
+  - **Versioning**: Track model versions and performance.
+  - **Deployment**: Hot-swap models without trading interruption.
+  - **Rollback**: Revert to previous model versions.
+  - **Performance Monitoring**: Continuous model evaluation.
+
+- **`FeatureModelManager` (`src/trade_bot/ml/feature_model_manager.py`)**: Manages the new feature generation models.
+  - **Versioning & Registration**: Manages different versions of feature generation models.
+  - **Hot-Swapping**: Allows for changing the active feature generation model at runtime without service interruption.
+  - **API Integration**: Exposes endpoints for managing and switching feature generation models.
 
 ### 6. ML-Enhanced Strategy (`src/trade_bot/trading/strategies/ml_enhanced_orderbook.py`)
 
@@ -488,7 +507,9 @@ The ML Model Server provides REST API endpoints:
 - `POST /update` - Update model with new data
 - `POST /rollback` - Rollback to previous version
 - `GET /models` - Get a list of available models
-- `POST /models/set_active` - Set the active model
+- `POST /models/set_active` - Set the active signal prediction model
+- `GET /feature_models` - Get a list of available feature generation models
+- `POST /feature_models/set_active` - Set the active feature generation model
 
 ### Prediction
 - `POST /predict` - Get trading signal prediction

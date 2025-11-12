@@ -11,16 +11,16 @@ The ML system processes trading data through a multi-stage pipeline that transfo
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Raw Market    │    │   Data          │    │   Feature       │    │   ML Model      │
-│   Data          │───▶│   Collection    │───▶│   Engineering   │───▶│   Inference     │
+│   Data          │───▶│   Collection    │───▶│   Generation    │───▶│   Inference     │
 │                 │    │                 │    │                 │    │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │Order Book   │ │    │ │DataCollector │ │    │ │FeatureEngi- │ │    │ │ModelManager │ │
-│ │Updates      │ │    │ │             │ │    │ │neer         │ │    │ │             │ │
+│ │Order Book   │ │    │ │DataCollector │ │    │ │FeatureModel │ │    │ │SignalModel  │ │
+│ │Updates      │ │    │ │             │ │    │ │Manager      │ │    │ │Manager      │ │
 │ ├─────────────┤ │    │ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
 │ │Trade        │ │    │                 │    │                 │    │                 │
 │ │Executions   │ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ ├─────────────┤ │    │ │Database     │ │    │ │Scaling &    │ │    │ │Prediction   │ │
-│ │Signals      │ │    │ │Queries      │ │    │ │Selection    │ │    │ │Generation   │ │
+│ ├─────────────┤ │    │ │Database     │ │    │ │FeatureEngi- │ │    │ │Prediction   │ │
+│ │Signals      │ │    │ │Queries      │ │    │ │neer         │ │    │ │Generation   │ │
 │ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
 └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
                                                                  │
@@ -180,6 +180,7 @@ class OrderBookFeatures:
     prev_win_probability: float   # Previous ML prediction (if available)
     prev_expected_return: float   # Previous expected return
     prev_confidence: float        # Previous prediction confidence
+    learned_features: List[float] # Features from the feature generation model
 ```
 
 **TradeOutcome Dataclass**:
