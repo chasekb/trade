@@ -8,7 +8,7 @@ including position tracking, portfolio management, and trade execution.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 import json
@@ -177,9 +177,9 @@ class SimulatedTradingManager:
                             entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
                         except (ValueError, TypeError) as e:
                             logger.warning(f"Failed to parse entry_time '{entry_time}': {e}")
-                            entry_time = datetime.now()
+                            entry_time = datetime.now(timezone.utc)
                     elif not entry_time:
-                        entry_time = datetime.now()
+                        entry_time = datetime.now(timezone.utc)
                     
                     position = Position(
                         symbol=pos_data['symbol'],
@@ -266,7 +266,7 @@ class SimulatedTradingManager:
         """Start simulated trading for specified symbols."""
         self.symbols_to_trade = symbols
         self.is_trading = True
-        self.last_signal_check = datetime.now()
+        self.last_signal_check = datetime.now(timezone.utc)
         
         # Update position size and max positions if provided
         if position_size_percent is not None:
@@ -312,7 +312,7 @@ class SimulatedTradingManager:
         """Update all position prices with current market data."""
         try:
             # Rate limiting: only update if enough time has passed
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             if (self.last_position_update and 
                 (now - self.last_position_update).total_seconds() < self.position_update_interval):
                 return  # Skip update if too soon
@@ -496,7 +496,7 @@ class SimulatedTradingManager:
                 else:
                     logger.info(f"Failed to execute sell trade for {symbol}")
         
-        self.last_signal_check = datetime.now()
+        self.last_signal_check = datetime.now(timezone.utc)
         
         return {
             "status": "processed",
@@ -591,7 +591,7 @@ class SimulatedTradingManager:
             side='long',
             quantity=quantity,
             entry_price=price,
-            entry_time=datetime.now(),
+            entry_time=datetime.now(timezone.utc),
             current_price=price,
             unrealized_pnl=0.0
         )
@@ -604,7 +604,7 @@ class SimulatedTradingManager:
             side='buy',
             quantity=quantity,
             price=price,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
             reason=signal.get('signal_reason', 'Order book signal'),
             fees=fees
         )
@@ -651,7 +651,7 @@ class SimulatedTradingManager:
             side='sell',
             quantity=quantity,
             price=price,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
             reason=signal.get('signal_reason', 'Order book signal'),
             pnl=net_pnl,
             fees=fees
@@ -731,7 +731,7 @@ class SimulatedTradingManager:
                         entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
                     except (ValueError, TypeError) as e:
                         logger.warning(f"Failed to parse entry_time '{entry_time}': {e}")
-                        entry_time = datetime.now()
+                        entry_time = datetime.now(timezone.utc)
                 
                 open_positions.append({
                     "symbol": symbol,
@@ -742,7 +742,7 @@ class SimulatedTradingManager:
                     "unrealized_pnl": position.unrealized_pnl,
                     "status": "open",
                     "entry_time": entry_time.isoformat(),
-                    "duration": str(datetime.now() - entry_time)
+                    "duration": str(datetime.now(timezone.utc) - entry_time)
                 })
         return open_positions
     
@@ -815,7 +815,7 @@ class SimulatedTradingManager:
                 "portfolio": portfolio_dict,
                 "open_positions": open_positions,
                 "recent_trades": recent_trades,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_signals_processed": self.get_total_signals_processed()
             }
 
