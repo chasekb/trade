@@ -224,6 +224,10 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
         // Push orderbook signals updates; emit event for component-level handling
         if (type === 'orderbook_signals_update' && data) {
+          // Invalidate the signals query to trigger a refetch from the updated backend cache
+          try {
+            (window as any).__RQ_INVALIDATE__?.(['orderbook-signals']);
+          } catch {}
           // Let the component handle the WebSocket data merging with proper pagination
           window.dispatchEvent(new CustomEvent('orderbook-signals-update', { detail: data }));
         }
