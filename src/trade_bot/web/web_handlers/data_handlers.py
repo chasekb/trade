@@ -820,9 +820,19 @@ class DataHandlers:
         return status_data
 
     async def _check_ml_server_health(self) -> bool:
-        """Check if ML server is healthy and has a trained model."""
-        status = await self._get_ml_server_status()
-        return status["healthy"] and status["is_trained"]
+        """Check if ML server is healthy."""
+        try:
+            # Just check if server responds to health endpoint - if it does, consider it healthy
+            # The /status endpoint can be slow due to vector DB calls, so we skip that for health checks
+            health_url = f"http://{self.config.ml_server_host}:{self.config.ml_server_port}/health"
+            response = requests.get(health_url, timeout=3.0)
+            return response.status_code == 200
+        except requests.exceptions.Timeout:
+            logger.warning("ML server health check timed out")
+            return False
+        except Exception as e:
+            logger.warning(f"ML server health check failed: {e}")
+            return False
     
     async def get_loading_status(self) -> Dict[str, Any]:
         """Get data loading status."""
