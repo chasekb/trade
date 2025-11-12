@@ -321,6 +321,7 @@ export interface BacktestResultsProps {
 
 export interface MLModelStatus {
   is_trained: boolean;
+  is_training?: boolean;
   last_training_time?: string;
   current_model?: {
     model_name: string;
@@ -360,4 +361,10 @@ export interface MLTrainingProgress {
   progress_percentage?: number;
   current_step?: string;
   estimated_time_remaining?: number;
+}
+
+export interface MLConfig {
+  continuous_training_enabled: boolean;
+  training_interval: number;
+  new_data_threshold: number;
 }

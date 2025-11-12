@@ -15,6 +15,7 @@ from ..data.cached_data_provider import CachedDataProvider
 from ..data.product_fetcher import ProductFetcher
 from ..database.database_manager import DatabaseManager
 from ..trading.simulated_trading_manager import SimulatedTradingManager
+from ..ml.training_manager import TrainingManager
 from ..data.websocket_client import WebSocketClient
 from ..data.data_handler import DataHandler
 from ..web.web_components import RateLimiter, WebSocketManager, ApplicationState, set_app_state, get_app_state
@@ -118,9 +119,20 @@ async def startup_event():
         cached_data_provider = CachedDataProvider(config, db_url=os.getenv('DATABASE_URL'))
         product_fetcher = ProductFetcher()
         database_manager = DatabaseManager()
+
+        # Initialize TrainingManager and ModelManager
+        training_manager = TrainingManager(
+            db_path=os.getenv("DATABASE_URL", "data/databases/trading_cache.db"),
+            models_dir="data/models"
+        )
+        app_state_local.training_manager = training_manager
+        model_manager = training_manager.model_manager
+        app_state_local.model_manager = model_manager
+
         simulated_trading_manager = SimulatedTradingManager(
             initial_balance=10000.0,
-            db_manager=database_manager
+            db_manager=database_manager,
+            model_manager=model_manager
         )
         data_handler = DataHandler(config)
         websocket_client = WebSocketClient(config)
@@ -177,6 +189,13 @@ async def startup_event():
         except Exception as e:
             logger.error(f"❌ Failed to start WebSocket manager real-time data processing: {e}")
             # Don't fail startup, just log the error
+
+        # Start continuous model training
+        try:
+            training_manager.start_continuous_training()
+            logger.info("✅ Continuous model training started")
+        except Exception as e:
+            logger.error(f"❌ Failed to start continuous model training: {e}")
 
         port = int(os.getenv("PORT", "8000"))
         logger.info("🚀 Trading API Backend started successfully!")

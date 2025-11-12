@@ -14,8 +14,9 @@ interface ModelStatusCardProps {
 
 function ModelStatusCard({ status }: ModelStatusCardProps) {
   const isTrained = status.is_trained;
-  const dotClass = isTrained ? 'bg-green-500' : 'bg-red-500';
-  const statusText = isTrained ? 'Model Trained' : 'Model Not Trained';
+  const isTraining = status.is_training;
+  const dotClass = isTraining ? 'bg-yellow-500' : (isTrained ? 'bg-green-500' : 'bg-red-500');
+  const statusText = isTraining ? 'Training In Progress...' : (isTrained ? 'Model Trained' : 'Model Not Trained');
 
   return (
     <Card>
@@ -269,8 +270,71 @@ interface MLAnalyticsDashboardProps {
   className?: string;
 }
 
+function ConfigControls() {
+  const { mlConfig, isConfigLoading, updateMlConfig, isUpdatingConfig } = useMLAnalytics();
+  const [config, setConfig] = React.useState<import('@/types/trading').MLConfig | null>(null);
+
+  React.useEffect(() => {
+    if (mlConfig) {
+      setConfig(mlConfig);
+    }
+  }, [mlConfig]);
+
+  const handleSave = () => {
+    if (config) {
+      updateMlConfig(config);
+    }
+  };
+
+  if (isConfigLoading || !config) {
+    return <Card><CardHeader><CardTitle>Configuration</CardTitle></CardHeader><CardContent><p>Loading...</p></CardContent></Card>;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Configuration</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <label htmlFor="continuous-training">Enable Continuous Training</label>
+          <input
+            id="continuous-training"
+            type="checkbox"
+            checked={config.continuous_training_enabled}
+            onChange={(e) => setConfig({ ...config, continuous_training_enabled: e.target.checked })}
+          />
+        </div>
+        <div>
+          <label htmlFor="training-interval">Training Interval (seconds)</label>
+          <input
+            id="training-interval"
+            type="number"
+            value={config.training_interval}
+            onChange={(e) => setConfig({ ...config, training_interval: parseInt(e.target.value, 10) })}
+            className="w-full p-2 border rounded"
+          />
+        </div>
+        <div>
+          <label htmlFor="data-threshold">New Data Threshold</label>
+          <input
+            id="data-threshold"
+            type="number"
+            value={config.new_data_threshold}
+            onChange={(e) => setConfig({ ...config, new_data_threshold: parseInt(e.target.value, 10) })}
+            className="w-full p-2 border rounded"
+          />
+        </div>
+        <Button onClick={handleSave} disabled={isUpdatingConfig}>
+          {isUpdatingConfig ? 'Saving...' : 'Save Configuration'}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function MLAnalyticsDashboard({ className }: MLAnalyticsDashboardProps) {
-  const { mlData, isLoading, error, pnlTrades, isPnlLoading, pnlError } = useMLAnalytics();
+  const { mlData, isLoading, error } = useMLAnalytics();
 
   if (error) {
     return (
@@ -305,6 +369,8 @@ export default function MLAnalyticsDashboard({ className }: MLAnalyticsDashboard
         <FeatureImportanceChart features={mlData.feature_importance} />
         <ModelControls />
       </DashboardGrid>
+
+      <ConfigControls />
 
       <PnlTradesTable />
 
