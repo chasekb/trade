@@ -188,9 +188,11 @@ interface StrategyConfigFormProps {
   config: Record<string, any>;
   onChange: (config: Record<string, any>) => void;
   className?: string;
+  status: { isActive: boolean };
+  updateStrategyParameters: (params: Record<string, any>) => void;
 }
 
-function StrategyConfigForm({ strategy, config, onChange, className = '' }: StrategyConfigFormProps) {
+function StrategyConfigForm({ strategy, config, onChange, className = '', status, updateStrategyParameters }: StrategyConfigFormProps) {
   const { getStrategyParameters, getOrderBookPresets } = useStrategyParameters();
   const { availableModels, setActiveModel, trainModel, isTraining, isSettingActiveModel } = useModelTraining();
   const [selectedModel, setSelectedModel] = useState('');
@@ -228,7 +230,11 @@ function StrategyConfigForm({ strategy, config, onChange, className = '' }: Stra
   }, [strategy]);
 
   const handleParameterChange = (name: string, value: any) => {
-    onChange({ ...config, [name]: value });
+    const newConfig = { ...config, [name]: value };
+    onChange(newConfig);
+    if (status.isActive) {
+      updateStrategyParameters({ [name]: value });
+    }
   };
 
   return (
@@ -851,6 +857,8 @@ function TradingConfiguration({
   symbols,
   onSymbolsChange,
   onHide,
+  status,
+  updateStrategyParameters,
 }: {
   strategy: TradingStrategy;
   onStrategyChange: (strategy: TradingStrategy) => void;
@@ -859,6 +867,8 @@ function TradingConfiguration({
   symbols: string[];
   onSymbolsChange: (symbols: string[]) => void;
   onHide?: () => void;
+  status: { isActive: boolean };
+  updateStrategyParameters: (params: Record<string, any>) => void;
 }) {
   const { data: products } = useProducts();
   const [symbolMode, setSymbolMode] = useState<'single' | 'universe'>('single');
@@ -1117,6 +1127,8 @@ function TradingConfiguration({
           strategy={strategy}
           config={config}
           onChange={onConfigChange}
+          status={status}
+          updateStrategyParameters={updateStrategyParameters}
         />
       </CardContent>
     </Card>
@@ -1420,7 +1432,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
 }
 
 export default function SimulatedTradingPanel({ className = '' }: LiveTradingPanelProps) {
-  const { status, startTrading, stopTrading, loading } = useLiveTrading();
+  const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading();
   // Start native WebSocket to receive live updates for stats/signals
   useSimTradingWebSocket(status.isActive);
 
@@ -1562,6 +1574,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           symbols={symbols}
           onSymbolsChange={setSymbols}
           onHide={hideConfiguration}
+          status={status}
+          updateStrategyParameters={updateStrategyParameters}
         />
       )}
 

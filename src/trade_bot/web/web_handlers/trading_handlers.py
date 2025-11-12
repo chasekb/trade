@@ -596,6 +596,24 @@ class TradingHandlers:
             logger.error(f"Error adding symbols to trading: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    async def update_strategy_parameters(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update strategy parameters during a trading session."""
+        try:
+            new_params = request_data.get('parameters', {})
+            if not isinstance(new_params, dict):
+                raise HTTPException(status_code=400, detail="Parameters must be a dictionary.")
+
+            self.simulated_trading_manager.update_strategy_parameters(new_params)
+
+            return {
+                "status": "updated",
+                "message": "Strategy parameters updated successfully.",
+                "new_parameters": new_params
+            }
+        except Exception as e:
+            logger.error(f"Error updating strategy parameters: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     async def _broadcast_trading_start_to_frontend(self) -> None:
         """Broadcast initial trading state to frontend widgets after starting trading."""
         try:

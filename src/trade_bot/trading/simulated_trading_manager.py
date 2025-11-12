@@ -158,6 +158,30 @@ class SimulatedTradingManager:
         self.strategy_type = strategy_type
         self.strategy_params = strategy_params
         logger.info(f"Strategy info set: {strategy_type} with params: {strategy_params}")
+
+    def update_strategy_parameters(self, new_params: Dict[str, Any]) -> None:
+        """Update strategy parameters during an active session."""
+        if not self.is_trading:
+            logger.warning("Cannot update strategy parameters: trading is not active.")
+            return
+
+        # Merge new parameters with existing ones
+        self.strategy_params.update(new_params)
+        logger.info(f"Updated strategy parameters: {self.strategy_params}")
+
+        # If a websocket manager is available, notify it of the change
+        websocket_manager = getattr(self, '_websocket_manager', None)
+        if websocket_manager:
+            try:
+                asyncio.create_task(
+                    websocket_manager.broadcast(json.dumps({
+                        "type": "strategy_parameter_update",
+                        "data": {"strategy_params": self.strategy_params}
+                    }))
+                )
+                logger.info("Broadcasted strategy parameter update to WebSocket clients.")
+            except Exception as e:
+                logger.error(f"Failed to broadcast strategy parameter update: {e}")
     
     def restore_portfolio_state(self, portfolio_state: Dict[str, Any], positions: List[Dict[str, Any]], 
                                trades: List[Dict[str, Any]], symbols: List[str]) -> None:
