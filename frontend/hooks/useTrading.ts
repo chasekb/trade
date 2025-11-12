@@ -222,14 +222,42 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
 
-        // Push orderbook signals updates; emit event for component-level handling
+        // Push orderbook signals updates into cache for instant UI updates
         if (type === 'orderbook_signals_update' && data) {
-          // Invalidate the signals query to trigger a refetch from the updated backend cache
           try {
-            (window as any).__RQ_INVALIDATE__?.(['orderbook-signals']);
-          } catch {}
-          // Let the component handle the WebSocket data merging with proper pagination
-          window.dispatchEvent(new CustomEvent('orderbook-signals-update', { detail: data }));
+            const queryClient = (window as any).__RQ_CLIENT__;
+            if (queryClient) {
+              // Update all queries that start with ['orderbook-signals']
+              queryClient.setQueriesData({ queryKey: ['orderbook-signals'] }, (oldData: any) => {
+                if (!oldData || !oldData.signals) {
+                  return data; // If no old data, use the new data
+                }
+
+                const newSignals = data.signals || [];
+                const oldSignals = oldData.signals || [];
+
+                // Create a map of existing signals for quick lookup
+                const oldSignalsMap = new Map(oldSignals.map((s: OrderBookSignal) => [`${s.symbol}-${s.timestamp}`, s]));
+
+                // Add or update signals from the new data
+                newSignals.forEach((newSignal: OrderBookSignal) => {
+                  oldSignalsMap.set(`${newSignal.symbol}-${newSignal.timestamp}`, newSignal);
+                });
+
+                // Convert map back to array and sort
+                const mergedSignals = (Array.from(oldSignalsMap.values()) as OrderBookSignal[])
+                  .sort((a: OrderBookSignal, b: OrderBookSignal) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+                return {
+                  ...oldData,
+                  ...data, // Update summary and pagination info from new data
+                  signals: mergedSignals,
+                };
+              });
+            }
+          } catch (e) {
+            console.error('Failed to update orderbook signals cache:', e);
+          }
         }
       } catch (e) {
         // ignore malformed messages
@@ -250,6 +278,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 if (typeof window !== 'undefined' && !(window as any).__RQ_SET__) {
   try {
     const { queryClient } = require('@/lib/api');
+    (window as any).__RQ_CLIENT__ = queryClient; // Expose client for more complex cache updates
     (window as any).__RQ_SET__ = (key: any, data: any) => {
       try { queryClient.setQueryData(key, data); } catch {}
     };
