@@ -1,5 +1,5 @@
 {
-  "continuous_training_enabled": true,
+  "continuous_training_enabled": false,
   "training_interval": 3600,
   "new_data_threshold": 100
 }
