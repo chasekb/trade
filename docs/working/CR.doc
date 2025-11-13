@@ -12,7 +12,25 @@ This document provides a comprehensive code review of the trading dashboard appl
 
 The application is a well-structured trading platform with a clear separation of concerns between the frontend and backend. However, there are several opportunities to enhance maintainability, performance, and code quality.
 
-## 2. Overall Architecture
+## 2. Prioritized Action Plan
+
+### High Priority
+
+-   [ ] **Refactor `LiveTradingPanel.tsx` and `SimulatedTradingPanel.tsx`:** Create a reusable `TradingPanel` component to eliminate code duplication.
+-   [ ] **Implement Server-Side Pagination:** Move pagination logic to the backend to improve performance.
+-   [ ] **Refactor `asyncio.run()`:** Ensure the backend is fully asynchronous to avoid blocking the event loop.
+-   [ ] **Improve Type Safety:** Replace `any` types with more specific types throughout the frontend.
+-   [ ] **Implement True Ensemble Model:** Develop a `VotingRegressor` to create a true ensemble model for comparison against individual candidate models.
+-   [ ] **Add New Candidate Models:** Integrate `XGBoost` and `LightGBM` into the training pipeline to expand the pool of candidate models.
+-   [ ] **Enhance Performance Tracking:** Implement a system to provide running performance scores for all models to allow for easy comparison.
+
+### Medium Priority
+
+-   [ ] **Extract Sub-components:** Break down large components into smaller, more manageable files.
+-   [ ] **Consistent API Error Handling:** Ensure all API calls use the centralized error handling method.
+-   [ ] **Improve Logging and Error Handling:** Enhance backend logging and error handling for better diagnostics.
+
+## 3. Overall Architecture
 
 The application follows a modern web architecture, with a React-based frontend and a Python backend. The use of a REST API for communication is appropriate, and the addition of WebSockets for real-time updates is a good choice for a trading application.
 
@@ -27,11 +45,11 @@ The application follows a modern web architecture, with a React-based frontend a
 -   **API Design:** The API could be improved by implementing server-side pagination and providing more specific data types in responses.
 -   **Code Duplication:** There is significant code duplication in the frontend, particularly between the live and simulated trading panels.
 
-## 3. Frontend Analysis
+## 4. Frontend Analysis
 
 The frontend is built with React and TypeScript, using React Query for state management. The code is generally well-organized, but there are several areas for improvement.
 
-### 3.1. `LiveTradingPanel.tsx` and `SimulatedTradingPanel.tsx`
+### 4.1. `LiveTradingPanel.tsx` and `SimulatedTradingPanel.tsx`
 
 These two components are nearly identical, which indicates a need for refactoring.
 
@@ -45,7 +63,7 @@ These two components are nearly identical, which indicates a need for refactorin
 
 -   **Component Extraction:** The `OpenPositionsSection`, `StrategySelector`, `TradingControls`, and `StrategyConfigForm` components are large and could be extracted into their own files to improve readability and maintainability.
 
-### 3.2. `api.ts`
+### 4.2. `api.ts`
 
 The API client is well-structured but has some inconsistencies.
 
@@ -58,7 +76,7 @@ The API client is well-structured but has some inconsistencies.
 
 -   **Type Safety:** The `any` type is used in several places. Defining more specific types for API responses would improve type safety and developer experience.
 
-### 3.3. `useTrading.ts`
+### 4.3. `useTrading.ts`
 
 The custom hooks are well-structured but have a complex WebSocket implementation.
 
@@ -66,11 +84,11 @@ The custom hooks are well-structured but have a complex WebSocket implementation
 
 -   **Simplify WebSocket Integration:** The use of global `window` objects for React Query integration is not ideal. A more robust solution would be to use the `queryClient` directly within the WebSocket event listener to update the cache.
 
-## 4. Backend Analysis
+## 5. Backend Analysis
 
 The backend is written in Python and handles the core trading logic.
 
-### 4.1. `simulated_trading_manager.py`
+### 5.1. `simulated_trading_manager.py`
 
 This file contains the logic for simulated trading. The code is well-organized, but there are some areas for improvement.
 
@@ -84,7 +102,54 @@ This file contains the logic for simulated trading. The code is well-organized, 
 -   **Improve Logging:** The logging could be more detailed to provide better insights into the trading process.
 -   **Robust Error Handling:** The error handling could be improved to catch more specific exceptions and provide more informative error messages.
 
-## 5. Key Recommendations Summary
+## 6. Plan for Enhancing the ML Trading Model Framework
+
+This section outlines the plan to improve the machine learning model infrastructure by implementing a true ensemble model, expanding the set of candidate models, and providing a clear view of running performance scores for comparison.
+
+### 6.1. Implement a True Ensemble Model
+
+The current system trains a set of models and selects the best one, but it does not create a combined ensemble model. We will implement a `VotingRegressor` to create a true ensemble.
+
+1.  **Modify `src/trade_bot/ml/model_trainer.py`:**
+    *   Import `VotingRegressor` from `sklearn.ensemble`.
+    *   In the `_train_ensemble_models` method, after training the individual models (Random Forest, Gradient Boosting, etc.), create a `VotingRegressor` instance.
+    *   This regressor will be a list of tuples, with each tuple containing the name and the trained model object (e.g., `[('rf', rf_model), ('gb', gb_model), ...]`).
+    *   Train the `VotingRegressor` on the training data.
+    *   Evaluate its performance using the `_evaluate_model` method and add it to the `self.models` and `self.model_performance` dictionaries under the key `'ensemble_voter'`.
+    *   The `_select_best_model` function will then automatically include this new ensemble model in its comparison, allowing it to be selected as the best model if it outperforms the individual components.
+
+### 6.2. Add New Candidate Models
+
+To increase the chances of finding a better-performing model, we will add more diverse and powerful regressors to the training process.
+
+1.  **Update Project Dependencies:**
+    *   Add `xgboost` and `lightgbm` to the project's `requirements.txt` file to ensure the necessary libraries are installed.
+
+2.  **Modify `src/trade_bot/ml/model_trainer.py`:**
+    *   Import `XGBRegressor` from `xgboost` and `LGBMRegressor` from `lightgbm`.
+    *   In the `_train_ensemble_models` method, add training and evaluation logic for these new models:
+        *   **XGBoost:** Instantiate `XGBRegressor`, train it, evaluate it, and store its results.
+        *   **LightGBM:** Instantiate `LGBMRegressor`, train it, evaluate it, and store its results.
+    *   These new models will automatically be included in the `VotingRegressor` and in the best-model selection process.
+
+### 6.3. Enhance Performance Tracking and Comparison
+
+To provide a clear view of model performance over time, we will enhance the backend to store more detailed performance data and expose it via an API for the frontend to consume.
+
+1.  **Enhance `src/trade_bot/ml/model_manager.py`:**
+    *   Modify the `register_model` function to not just save the best model, but to also log the performance metrics of *all* candidate models from that specific training run.
+    *   The `model_registry.json` will be updated to store a nested object for each training session, containing the performance dictionary of all evaluated models (`random_forest`, `gradient_boosting`, `ensemble_voter`, `xgboost`, etc.).
+
+2.  **Create a New API Endpoint:**
+    *   In `src/trade_bot/web/web_routes/ml_routes.py` (assuming this file exists or creating it), define a new route: `GET /api/ml/performance/history`.
+    *   In `src/trade_bot/web/web_handlers/ml_handler.py`, create a new handler for this route. This handler will read the `model_registry.json`, process the historical performance data for all models, and return it as a JSON response.
+
+3.  **Update the Frontend:**
+    *   In `frontend/lib/api.ts`, add a new function to fetch data from the `/api/ml/performance/history` endpoint.
+    *   In `frontend/hooks/useMLAnalytics.ts`, create a new hook or extend the existing one to manage this historical performance data.
+    *   In `frontend/components/dashboard/MLAnalyticsDashboard.tsx`, create a new component (e.g., `PerformanceHistoryTable`) that fetches the data using the new hook and displays it in a clear, tabular format. The table should show each training run and the performance scores for every model in that run, making it easy to compare them.
+
+## 7. Key Recommendations Summary
 
 ### High Priority
 
@@ -99,6 +164,6 @@ This file contains the logic for simulated trading. The code is well-organized, 
 -   **Consistent API Error Handling:** Ensure all API calls use the centralized error handling method.
 -   **Improve Logging and Error Handling:** Enhance backend logging and error handling for better diagnostics.
 
-## 6. Conclusion
+## 8. Conclusion
 
 The trading dashboard is a well-designed application with a solid foundation. By addressing the issues outlined in this review, the development team can significantly improve the code's quality, maintainability, and performance. The highest-priority items are refactoring the duplicated frontend components and implementing server-side pagination.
