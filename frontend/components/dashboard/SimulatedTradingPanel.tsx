@@ -10,6 +10,7 @@ import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, Univer
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
 import { useModelTraining } from '@/hooks/useModelTraining';
+import { MLConfigForm } from './MLConfigForm';
 
 // Strategy Selector Component
 interface StrategySelectorProps {
@@ -303,6 +304,7 @@ function StrategyConfigForm({ strategy, config, onChange, className = '', status
               Fallback to Baseline Strategy
             </label>
           </div>
+          <MLConfigForm />
         </div>
       )}
       {strategy === 'orderbook' && (
