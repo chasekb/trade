@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(title="ML Trading Model Server", version="1.0.0")
 
-# Global ML optimizer instance
+# Global ML optimizer instance and state
 ml_optimizer = None
 training_status: str = "idle"  # "idle", "training", "success", "failed"
+model_ready: bool = False
 
 # Request/Response models
 class PredictionRequest(BaseModel):
@@ -55,16 +56,15 @@ class ModelStatusResponse(BaseModel):
     vector_db_status: Optional[Dict[str, Any]]
     vector_db_stats: Optional[Dict[str, Any]] = None
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize ML optimizer on startup."""
-    global ml_optimizer
+async def load_model_background():
+    """Initialize ML optimizer and load model in the background."""
+    global ml_optimizer, model_ready
     
     try:
-        logger.info("Initializing ML Trading Optimizer")
+        logger.info("Initializing ML Trading Optimizer in background")
         
         # Initialize ML optimizer
-        ml_optimizer = MLTradingOptimizer(
+        temp_optimizer = MLTradingOptimizer(
             db_url=os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/trading_db"),
             models_dir=os.getenv("MODELS_DIR", "data/models"),
             vector_db_host=os.getenv("QDRANT_HOST", "localhost"),
@@ -72,12 +72,16 @@ async def startup_event():
         )
         
         # Initialize vector database
-        if not ml_optimizer.initialize_vector_database():
+        if not temp_optimizer.initialize_vector_database():
             logger.warning("Failed to initialize vector database")
         
-        # On startup, load the registry and deploy the configured model if it exists
-        ml_optimizer.model_manager.load_model_registry()
+        # Load the registry
+        temp_optimizer.model_manager.load_model_registry()
         
+        # Assign to global variable after basic initialization
+        ml_optimizer = temp_optimizer
+        
+        # Now, load the active model
         active_model_name = None
         config_path = os.path.abspath("data/ml_config.json")
         try:
@@ -88,17 +92,28 @@ async def startup_event():
             logger.info(f"No active model configured in {config_path}.")
         
         if active_model_name:
-            logger.info(f"Attempting to deploy configured model '{active_model_name}' on startup.")
-            success = ml_optimizer.model_manager.set_active_model(active_model_name)
-            if not success:
-                logger.warning(f"Failed to deploy configured model '{active_model_name}' on startup.")
+            logger.info(f"Attempting to deploy configured model '{active_model_name}' in background.")
+            # Run the blocking model loading in a separate thread
+            success = await asyncio.to_thread(ml_optimizer.model_manager.set_active_model, active_model_name)
+            if success:
+                model_ready = True
+                logger.info(f"Model '{active_model_name}' deployed successfully. Server is ready for predictions.")
+            else:
+                logger.warning(f"Failed to deploy configured model '{active_model_name}'.")
         else:
             logger.info("No active model configured. Server will wait for model selection.")
+            model_ready = True # Ready for tasks that don't require a model
 
-        logger.info("ML Trading Optimizer initialized successfully")
+        logger.info("ML Trading Optimizer background initialization finished.")
         
     except Exception as e:
-        logger.error(f"Error initializing ML optimizer: {e}")
+        logger.error(f"Error initializing ML optimizer in background: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    """Schedule background initialization of the ML optimizer."""
+    logger.info("Scheduling ML optimizer initialization.")
+    asyncio.create_task(load_model_background())
 
 @app.get("/health")
 async def health_check():
@@ -110,12 +125,16 @@ async def health_check():
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_trading_signal(request: PredictionRequest):
     """Predict optimal trading signal."""
-    global ml_optimizer
+    global ml_optimizer, model_ready
     logger.info(f"Prediction requested for {request.symbol}")
 
     if ml_optimizer is None:
         logger.error("ML optimizer not initialized")
         raise HTTPException(status_code=503, detail="ML optimizer not initialized")
+
+    if not model_ready:
+        logger.warning("Prediction requested, but model is not ready yet.")
+        raise HTTPException(status_code=503, detail="Model is loading, please try again later.")
 
     try:
         # Convert request to OrderBookFeatures
@@ -139,28 +158,15 @@ async def predict_trading_signal(request: PredictionRequest):
 
         # Check if model is trained and deployed
         if not ml_optimizer.is_trained or ml_optimizer.model_manager.current_model is None:
-            logger.warning("Prediction requested, but model is not trained or deployed in this worker. Checking config.")
-            # Attempt to load from config
-            config_path = os.path.abspath("data/ml_config.json")
-            try:
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-                    active_model_name = config.get("active_model")
-                    if active_model_name:
-                        logger.info(f"Found active model in {config_path}: {active_model_name}. Deploying...")
-                        ml_optimizer.model_manager.set_active_model(active_model_name)
-                    else:
-                        raise FileNotFoundError
-            except (FileNotFoundError, json.JSONDecodeError):
-                logger.error("No active model configured and model not loaded in memory.")
-                return PredictionResponse(
-                    action="hold",
-                    confidence=0.0,
-                    signal_value=0.0,
-                    reason="Model not trained or deployed",
-                    similar_conditions=0,
-                    timestamp=datetime.now().isoformat()
-                )
+            logger.warning("Prediction requested, but no model is deployed.")
+            return PredictionResponse(
+                action="hold",
+                confidence=0.0,
+                signal_value=0.0,
+                reason="Model not trained or deployed",
+                similar_conditions=0,
+                timestamp=datetime.now().isoformat()
+            )
 
         # Get prediction
         prediction = ml_optimizer.predict_trading_signal(features)
