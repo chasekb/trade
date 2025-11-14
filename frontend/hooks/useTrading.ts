@@ -146,10 +146,10 @@ export function useOrderBookSignals(
       return response.data;
     },
     enabled: isEnabled,
-    staleTime: Infinity,
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    refetchIntervalInBackground: false,
+    staleTime: 3000, // Consider data fresh for 3 seconds
+    refetchInterval: isEnabled ? 5000 : false, // Refetch every 5 seconds as a fallback
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: true,
     refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
