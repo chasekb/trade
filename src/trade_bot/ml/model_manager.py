@@ -220,6 +220,8 @@ class ModelManager:
     def list_models(self) -> List[Dict[str, Any]]:
         """List all registered models."""
         models = []
+        
+        # Handle versioned directory structure
         for model_name in os.listdir(self.models_dir):
             model_dir = os.path.join(self.models_dir, model_name)
             if os.path.isdir(model_dir):
@@ -235,6 +237,27 @@ class ModelManager:
                                 'version_id': version_id,
                                 'trained_at': metadata.get('created_at'),
                             })
+
+        # Handle flat file structure for backward compatibility
+        for filename in os.listdir(self.models_dir):
+            if filename.endswith("_metadata.json"):
+                try:
+                    model_name = filename.split('_202')[0]
+                    version_id = filename.split(f'{model_name}_')[1].replace('_metadata.json', '')
+                    
+                    metadata_path = os.path.join(self.models_dir, filename)
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    models.append({
+                        'model_id': f"{model_name}:{version_id}",
+                        'model_name': model_name,
+                        'version_id': version_id,
+                        'trained_at': metadata.get('created_at'),
+                    })
+                except Exception as e:
+                    logger.warning(f"Could not parse model metadata from filename {filename}: {e}")
+
         return models
     
     def get_current_model_info(self) -> Optional[Dict[str, Any]]:
