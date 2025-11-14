@@ -235,33 +235,8 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           try {
             const queryClient = (window as any).__RQ_CLIENT__;
             if (queryClient) {
-              // Update all queries that start with ['orderbook-signals']
-              queryClient.setQueriesData({ queryKey: ['orderbook-signals'] }, (oldData: any) => {
-                if (!oldData || !oldData.signals) {
-                  return data; // If no old data, use the new data
-                }
-
-                const newSignals = data.signals || [];
-                const oldSignals = oldData.signals || [];
-
-                // Create a map of existing signals for quick lookup
-                const oldSignalsMap = new Map(oldSignals.map((s: OrderBookSignal) => [`${s.symbol}-${s.timestamp}`, s]));
-
-                // Add or update signals from the new data
-                newSignals.forEach((newSignal: OrderBookSignal) => {
-                  oldSignalsMap.set(`${newSignal.symbol}-${newSignal.timestamp}`, newSignal);
-                });
-
-                // Convert map back to array and sort
-                const mergedSignals = (Array.from(oldSignalsMap.values()) as OrderBookSignal[])
-                  .sort((a: OrderBookSignal, b: OrderBookSignal) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-                return {
-                  ...oldData,
-                  ...data, // Update summary and pagination info from new data
-                  signals: mergedSignals,
-                };
-              });
+              // Invalidate the query to trigger a refetch from the backend cache
+              queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
             }
           } catch (e) {
             console.error('Failed to update orderbook signals cache:', e);
