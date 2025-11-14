@@ -1,5 +1,3 @@
 {
-  "continuous_training_enabled": false,
-  "training_interval": 3600,
-  "new_data_threshold": 100
+  "active_model": "trading_optimizer:v20251111_184503"
 }
