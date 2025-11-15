@@ -233,6 +233,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
         // Push orderbook signals updates into cache for instant UI updates
         if (type === 'orderbook_signals_update' && data) {
+          console.log('Received orderbook_signals_update WebSocket message:', data);
           try {
             const queryClient = (window as any).__RQ_CLIENT__;
             if (queryClient) {
@@ -241,10 +242,17 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
                 queryKey: ['orderbook-signals'],
                 exact: false // Match all queries that start with ['orderbook-signals']
               });
-              console.log('Invalidated orderbook-signals queries via WebSocket');
+              console.log('✅ Invalidated orderbook-signals queries via WebSocket, should trigger refetch');
+
+              // Log query cache state
+              const allQueries = queryClient.getQueryCache().getAll();
+              const orderbookQueries = allQueries.filter((q: any) => q.queryKey[0] === 'orderbook-signals');
+              console.log('📊 Current orderbook-signals queries:', orderbookQueries.length);
+            } else {
+              console.error('❌ QueryClient not available in WebSocket handler');
             }
           } catch (e) {
-            console.error('Failed to update orderbook signals cache:', e);
+            console.error('❌ Failed to update orderbook signals cache:', e);
           }
         }
       } catch (e) {
