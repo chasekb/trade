@@ -236,8 +236,12 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           try {
             const queryClient = (window as any).__RQ_CLIENT__;
             if (queryClient) {
-              // Invalidate the query to trigger a refetch from the backend cache
-              queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
+              // Invalidate all orderbook-signals queries (including paginated ones) with prefix match
+              queryClient.invalidateQueries({
+                queryKey: ['orderbook-signals'],
+                exact: false // Match all queries that start with ['orderbook-signals']
+              });
+              console.log('Invalidated orderbook-signals queries via WebSocket');
             }
           } catch (e) {
             console.error('Failed to update orderbook signals cache:', e);
