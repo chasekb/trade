@@ -250,32 +250,33 @@ class WebSocketManager:
                     # Process the signals through the simulated trading manager
                     result = await self.simulated_trading.process_signals(active_signals)
 
+                    # Ensure result is a dict to prevent errors
+                    result = result or {}
+
                     executed_trades = result.get('executed_trades', 0)
                     if executed_trades > 0:
                         logger.info(f"Auto-executed {executed_trades} trades from {len(active_signals)} signals")
                     else:
                         logger.debug(f"No trades executed from {len(active_signals)} active signals (may be due to position limits, existing positions, or insufficient funds)")
 
-                    # Broadcast signals update to frontend order book signals widget
-                    if result and 'portfolio' in result:
-                        signal_data = {
-                            "signals": result.get('signals', active_signals),  # Use processed results if available
-                            "trading_active": True,
-                            "message": f"Signals processed: {len(active_signals)} received, {executed_trades} trades executed",
-                            "total_analyzed": self.simulated_trading.get_total_signals_processed(),
-                            "active_signals": len([s for s in active_signals if s.get('signal_generated', False)]),
-                            "last_updated": datetime.now().isoformat()
-                        }
+                    # Always broadcast signals update if signals were processed
+                    signal_data = {
+                        "signals": result.get('signals', active_signals),  # Use processed results if available
+                        "trading_active": True,
+                        "message": f"Signals processed: {len(active_signals)} received, {executed_trades} trades executed",
+                        "total_analyzed": self.simulated_trading.get_total_signals_processed(),
+                        "active_signals": len([s for s in active_signals if s.get('signal_generated', False)]),
+                        "last_updated": datetime.now().isoformat()
+                    }
 
-                        try:
-                            await self.broadcast(json.dumps({
-                                "type": "orderbook_signals_update",
-                                "data": signal_data
-                            }))
-                            logger.debug(f"Broadcasted signal update with {len(active_signals)} signals")
-                        except Exception as broadcast_error:
-                            logger.warning(f"Failed to broadcast signal update: {broadcast_error}")
-
+                    try:
+                        await self.broadcast(json.dumps({
+                            "type": "orderbook_signals_update",
+                            "data": signal_data
+                        }))
+                        logger.debug(f"Broadcasted signal update with {len(active_signals)} signals")
+                    except Exception as broadcast_error:
+                        logger.warning(f"Failed to broadcast signal update: {broadcast_error}")
         except Exception as e:
             logger.error(f"Error fetching and processing signals: {e}")
     
