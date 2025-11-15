@@ -183,15 +183,14 @@ class WebSocketManager:
         """Process simulated trading signals in the background."""
         while True:
             try:
-                # Check if trading is active
-                strategy_type = self.trading_state.get("strategy_type")
-                if (self.trading_state.get("is_active") and
-                    strategy_type in ["orderbook", "ml_enhanced_orderbook"]):
-                    # Get live order book signals
-                    symbols = self.trading_state.get("symbols", [])
-                    if symbols and self.simulated_trading:
-                        # Process signals through simulated trading
-                        await self._fetch_and_process_signals(symbols)
+                # Check if trading is active directly from the simulated trading manager
+                if self.simulated_trading and self.simulated_trading.is_trading:
+                    strategy_type = self.simulated_trading.strategy_type
+                    if strategy_type in ["orderbook", "ml_enhanced_orderbook"]:
+                        symbols = self.simulated_trading.symbols_to_trade
+                        if symbols:
+                            # Process signals through simulated trading
+                            await self._fetch_and_process_signals(symbols)
 
                 # Wait before next check
                 await asyncio.sleep(10)  # Check every 10 seconds for more responsive trading
@@ -244,6 +243,8 @@ class WebSocketManager:
                     if signal.get('signal_generated', False) and signal.get('signal') in ['buy', 'sell']
                 ]
 
+                executed_trades = 0
+                result = {}
                 if active_signals:
                     logger.info(f"Auto-processing {len(active_signals)} active signals: {[s['symbol'] + ':' + s['signal'] for s in active_signals]}")
 
@@ -259,24 +260,24 @@ class WebSocketManager:
                     else:
                         logger.debug(f"No trades executed from {len(active_signals)} active signals (may be due to position limits, existing positions, or insufficient funds)")
 
-                    # Always broadcast signals update if signals were processed
-                    signal_data = {
-                        "signals": result.get('signals', active_signals),  # Use processed results if available
-                        "trading_active": True,
-                        "message": f"Signals processed: {len(active_signals)} received, {executed_trades} trades executed",
-                        "total_analyzed": self.simulated_trading.get_total_signals_processed(),
-                        "active_signals": len([s for s in active_signals if s.get('signal_generated', False)]),
-                        "last_updated": datetime.now().isoformat()
-                    }
+                # Always broadcast signals update if signals were processed
+                signal_data = {
+                    "signals": result.get('signals', signals),  # Use all signals for the update
+                    "trading_active": True,
+                    "message": f"Signals processed: {len(signals)} received, {executed_trades} trades executed",
+                    "total_analyzed": self.simulated_trading.get_total_signals_processed(),
+                    "active_signals": len(active_signals),
+                    "last_updated": datetime.now().isoformat()
+                }
 
-                    try:
-                        await self.broadcast(json.dumps({
-                            "type": "orderbook_signals_update",
-                            "data": signal_data
-                        }))
-                        logger.debug(f"Broadcasted signal update with {len(active_signals)} signals")
-                    except Exception as broadcast_error:
-                        logger.warning(f"Failed to broadcast signal update: {broadcast_error}")
+                try:
+                    await self.broadcast(json.dumps({
+                        "type": "orderbook_signals_update",
+                        "data": signal_data
+                    }))
+                    logger.debug(f"Broadcasted signal update with {len(signals)} signals")
+                except Exception as broadcast_error:
+                    logger.warning(f"Failed to broadcast signal update: {broadcast_error}")
         except Exception as e:
             logger.error(f"Error fetching and processing signals: {e}")
     

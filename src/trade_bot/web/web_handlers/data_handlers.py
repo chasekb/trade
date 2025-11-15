@@ -51,29 +51,6 @@ class DataHandlers:
     async def get_live_orderbook_signals(self, symbols: str = None, page: int = 1, per_page: int = 10) -> Dict[str, Any]:
         """Get live order book signals."""
         try:
-            # Always serve from cache if it's populated
-            if self._signal_cache:
-                # Apply pagination to the cached signals
-                total_signals = len(self._signal_cache)
-                total_pages = (total_signals + per_page - 1) // per_page
-                start_idx = (page - 1) * per_page
-                end_idx = start_idx + per_page
-                paginated_signals = self._signal_cache[start_idx:end_idx]
-
-                return {
-                    "signals": paginated_signals,
-                    "trading_active": True,
-                    "message": "Order book signals from cache",
-                    "pagination": {
-                        "current_page": page,
-                        "per_page": per_page,
-                        "total_signals": total_signals,
-                        "total_pages": total_pages,
-                        "has_next": page < total_pages,
-                        "has_prev": page > 1,
-                    },
-                }
-
             if not symbols:
                 return {"error": "No symbols provided"}
             # basic pagination guardrails
@@ -609,9 +586,6 @@ class DataHandlers:
             # Sort signals by signal strength (descending)
             signals.sort(key=lambda x: x.get('signal_strength', 0), reverse=True)
             
-            # Update the cache
-            self._signal_cache = signals
-
             # Calculate pagination
             total_signals = len(signals)
             total_pages = (total_signals + per_page - 1) // per_page
