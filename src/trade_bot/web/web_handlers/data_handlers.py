@@ -33,6 +33,8 @@ class DataHandlers:
         self._feature_importance_cache: Dict[str, Any] = {}
         self._feature_importance_cache_ttl: int = 300  # Cache for 5 minutes
         self._signal_cache: List[Dict[str, Any]] = []
+        # WebSocket manager for broadcasting signals
+        self.websocket_manager = None
     
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -1152,10 +1154,8 @@ class DataHandlers:
     async def _broadcast_signal_update(self, signals: List[Dict[str, Any]]) -> None:
         """Broadcast individual signal updates via WebSocket for real-time UI updates."""
         try:
-            from ..web_components import get_app_state
-            app_state = get_app_state()
-            if app_state and hasattr(app_state, 'websocket_manager'):
-                websocket_manager = app_state.websocket_manager
+            if self.websocket_manager:
+                logger.info(f"🌐 Broadcasting {len(signals)} signals via WebSocket manager")
 
                 # Prepare signal data for broadcasting
                 signal_data = {
@@ -1165,15 +1165,29 @@ class DataHandlers:
                     "last_updated": datetime.now().isoformat()
                 }
 
-                # Broadcast via WebSocket
-                await websocket_manager.broadcast(json.dumps({
+                broadcast_payload = json.dumps({
                     "type": "orderbook_signals_update",
                     "data": signal_data
-                }))
+                })
 
-                logger.debug(f"Broadcasted individual signal update for {len(signals)} signals")
+                logger.info(f"📨 Broadcasting WebSocket payload: {len(broadcast_payload)} bytes")
+
+                # Broadcast via WebSocket
+                await self.websocket_manager.broadcast(broadcast_payload)
+
+                logger.info(f"✅ Successfully broadcasted individual signal update for {len(signals)} signals")
+
+                # Log connection count if available
+                try:
+                    connection_count = self.websocket_manager.get_connection_count()
+                    logger.info(f"🔗 Current WebSocket connections: {connection_count}")
+                except Exception as count_error:
+                    logger.debug(f"Could not get connection count: {count_error}")
+
             else:
-                logger.warning("WebSocket manager not available for signal broadcasting")
+                logger.warning("❌ WebSocket manager not available for signal broadcasting - skipping broadcast")
 
         except Exception as e:
-            logger.error(f"Error broadcasting signal update: {e}")
+            logger.error(f"💥 Error broadcasting signal update: {e}")
+            import traceback
+            logger.error(f"Detailed error traceback: {traceback.format_exc()}")
