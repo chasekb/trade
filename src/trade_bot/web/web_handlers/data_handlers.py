@@ -6,7 +6,7 @@ import os
 import re
 import asyncio
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import HTTPException
 import requests
 import json
@@ -342,6 +342,9 @@ class DataHandlers:
                         # Enrich with ML analysis before saving
                         enriched_signal_list = await self._enrich_signals_with_ml_analysis([signal_data])
                         enriched_signal = enriched_signal_list[0] if enriched_signal_list else signal_data
+
+                        # Broadcast individual signal update via WebSocket for real-time UI updates
+                        await self._broadcast_signal_update([enriched_signal])
 
                         # Store signal to database immediately
                         if self.database_manager:
@@ -1135,7 +1138,7 @@ class DataHandlers:
         try:
             if not session_id or not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", str(session_id)):
                 raise HTTPException(status_code=400, detail="Session ID is required")
-            
+
             # Load dashboard state logic would go here
             return {
                 "session_id": session_id,
@@ -1145,3 +1148,32 @@ class DataHandlers:
         except Exception as e:
             logger.error(f"Error loading dashboard state: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    async def _broadcast_signal_update(self, signals: List[Dict[str, Any]]) -> None:
+        """Broadcast individual signal updates via WebSocket for real-time UI updates."""
+        try:
+            from ..web_components import get_app_state
+            app_state = get_app_state()
+            if app_state and hasattr(app_state, 'websocket_manager'):
+                websocket_manager = app_state.websocket_manager
+
+                # Prepare signal data for broadcasting
+                signal_data = {
+                    "signals": signals,
+                    "trading_active": True,
+                    "message": f"Individual signals updated: {len(signals)} signals processed",
+                    "last_updated": datetime.now().isoformat()
+                }
+
+                # Broadcast via WebSocket
+                await websocket_manager.broadcast(json.dumps({
+                    "type": "orderbook_signals_update",
+                    "data": signal_data
+                }))
+
+                logger.debug(f"Broadcasted individual signal update for {len(signals)} signals")
+            else:
+                logger.warning("WebSocket manager not available for signal broadcasting")
+
+        except Exception as e:
+            logger.error(f"Error broadcasting signal update: {e}")
