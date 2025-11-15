@@ -168,6 +168,9 @@ async def startup_event():
         app_state_local.backtest_handlers = backtest_handlers
         app_state_local.trading_handlers = trading_handlers
 
+        # Set websocket manager reference in data handlers after both are created
+        data_handlers.websocket_manager = websocket_manager
+
         logger.info(f"✅ Live portfolio handlers initialized: {app_state_local.live_portfolio_handlers is not None}")
 
         # ML services are handled by the ML handler routes and vector database integration
