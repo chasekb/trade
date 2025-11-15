@@ -383,23 +383,25 @@ function StrategyConfigForm({ strategy, config, onChange, className = '', status
             />
           </div>
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Position Size Mode</label>
-            <select
-              value={config.position_size_mode || 'percent'}
-              onChange={(e) => {
-                const newMode = e.target.value;
-                const newValue = newMode === 'percent' ? 1 : 100;
-                onChange({
-                  ...config,
-                  position_size_mode: newMode,
-                  position_size_value: newValue,
-                });
-              }}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="percent">Percentage of Portfolio</option>
-              <option value="dollar">Fixed Dollar Amount</option>
-            </select>
+            <label className="block text-sm font-medium text-gray-700">Available Models (Most Recently Trained First)</label>
+            <div className="flex items-center space-x-2">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2"
+              >
+                {availableModels
+                  ?.sort((a: any, b: any) => new Date(b.trained_at).getTime() - new Date(a.trained_at).getTime())
+                  ?.map((model: any) => (
+                    <option key={model.model_id} value={model.model_id}>
+                      {model.model_id} ({new Date(model.trained_at).toLocaleDateString()})
+                    </option>
+                  ))}
+              </select>
+              <Button onClick={handleSetActiveModel} disabled={!selectedModel || isSettingActiveModel}>
+                {isSettingActiveModel ? 'Setting...' : 'Set Active'}
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Position Size Value</label>
