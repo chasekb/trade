@@ -732,7 +732,7 @@ class DataHandlers:
                             signal["ml_analysis"] = {
                                 "ml_enabled": is_model_trained,
                                 "win_probability": ml_analysis.get("confidence", 0.0) * 100,
-                                "expected_return": ml_analysis.get("signal_value", 0.0),
+                                "expected_return": ml_analysis.get("expected_return_percentage", ml_analysis.get("signal_value", 0.0)),
                                 "confidence": ml_analysis.get("confidence", 0.0),
                                 "model_version": "1.0.0",
                                 "features_used": list(raw_features_for_ml.keys()),

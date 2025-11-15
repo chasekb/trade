@@ -221,20 +221,26 @@ class MLTradingOptimizer:
             
             if signal_value > 0.1:
                 action = 'buy'
+                # Calculate expected return as positive percentage based on confidence
+                expected_return_percentage = confidence * 100  # Convert to percentage
             elif signal_value < -0.1:
                 action = 'sell'
+                # Calculate expected return as negative percentage based on confidence
+                expected_return_percentage = -(confidence * 100)  # Convert to negative percentage
             else:
                 action = 'hold'
-            
+                expected_return_percentage = 0.0
+
             # Find similar market conditions
             similar_conditions = self.vector_db_client.find_similar_market_conditions(
                 X_processed[0], current_features.symbol, limit=3
             )
-            
+
             return {
                 'action': action,
                 'confidence': float(confidence),
                 'signal_value': float(signal_value),
+                'expected_return_percentage': float(expected_return_percentage),
                 'reason': f'ML prediction: {signal_value:.3f}',
                 'similar_conditions': len(similar_conditions),
                 'timestamp': datetime.now().isoformat()
