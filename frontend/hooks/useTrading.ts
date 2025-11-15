@@ -130,14 +130,15 @@ export function useOrderBookSignals(
   symbols?: string[],
   enabled: boolean = true,
   page: number = 1,
-  perPage: number = 10
+  perPage: number = 10,
+  strategy?: string
 ) {
   // Enable query when trading is active, even if symbols aren't loaded yet
   // This allows WebSocket updates to populate the widget immediately
   const isEnabled = enabled;
 
   return useQuery({
-    queryKey: ['orderbook-signals', symbols, enabled, page, perPage], // Include pagination params in key
+    queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy], // Include strategy in key to invalidate cache when strategy changes
     queryFn: async () => {
       const response = await apiClient.getOrderBookSignals(symbols, { page, per_page: perPage });
       if (response.status === 'error') {

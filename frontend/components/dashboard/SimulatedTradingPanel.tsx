@@ -449,8 +449,6 @@ function OrderBookSignalsTable({
     last_updated?: string;
   };
 }) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [sortKey, setSortKey] = useState<keyof OrderBookSignal | null>('timestamp');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -482,26 +480,20 @@ function OrderBookSignalsTable({
     });
   }, [signals, sortKey, sortDirection]);
 
-  // Use pagination from props if available, otherwise use local state
-  const activePage = pagination?.current_page || currentPage;
-  const activePageSize = pagination?.per_page || pageSize;
-  const totalPages = pagination?.total_pages || Math.ceil((signals?.length || 0) / activePageSize);
+  // Use pagination from props
+  const activePage = pagination?.current_page || 1;
+  const activePageSize = pagination?.per_page || 10;
+  const totalPages = pagination?.total_pages || 1;
   const totalSignals = (summary?.total_analyzed ?? pagination?.total_signals ?? (signals?.length || 0));
 
-  // Calculate paginated data if no server-side pagination
-  const paginatedSignals = pagination ? sortedSignals : sortedSignals?.slice(
-    (activePage - 1) * activePageSize,
-    activePage * activePageSize
-  ) || [];
+  // Data is paginated by the server, so we use it directly.
+  const paginatedSignals = sortedSignals;
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
     onPageChange?.(page);
   };
 
   const handlePageSizeChange = (newPageSize: number) => {
-    setPageSize(newPageSize);
-    setCurrentPage(1); // Reset to first page
     onPageSizeChange?.(newPageSize);
   };
 
@@ -680,19 +672,19 @@ function OrderBookSignalsTable({
         );
 
         return (
-          <Tooltip text={tooltipContent}>
+            <Tooltip text={tooltipContent}>
             <div className="text-xs space-y-1">
               <div className="flex items-center space-x-1">
                 <span className="text-blue-600">🤖</span>
                 <span className={`font-medium ${
-                  (ml.win_probability || 0) >= 0.6 ? 'text-green-600' :
-                  (ml.win_probability || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
+                  (ml.win_probability || 0) >= 60 ? 'text-green-600' :
+                  (ml.win_probability || 0) >= 40 ? 'text-yellow-600' : 'text-red-600'
                 }`}>
                   {(ml.win_probability || 0).toFixed(1)}%
                 </span>
               </div>
               <div className="text-gray-500">
-                Exp: ${(ml.expected_return || 0).toFixed(2)}
+                Exp: {(ml.expected_return || 0).toFixed(1)}%
               </div>
             </div>
           </Tooltip>
@@ -720,8 +712,8 @@ Criteria Analysis:
 
 ${row.ml_analysis?.ml_enabled ? `
 ML Analysis:
-- Win Probability: ${(row.ml_analysis.win_probability * 100).toFixed(1)}%
-- Expected Return: ${(row.ml_analysis.expected_return * 100).toFixed(2)}%
+- Win Probability: ${(row.ml_analysis.win_probability).toFixed(1)}%
+- Expected Return: $${(row.ml_analysis.expected_return).toFixed(2)}
 - Confidence: ${(row.ml_analysis.confidence * 100).toFixed(1)}%
 - Model: ${row.ml_analysis.model_version}
 - Features: ${row.ml_analysis.features_used?.length || 0}
@@ -1474,7 +1466,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     activeSymbols,
     status.isActive,
     currentPage,
-    pageSize
+    pageSize,
+    strategy // Include strategy in query key to invalidate cache when strategy changes
   );
   const [configHidden, setConfigHidden] = useState(false);
 
