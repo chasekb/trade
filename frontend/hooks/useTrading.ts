@@ -197,16 +197,40 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 export function useSimTradingWebSocket(enabled: boolean = true) {
   const [connected, setConnected] = useState(false);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      console.log('🌐 WebSocket disabled - not connecting');
+      return;
+    }
 
     const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
     const wsUrl = base.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
+
+    console.log('🔌 Attempting to connect to WebSocket:', wsUrl);
+    console.log('📡 Environment NEXT_PUBLIC_WS_URL:', process.env.NEXT_PUBLIC_WS_URL);
+
     const ws = new WebSocket(wsUrl);
-    const onOpen = () => setConnected(true);
-    const onClose = () => setConnected(false);
+
+    const onOpen = () => {
+      console.log('✅ WebSocket connection opened successfully');
+      setConnected(true);
+    };
+
+    const onClose = (event: CloseEvent) => {
+      console.log('❌ WebSocket connection closed:', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean
+      });
+      setConnected(false);
+    };
+
+    const onError = (event: Event) => {
+      console.error('💥 WebSocket connection error:', event);
+    };
 
     ws.addEventListener('open', onOpen);
     ws.addEventListener('close', onClose);
+    ws.addEventListener('error', onError);
 
     ws.addEventListener('message', (event) => {
       try {
