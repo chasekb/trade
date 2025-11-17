@@ -277,12 +277,23 @@ class DataHandlers:
                             logger.warning(f"Error analyzing large trades for {symbol}: {e}")
                             large_trade_analysis = "Analysis error"
 
+                        # Calculate criteria scores for signal strength combination
+                        criteria_scores = {
+                            'squeeze_score': 1.0 if squeeze_meets else 0.0,
+                            'imbalance_score': min(abs(volume_imbalance) * 2, 1.0),  # Scale imbalance to 0-1
+                            'large_trade_score': 1.0 if (large_trade_meets_buy or large_trade_meets_sell) else 0.0
+                        }
+
+                        # Combined signal strength will be calculated after ML enrichment
+                        # For now, use the basic volume imbalance signal
+                        combined_signal_strength = signal_strength
+
                         signal_data = {
                             "symbol": symbol,
                             "signal": signal,
                             "signal_type": signal,
-                            "signal_strength": signal_strength,
-                            "strength": signal_strength,
+                            "signal_strength": combined_signal_strength,
+                            "strength": combined_signal_strength,
                             "price": current_price,
                             "timestamp": orderbook_data.get('timestamp', '2024-01-01T00:00:00Z'),
                             "reason": signal_reason,
@@ -290,7 +301,7 @@ class DataHandlers:
                             "data_status": data_status,
                             "spread": spread,
                             "volume": total_volume,
-                            "signal_generated": signal != "hold" and signal_strength >= 0.05,  # Lowered threshold from 0.1 to 0.05 for more signals
+                            "signal_generated": signal != "hold" and combined_signal_strength >= 0.05,
                             "criteria_analysis": {
                                 "bid_ask_squeeze": {
                                     "enabled": True,
@@ -298,7 +309,8 @@ class DataHandlers:
                                     "delta_to_threshold": squeeze_delta,
                                     "analysis": f"Spread: {spread:.4f}%" if squeeze_meets else f"Wide spread: {spread:.4f}%",
                                     "threshold": squeeze_threshold,
-                                    "current_value": spread
+                                    "current_value": spread,
+                                    "score": criteria_scores['squeeze_score']
                                 },
                                 "volume_imbalance_buy": {
                                     "enabled": True,
@@ -308,7 +320,8 @@ class DataHandlers:
                                     "threshold": imbalance_threshold,
                                     "current_value": volume_imbalance,
                                     "bid_volume": bid_volume,
-                                    "ask_volume": ask_volume
+                                    "ask_volume": ask_volume,
+                                    "score": criteria_scores['imbalance_score'] if signal == 'buy' else 0.0
                                 },
                                 "volume_imbalance_sell": {
                                     "enabled": True,
@@ -318,7 +331,8 @@ class DataHandlers:
                                     "threshold": imbalance_threshold,
                                     "current_value": volume_imbalance,
                                     "bid_volume": bid_volume,
-                                    "ask_volume": ask_volume
+                                    "ask_volume": ask_volume,
+                                    "score": criteria_scores['imbalance_score'] if signal == 'sell' else 0.0
                                 },
                                 "large_trade_buy": {
                                     "enabled": True,
@@ -327,7 +341,8 @@ class DataHandlers:
                                     "analysis": large_trade_analysis,
                                     "threshold": large_trade_threshold,
                                     "current_value": len([t for t in large_trades if t['side'] == 'buy']) if large_trades else 0,
-                                    "large_trades_count": len([t for t in large_trades if t['side'] == 'buy']) if large_trades else 0
+                                    "large_trades_count": len([t for t in large_trades if t['side'] == 'buy']) if large_trades else 0,
+                                    "score": criteria_scores['large_trade_score'] if signal == 'buy' else 0.0
                                 },
                                 "large_trade_sell": {
                                     "enabled": True,
@@ -336,9 +351,11 @@ class DataHandlers:
                                     "analysis": large_trade_analysis,
                                     "threshold": large_trade_threshold,
                                     "current_value": len([t for t in large_trades if t['side'] == 'sell']) if large_trades else 0,
-                                    "large_trades_count": len([t for t in large_trades if t['side'] == 'sell']) if large_trades else 0
+                                    "large_trades_count": len([t for t in large_trades if t['side'] == 'sell']) if large_trades else 0,
+                                    "score": criteria_scores['large_trade_score'] if signal == 'sell' else 0.0
                                 }
-                            }
+                            },
+                            "criteria_scores": criteria_scores  # Store for later combination
                         }
 
                         # Enrich with ML analysis before saving
@@ -770,8 +787,46 @@ class DataHandlers:
                             if not is_model_trained:
                                 signal["ml_analysis"]["reason"] = reason
                             
-                            # The definitive signal strength is the ML model's confidence
-                            final_strength = ml_analysis.get("confidence", 0.0)
+                            # Calculate signal strength using learned feature importance weights
+                            ml_confidence = ml_analysis.get("confidence", 0.0)
+
+                            # Use learned feature importances to determine relative weights for different components
+                            # ML features vs traditional criteria features
+                            ml_features_total_importance = sum(
+                                feature_importances.get(feature, 0) for feature in
+                                ['bid_ask_imbalance', 'spread_percent', 'mid_price', 'bid_volume',
+                                 'ask_volume', 'large_bid_wall', 'large_ask_wall', 'wall_size',
+                                 'volume_weighted_price', 'price_momentum', 'volatility']
+                            )
+
+                            criteria_features_total_importance = sum(
+                                feature_importances.get(feature, 0) for feature in
+                                ['bid_ask_imbalance', 'spread_percent']  # These are criteria-based
+                            )
+
+                            # Calculate weights based on learned importance
+                            total_learned_importance = ml_features_total_importance + criteria_features_total_importance
+
+                            if total_learned_importance > 0:
+                                ml_weight = ml_features_total_importance / total_learned_importance
+                                criteria_weight = criteria_features_total_importance / total_learned_importance
+                            else:
+                                # Fallback to equal weights if no feature importance available
+                                ml_weight = 0.5
+                                criteria_weight = 0.5
+
+                            # Get criteria scores from the signal
+                            criteria_scores = signal.get("criteria_scores", {})
+                            squeeze_score = criteria_scores.get("squeeze_score", 0.0)
+                            imbalance_score = criteria_scores.get("imbalance_score", 0.0)
+                            large_trade_score = criteria_scores.get("large_trade_score", 0.0)
+
+                            # Calculate criteria composite score
+                            criteria_average = (squeeze_score + imbalance_score + large_trade_score) / 3.0
+
+                            # Combine ML confidence with criteria scores using learned weights
+                            final_strength = (ml_confidence * ml_weight) + (criteria_average * criteria_weight)
+
                             signal['signal_strength'] = final_strength
                             signal['strength'] = final_strength
 

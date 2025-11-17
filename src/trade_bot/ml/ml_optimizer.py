@@ -218,18 +218,24 @@ class MLTradingOptimizer:
             # Convert prediction to trading signal
             signal_value = prediction[0]
             confidence = abs(signal_value)
-            
+
+            # Win probability represents the model's estimated probability of a successful trade
+            # This should be independent of the signal strength (confidence)
+            # For simplicity, we'll map the raw signal to a probability-like scale
+            win_probability = min(max(signal_value * 1000, 10), 90)  # Scale and clamp to 10-90%
+
             if signal_value > 0.1:
                 action = 'buy'
-                # Calculate expected return as positive percentage based on confidence
-                expected_return_percentage = confidence * 100  # Convert to percentage
+                # Calculate expected return as positive percentage based on signal strength
+                expected_return_percentage = signal_value * 100  # Convert raw signal to percentage
             elif signal_value < -0.1:
                 action = 'sell'
-                # Calculate expected return as negative percentage based on confidence
-                expected_return_percentage = -(confidence * 100)  # Convert to negative percentage
+                # Calculate expected return as negative percentage based on signal strength
+                expected_return_percentage = signal_value * 100  # Convert raw signal to percentage
             else:
                 action = 'hold'
                 expected_return_percentage = 0.0
+                win_probability = 50.0  # Neutral probability for hold signals
 
             # Find similar market conditions
             similar_conditions = self.vector_db_client.find_similar_market_conditions(
@@ -238,7 +244,8 @@ class MLTradingOptimizer:
 
             return {
                 'action': action,
-                'confidence': float(confidence),
+                'confidence': float(confidence),  # ML model confidence in signal (used for signal strength)
+                'win_probability': float(win_probability),  # Probability of success (separate from confidence)
                 'signal_value': float(signal_value),
                 'expected_return_percentage': float(expected_return_percentage),
                 'reason': f'ML prediction: {signal_value:.3f}',
