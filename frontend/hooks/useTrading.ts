@@ -209,10 +209,27 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
     console.log('📡 Environment NEXT_PUBLIC_WS_URL:', process.env.NEXT_PUBLIC_WS_URL);
 
     const ws = new WebSocket(wsUrl);
+    let pingInterval: NodeJS.Timeout | null = null;
+    let connectionTimeout: NodeJS.Timeout | null = null;
+
+    const startHeartbeat = () => {
+      // Send ping every 30 seconds to prevent connection timeout
+      pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: 'ping' }));
+            console.log('💓 Sent ping to maintain connection');
+          } catch (error) {
+            console.error('❌ Failed to send ping:', error);
+          }
+        }
+      }, 30000);
+    };
 
     const onOpen = () => {
       console.log('✅ WebSocket connection opened successfully');
       setConnected(true);
+      startHeartbeat();
     };
 
     const onClose = (event: CloseEvent) => {
@@ -222,21 +239,39 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         wasClean: event.wasClean
       });
       setConnected(false);
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+        connectionTimeout = null;
+      }
     };
 
     const onError = (event: Event) => {
       console.error('💥 WebSocket connection error:', event);
+      setConnected(false);
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+        connectionTimeout = null;
+      }
     };
 
-    ws.addEventListener('open', onOpen);
-    ws.addEventListener('close', onClose);
-    ws.addEventListener('error', onError);
-
-    ws.addEventListener('message', (event) => {
+    const onMessage = (event: MessageEvent) => {
       try {
         const payload = JSON.parse(event.data || '{}');
         const type = payload?.type;
         const data = payload?.data;
+
+        if (type === 'pong') {
+          console.log('💓 Received pong from server');
+          return;
+        }
 
         // Push trading statistics into cache for instant UI updates
         if (type === 'trading_statistics_update' && data) {
@@ -280,13 +315,38 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           }
         }
       } catch (e) {
-        // ignore malformed messages
+        console.error('❌ Failed to parse WebSocket message:', e);
       }
-    });
+    };
+
+    ws.addEventListener('open', onOpen);
+    ws.addEventListener('close', onClose);
+    ws.addEventListener('error', onError);
+    ws.addEventListener('message', onMessage);
+
+    // Set timeout for initial connection
+    connectionTimeout = setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.warn('⚠️ WebSocket connection timeout, closing...');
+        try {
+          ws.close();
+        } catch (error) {
+          console.error('❌ Error closing timed out connection:', error);
+        }
+      }
+    }, 10000); // 10 second connection timeout
 
     return () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+      }
       try { ws.removeEventListener('open', onOpen); } catch {}
       try { ws.removeEventListener('close', onClose); } catch {}
+      try { ws.removeEventListener('error', onError); } catch {}
+      try { ws.removeEventListener('message', onMessage); } catch {}
       try { ws.close(); } catch {}
     };
   }, [enabled]);
