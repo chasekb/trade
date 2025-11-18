@@ -31,8 +31,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Check if websocket_handlers are initialized (using websocket close instead of HTTPException)
         if app_state.websocket_handlers is None:
-            await websocket.close(code=1013, reason="Server not ready - websocket_handlers not initialized")
-            return
+            # Wait for handlers to initialize (give up to 5 seconds)
+            import asyncio
+            for _ in range(50):
+                if app_state.websocket_handlers is not None:
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                await websocket.close(code=1013, reason="Server not ready - websocket_handlers not initialized after timeout")
+                return
 
         await app_state.websocket_handlers.websocket_endpoint(websocket)
     except Exception as e:

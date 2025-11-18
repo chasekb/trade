@@ -197,6 +197,7 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 export function useSimTradingWebSocket(enabled: boolean = true) {
   const [connected, setConnected] = useState(false);
   useEffect(() => {
+    console.log('🚀 useSimTradingWebSocket hook called with enabled:', enabled);
     if (!enabled) {
       console.log('🌐 WebSocket disabled - not connecting');
       return;
@@ -207,6 +208,8 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
     console.log('🔌 Attempting to connect to WebSocket:', wsUrl);
     console.log('📡 Environment NEXT_PUBLIC_WS_URL:', process.env.NEXT_PUBLIC_WS_URL);
+    console.log('🌐 Running in browser:', typeof window !== 'undefined');
+    console.log('🚀 Trading enabled:', enabled);
 
     const ws = new WebSocket(wsUrl);
     let pingInterval: NodeJS.Timeout | null = null;
@@ -293,6 +296,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         // Push orderbook signals updates into cache for instant UI updates
         if (type === 'orderbook_signals_update' && data) {
           console.log('Received orderbook_signals_update WebSocket message:', data);
+          apiClient.logMessage('Order book signal update received and pushed to order book signals table');
           try {
             const queryClient = (window as any).__RQ_CLIENT__;
             if (queryClient) {

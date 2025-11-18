@@ -158,7 +158,11 @@ async def startup_event():
         backtest_handlers = BacktestHandlers(config, database_manager)
         data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, None, app_state_local.trading_state)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager, websocket_manager, data_handlers)
+        
+        # Set websocket manager reference in data handlers after both are created
+        data_handlers.websocket_manager = websocket_manager
         data_handlers.trading_handlers = trading_handlers
+
         app_state_local.websocket_handlers = WebSocketHandlers(websocket_manager)
         app_state_local.data_handlers = data_handlers
         app_state_local.live_portfolio_handlers = LivePortfolioHandlers(config)
@@ -167,9 +171,6 @@ async def startup_event():
         app_state_local.api_handlers = api_handlers
         app_state_local.backtest_handlers = backtest_handlers
         app_state_local.trading_handlers = trading_handlers
-
-        # Set websocket manager reference in data handlers after both are created
-        data_handlers.websocket_manager = websocket_manager
 
         logger.info(f"✅ Live portfolio handlers initialized: {app_state_local.live_portfolio_handlers is not None}")
 
