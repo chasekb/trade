@@ -202,31 +202,16 @@ class WebSocketManager:
     async def _fetch_and_process_signals(self, symbols):
         """Fetch live order book signals and process them automatically."""
         try:
-            # Import data handlers to get signals
-            from ..web_handlers.data_handlers import DataHandlers
+            # Import app_state to get the shared data_handler instance
+            from ..web_components import get_app_state
 
-            # Limit symbols to avoid API timeouts
-            max_symbols = 50
-            if len(symbols) > max_symbols:
-                # Prioritize symbols that might have signals - could be improved with more logic
-                symbols = symbols[:max_symbols]
+            app_state = get_app_state()
+            if not app_state or not app_state.data_handlers:
+                logger.error("DataHandlers not available in app_state. Cannot fetch signals.")
+                await asyncio.sleep(5)  # Wait before retrying
+                return
 
-            # Create data handler instance
-            # We'll need to create a minimal config for this
-            class MinimalConfig:
-                def __init__(self):
-                    self.max_symbols_per_request = 1000
-                    self.ml_server_host = os.getenv("ML_SERVER_HOST", "localhost")
-                    self.ml_server_port = int(os.getenv("ML_SERVER_PORT", "8002"))
-
-            config = MinimalConfig()
-            data_handler = DataHandlers(
-                config=config,
-                data_provider=None,
-                cached_data_provider=None,
-                database_manager=None,
-                simulated_trading_manager=self.simulated_trading
-            )
+            data_handler = app_state.data_handlers
 
             # Get the signals string format
             symbols_str = ','.join(symbols)
