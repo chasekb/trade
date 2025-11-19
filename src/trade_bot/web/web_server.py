@@ -132,7 +132,8 @@ async def startup_event():
         simulated_trading_manager = SimulatedTradingManager(
             initial_balance=10000.0,
             db_manager=database_manager,
-            model_manager=model_manager
+            model_manager=model_manager,
+            config=config
         )
         data_handler = DataHandler(config)
         websocket_client = WebSocketClient(config)
