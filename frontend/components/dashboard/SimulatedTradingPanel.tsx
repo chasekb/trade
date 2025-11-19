@@ -67,8 +67,8 @@ function OpenPositionsSection({ positions }: { positions: any[] }) {
                 <td className="px-4 py-2 text-sm text-gray-900">{pos.symbol}</td>
                 <td className="px-4 py-2 text-sm">
                   <span className={`px-2 py-1 rounded-full text-xs ${(pos.side || '').toUpperCase() === 'LONG'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-blue-100 text-blue-800'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-blue-100 text-blue-800'
                     }`}>
                     {(pos.side || '').toUpperCase() || '-'}
                   </span>
@@ -490,12 +490,14 @@ function OrderBookSignalsTable({
       key: 'timestamp',
       header: 'Time',
       sortable: true,
+      className: "px-2 py-2",
       render: (value) => new Date(value).toLocaleString(),
     },
     {
       key: 'symbol',
       header: 'Symbol',
       sortable: true,
+      className: "px-2 py-2",
       render: (value, row) => (
         <div className="flex items-center space-x-2">
           <div className="text-sm font-medium text-gray-900">{value}</div>
@@ -510,12 +512,14 @@ function OrderBookSignalsTable({
       key: 'price',
       header: 'Price',
       sortable: true,
+      className: "px-2 py-2",
       render: (value) => `$${value?.toFixed(2) || '0.00'}`,
     },
     {
       key: 'signal_generated',
       header: 'Signal',
       sortable: true,
+      className: "px-2 py-2",
       render: (value, row) => {
         const signalClass = row.data_status === 'sufficient'
           ? (row.signal === 'buy' ? 'text-green-600 bg-green-50' :
@@ -540,6 +544,7 @@ function OrderBookSignalsTable({
       key: 'signal_strength',
       header: 'Strength',
       sortable: true,
+      className: "px-2 py-2",
       render: (value, row) => {
         const composition = row.strength_composition || {};
         const tooltipContent = (
@@ -563,7 +568,7 @@ function OrderBookSignalsTable({
                 <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(value || 0) * 100}%` }}></div>
               </div>
               <span className={`text-sm font-medium ${(value || 0) >= 0.7 ? 'text-green-600' :
-                  (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
+                (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
                 }`}>
                 {(value || 0).toFixed(2)}
               </span>
@@ -576,17 +581,20 @@ function OrderBookSignalsTable({
       key: 'spread',
       header: 'Spread',
       sortable: true,
+      className: "px-2 py-2",
       render: (value) => `${(value || 0).toFixed(4)}%`,
     },
     {
       key: 'volume',
       header: 'Volume',
       sortable: true,
+      className: "px-2 py-2",
       render: (value) => (value || 0).toFixed(2),
     },
     {
       key: 'criteria_analysis',
       header: 'Criteria',
+      className: "px-2 py-2",
       render: (value, row) => {
         const criteria = value || {};
         const squeeze = criteria.bid_ask_squeeze || {};
@@ -594,8 +602,14 @@ function OrderBookSignalsTable({
         const largeTradeBuy = criteria.large_trade_buy || {};
 
         const composition = row.strength_composition || {};
-        const squeeze_importance = composition['spread_percent']?.importance_percent || 0;
-        const imbalance_importance = composition['bid_ask_imbalance']?.importance_percent || 0;
+        // Try multiple possible keys for importance
+        const squeeze_importance = composition['spread_percent']?.importance_percent ||
+          composition['spread']?.importance_percent ||
+          composition['bid_ask_spread']?.importance_percent || 0;
+
+        const imbalance_importance = composition['bid_ask_imbalance']?.importance_percent ||
+          composition['imbalance']?.importance_percent ||
+          composition['volume_imbalance']?.importance_percent || 0;
 
         const tooltipContent = (
           <div>
@@ -638,48 +652,38 @@ function OrderBookSignalsTable({
     {
       key: 'ml_analysis',
       header: 'ML Analysis',
+      className: "px-2 py-2",
       render: (value, row) => {
         const ml = value || {};
         if (!ml.ml_enabled) {
           return <span className="text-xs text-gray-400">No ML</span>;
         }
 
-        const composition = row.strength_composition || {};
-        const ml_importance = composition['ml_confidence']?.importance_percent || 50; // Default to 50 if not available
-
-        const tooltipContent = (
-          <div>
-            <p className="font-bold mb-1">ML Model Prediction</p>
-            <p className="text-xs mb-2">The model's confidence is the primary driver of the signal strength, contributing {ml_importance.toFixed(1)}% to the score.</p>
-            <ul className="list-disc list-inside text-xs">
-              <li>Win Probability: The model's prediction of a successful trade.</li>
-              <li>Expected Return: The potential profit from the trade.</li>
-            </ul>
-          </div>
-        );
+        // Fix: Clamp win probability to 100%
+        const rawWinProb = ml.win_probability || 0;
+        const winProb = Math.min(rawWinProb, 100);
 
         return (
-          <Tooltip text={tooltipContent}>
-            <div className="text-xs space-y-1">
-              <div className="flex items-center space-x-1">
-                <span className="text-blue-600">🤖</span>
-                <span className={`font-medium ${(ml.win_probability || 0) >= 60 ? 'text-green-600' :
-                    (ml.win_probability || 0) >= 40 ? 'text-yellow-600' : 'text-red-600'
-                  }`}>
-                  {(ml.win_probability || 0).toFixed(1)}%
-                </span>
-              </div>
-              <div className="text-gray-500">
-                Exp: {(ml.expected_return || 0).toFixed(1)}%
-              </div>
+          <div className="text-xs space-y-1">
+            <div className="flex items-center space-x-1">
+              <span className="text-blue-600">🤖</span>
+              <span className={`font-medium ${winProb >= 60 ? 'text-green-600' :
+                winProb >= 40 ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                Win Probability: {winProb.toFixed(1)}%
+              </span>
             </div>
-          </Tooltip>
+            <div className="text-gray-500">
+              Expected Return: {(ml.expected_return || 0).toFixed(1)}%
+            </div>
+          </div>
         );
       },
     },
     {
       key: 'timestamp' as keyof OrderBookSignal,
       header: 'Details',
+      className: "px-2 py-2",
       render: (value, row) => (
         <button
           onClick={() => {
@@ -760,8 +764,8 @@ ML Analysis:
                   key={pageNum}
                   onClick={() => handlePageChange(pageNum)}
                   className={`px-3 py-1 border rounded-md text-sm ${pageNum === activePage
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'border-gray-300 hover:bg-gray-50'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'border-gray-300 hover:bg-gray-50'
                     }`}
                 >
                   {pageNum}
@@ -1380,8 +1384,8 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
                       <td className="px-4 py-2 text-sm text-gray-900">{trade.symbol || '-'}</td>
                       <td className="px-4 py-2 text-sm">
                         <span className={`px-2 py-1 rounded-full text-xs ${(trade.side || '').toUpperCase() === 'BUY'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
                           }`}>
                           {(trade.side || '').toUpperCase() || '-'}
                         </span>
