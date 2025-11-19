@@ -169,13 +169,20 @@ class SimulatedTradingManager:
         if self.config:
             try:
                 if strategy_type == 'ml_enhanced_orderbook':
+                    # Determine ML server URL from config or params
+                    default_ml_url = "http://ml-server:8002"
+                    if self.config:
+                        host = getattr(self.config, 'ml_server_host', 'ml-server')
+                        port = getattr(self.config, 'ml_server_port', 8002)
+                        default_ml_url = f"http://{host}:{port}"
+                    
                     self.strategy_instance = MLEnhancedOrderBookStrategy(
                         self.config,
-                        ml_server_url=strategy_params.get('ml_server_url', "http://localhost:8002"),
+                        ml_server_url=strategy_params.get('ml_server_url', default_ml_url),
                         fallback_to_baseline=strategy_params.get('fallback_to_baseline', True),
                         confidence_threshold=float(strategy_params.get('confidence_threshold', 0.6))
                     )
-                    logger.info("Instantiated MLEnhancedOrderBookStrategy")
+                    logger.info(f"Instantiated MLEnhancedOrderBookStrategy with ML server: {strategy_params.get('ml_server_url', default_ml_url)}")
                 elif strategy_type == 'orderbook':
                     self.strategy_instance = OrderBookStrategy(self.config)
                     logger.info("Instantiated OrderBookStrategy")
