@@ -32,9 +32,20 @@ class TradeManager(BaseDatabase):
                 pnl REAL,
                 fees REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                win_probability REAL,
+                expected_return REAL,
+                model_confidence REAL,
                 FOREIGN KEY (session_id) REFERENCES trading_sessions (session_id)
             )
         """)
+        
+        # Add columns if they don't exist (migration for existing tables)
+        try:
+            cursor.execute("ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS win_probability REAL")
+            cursor.execute("ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS expected_return REAL")
+            cursor.execute("ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS model_confidence REAL")
+        except Exception as e:
+            logger.warning(f"Migration warning for individual_trades: {e}")
     
     def save_trade(self, trade_data: Dict[str, Any]) -> bool:
         """Save individual trade record."""
@@ -42,8 +53,8 @@ class TradeManager(BaseDatabase):
             query = """
                 INSERT INTO individual_trades
                 (trade_id, session_id, symbol, side, size, price, timestamp,
-                 strategy_type, signal_reason, pnl, fees)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 strategy_type, signal_reason, pnl, fees, win_probability, expected_return, model_confidence)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (trade_id)
                 DO UPDATE SET session_id = EXCLUDED.session_id,
                               symbol = EXCLUDED.symbol,
@@ -54,7 +65,10 @@ class TradeManager(BaseDatabase):
                               strategy_type = EXCLUDED.strategy_type,
                               signal_reason = EXCLUDED.signal_reason,
                               pnl = EXCLUDED.pnl,
-                              fees = EXCLUDED.fees
+                              fees = EXCLUDED.fees,
+                              win_probability = EXCLUDED.win_probability,
+                              expected_return = EXCLUDED.expected_return,
+                              model_confidence = EXCLUDED.model_confidence
             """
 
             params = (
@@ -68,7 +82,10 @@ class TradeManager(BaseDatabase):
                 trade_data.get('strategy_type'),
                 trade_data.get('signal_reason'),
                 float(trade_data.get('pnl', 0.0) or 0.0),
-                float(trade_data.get('fees', 0.0) or 0.0)
+                float(trade_data.get('fees', 0.0) or 0.0),
+                trade_data.get('win_probability'),
+                trade_data.get('expected_return'),
+                trade_data.get('model_confidence')
             )
 
             return self._execute_update(query, params)
@@ -81,7 +98,8 @@ class TradeManager(BaseDatabase):
         try:
             query = """
                 SELECT trade_id, symbol, side, size, price, timestamp,
-                       strategy_type, signal_reason, pnl, fees, created_at
+                       strategy_type, signal_reason, pnl, fees, created_at,
+                       win_probability, expected_return, model_confidence
                 FROM individual_trades
                 WHERE session_id = %s
                 ORDER BY timestamp DESC
@@ -103,7 +121,10 @@ class TradeManager(BaseDatabase):
                     'signal_reason': row[7],
                     'pnl': row[8],
                     'fees': row[9],
-                    'created_at': row[10]
+                    'created_at': row[10],
+                    'win_probability': row[11],
+                    'expected_return': row[12],
+                    'model_confidence': row[13]
                 })
 
             return trades
@@ -116,7 +137,8 @@ class TradeManager(BaseDatabase):
         try:
             query = """
                 SELECT trade_id, session_id, symbol, side, size, price, timestamp,
-                       strategy_type, signal_reason, pnl, fees, created_at
+                       strategy_type, signal_reason, pnl, fees, created_at,
+                       win_probability, expected_return, model_confidence
                 FROM individual_trades
                 WHERE symbol = %s
                 ORDER BY timestamp DESC
@@ -139,7 +161,10 @@ class TradeManager(BaseDatabase):
                     'signal_reason': row[8],
                     'pnl': row[9],
                     'fees': row[10],
-                    'created_at': row[11]
+                    'created_at': row[11],
+                    'win_probability': row[12],
+                    'expected_return': row[13],
+                    'model_confidence': row[14]
                 })
 
             return trades
@@ -152,7 +177,8 @@ class TradeManager(BaseDatabase):
         try:
             query = """
                 SELECT trade_id, session_id, symbol, side, size, price, timestamp,
-                       strategy_type, signal_reason, pnl, fees, created_at
+                       strategy_type, signal_reason, pnl, fees, created_at,
+                       win_probability, expected_return, model_confidence
                 FROM individual_trades
                 ORDER BY timestamp DESC
                 LIMIT %s
@@ -174,7 +200,10 @@ class TradeManager(BaseDatabase):
                     'signal_reason': row[8],
                     'pnl': row[9],
                     'fees': row[10],
-                    'created_at': row[11]
+                    'created_at': row[11],
+                    'win_probability': row[12],
+                    'expected_return': row[13],
+                    'model_confidence': row[14]
                 })
 
             return trades
@@ -187,7 +216,8 @@ class TradeManager(BaseDatabase):
         try:
             query = """
                 SELECT trade_id, session_id, symbol, side, size, price, timestamp,
-                       strategy_type, signal_reason, pnl, fees, created_at
+                       strategy_type, signal_reason, pnl, fees, created_at,
+                       win_probability, expected_return, model_confidence
                 FROM individual_trades
                 ORDER BY timestamp DESC
                 LIMIT %s OFFSET %s
@@ -207,7 +237,10 @@ class TradeManager(BaseDatabase):
                     'signal_reason': row[8],
                     'pnl': row[9],
                     'fees': row[10],
-                    'created_at': row[11]
+                    'created_at': row[11],
+                    'win_probability': row[12],
+                    'expected_return': row[13],
+                    'model_confidence': row[14]
                 })
             return trades
         except Exception as e:

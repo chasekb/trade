@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 import json
+from .strategies.ml_enhanced_orderbook import MLEnhancedOrderBookStrategy
+from .strategies.orderbook import OrderBookStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,9 @@ class Trade:
     reason: str
     pnl: float = 0.0
     fees: float = 0.0
+    win_probability: Optional[float] = None
+    expected_return: Optional[float] = None
+    model_confidence: Optional[float] = None
 
 
 @dataclass
@@ -81,8 +86,9 @@ class SimulatedTradingManager:
     
     def __init__(self, initial_balance: float = 10000.0, max_positions: int = 5, 
                  position_size_percent: float = 20.0, trading_fee: float = 0.001,
-                 db_manager=None, session_id: str = None, model_manager: ModelManager = None):
+                 db_manager=None, session_id: str = None, model_manager: ModelManager = None, config=None):
         self.initial_balance = initial_balance
+        self.config = config
         self.model_manager = model_manager
         self.max_positions = max_positions
         self.position_size_percent = position_size_percent / 100.0  # Convert to decimal
@@ -117,6 +123,7 @@ class SimulatedTradingManager:
         # Strategy information
         self.strategy_type = None
         self.strategy_params = {}
+        self.strategy_instance = None
         
         logger.info(f"SimulatedTradingManager initialized with ${initial_balance:,.2f} balance")
     
@@ -157,7 +164,87 @@ class SimulatedTradingManager:
         """Set strategy type and parameters for trade logging."""
         self.strategy_type = strategy_type
         self.strategy_params = strategy_params
+        
+        # Instantiate the strategy if config is available
+        if self.config:
+            try:
+                if strategy_type == 'ml_enhanced_orderbook':
+                    self.strategy_instance = MLEnhancedOrderBookStrategy(
+                        self.config,
+                        ml_server_url=strategy_params.get('ml_server_url', "http://localhost:8002"),
+                        fallback_to_baseline=strategy_params.get('fallback_to_baseline', True),
+                        confidence_threshold=float(strategy_params.get('confidence_threshold', 0.6))
+                    )
+                    logger.info("Instantiated MLEnhancedOrderBookStrategy")
+                elif strategy_type == 'orderbook':
+                    self.strategy_instance = OrderBookStrategy(self.config)
+                    logger.info("Instantiated OrderBookStrategy")
+                else:
+                    self.strategy_instance = None
+                    logger.warning(f"Unknown strategy type: {strategy_type}")
+            except Exception as e:
+                logger.error(f"Failed to instantiate strategy {strategy_type}: {e}")
+                self.strategy_instance = None
+        else:
+            logger.warning("Config not available, cannot instantiate strategy")
+            
         logger.info(f"Strategy info set: {strategy_type} with params: {strategy_params}")
+
+    def generate_signal(self, symbol: str, current_price: float, timestamp: datetime, orderbook_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """Generate a signal using the active strategy."""
+        if not self.strategy_instance:
+            return None
+            
+        try:
+            # Update strategy with latest order book data if available
+            if orderbook_data:
+                bids = [[float(b['price']), float(b['size'])] for b in orderbook_data.get('bids', [])]
+                asks = [[float(a['price']), float(a['size'])] for a in orderbook_data.get('asks', [])]
+                self.strategy_instance.update_order_book(bids, asks, timestamp)
+            
+            # Generate signal
+            trade_signal = self.strategy_instance.generate_signal(current_price, timestamp)
+            
+            if trade_signal:
+                # Convert TradeSignal to dictionary format expected by the system
+                signal_dict = {
+                    "symbol": symbol,
+                    "signal": trade_signal.action,
+                    "signal_type": trade_signal.action,
+                    "signal_strength": 0.8 if trade_signal.action != 'hold' else 0.0, # Default strength if not provided
+                    "strength": 0.8 if trade_signal.action != 'hold' else 0.0,
+                    "price": trade_signal.price,
+                    "timestamp": trade_signal.timestamp.isoformat(),
+                    "reason": trade_signal.reason,
+                    "signal_reason": trade_signal.reason,
+                    "signal_generated": trade_signal.action != 'hold'
+                }
+                
+                # Add ML metadata if available (this is the crucial part for the task)
+                if hasattr(self.strategy_instance, 'ml_predictions') and self.strategy_instance.ml_predictions:
+                    last_prediction = self.strategy_instance.ml_predictions[-1]
+                    # Check if this prediction corresponds to the current signal
+                    if last_prediction['timestamp'] == timestamp:
+                        signal_dict['win_probability'] = last_prediction.get('confidence', 0.0) * 100
+                        signal_dict['expected_return'] = last_prediction.get('signal_value', 0.0)
+                        signal_dict['model_confidence'] = last_prediction.get('confidence', 0.0)
+                        
+                        # Also add to ml_analysis structure for consistency
+                        signal_dict['ml_analysis'] = {
+                            "ml_enabled": True,
+                            "win_probability": last_prediction.get('confidence', 0.0) * 100,
+                            "expected_return": last_prediction.get('signal_value', 0.0),
+                            "confidence": last_prediction.get('confidence', 0.0),
+                            "reason": trade_signal.reason
+                        }
+                
+                return signal_dict
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error generating signal in strategy: {e}")
+            return None
 
     def update_strategy_parameters(self, new_params: Dict[str, Any]) -> None:
         """Update strategy parameters during an active session."""
@@ -284,7 +371,10 @@ class SimulatedTradingManager:
                     'fees': trade.fees,
                     'strategy_type': self.strategy_type,
                     'strategy_params': self.strategy_params,
-                    'trade_type': 'simulated'
+                    'trade_type': 'simulated',
+                    'win_probability': trade.win_probability,
+                    'expected_return': trade.expected_return,
+                    'model_confidence': trade.model_confidence
                 }
                 self.db_manager.save_trade(trade_data)
             except Exception as e:
@@ -634,7 +724,10 @@ class SimulatedTradingManager:
             price=price,
             timestamp=datetime.now(timezone.utc),
             reason=signal.get('signal_reason', 'Order book signal'),
-            fees=fees
+            fees=fees,
+            win_probability=signal.get('win_probability'),
+            expected_return=signal.get('expected_return'),
+            model_confidence=signal.get('model_confidence')
         )
         self.trades.append(trade)
         
@@ -682,7 +775,10 @@ class SimulatedTradingManager:
             timestamp=datetime.now(timezone.utc),
             reason=signal.get('signal_reason', 'Order book signal'),
             pnl=net_pnl,
-            fees=fees
+            fees=fees,
+            win_probability=signal.get('win_probability'),
+            expected_return=signal.get('expected_return'),
+            model_confidence=signal.get('model_confidence')
         )
         self.trades.append(trade)
 

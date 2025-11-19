@@ -196,6 +196,23 @@ class DataHandlers:
                             signal_strength = 0.3
                             signal_reason = "Orderbook balanced"
 
+                        # Check for active strategy override
+                        strategy_ml_analysis = None
+                        if self.simulated_trading_manager and hasattr(self.simulated_trading_manager, 'generate_signal'):
+                            try:
+                                ts = datetime.fromisoformat(orderbook_data.get('timestamp', '2024-01-01T00:00:00Z').replace('Z', '+00:00'))
+                                strategy_result = self.simulated_trading_manager.generate_signal(
+                                    symbol, current_price, ts, orderbook_data
+                                )
+                                if strategy_result:
+                                    signal = strategy_result['signal']
+                                    signal_strength = strategy_result['strength']
+                                    signal_reason = strategy_result['reason']
+                                    strategy_ml_analysis = strategy_result.get('ml_analysis')
+                                    logger.debug(f"Strategy override for {symbol}: {signal} ({signal_reason})")
+                            except Exception as e:
+                                logger.error(f"Error getting strategy signal for {symbol}: {e}")
+
                         # Determine data status - more lenient criteria for better signal display
                         bids_count = len(orderbook_data.get('bids', []))
                         asks_count = len(orderbook_data.get('asks', []))
@@ -359,8 +376,14 @@ class DataHandlers:
                         }
 
                         # Enrich with ML analysis before saving
-                        enriched_signal_list = await self._enrich_signals_with_ml_analysis([signal_data])
-                        enriched_signal = enriched_signal_list[0] if enriched_signal_list else signal_data
+                        if strategy_ml_analysis:
+                            # Use ML analysis from strategy if available
+                            signal_data['ml_analysis'] = strategy_ml_analysis
+                            enriched_signal = signal_data
+                        else:
+                            # Fallback to DataHandler's own ML enrichment
+                            enriched_signal_list = await self._enrich_signals_with_ml_analysis([signal_data])
+                            enriched_signal = enriched_signal_list[0] if enriched_signal_list else signal_data
 
                         # Broadcast individual signal update via WebSocket for real-time UI updates
                         await self._broadcast_signal_update([enriched_signal])
