@@ -13,14 +13,14 @@ import glob
 try:
     from .data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
     from .feature_engineer import FeatureEngineer
-    from .model_trainer import ModelTrainer
+    from .model_trainer import ModelTrainer, TradingModelWrapper
     from .model_manager import ModelManager
     from .vector_db_client import VectorDBClient
 except ImportError:
     # Fallback to absolute imports when running as standalone script
     from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
     from feature_engineer import FeatureEngineer
-    from model_trainer import ModelTrainer
+    from model_trainer import ModelTrainer, TradingModelWrapper
     from model_manager import ModelManager
     from vector_db_client import VectorDBClient
 
@@ -123,45 +123,77 @@ class MLTradingOptimizer:
         self.feature_engineer.save_transformers(self.transformers_dir)
         
         # Train models
+        # Train models
         self.model_trainer.model_type = model_type
         training_results = self.model_trainer.train_models(X_processed, y_processed)
+        
+        # Train classifiers
+        y_class = np.array([outcome.is_win for outcome in outcomes])
+        classifier_results = self.model_trainer.train_classifiers(X_processed, y_class)
+        
+        training_results['classifier_performance'] = classifier_results['classifier_performance']
+        training_results['best_classifier'] = classifier_results['best_classifier']
+        training_results['best_classifier_score'] = classifier_results['best_score']
         
         # Store feature vectors in vector database
         self._store_feature_vectors_in_db(features, X_processed)
         
         # Register and deploy the best model
+        # Register and deploy the best model
         if training_results and training_results.get('best_model') and training_results.get('best_score') is not None:
             best_model_name = max(training_results['model_performance'].keys(), 
                                 key=lambda k: training_results['model_performance'][k]['score'])
             
-            # Find the saved model file for the best model
-            model_files = glob.glob(os.path.join(self.models_dir, f"{best_model_name}_*.pkl"))
-            if model_files:
-                # Get the most recent file
-                latest_model_file = max(model_files, key=os.path.getctime)
+            # Create wrapper with best regressor and best classifier
+            best_regressor = self.model_trainer.models[best_model_name]
+            best_classifier = None
+            if training_results.get('best_classifier'):
+                best_classifier = self.model_trainer.classifiers[training_results['best_classifier']]
                 
-                # Register the best model as "trading_optimizer"
-                best_performance = training_results['model_performance'][best_model_name]
-                version_id = self.model_manager.register_model(
-                    model_name="trading_optimizer",
-                    model_path=latest_model_file,
-                    performance_metrics=best_performance,
-                    metadata={
-                        'original_model_name': best_model_name,
-                        'best_score': training_results['best_score'],
-                        'training_samples': training_results['training_samples'],
-                        'test_samples': training_results['test_samples']
-                    }
-                )
+            model_wrapper = TradingModelWrapper(best_regressor, best_classifier)
+            
+            # Save the wrapper model
+            wrapper_filename = f"trading_optimizer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            wrapper_path = os.path.join(self.models_dir, wrapper_filename)
+            
+            # Use model_trainer's save_model to save the wrapper (it handles directory creation)
+            # We manually save it here to ensure it's the wrapper that gets saved
+            import joblib
+            joblib.dump(model_wrapper, wrapper_path)
+            
+            # Create metadata for the wrapper
+            wrapper_metadata = {
+                'model_type': 'combined_wrapper',
+                'regressor': best_model_name,
+                'classifier': training_results.get('best_classifier'),
+                'regressor_score': training_results['best_score'],
+                'classifier_score': training_results.get('best_classifier_score'),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            metadata_path = wrapper_path.replace('.pkl', '_metadata.json')
+            with open(metadata_path, 'w') as f:
+                json.dump(wrapper_metadata, f, indent=2)
                 
-                if version_id:
-                    # Deploy the registered model
-                    if self.model_manager.deploy_model("trading_optimizer", version_id):
-                        logger.info(f"Registered and deployed best model ({best_model_name}) as trading_optimizer")
-                    else:
-                        logger.warning("Failed to deploy registered model")
+            # Register the wrapper model
+            version_id = self.model_manager.register_model(
+                model_name="trading_optimizer",
+                model_path=wrapper_path,
+                performance_metrics={
+                    'regressor': training_results['model_performance'][best_model_name],
+                    'classifier': training_results.get('classifier_performance', {}).get(training_results.get('best_classifier'), {})
+                },
+                metadata=wrapper_metadata
+            )
+            
+            if version_id:
+                # Deploy the registered model
+                if self.model_manager.deploy_model("trading_optimizer", version_id):
+                    logger.info(f"Registered and deployed trading optimizer (Regressor: {best_model_name}, Classifier: {training_results.get('best_classifier')})")
                 else:
-                    logger.warning("Failed to register best model")
+                    logger.warning("Failed to deploy registered model")
+            else:
+                logger.warning("Failed to register best model")
         
         self.last_training_time = datetime.now()
         
@@ -220,9 +252,33 @@ class MLTradingOptimizer:
             confidence = abs(signal_value)
 
             # Win probability represents the model's estimated probability of a successful trade
-            # This should be independent of the signal strength (confidence)
-            # For simplicity, we'll map the raw signal to a probability-like scale
-            win_probability = min(max(signal_value * 1000, 10), 90)  # Scale and clamp to 10-90%
+            # Use classifier if available, otherwise fallback to heuristic
+            win_probability = 50.0
+            
+            # Check if the model has predict_proba (it should if it's our wrapper)
+            if hasattr(prediction, 'predict_proba'): 
+                # This branch won't be taken because prediction is the output of predict()
+                # We need to access the model object directly or change how predict is called
+                pass
+                
+            # Get the current model object to check for predict_proba
+            current_model = self.model_manager.get_current_model()
+            if hasattr(current_model, 'predict_proba'):
+                try:
+                    # Get probability of class 1 (win)
+                    prob = current_model.predict_proba(X_processed)
+                    if prob is not None:
+                        win_probability = float(prob[0][1] * 100)
+                    else:
+                        # Fallback to heuristic if predict_proba returns None
+                        win_probability = min(max(signal_value * 1000, 10), 90)
+                except Exception as e:
+                    logger.warning(f"Error getting win probability: {e}")
+                    # Fallback to heuristic
+                    win_probability = min(max(signal_value * 1000, 10), 90)
+            else:
+                # Fallback to heuristic
+                win_probability = min(max(signal_value * 1000, 10), 90)  # Scale and clamp to 10-90%
 
             if signal_value > 0.1:
                 action = 'buy'

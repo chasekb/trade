@@ -8,14 +8,32 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import os
 
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, RandomForestClassifier
+from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
+
+
+class TradingModelWrapper:
+    """Wrapper for both regressor (return) and classifier (win prob) models."""
+    
+    def __init__(self, regressor: Any, classifier: Any = None):
+        self.regressor = regressor
+        self.classifier = classifier
+        
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """Predict expected return using regressor."""
+        return self.regressor.predict(X)
+        
+    def predict_proba(self, X: np.ndarray) -> Optional[np.ndarray]:
+        """Predict win probability using classifier."""
+        if self.classifier is None:
+            return None
+        return self.classifier.predict_proba(X)
 
 
 class ModelTrainer:
@@ -35,6 +53,10 @@ class ModelTrainer:
         self.model_performance = {}
         self.best_model = None
         self.best_score = -np.inf
+        self.classifiers = {}
+        self.classifier_performance = {}
+        self.best_classifier = None
+        self.best_classifier_score = -np.inf
         
     def train_models(self, X: np.ndarray, y: np.ndarray, 
                     test_size: float = 0.2) -> Dict[str, Any]:
@@ -74,6 +96,69 @@ class ModelTrainer:
             'training_samples': X_train.shape[0],
             'test_samples': X_test.shape[0]
         }
+    
+    def train_classifiers(self, X: np.ndarray, y: np.ndarray, 
+                         test_size: float = 0.2) -> Dict[str, Any]:
+        """Train classifier models for win probability."""
+        logger.info(f"Training classifiers with {X.shape[0]} samples")
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=self.random_state, stratify=y
+        )
+        
+        # Logistic Regression
+        lr_model = LogisticRegression(random_state=self.random_state, max_iter=1000)
+        lr_model.fit(X_train, y_train)
+        lr_score = self._evaluate_classifier(lr_model, X_test, y_test)
+        self.classifiers['logistic_regression'] = lr_model
+        self.classifier_performance['logistic_regression'] = lr_score
+        self.save_model(lr_model, f"data/models/win_classifier_logreg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
+        
+        # Random Forest Classifier
+        rf_model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=8,
+            random_state=self.random_state
+        )
+        rf_model.fit(X_train, y_train)
+        rf_score = self._evaluate_classifier(rf_model, X_test, y_test)
+        self.classifiers['random_forest_classifier'] = rf_model
+        self.classifier_performance['random_forest_classifier'] = rf_score
+        self.save_model(rf_model, f"data/models/win_classifier_rf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
+        
+        # Select best classifier
+        if self.classifier_performance:
+            best_clf_name = max(self.classifier_performance.keys(),
+                                key=lambda k: self.classifier_performance[k]['roc_auc'])
+            self.best_classifier = self.classifiers[best_clf_name]
+            self.best_classifier_score = self.classifier_performance[best_clf_name]['roc_auc']
+            logger.info(f"Best classifier: {best_clf_name} with ROC AUC: {self.best_classifier_score}")
+            
+        return {
+            'classifier_performance': self.classifier_performance,
+            'best_classifier': best_clf_name if self.classifier_performance else None,
+            'best_score': self.best_classifier_score
+        }
+
+    def _evaluate_classifier(self, model: Any, X_test: np.ndarray, y_test: np.ndarray) -> Dict[str, float]:
+        """Evaluate classifier performance."""
+        y_pred = model.predict(X_test)
+        y_prob = model.predict_proba(X_test)[:, 1]
+        
+        return {
+            'accuracy': float(accuracy_score(y_test, y_pred)),
+            'precision': float(precision_score(y_test, y_pred, zero_division=0)),
+            'recall': float(recall_score(y_test, y_pred, zero_division=0)),
+            'f1': float(f1_score(y_test, y_pred, zero_division=0)),
+            'roc_auc': float(roc_auc_score(y_test, y_prob))
+        }
+
+    def predict_proba(self, X: np.ndarray) -> Optional[np.ndarray]:
+        """Make probability predictions using the best classifier."""
+        if self.best_classifier is None:
+            return None
+        return self.best_classifier.predict_proba(X)
     
     def _train_ensemble_models(self, X_train: np.ndarray, y_train: np.ndarray,
                               X_test: np.ndarray, y_test: np.ndarray) -> None:

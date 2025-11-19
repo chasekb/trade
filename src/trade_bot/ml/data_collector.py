@@ -61,6 +61,7 @@ class TradeOutcome:
     signal_strength: float
     entry_timestamp: int
     exit_timestamp: int
+    is_win: bool = False
 
 
 class MLDataCollector:
@@ -498,7 +499,8 @@ class MLDataCollector:
                     signal_type=features.symbol,  # Placeholder
                     signal_strength=features.bid_ask_imbalance,
                     entry_timestamp=features.timestamp,
-                    exit_timestamp=int(trade['timestamp'])
+                    exit_timestamp=int(trade['timestamp']),
+                    is_win=float(trade['pnl']) > 0
                 )
                 
                 training_data.append((features, outcome))
