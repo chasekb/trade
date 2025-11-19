@@ -299,20 +299,73 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         if (type === 'orderbook_signals_update' && data) {
           console.log('Received orderbook_signals_update WebSocket message:', data);
           apiClient.logMessage('Order book signal update received and pushed to order book signals table');
+
           try {
-            // Get all orderbook-signals queries and invalidate them individually
+            // Optimistically update the cache for immediate UI feedback
+            const newSignal = data as OrderBookSignal;
             const allQueries = queryClient.getQueryCache().getAll();
-            const orderbookQueries = allQueries.filter((q: any) => q.queryKey[0] === 'orderbook-signals');
-            
-            console.log('📊 Found orderbook-signals queries to invalidate:', orderbookQueries.length);
-            
-            // Invalidate each orderbook-signals query individually to ensure proper refetch
+
+            // Find all orderbook-signals queries
+            const orderbookQueries = allQueries.filter((q: any) =>
+              q.queryKey[0] === 'orderbook-signals'
+            );
+
+            console.log('📊 Found orderbook-signals queries to update:', orderbookQueries.length);
+
             orderbookQueries.forEach((query: any) => {
-              console.log('🔄 Invalidating query with key:', query.queryKey);
+              const queryKey = query.queryKey;
+              // queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy]
+              const querySymbols = queryKey[1] as string[] | undefined;
+              const page = queryKey[3] as number;
+
+              // Only update page 1
+              if (page === 1) {
+                // Check if signal matches query symbols (if specified)
+                const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(newSignal.symbol);
+
+                if (isRelevant) {
+                  console.log('⚡ Optimistically updating query:', queryKey);
+
+                  queryClient.setQueryData(queryKey, (oldData: any) => {
+                    if (!oldData) return oldData;
+
+                    // Create new signals array with new signal at the top
+                    const currentSignals = oldData.signals || [];
+                    // Avoid duplicates if possible (check by timestamp and symbol)
+                    const isDuplicate = currentSignals.some((s: OrderBookSignal) =>
+                      s.symbol === newSignal.symbol && s.timestamp === newSignal.timestamp
+                    );
+
+                    if (isDuplicate) return oldData;
+
+                    const updatedSignals = [newSignal, ...currentSignals];
+
+                    // Respect page size if needed, but for page 1 we can just grow it slightly until refetch
+                    // or trim to perPage
+                    const perPage = queryKey[4] as number || 10;
+                    const trimmedSignals = updatedSignals.slice(0, perPage);
+
+                    return {
+                      ...oldData,
+                      signals: trimmedSignals,
+                      total_analyzed: (oldData.total_analyzed || 0) + 1,
+                      active_signals: newSignal.signal_generated ? (oldData.active_signals || 0) + 1 : oldData.active_signals,
+                      last_updated: new Date().toISOString(),
+                      pagination: {
+                        ...oldData.pagination,
+                        total_signals: (oldData.pagination?.total_signals || 0) + 1,
+                      }
+                    };
+                  });
+                }
+              }
+
+              // Still invalidate to ensure consistency with backend eventually
+              // Debounce invalidation if many signals come in fast? 
+              // For now, keep it but maybe with a delay or just let the optimistic update handle the immediate view
               queryClient.invalidateQueries({ queryKey: query.queryKey });
             });
-            
-            console.log('✅ Invalidated all orderbook-signals queries via WebSocket');
+
           } catch (e) {
             console.error('❌ Failed to update orderbook signals cache:', e);
           }
@@ -346,11 +399,11 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       if (connectionTimeout) {
         clearTimeout(connectionTimeout);
       }
-      try { ws.removeEventListener('open', onOpen); } catch {}
-      try { ws.removeEventListener('close', onClose); } catch {}
-      try { ws.removeEventListener('error', onError); } catch {}
-      try { ws.removeEventListener('message', onMessage); } catch {}
-      try { ws.close(); } catch {}
+      try { ws.removeEventListener('open', onOpen); } catch { }
+      try { ws.removeEventListener('close', onClose); } catch { }
+      try { ws.removeEventListener('error', onError); } catch { }
+      try { ws.removeEventListener('message', onMessage); } catch { }
+      try { ws.close(); } catch { }
     };
   }, [enabled, queryClient]);
 
