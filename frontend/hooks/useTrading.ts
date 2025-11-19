@@ -196,6 +196,8 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 
 export function useSimTradingWebSocket(enabled: boolean = true) {
   const [connected, setConnected] = useState(false);
+  const queryClient = useQueryClient();
+
   useEffect(() => {
     console.log('🚀 useSimTradingWebSocket hook called with enabled:', enabled);
     if (!enabled) {
@@ -284,11 +286,11 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
             ...data,
           };
           // Update the stats query cache
-          // Use global variable to avoid import cycle; dynamic import of queryClient is avoided here.
-          // Rely on window.dispatchEvent for a lightweight cache invalidation signal.
           try {
-            (window as any).__RQ_SET__?.(['simulated-trading-stats'], normalized);
-          } catch {}
+            queryClient.setQueryData(['simulated-trading-stats'], normalized);
+          } catch (e) {
+            console.error('❌ Failed to update trading stats cache:', e);
+          }
           // Also emit a custom event for components not using React Query
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
@@ -298,22 +300,19 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           console.log('Received orderbook_signals_update WebSocket message:', data);
           apiClient.logMessage('Order book signal update received and pushed to order book signals table');
           try {
-            const queryClient = (window as any).__RQ_CLIENT__;
-            if (queryClient) {
-              // Invalidate all orderbook-signals queries (including paginated ones) with prefix match
-              queryClient.invalidateQueries({
-                queryKey: ['orderbook-signals'],
-                exact: false // Match all queries that start with ['orderbook-signals']
-              });
-              console.log('✅ Invalidated orderbook-signals queries via WebSocket, should trigger refetch');
-
-              // Log query cache state
-              const allQueries = queryClient.getQueryCache().getAll();
-              const orderbookQueries = allQueries.filter((q: any) => q.queryKey[0] === 'orderbook-signals');
-              console.log('📊 Current orderbook-signals queries:', orderbookQueries.length);
-            } else {
-              console.error('❌ QueryClient not available in WebSocket handler');
-            }
+            // Get all orderbook-signals queries and invalidate them individually
+            const allQueries = queryClient.getQueryCache().getAll();
+            const orderbookQueries = allQueries.filter((q: any) => q.queryKey[0] === 'orderbook-signals');
+            
+            console.log('📊 Found orderbook-signals queries to invalidate:', orderbookQueries.length);
+            
+            // Invalidate each orderbook-signals query individually to ensure proper refetch
+            orderbookQueries.forEach((query: any) => {
+              console.log('🔄 Invalidating query with key:', query.queryKey);
+              queryClient.invalidateQueries({ queryKey: query.queryKey });
+            });
+            
+            console.log('✅ Invalidated all orderbook-signals queries via WebSocket');
           } catch (e) {
             console.error('❌ Failed to update orderbook signals cache:', e);
           }
@@ -353,23 +352,9 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       try { ws.removeEventListener('message', onMessage); } catch {}
       try { ws.close(); } catch {}
     };
-  }, [enabled]);
+  }, [enabled, queryClient]);
 
   return { connected };
-}
-
-// React Query integration helpers (optional, set globally once in app bootstrap)
-if (typeof window !== 'undefined' && !(window as any).__RQ_SET__) {
-  try {
-    const { queryClient } = require('@/lib/api');
-    (window as any).__RQ_CLIENT__ = queryClient; // Expose client for more complex cache updates
-    (window as any).__RQ_SET__ = (key: any, data: any) => {
-      try { queryClient.setQueryData(key, data); } catch {}
-    };
-    (window as any).__RQ_INVALIDATE__ = (key: any) => {
-      try { queryClient.invalidateQueries({ queryKey: key }); } catch {}
-    };
-  } catch {}
 }
 
 // Products/Symbols Hook
