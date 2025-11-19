@@ -66,20 +66,18 @@ function OpenPositionsSection({ positions }: { positions: any[] }) {
               <tr key={`${pos.symbol}-${pos.entry_time}-${index}`}>
                 <td className="px-4 py-2 text-sm text-gray-900">{pos.symbol}</td>
                 <td className="px-4 py-2 text-sm">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    (pos.side || '').toUpperCase() === 'LONG'
+                  <span className={`px-2 py-1 rounded-full text-xs ${(pos.side || '').toUpperCase() === 'LONG'
                       ? 'bg-green-100 text-green-800'
                       : 'bg-blue-100 text-blue-800'
-                  }`}>
+                    }`}>
                     {(pos.side || '').toUpperCase() || '-'}
                   </span>
                 </td>
                 <td className="px-4 py-2 text-sm text-gray-900">{Number(pos.quantity || 0).toFixed(4)}</td>
                 <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.entry_price || 0).toFixed(4)}</td>
                 <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.current_price || 0).toFixed(4)}</td>
-                <td className={`px-4 py-2 text-sm font-medium ${
-                  Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
+                <td className={`px-4 py-2 text-sm font-medium ${Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
                   ${Number(pos.unrealized_pnl || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
@@ -251,11 +249,19 @@ function StrategyConfigForm({ strategy, config, onChange, className = '', status
                 onChange={(e) => setSelectedModel(e.target.value)}
                 className="w-full border border-gray-300 rounded-md px-3 py-2"
               >
-                {availableModels?.map((model: any) => (
-                  <option key={model.model_id} value={model.model_id}>
-                    {model.model_id} ({new Date(model.trained_at).toLocaleDateString()})
-                  </option>
-                ))}
+                {availableModels
+                  ?.sort((a: any, b: any) => new Date(b.trained_at).getTime() - new Date(a.trained_at).getTime())
+                  .map((model: any, index: number) => {
+                    // Auto-select the first model if none is selected
+                    if (index === 0 && !selectedModel) {
+                      setTimeout(() => setSelectedModel(model.model_id), 0);
+                    }
+                    return (
+                      <option key={model.model_id} value={model.model_id}>
+                        {model.model_id} ({new Date(model.trained_at).toLocaleDateString()})
+                      </option>
+                    );
+                  })}
               </select>
               <Button onClick={handleSetActiveModel} disabled={!selectedModel || isSettingActiveModel}>
                 {isSettingActiveModel ? 'Setting...' : 'Set Active'}
@@ -495,7 +501,7 @@ function OrderBookSignalsTable({
           <div className="text-sm font-medium text-gray-900">{value}</div>
           <span className="text-xs" title={`Data Status: ${row.data_status}`}>
             {row.data_status === 'sufficient' ? '✓' :
-             row.data_status === 'insufficient' ? '⚠' : '✗'}
+              row.data_status === 'insufficient' ? '⚠' : '✗'}
           </span>
         </div>
       ),
@@ -513,19 +519,19 @@ function OrderBookSignalsTable({
       render: (value, row) => {
         const signalClass = row.data_status === 'sufficient'
           ? (row.signal === 'buy' ? 'text-green-600 bg-green-50' :
-             row.signal === 'sell' ? 'text-red-600 bg-red-50' :
-             'text-gray-600 bg-gray-50')
+            row.signal === 'sell' ? 'text-red-600 bg-red-50' :
+              'text-gray-600 bg-gray-50')
           : row.data_status === 'insufficient'
-          ? 'text-yellow-600 bg-yellow-50'
-          : 'text-gray-400 bg-gray-100';
+            ? 'text-yellow-600 bg-yellow-50'
+            : 'text-gray-400 bg-gray-100';
 
         // Get the actual signal value, fallback to 'hold' if undefined
         const actualSignal = row.signal || 'hold';
-        
+
         return (
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${signalClass}`}>
             {row.data_status === 'sufficient' ? actualSignal.toUpperCase() :
-             row.data_status === 'insufficient' ? 'WAITING' : 'NO DATA'}
+              row.data_status === 'insufficient' ? 'WAITING' : 'NO DATA'}
           </span>
         );
       },
@@ -556,10 +562,9 @@ function OrderBookSignalsTable({
               <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
                 <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(value || 0) * 100}%` }}></div>
               </div>
-              <span className={`text-sm font-medium ${
-                (value || 0) >= 0.7 ? 'text-green-600' :
-                (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
-              }`}>
+              <span className={`text-sm font-medium ${(value || 0) >= 0.7 ? 'text-green-600' :
+                  (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
+                }`}>
                 {(value || 0).toFixed(2)}
               </span>
             </div>
@@ -654,14 +659,13 @@ function OrderBookSignalsTable({
         );
 
         return (
-            <Tooltip text={tooltipContent}>
+          <Tooltip text={tooltipContent}>
             <div className="text-xs space-y-1">
               <div className="flex items-center space-x-1">
                 <span className="text-blue-600">🤖</span>
-                <span className={`font-medium ${
-                  (ml.win_probability || 0) >= 60 ? 'text-green-600' :
-                  (ml.win_probability || 0) >= 40 ? 'text-yellow-600' : 'text-red-600'
-                }`}>
+                <span className={`font-medium ${(ml.win_probability || 0) >= 60 ? 'text-green-600' :
+                    (ml.win_probability || 0) >= 40 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
                   {(ml.win_probability || 0).toFixed(1)}%
                 </span>
               </div>
@@ -755,11 +759,10 @@ ML Analysis:
                 <button
                   key={pageNum}
                   onClick={() => handlePageChange(pageNum)}
-                  className={`px-3 py-1 border rounded-md text-sm ${
-                    pageNum === activePage
+                  className={`px-3 py-1 border rounded-md text-sm ${pageNum === activePage
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'border-gray-300 hover:bg-gray-50'
-                  }`}
+                    }`}
                 >
                   {pageNum}
                 </button>
@@ -1376,11 +1379,10 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900">{trade.symbol || '-'}</td>
                       <td className="px-4 py-2 text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          (trade.side || '').toUpperCase() === 'BUY'
+                        <span className={`px-2 py-1 rounded-full text-xs ${(trade.side || '').toUpperCase() === 'BUY'
                             ? 'bg-green-100 text-green-800'
                             : 'bg-red-100 text-red-800'
-                        }`}>
+                          }`}>
                           {(trade.side || '').toUpperCase() || '-'}
                         </span>
                       </td>
@@ -1390,9 +1392,8 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
                       <td className="px-4 py-2 text-sm text-gray-900">
                         ${typeof trade.price === 'number' ? trade.price.toFixed(2) : trade.price || 0}
                       </td>
-                      <td className={`px-4 py-2 text-sm font-medium ${
-                        (trade.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
+                      <td className={`px-4 py-2 text-sm font-medium ${(trade.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
                         ${(trade.pnl || 0).toFixed(2)}
                       </td>
                     </tr>
@@ -1525,7 +1526,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   };
 
   const signalsToDisplay = orderBookData?.signals || [];
-  
+
   // Normalize optional summary fields for order book signals (prefer WebSocket data for real-time updates)
   const signalsSummary = {
     ...(orderBookData?.total_analyzed !== undefined ? { total_analyzed: orderBookData.total_analyzed as number } : {}),
