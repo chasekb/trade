@@ -1,4 +1,3 @@
-from typing import List
 """
 Simulated Trading Manager for Live Order Book Signals.
 
@@ -8,77 +7,17 @@ including position tracking, portfolio management, and trade execution.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
 import json
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Any
+from dataclasses import asdict
+
+from .trading_models import Position, Trade, Portfolio
 from .strategies.ml_enhanced_orderbook import MLEnhancedOrderBookStrategy
 from .strategies.orderbook import OrderBookStrategy
+from trade_bot.ml.model_manager import ModelManager
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Position:
-    """Represents a trading position."""
-    symbol: str
-    side: str  # 'long' or 'short'
-    quantity: float
-    entry_price: float
-    entry_time: datetime
-    current_price: float
-    unrealized_pnl: float
-    realized_pnl: float = 0.0
-    status: str = 'open'  # 'open', 'closed'
-    
-    def update_price(self, new_price: float) -> None:
-        """Update current price and calculate unrealized PnL."""
-        self.current_price = new_price
-        if self.side == 'long':
-            self.unrealized_pnl = (new_price - self.entry_price) * self.quantity
-        else:  # short
-            self.unrealized_pnl = (self.entry_price - new_price) * self.quantity
-
-
-@dataclass
-class Trade:
-    """Represents a completed trade."""
-    trade_id: str
-    symbol: str
-    side: str  # 'buy' or 'sell'
-    quantity: float
-    price: float
-    timestamp: datetime
-    reason: str
-    pnl: float = 0.0
-    fees: float = 0.0
-    win_probability: Optional[float] = None
-    expected_return: Optional[float] = None
-    model_confidence: Optional[float] = None
-
-
-@dataclass
-class Portfolio:
-    """Represents the trading portfolio."""
-    cash_balance: float
-    total_value: float
-    positions: Dict[str, Position]
-    trades: List[Trade]
-    total_pnl: float
-    total_fees: float
-    max_drawdown: float
-    win_rate: float
-    total_trades: int
-    winning_trades: int
-    # Added explicit fields for clarity and correct frontend calculations
-    total_positions_value: float = 0.0
-    unrealized_pnl: float = 0.0
-    realized_pnl: float = 0.0
-    net_pnl: float = 0.0
-    position_count: int = 0
-
-
-from trade_bot.ml.model_manager import ModelManager
 
 
 class SimulatedTradingManager:
@@ -165,11 +104,12 @@ class SimulatedTradingManager:
                 'positions': {},
                 'recent_trades': []
             }
-            success = self.db_manager.save_trading_session(session_id, session_data)
-            if success:
-                logger.info(f"Session created in database: {session_id}")
-            else:
-                logger.warning(f"Failed to create session in database: {session_id}")
+            if self.db_manager:
+                success = self.db_manager.save_trading_session(session_id, session_data)
+                if success:
+                    logger.info(f"Session created in database: {session_id}")
+                else:
+                    logger.warning(f"Failed to create session in database: {session_id}")
         except Exception as e:
             logger.error(f"Error creating session in database: {e}")
 
@@ -242,7 +182,7 @@ class SimulatedTradingManager:
                     "signal_generated": trade_signal.action != 'hold'
                 }
                 
-                # Add ML metadata if available (this is the crucial part for the task)
+                # Add ML metadata if available
                 if hasattr(self.strategy_instance, 'ml_predictions') and self.strategy_instance.ml_predictions:
                     last_prediction = self.strategy_instance.ml_predictions[-1]
                     # Check if this prediction corresponds to the current signal
@@ -310,7 +250,6 @@ class SimulatedTradingManager:
                     entry_time = pos_data.get('entry_time', '')
                     if isinstance(entry_time, str) and entry_time:
                         try:
-                            from datetime import datetime
                             entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
                         except (ValueError, TypeError) as e:
                             logger.warning(f"Failed to parse entry_time '{entry_time}': {e}")
@@ -362,16 +301,9 @@ class SimulatedTradingManager:
             self.trade_counter = len(self.trades)
             
             logger.info(f"Restored portfolio state: ${self.cash_balance:,.2f} cash, {len(self.positions)} positions, {len(self.trades)} trades")
-            logger.info(f"Portfolio state details: {portfolio_state}")
-            logger.info(f"Positions details: {positions}")
-            logger.info(f"Trades details: {trades}")
-            
-            # Debug: Check if the restoration actually worked
-            logger.info(f"After restoration - cash_balance: {self.cash_balance}, positions: {len(self.positions)}, trades: {len(self.trades)}")
             
         except Exception as e:
             logger.error(f"Error restoring portfolio state: {e}")
-            # Reset to initial state if restoration fails
             self.reset_portfolio()
     
     def _save_trade_to_db(self, trade: Trade) -> None:
@@ -383,7 +315,6 @@ class SimulatedTradingManager:
                     'session_id': self.session_id,
                     'symbol': trade.symbol,
                     'side': trade.side,
-                    # Provide both quantity (legacy) and size (current) for compatibility
                     'quantity': trade.quantity,
                     'size': trade.quantity,
                     'price': trade.price,
@@ -459,7 +390,6 @@ class SimulatedTradingManager:
             
             # Import here to avoid circular imports
             from ..data.data_provider import CoinbaseDataProvider
-            import asyncio
             
             async def update_prices():
                 # Create a copy of positions to avoid dictionary changed size during iteration
@@ -478,7 +408,6 @@ class SimulatedTradingManager:
                             data_provider = CoinbaseDataProvider(symbol)
                             
                             # Get current orderbook data to extract current price
-                            # Using level 1 for position price updates (only need best bid/ask)
                             orderbook_data = await data_provider.get_order_book(level=1)
                             
                             if orderbook_data and 'bids' in orderbook_data and 'asks' in orderbook_data:
@@ -496,13 +425,8 @@ class SimulatedTradingManager:
                                         logger.debug(f"Updated {symbol} price from {position.entry_price} to {current_price}")
                                     else:
                                         logger.warning(f"Invalid price for {symbol}: {current_price}")
-                                else:
-                                    logger.warning(f"No bid/ask data for {symbol}")
-                            else:
-                                logger.warning(f"Could not get orderbook data for {symbol}")
                         except Exception as e:
                             logger.warning(f"Error updating price for {symbol}: {e}")
-                            # Keep the existing price if we can't get current data
                             continue
             
             # Check if we're already in an event loop
@@ -545,9 +469,9 @@ class SimulatedTradingManager:
         
         # Realized PnL is the sum of SELL trade PnL (already net of fees in _execute_sell_trade)
         realized_pnl = sum(trade.pnl for trade in completed_trades)
-        # Total PnL (gross) = realized + unrealized; Net PnL = realized + unrealized (fees already accounted in realized, and total_fees reported separately)
+        # Total PnL (gross) = realized + unrealized
         total_pnl = unrealized_pnl + realized_pnl
-        net_pnl = total_pnl  # keep net_pnl explicit for frontend, avoid double-subtracting fees there
+        net_pnl = total_pnl  # keep net_pnl explicit
         
         # Calculate win rate using only completed trades
         total_trades = len(completed_trades)
@@ -578,6 +502,36 @@ class SimulatedTradingManager:
             position_count=open_position_count
         )
     
+    def _should_process_signal(self, signal: Dict[str, Any]) -> bool:
+        """
+        Determine if a signal should be processed based on trading rules and filters.
+        Updates signal_to_trade_statistics accordingly.
+        """
+        symbol = signal.get('symbol')
+        signal_generated = signal.get('signal_generated', False)
+        signal_action = signal.get('signal')
+        model_confidence = signal.get('model_confidence', 0.0)
+        confidence_threshold = self.strategy_params.get('confidence_threshold', 0.6)
+
+        # Track signals above confidence threshold
+        if signal_generated and model_confidence >= confidence_threshold:
+            self.signal_to_trade_statistics['total_signals_above_threshold'] += 1
+
+        # Filter: Symbol not in trading symbols
+        if symbol not in self.symbols_to_trade:
+            logger.info(f"Skipping {symbol} - not in trading symbols")
+            if signal_generated and model_confidence >= confidence_threshold:
+                self.signal_to_trade_statistics['filtered_signals']['symbol_not_trading'] += 1
+            return False
+
+        # Filter: Hold signal or not generated
+        if not signal_generated or signal_action == 'hold':
+            if signal_generated and model_confidence >= confidence_threshold and signal_action == 'hold':
+                self.signal_to_trade_statistics['filtered_signals']['hold_signal'] += 1
+            return False
+
+        return True
+
     async def process_signals(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Process live order book signals and execute trades."""
         if not self.is_trading:
@@ -598,57 +552,31 @@ class SimulatedTradingManager:
             symbol = signal.get('symbol')
             logger.info(f"Processing signal for {symbol}: {signal.get('signal')} (generated: {signal.get('signal_generated')})")
 
-            # Check if signal meets confidence threshold criteria
-            signal_generated = signal.get('signal_generated', False)
-            confidence_threshold = self.strategy_params.get('confidence_threshold', 0.6)
-            model_confidence = signal.get('model_confidence', 0.0)
-
-            # Track signals above confidence threshold
-            if signal_generated and model_confidence >= confidence_threshold:
-                self.signal_to_trade_statistics['total_signals_above_threshold'] += 1
-
-            # Filter: Symbol not in trading symbols
-            if symbol not in self.symbols_to_trade:
-                logger.info(f"Skipping {symbol} - not in trading symbols")
-                if signal_generated and model_confidence >= confidence_threshold:
-                    self.signal_to_trade_statistics['filtered_signals']['symbol_not_trading'] += 1
+            if not self._should_process_signal(signal):
                 continue
-
-            signal_action = signal.get('signal')
+            
             current_price = signal.get('price', 0.0)
+            signal_action = signal.get('signal')
             signal_strength = signal.get('signal_strength', 0.0)
-
-            # Filter: Hold signal or not generated
-            if not signal_generated or signal_action == 'hold':
-                if signal_generated and model_confidence >= confidence_threshold and signal_action == 'hold':
-                    self.signal_to_trade_statistics['filtered_signals']['hold_signal'] += 1
-                continue
             
             # Update existing position price
             if symbol in self.positions and self.positions[symbol].status == 'open':
                 self.positions[symbol].update_price(current_price)
             
-            # Process buy signals
+            # Dispatch signal to appropriate handler
             if signal_action == 'buy':
                 logger.info(f"Processing buy signal for {symbol} at ${current_price}")
                 trade_result = await self._process_buy_signal(symbol, current_price, signal_strength, signal)
                 if trade_result:
                     executed_trades.append(trade_result)
-                    logger.info(f"Executed buy trade for {symbol}: {trade_result}")
-                else:
-                    logger.info(f"Failed to execute buy trade for {symbol}")
             
-            # Process sell signals
             elif signal_action == 'sell':
                 logger.info(f"Processing sell signal for {symbol} at ${current_price}")
                 trade_result = await self._process_sell_signal(symbol, current_price, signal_strength, signal)
                 if trade_result:
                     executed_trades.append(trade_result)
-                    logger.info(f"Executed sell trade for {symbol}: {trade_result}")
                     if symbol in self.positions and self.positions[symbol].status == 'closed':
                         closed_positions.append(symbol)
-                else:
-                    logger.info(f"Failed to execute sell trade for {symbol}")
         
         self.last_signal_check = datetime.now(timezone.utc)
         
@@ -660,11 +588,8 @@ class SimulatedTradingManager:
             "portfolio": self.get_portfolio_summary()
         }
     
-    async def _process_buy_signal(self, symbol: str, price: float, strength: float, signal: Dict) -> Optional[Dict]:
-        """Process a buy signal."""
-        model_confidence = signal.get('model_confidence', 0.0)
-        confidence_threshold = self.strategy_params.get('confidence_threshold', 0.6)
-
+    def _calculate_position_size(self, symbol: str, price: float, model_confidence: float, confidence_threshold: float) -> Optional[float]:
+        """Calculate position size based on strategy parameters and available cash."""
         # Check if we already have a position
         if symbol in self.positions and self.positions[symbol].status == 'open':
             logger.info(f"Skipping buy for {symbol}: Already have open position")
@@ -680,51 +605,56 @@ class SimulatedTradingManager:
                 self.signal_to_trade_statistics['filtered_signals']['max_positions_exceeded'] += 1
             return None
         
-        # Get position sizing configuration from strategy parameters
+        # Get position sizing configuration
         position_size_mode = self.strategy_params.get('position_size_mode', 'percent')
         position_size_value = self.strategy_params.get('position_size_value')
 
-        # Fallback for older configs that used position_size_percent directly
         if position_size_value is None:
-            position_size_value = self.position_size_percent * 100  # convert back to percentage
+            position_size_value = self.position_size_percent * 100
         
-        # Calculate total portfolio value for percentage-based sizing
         total_portfolio_value = self.cash_balance + sum(
             pos.quantity * pos.current_price for pos in self.positions.values() 
             if pos.status == 'open'
         )
 
-        # Calculate position value based on mode
-        position_value = 0
         if position_size_mode == 'percent':
             position_value = total_portfolio_value * (float(position_size_value) / 100.0)
         elif position_size_mode == 'dollar':
             position_value = float(position_size_value)
-        else:  # Fallback
+        else:
             position_value = total_portfolio_value * self.position_size_percent
 
         quantity = position_value / price if price > 0 else 0
 
-        if quantity < 0.001:  # Minimum quantity threshold
+        if quantity < 0.001:
             logger.warning(f"Insufficient quantity for {symbol} position: {quantity:.6f} < 0.001")
             if model_confidence >= confidence_threshold:
                 self.signal_to_trade_statistics['filtered_signals']['insufficient_quantity'] += 1
             return None
+            
+        return quantity
 
-        # Calculate fees
+    async def _process_buy_signal(self, symbol: str, price: float, strength: float, signal: Dict) -> Optional[Dict]:
+        """Process a buy signal."""
+        model_confidence = signal.get('model_confidence', 0.0)
+        confidence_threshold = self.strategy_params.get('confidence_threshold', 0.6)
+
+        quantity = self._calculate_position_size(symbol, price, model_confidence, confidence_threshold)
+        if quantity is None:
+            return None
+
+        # Calculate fees and cost
         fees = price * quantity * self.trading_fee
         total_cost = (price * quantity) + fees
 
-        # Check if we have enough cash for this position
+        # Check cash availability
         if total_cost > self.cash_balance:
-            # Try to reduce position size to fit available cash
-            max_quantity = (self.cash_balance * 0.99) / (price * (1 + self.trading_fee))  # 99% to account for fees
+            max_quantity = (self.cash_balance * 0.99) / (price * (1 + self.trading_fee))
             if max_quantity < 0.001:
                 logger.info(f"Skipping buy for {symbol}: Insufficient cash. Need ${total_cost:.2f}, have ${self.cash_balance:.2f}")
                 if model_confidence >= confidence_threshold:
                     self.signal_to_trade_statistics['filtered_signals']['insufficient_cash'] += 1
                 return None
-            # If we can reduce the quantity, we actually execute the trade with reduced size
             quantity = max_quantity
             fees = price * quantity * self.trading_fee
             total_cost = (price * quantity) + fees
@@ -747,8 +677,7 @@ class SimulatedTradingManager:
         trade_id = f"sim_{self.trade_counter}_{symbol}_{int(datetime.now().timestamp())}"
         
         # Update cash balance
-        total_cost = (price * quantity) + fees
-        self.cash_balance -= total_cost
+        self.cash_balance -= ((price * quantity) + fees)
         
         # Create position
         position = Position(
@@ -778,13 +707,10 @@ class SimulatedTradingManager:
         )
         self.trades.append(trade)
         
-        # Save trade to database
+        # Save and broadcast
         self._save_trade_to_db(trade)
-
-        # Broadcast real-time update to frontend widgets
         self._broadcast_trading_update()
 
-        # Update successful trades counter
         if signal.get('model_confidence', 0.0) >= self.strategy_params.get('confidence_threshold', 0.6):
             self.signal_to_trade_statistics['successful_trades'] += 1
 
@@ -810,8 +736,7 @@ class SimulatedTradingManager:
         net_pnl = pnl - fees
 
         # Update cash balance
-        proceeds = (price * quantity) - fees
-        self.cash_balance += proceeds
+        self.cash_balance += ((price * quantity) - fees)
 
         # Create trade record
         self.trade_counter += 1
@@ -833,10 +758,8 @@ class SimulatedTradingManager:
         )
         self.trades.append(trade)
 
-        # Save trade to database
+        # Save and broadcast
         self._save_trade_to_db(trade)
-
-        # Broadcast real-time update to frontend widgets
         self._broadcast_trading_update()
 
         # Close position
@@ -862,13 +785,8 @@ class SimulatedTradingManager:
             logger.info(f"Closed position for {symbol}: {reason}")
 
     async def force_close_all_positions(self, reason: str = "Server shutdown") -> None:
-        """Force close all open positions, persisting SELL trades to the DB.
-
-        This is used for graceful shutdown so that simulated open positions
-        don't appear as lingering positions when the server restarts.
-        """
+        """Force close all open positions."""
         try:
-            # Snapshot symbols to avoid dict-size-change while iterating
             open_symbols = [sym for sym, pos in self.positions.items() if pos.status == 'open']
             for symbol in open_symbols:
                 try:
@@ -876,20 +794,10 @@ class SimulatedTradingManager:
                     if not position or position.status != 'open':
                         continue
 
-                    # Use current known price as exit price; if zero, fallback to entry
                     exit_price = position.current_price or position.entry_price
-                    quantity = position.quantity
-
-                    # Build a synthetic signal context for audit trail
-                    signal_ctx: Dict[str, Any] = {
-                        'signal_reason': reason
-                    }
-
-                    # Execute sell to persist trade and remove position
-                    await self._execute_sell_trade(symbol, exit_price, quantity, signal_ctx)
+                    await self._execute_sell_trade(symbol, exit_price, position.quantity, {'signal_reason': reason})
                 except Exception as e:
                     logger.warning(f"Failed to force-close {symbol} on shutdown: {e}")
-                    # Ensure position is marked closed to avoid lingering UI state
                     self._close_position(symbol, f"{reason} (fallback close)")
         except Exception as e:
             logger.error(f"Error during force_close_all_positions: {e}")
@@ -899,13 +807,11 @@ class SimulatedTradingManager:
         open_positions = []
         for symbol, position in self.positions.items():
             if position.status == 'open':
-                # Handle entry_time conversion
                 entry_time = position.entry_time
                 if isinstance(entry_time, str):
                     try:
                         entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
                     except (ValueError, TypeError) as e:
-                        logger.warning(f"Failed to parse entry_time '{entry_time}': {e}")
                         entry_time = datetime.now(timezone.utc)
                 
                 open_positions.append({
@@ -943,19 +849,12 @@ class SimulatedTradingManager:
         """Get detailed statistics on signal-to-trade conversion."""
         stats = self.signal_to_trade_statistics.copy()
 
-        # Calculate conversion rate
         signals_above_threshold = stats['total_signals_above_threshold']
         successful_trades = stats['successful_trades']
 
-        if signals_above_threshold > 0:
-            stats['conversion_rate'] = (successful_trades / signals_above_threshold) * 100
-        else:
-            stats['conversion_rate'] = 0.0
-
-        # Calculate total filtered signals
+        stats['conversion_rate'] = (successful_trades / signals_above_threshold * 100) if signals_above_threshold > 0 else 0.0
         stats['total_filtered_signals'] = sum(stats['filtered_signals'].values())
 
-        # Calculate gap analysis
         stats['gap_analysis'] = {
             'signals_above_threshold': signals_above_threshold,
             'successful_trades': successful_trades,
@@ -963,14 +862,13 @@ class SimulatedTradingManager:
             'gap_percentage': ((signals_above_threshold - successful_trades) / max(1, signals_above_threshold)) * 100
         }
 
-        # Analyse top filtering reasons
-        filtered_reasons = stats['filtered_signals'].items()
-        sorted_reasons = sorted(filtered_reasons, key=lambda x: x[1], reverse=True)
-        stats['top_filtering_reasons'] = sorted_reasons[:5]  # Top 5 reasons
+        stats['top_filtering_reasons'] = sorted(
+            stats['filtered_signals'].items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )[:5]
 
-        # Add timestamp for the statistics
         stats['last_updated'] = datetime.now(timezone.utc).isoformat()
-
         return stats
 
     def reset_portfolio(self) -> None:
@@ -982,20 +880,10 @@ class SimulatedTradingManager:
         self.peak_value = self.initial_balance
         self.max_drawdown = 0.0
         self.total_signals_processed = 0
-        # Reset signal-to-trade statistics
         self.signal_to_trade_statistics = {
             'total_signals_above_threshold': 0,
             'successful_trades': 0,
-            'filtered_signals': {
-                'symbol_not_trading': 0,
-                'hold_signal': 0,
-                'already_have_position': 0,
-                'max_positions_exceeded': 0,
-                'insufficient_cash': 0,
-                'insufficient_quantity': 0,
-                'portfolio_restrictions': 0,
-                'other_reasons': 0
-            }
+            'filtered_signals': {k: 0 for k in self.signal_to_trade_statistics['filtered_signals']}
         }
         logger.info("Portfolio reset to initial state")
     
@@ -1008,93 +896,54 @@ class SimulatedTradingManager:
         for symbol in new_symbols:
             if symbol not in self.symbols_to_trade:
                 self.symbols_to_trade.append(symbol)
-                logger.info(f"Added symbol to trading: {symbol}")
-
         logger.info(f"Updated trading symbols: {self.symbols_to_trade}")
 
     def _broadcast_trading_update(self) -> None:
         """Broadcast trading update to frontend widgets."""
+        if not self.is_trading:
+            return
+
         try:
-            # Skip if not trading to avoid unnecessary broadcasts
-            if not self.is_trading:
-                return
-
-            # Get current portfolio state for broadcasting
             portfolio = self.get_portfolio_summary()
-            open_positions = self.get_open_positions()
-            recent_trades = self.get_recent_trades()[:10]  # Limit recent trades to last 10
-
-            # Import here to avoid circular imports
-            import json
-
-            # Prepare trading data for broadcast with JSON-safe structures
             portfolio_dict = asdict(portfolio)
-            # Override non-serializable fields with already-serialized views
-            portfolio_dict["positions"] = open_positions
-            # Use recent trades for the portfolio view to avoid large payloads and datetime objects
-            portfolio_dict["trades"] = recent_trades
+            portfolio_dict["positions"] = self.get_open_positions()
+            portfolio_dict["trades"] = self.get_recent_trades()[:10]
 
             trading_data = {
                 "is_trading": self.is_trading,
                 "portfolio": portfolio_dict,
-                "open_positions": open_positions,
-                "recent_trades": recent_trades,
+                "open_positions": portfolio_dict["positions"],
+                "recent_trades": portfolio_dict["trades"],
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_signals_processed": self.get_total_signals_processed()
             }
 
-            # Broadcast to websocket manager if available
             websocket_manager = getattr(self, '_websocket_manager', None)
-
             if websocket_manager:
+                async def broadcast_update():
+                    await websocket_manager.broadcast(json.dumps({
+                        "type": "trading_statistics_update",
+                        "data": trading_data
+                    }))
+
                 try:
-                    async def broadcast_update():
-                        await websocket_manager.broadcast(json.dumps({
-                            "type": "trading_statistics_update",
-                            "data": trading_data
-                        }))
-
-                    # Try to get event loop for async broadcast
-                    try:
-                        loop = asyncio.get_running_loop()
-                        loop.create_task(broadcast_update())
-                    except RuntimeError:
-                        # No running loop, run synchronously in a new loop
-                        asyncio.run(broadcast_update())
-                except Exception as e:
-                    logger.warning(f"Failed to broadcast trading update: {e}")
-            else:
-                logger.debug("WebSocket manager not available for trading broadcast")
-
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(broadcast_update())
+                except RuntimeError:
+                    asyncio.run(broadcast_update())
         except Exception as e:
             logger.error(f"Error in trading update broadcast: {e}")
     
     async def get_loading_status(self) -> Dict[str, Any]:
         """Get current loading status for async symbol loading."""
-        try:
-            # This would typically track loading progress from async operations
-            # For now, return a basic status indicating loading is complete
-            return {
-                "loading_progress": {
-                    "status": "complete",
-                    "loaded": len(self.symbols_to_trade),
-                    "total": len(self.symbols_to_trade),
-                    "remaining": 0,
-                    "progress": 100
-                },
-                "current_symbols": self.symbols_to_trade,
-                "is_loading": False
-            }
-        except Exception as e:
-            logger.error(f"Error getting loading status: {e}")
-            return {
-                "loading_progress": {
-                    "status": "error",
-                    "loaded": 0,
-                    "total": 0,
-                    "remaining": 0,
-                    "progress": 0
-                },
-                "current_symbols": [],
-                "is_loading": False
-            }
+        return {
+            "loading_progress": {
+                "status": "complete",
+                "loaded": len(self.symbols_to_trade),
+                "total": len(self.symbols_to_trade),
+                "remaining": 0,
+                "progress": 100
+            },
+            "current_symbols": self.symbols_to_trade,
+            "is_loading": False
+        }
