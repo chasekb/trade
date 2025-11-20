@@ -270,15 +270,26 @@ class MLTradingOptimizer:
                     if prob is not None:
                         win_probability = float(prob[0][1] * 100)
                     else:
-                        # Fallback to heuristic if predict_proba returns None
-                        win_probability = min(max(signal_value * 1000, 10), 90)
+                        # Fallback to sigmoid function if predict_proba returns None
+                        # Sigmoid: 1 / (1 + exp(-k * x))
+                        # We use k=5 to scale the signal value (typically -1 to 1) to a probability
+                        try:
+                            win_probability = 100 / (1 + np.exp(-5 * signal_value))
+                        except Exception:
+                            win_probability = 50.0
                 except Exception as e:
                     logger.warning(f"Error getting win probability: {e}")
-                    # Fallback to heuristic
-                    win_probability = min(max(signal_value * 1000, 10), 90)
+                    # Fallback to sigmoid
+                    try:
+                        win_probability = 100 / (1 + np.exp(-5 * signal_value))
+                    except Exception:
+                        win_probability = 50.0
             else:
-                # Fallback to heuristic
-                win_probability = min(max(signal_value * 1000, 10), 90)  # Scale and clamp to 10-90%
+                # Fallback to sigmoid for regressors without predict_proba
+                try:
+                    win_probability = 100 / (1 + np.exp(-5 * signal_value))
+                except Exception:
+                    win_probability = 50.0
 
             if signal_value > 0.1:
                 action = 'buy'
@@ -291,7 +302,11 @@ class MLTradingOptimizer:
             else:
                 action = 'hold'
                 expected_return_percentage = 0.0
-                win_probability = 50.0  # Neutral probability for hold signals
+                # For hold, win probability is neutral (around 50%) but slightly biased by signal
+                try:
+                    win_probability = 100 / (1 + np.exp(-5 * signal_value))
+                except Exception:
+                    win_probability = 50.0
 
             # Find similar market conditions
             similar_conditions = self.vector_db_client.find_similar_market_conditions(

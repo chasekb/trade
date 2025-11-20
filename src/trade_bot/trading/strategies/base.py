@@ -20,6 +20,7 @@ class TradeSignal:
     quantity: float
     timestamp: datetime
     reason: str
+    strength: float = 0.0
 
 
 class BaseStrategy(ABC):

@@ -218,8 +218,8 @@ class SimulatedTradingManager:
                     "symbol": symbol,
                     "signal": trade_signal.action,
                     "signal_type": trade_signal.action,
-                    "signal_strength": 0.8 if trade_signal.action != 'hold' else 0.0, # Default strength if not provided
-                    "strength": 0.8 if trade_signal.action != 'hold' else 0.0,
+                    "signal_strength": getattr(trade_signal, 'strength', 0.5) if trade_signal.action != 'hold' else 0.0,
+                    "strength": getattr(trade_signal, 'strength', 0.5) if trade_signal.action != 'hold' else 0.0,
                     "price": trade_signal.price,
                     "timestamp": trade_signal.timestamp.isoformat(),
                     "reason": trade_signal.reason,
