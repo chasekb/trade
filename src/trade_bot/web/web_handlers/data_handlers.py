@@ -1249,6 +1249,25 @@ class DataHandlers:
             logger.error(f"Error loading dashboard state: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    async def get_signal_to_trade_statistics(self) -> Dict[str, Any]:
+        """Get signal-to-trade conversion statistics."""
+        try:
+            if not self.simulated_trading_manager:
+                return {
+                    "error": "Trading manager not available"
+                }
+
+            statistics = self.simulated_trading_manager.get_signal_to_trade_statistics()
+
+            return {
+                "statistics": statistics,
+                "trading_active": self.simulated_trading_manager.is_trading,
+                "last_updated": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error getting signal-to-trade statistics: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     async def _broadcast_signal_update(self, signals: List[Dict[str, Any]]) -> None:
         """Broadcast individual signal updates via WebSocket for real-time UI updates."""
         try:

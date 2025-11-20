@@ -34,12 +34,12 @@ async def get_cache_stats():
     check_handlers_ready("data_handlers", state.data_handlers)
     return await state.data_handlers.get_cache_stats()
 
-@router.get("/api/data/orderbook-signals")
-async def get_live_orderbook_signals(symbols: str = None, page: int = 1, per_page: int = 50):
-    """Get live order book signals."""
+@router.get("/api/data/signal-to-trade-statistics")
+async def get_signal_to_trade_statistics():
+    """Get signal-to-trade conversion statistics."""
     state = get_app_state_safe()
     check_handlers_ready("data_handlers", state.data_handlers)
-    return await state.data_handlers.get_live_orderbook_signals(symbols, page, per_page)
+    return await state.data_handlers.get_signal_to_trade_statistics()
 
 @router.get("/api/orderbook/live-signals")
 async def get_orderbook_live_signals(symbols: str = None, page: int = 1, per_page: int = 50):

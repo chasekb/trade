@@ -115,6 +115,21 @@ class SimulatedTradingManager:
         
         # Signal tracking
         self.total_signals_processed = 0
+        # Statistics for signal-to-trade conversion analysis
+        self.signal_to_trade_statistics = {
+            'total_signals_above_threshold': 0,
+            'successful_trades': 0,
+            'filtered_signals': {
+                'symbol_not_trading': 0,
+                'hold_signal': 0,
+                'already_have_position': 0,
+                'max_positions_exceeded': 0,
+                'insufficient_cash': 0,
+                'insufficient_quantity': 0,
+                'portfolio_restrictions': 0,
+                'other_reasons': 0
+            }
+        }
         
         # Position price update rate limiting
         self.last_position_update = None
@@ -582,17 +597,31 @@ class SimulatedTradingManager:
         for signal in signals:
             symbol = signal.get('symbol')
             logger.info(f"Processing signal for {symbol}: {signal.get('signal')} (generated: {signal.get('signal_generated')})")
-            
+
+            # Check if signal meets confidence threshold criteria
+            signal_generated = signal.get('signal_generated', False)
+            confidence_threshold = self.strategy_params.get('confidence_threshold', 0.6)
+            model_confidence = signal.get('model_confidence', 0.0)
+
+            # Track signals above confidence threshold
+            if signal_generated and model_confidence >= confidence_threshold:
+                self.signal_to_trade_statistics['total_signals_above_threshold'] += 1
+
+            # Filter: Symbol not in trading symbols
             if symbol not in self.symbols_to_trade:
                 logger.info(f"Skipping {symbol} - not in trading symbols")
+                if signal_generated and model_confidence >= confidence_threshold:
+                    self.signal_to_trade_statistics['filtered_signals']['symbol_not_trading'] += 1
                 continue
-            
+
             signal_action = signal.get('signal')
-            signal_generated = signal.get('signal_generated', False)
             current_price = signal.get('price', 0.0)
             signal_strength = signal.get('signal_strength', 0.0)
-            
+
+            # Filter: Hold signal or not generated
             if not signal_generated or signal_action == 'hold':
+                if signal_generated and model_confidence >= confidence_threshold and signal_action == 'hold':
+                    self.signal_to_trade_statistics['filtered_signals']['hold_signal'] += 1
                 continue
             
             # Update existing position price
@@ -633,15 +662,22 @@ class SimulatedTradingManager:
     
     async def _process_buy_signal(self, symbol: str, price: float, strength: float, signal: Dict) -> Optional[Dict]:
         """Process a buy signal."""
+        model_confidence = signal.get('model_confidence', 0.0)
+        confidence_threshold = self.strategy_params.get('confidence_threshold', 0.6)
+
         # Check if we already have a position
         if symbol in self.positions and self.positions[symbol].status == 'open':
-            logger.debug(f"Already have open position for {symbol}, skipping buy signal")
+            logger.info(f"Skipping buy for {symbol}: Already have open position")
+            if model_confidence >= confidence_threshold:
+                self.signal_to_trade_statistics['filtered_signals']['already_have_position'] += 1
             return None
-        
+
         # Check if we have reached max positions
         open_positions = sum(1 for p in self.positions.values() if p.status == 'open')
         if open_positions >= self.max_positions:
-            logger.warning(f"Max positions ({self.max_positions}) reached, skipping buy signal for {symbol}")
+            logger.info(f"Skipping buy for {symbol}: Max positions ({self.max_positions}) reached")
+            if model_confidence >= confidence_threshold:
+                self.signal_to_trade_statistics['filtered_signals']['max_positions_exceeded'] += 1
             return None
         
         # Get position sizing configuration from strategy parameters
@@ -668,34 +704,38 @@ class SimulatedTradingManager:
             position_value = total_portfolio_value * self.position_size_percent
 
         quantity = position_value / price if price > 0 else 0
-        
+
         if quantity < 0.001:  # Minimum quantity threshold
             logger.warning(f"Insufficient quantity for {symbol} position: {quantity:.6f} < 0.001")
+            if model_confidence >= confidence_threshold:
+                self.signal_to_trade_statistics['filtered_signals']['insufficient_quantity'] += 1
             return None
-        
+
         # Calculate fees
         fees = price * quantity * self.trading_fee
         total_cost = (price * quantity) + fees
-        
+
         # Check if we have enough cash for this position
         if total_cost > self.cash_balance:
-            # If we don't have enough cash, reduce the quantity to fit within available cash
+            # Try to reduce position size to fit available cash
             max_quantity = (self.cash_balance * 0.99) / (price * (1 + self.trading_fee))  # 99% to account for fees
             if max_quantity < 0.001:
-                logger.warning(f"Insufficient cash for {symbol} position: need ${total_cost:.2f}, have ${self.cash_balance:.2f}")
+                logger.info(f"Skipping buy for {symbol}: Insufficient cash. Need ${total_cost:.2f}, have ${self.cash_balance:.2f}")
+                if model_confidence >= confidence_threshold:
+                    self.signal_to_trade_statistics['filtered_signals']['insufficient_cash'] += 1
                 return None
+            # If we can reduce the quantity, we actually execute the trade with reduced size
             quantity = max_quantity
             fees = price * quantity * self.trading_fee
             total_cost = (price * quantity) + fees
-            logger.info(f"Adjusted {symbol} position size to fit cash: {quantity:.6f} shares, cost: ${total_cost:.2f}")
-        
+
         # Execute buy trade
         return await self._execute_buy_trade(symbol, price, quantity, fees, signal)
     
     async def _process_sell_signal(self, symbol: str, price: float, strength: float, signal: Dict) -> Optional[Dict]:
         """Process a sell signal."""
         if symbol not in self.positions or self.positions[symbol].status != 'open':
-            logger.debug(f"No open position for {symbol}, skipping sell signal")
+            logger.info(f"Skipping sell for {symbol}: No open position found")
             return None
         
         position = self.positions[symbol]
@@ -743,6 +783,10 @@ class SimulatedTradingManager:
 
         # Broadcast real-time update to frontend widgets
         self._broadcast_trading_update()
+
+        # Update successful trades counter
+        if signal.get('model_confidence', 0.0) >= self.strategy_params.get('confidence_threshold', 0.6):
+            self.signal_to_trade_statistics['successful_trades'] += 1
 
         logger.info(f"Executed BUY: {quantity:.6f} {symbol} at ${price:.2f} (fees: ${fees:.2f})")
 
@@ -895,6 +939,40 @@ class SimulatedTradingManager:
             for trade in recent_trades
         ]
     
+    def get_signal_to_trade_statistics(self) -> Dict[str, Any]:
+        """Get detailed statistics on signal-to-trade conversion."""
+        stats = self.signal_to_trade_statistics.copy()
+
+        # Calculate conversion rate
+        signals_above_threshold = stats['total_signals_above_threshold']
+        successful_trades = stats['successful_trades']
+
+        if signals_above_threshold > 0:
+            stats['conversion_rate'] = (successful_trades / signals_above_threshold) * 100
+        else:
+            stats['conversion_rate'] = 0.0
+
+        # Calculate total filtered signals
+        stats['total_filtered_signals'] = sum(stats['filtered_signals'].values())
+
+        # Calculate gap analysis
+        stats['gap_analysis'] = {
+            'signals_above_threshold': signals_above_threshold,
+            'successful_trades': successful_trades,
+            'gap_size': signals_above_threshold - successful_trades,
+            'gap_percentage': ((signals_above_threshold - successful_trades) / max(1, signals_above_threshold)) * 100
+        }
+
+        # Analyse top filtering reasons
+        filtered_reasons = stats['filtered_signals'].items()
+        sorted_reasons = sorted(filtered_reasons, key=lambda x: x[1], reverse=True)
+        stats['top_filtering_reasons'] = sorted_reasons[:5]  # Top 5 reasons
+
+        # Add timestamp for the statistics
+        stats['last_updated'] = datetime.now(timezone.utc).isoformat()
+
+        return stats
+
     def reset_portfolio(self) -> None:
         """Reset portfolio to initial state."""
         self.cash_balance = self.initial_balance
@@ -904,6 +982,21 @@ class SimulatedTradingManager:
         self.peak_value = self.initial_balance
         self.max_drawdown = 0.0
         self.total_signals_processed = 0
+        # Reset signal-to-trade statistics
+        self.signal_to_trade_statistics = {
+            'total_signals_above_threshold': 0,
+            'successful_trades': 0,
+            'filtered_signals': {
+                'symbol_not_trading': 0,
+                'hold_signal': 0,
+                'already_have_position': 0,
+                'max_positions_exceeded': 0,
+                'insufficient_cash': 0,
+                'insufficient_quantity': 0,
+                'portfolio_restrictions': 0,
+                'other_reasons': 0
+            }
+        }
         logger.info("Portfolio reset to initial state")
     
     def get_total_signals_processed(self) -> int:
