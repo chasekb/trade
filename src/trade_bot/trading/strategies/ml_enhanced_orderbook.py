@@ -256,7 +256,8 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
                     price=current_price,
                     quantity=self.calculate_position_size(current_price),
                     reason=f"{reason} (ML confidence: {confidence:.2f})",
-                    timestamp=timestamp
+                    timestamp=timestamp,
+                    strength=confidence
                 )
             else:
                 self.signals_by_type['ml_hold'] += 1

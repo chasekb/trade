@@ -148,43 +148,68 @@ class OrderBookStrategy(BaseStrategy):
         
         # Check for bid-ask imbalance signals
         if imbalance > self.min_volume_ratio:
+            # Calculate strength based on how much imbalance exceeds threshold
+            # Normalize to 0.0-1.0 range
+            excess = imbalance - self.min_volume_ratio
+            strength = min(excess / self.min_volume_ratio, 1.0)
+            
             self.signals_by_type['order_book_imbalance_buy'] += 1
             return TradeSignal(
                 action='buy',
                 price=current_price,
                 quantity=self.calculate_position_size(current_price),
                 reason=f'Order book imbalance: {imbalance:.2f} (bids > asks)',
-                timestamp=timestamp
+                timestamp=timestamp,
+                strength=strength
             )
         elif imbalance < (1 / self.min_volume_ratio):
+            # Calculate strength based on how much imbalance exceeds threshold (inverse)
+            # Normalize to 0.0-1.0 range
+            ratio = 1 / imbalance
+            excess = ratio - self.min_volume_ratio
+            strength = min(excess / self.min_volume_ratio, 1.0)
+            
             self.signals_by_type['order_book_imbalance_sell'] += 1
             return TradeSignal(
                 action='sell',
                 price=current_price,
                 quantity=self.calculate_position_size(current_price),
                 reason=f'Order book imbalance: {imbalance:.2f} (asks > bids)',
-                timestamp=timestamp
+                timestamp=timestamp,
+                strength=strength
             )
         
         # Check for large walls
         if walls['bid_wall']:
+            # Calculate strength based on wall size relative to threshold
+            # Normalize to 0.0-1.0 range
+            wall_size = walls['bid_wall']['volume']
+            strength = min(wall_size / self.large_trade_threshold, 1.0)
+            
             self.signals_by_type['large_bid_wall'] += 1
             return TradeSignal(
                 action='buy',
                 price=current_price,
                 quantity=self.calculate_position_size(current_price),
                 reason=f'Large bid wall detected: {walls["bid_wall"]["volume"]} at ${walls["bid_wall"]["price"]:.2f}',
-                timestamp=timestamp
+                timestamp=timestamp,
+                strength=strength
             )
         
         if walls['ask_wall']:
+            # Calculate strength based on wall size relative to threshold
+            # Normalize to 0.0-1.0 range
+            wall_size = walls['ask_wall']['volume']
+            strength = min(wall_size / self.large_trade_threshold, 1.0)
+            
             self.signals_by_type['large_ask_wall'] += 1
             return TradeSignal(
                 action='sell',
                 price=current_price,
                 quantity=self.calculate_position_size(current_price),
                 reason=f'Large ask wall detected: {walls["ask_wall"]["volume"]} at ${walls["ask_wall"]["price"]:.2f}',
-                timestamp=timestamp
+                timestamp=timestamp,
+                strength=strength
             )
         
         # Check for spread compression (potential breakout)
