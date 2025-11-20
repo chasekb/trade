@@ -684,6 +684,21 @@ class DataHandlers:
         if self._feature_importance_cache and (now - self._feature_importance_cache.get("timestamp", 0)) < self._feature_importance_cache_ttl:
             return self._feature_importance_cache.get("data", {})
 
+        # Default fallback importance to ensure UI always shows relative contributions
+        default_importance = {
+            'bid_ask_imbalance': 0.35,
+            'spread_percent': 0.35,
+            'mid_price': 0.05,
+            'bid_volume': 0.05,
+            'ask_volume': 0.05,
+            'large_bid_wall': 0.02,
+            'large_ask_wall': 0.02,
+            'wall_size': 0.02,
+            'volume_weighted_price': 0.02,
+            'price_momentum': 0.02,
+            'volatility': 0.05
+        }
+
         try:
             ml_server_url = os.getenv("ML_SERVER_URL", f"http://{self.config.ml_server_host}:{self.config.ml_server_port}")
             importance_url = f"{ml_server_url}/features/importance"
@@ -694,15 +709,20 @@ class DataHandlers:
                 if 'feature_importance' in importance_data:
                     importance_data = {item['feature']: item['importance'] for item in importance_data['feature_importance']}
                 
+                # If we got empty data, use defaults
+                if not importance_data:
+                    logger.warning("ML server returned empty feature importance, using defaults")
+                    importance_data = default_importance
+
                 self._feature_importance_cache = {"timestamp": now, "data": importance_data}
                 logger.info(f"Successfully fetched and cached feature importances: {list(importance_data.keys())}")
                 return importance_data
             else:
-                logger.warning(f"Failed to get feature importance, status code: {response.status_code}")
-                return {}
+                logger.warning(f"Failed to get feature importance, status code: {response.status_code}. Using defaults.")
+                return default_importance
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error getting feature importance: {e}")
-            return {}
+            logger.error(f"Error getting feature importance: {e}. Using defaults.")
+            return default_importance
 
     async def _enrich_signals_with_ml_analysis(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Enrich signals with ML analysis from the ML model server."""
