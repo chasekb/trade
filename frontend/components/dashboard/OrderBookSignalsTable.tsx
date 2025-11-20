@@ -153,18 +153,16 @@ export function OrderBookSignalsTable({
                 );
 
                 return (
-                    <Tooltip text={tooltipContent}>
-                        <div className="flex items-center">
-                            <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
-                                <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(value || 0) * 100}%` }}></div>
-                            </div>
-                            <span className={`text-sm font-medium ${(value || 0) >= 0.7 ? 'text-green-600' :
-                                (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
-                                }`}>
-                                {(value || 0).toFixed(2)}
-                            </span>
+                    <div className="flex items-center">
+                        <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                            <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(value || 0) * 100}%` }}></div>
                         </div>
-                    </Tooltip>
+                        <span className={`text-sm font-medium ${(value || 0) >= 0.7 ? 'text-green-600' :
+                            (value || 0) >= 0.4 ? 'text-yellow-600' : 'text-red-600'
+                            }`}>
+                            {(value || 0).toFixed(2)}
+                        </span>
+                    </div>
                 );
             },
         },
@@ -192,51 +190,27 @@ export function OrderBookSignalsTable({
                 const imbalanceBuy = criteria.volume_imbalance_buy || {};
                 const largeTradeBuy = criteria.large_trade_buy || {};
 
-                const composition = row.strength_composition || {};
-                // Try multiple possible keys for importance
-                const squeeze_importance = composition['spread_percent']?.importance_percent ||
-                    composition['spread']?.importance_percent ||
-                    composition['bid_ask_spread']?.importance_percent || 0;
-
-                const imbalance_importance = composition['bid_ask_imbalance']?.importance_percent ||
-                    composition['imbalance']?.importance_percent ||
-                    composition['volume_imbalance']?.importance_percent || 0;
-
-                const tooltipContent = (
-                    <div>
-                        <p className="font-bold mb-1">Market Criteria</p>
-                        <p className="text-xs mb-2">These are market conditions used as features for the ML model. A checkmark (✓) means the condition was met.</p>
-                        <ul className="list-disc list-inside text-xs">
-                            <li>Bid-Ask Squeeze ({(squeeze_importance).toFixed(1)}% importance)</li>
-                            <li>Volume Imbalance ({(imbalance_importance).toFixed(1)}% importance)</li>
-                            <li>Large Trade Detection</li>
-                        </ul>
-                    </div>
-                );
-
                 return (
-                    <Tooltip text={tooltipContent}>
-                        <div className="text-xs space-y-1">
-                            <div className="flex items-center space-x-1">
-                                <span className={squeeze.meets_criteria ? 'text-green-600' : 'text-red-600'}>
-                                    {squeeze.enabled ? (squeeze.meets_criteria ? '✓' : '✗') : '○'}
-                                </span>
-                                <span className="text-gray-600">Squeeze</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <span className={imbalanceBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
-                                    {imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? '✓' : '✗') : '○'}
-                                </span>
-                                <span className="text-gray-600">Imbalance</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <span className={largeTradeBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
-                                    {largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? '✓' : '✗') : '○'}
-                                </span>
-                                <span className="text-gray-600">Large Trade</span>
-                            </div>
+                    <div className="text-xs space-y-1">
+                        <div className="flex items-center space-x-1">
+                            <span className={squeeze.meets_criteria ? 'text-green-600' : 'text-red-600'}>
+                                {squeeze.enabled ? (squeeze.meets_criteria ? '✓' : '✗') : '○'}
+                            </span>
+                            <span className="text-gray-600">Squeeze</span>
                         </div>
-                    </Tooltip>
+                        <div className="flex items-center space-x-1">
+                            <span className={imbalanceBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
+                                {imbalanceBuy.enabled ? (imbalanceBuy.meets_criteria ? '✓' : '✗') : '○'}
+                            </span>
+                            <span className="text-gray-600">Imbalance</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                            <span className={largeTradeBuy.meets_criteria ? 'text-green-600' : 'text-red-600'}>
+                                {largeTradeBuy.enabled ? (largeTradeBuy.meets_criteria ? '✓' : '✗') : '○'}
+                            </span>
+                            <span className="text-gray-600">Large Trade</span>
+                        </div>
+                    </div>
                 );
             },
         },
