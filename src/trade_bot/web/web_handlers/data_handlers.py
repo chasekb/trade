@@ -385,10 +385,7 @@ class DataHandlers:
                             enriched_signal_list = await self._enrich_signals_with_ml_analysis([signal_data])
                             enriched_signal = enriched_signal_list[0] if enriched_signal_list else signal_data
 
-                        # Broadcast individual signal update via WebSocket for real-time UI updates
-                        await self._broadcast_signal_update([enriched_signal])
-
-                        # Store signal to database immediately
+                        # Store signal to database immediately BEFORE broadcasting BEFORE broadcasting
                         if self.database_manager:
                             try:
                                 # Merge ml_analysis into signal_data
@@ -421,6 +418,9 @@ class DataHandlers:
 
                             except Exception as e:
                                 logger.warning(f"Error storing signal for {symbol}: {e}")
+
+                        # Broadcast individual signal update via WebSocket for real-time UI updates
+                        await self._broadcast_signal_update([enriched_signal])
 
                         logger.info(f"Generated live orderbook signal for {symbol}: {signal} (strength: {signal_strength:.2f})")
                         return enriched_signal
