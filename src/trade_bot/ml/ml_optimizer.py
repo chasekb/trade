@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import os
 import glob
+import json
 
 # Support both relative imports (when used as module) and absolute imports (when run standalone)
 try:
@@ -65,7 +66,23 @@ class MLTradingOptimizer:
     @property
     def is_trained(self) -> bool:
         """Check if a model is currently loaded in the model manager."""
-        return self.model_manager.current_model is not None
+        if self.model_manager.current_model is not None:
+            return True
+        
+        # Also try to load the active model from config if not already loaded
+        try:
+            config_path = "data/ml_config.json"
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    active_model = config.get("active_model")
+                    if active_model:
+                        success = self.model_manager.set_active_model(active_model)
+                        return success
+        except Exception as e:
+            logger.warning(f"Failed to auto-load active model: {e}")
+            
+        return False
         
     def collect_and_preprocess_data(self, days_back: int = 30) -> Tuple[List[OrderBookFeatures], List[TradeOutcome]]:
         """Collect and preprocess trading data for ML training."""
