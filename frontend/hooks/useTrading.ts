@@ -301,8 +301,12 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           apiClient.logMessage('Order book signal update received and pushed to order book signals table');
 
           try {
-            // Optimistically update the cache for immediate UI feedback
-            const newSignal = data as OrderBookSignal;
+            // Handle both array of signals (from signals key) or single signal object
+            // The backend sends { type: "orderbook_signals_update", data: { signals: [...] } }
+            const signalsList = Array.isArray(data.signals) ? data.signals : (Array.isArray(data) ? data : [data]);
+            
+            if (!signalsList || signalsList.length === 0) return;
+
             const allQueries = queryClient.getQueryCache().getAll();
 
             // Find all orderbook-signals queries
@@ -312,58 +316,63 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
             console.log('📊 Found orderbook-signals queries to update:', orderbookQueries.length);
 
-            orderbookQueries.forEach((query: any) => {
-              const queryKey = query.queryKey;
-              // queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy]
-              const querySymbols = queryKey[1] as string[] | undefined;
-              const page = queryKey[3] as number;
+            // Process each new signal
+            signalsList.forEach((newSignal: OrderBookSignal) => {
+              if (!newSignal || !newSignal.symbol) return;
 
-              // Only update page 1
-              if (page === 1) {
-                // Check if signal matches query symbols (if specified)
-                const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(newSignal.symbol);
+              orderbookQueries.forEach((query: any) => {
+                const queryKey = query.queryKey;
+                // queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy]
+                const querySymbols = queryKey[1] as string[] | undefined;
+                const page = queryKey[3] as number;
 
-                if (isRelevant) {
-                  console.log('⚡ Optimistically updating query:', queryKey);
+                // Only update page 1
+                if (page === 1) {
+                  // Check if signal matches query symbols (if specified)
+                  const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(newSignal.symbol);
 
-                  queryClient.setQueryData(queryKey, (oldData: any) => {
-                    if (!oldData) return oldData;
+                  if (isRelevant) {
+                    console.log('⚡ Optimistically updating query for symbol:', newSignal.symbol);
 
-                    // Create new signals array with new signal at the top
-                    const currentSignals = oldData.signals || [];
-                    // Avoid duplicates if possible (check by timestamp and symbol)
-                    const isDuplicate = currentSignals.some((s: OrderBookSignal) =>
-                      s.symbol === newSignal.symbol && s.timestamp === newSignal.timestamp
-                    );
+                    queryClient.setQueryData(queryKey, (oldData: any) => {
+                      if (!oldData) return oldData;
 
-                    if (isDuplicate) return oldData;
+                      // Create new signals array with new signal at the top
+                      const currentSignals = oldData.signals || [];
+                      // Avoid duplicates if possible (check by timestamp and symbol)
+                      const isDuplicate = currentSignals.some((s: OrderBookSignal) =>
+                        s.symbol === newSignal.symbol && s.timestamp === newSignal.timestamp
+                      );
 
-                    const updatedSignals = [newSignal, ...currentSignals];
+                      if (isDuplicate) return oldData;
 
-                    // Respect page size if needed, but for page 1 we can just grow it slightly until refetch
-                    // or trim to perPage
-                    const perPage = queryKey[4] as number || 10;
-                    const trimmedSignals = updatedSignals.slice(0, perPage);
+                      const updatedSignals = [newSignal, ...currentSignals];
 
-                    return {
-                      ...oldData,
-                      signals: trimmedSignals,
-                      total_analyzed: (oldData.total_analyzed || 0) + 1,
-                      active_signals: newSignal.signal_generated ? (oldData.active_signals || 0) + 1 : oldData.active_signals,
-                      last_updated: new Date().toISOString(),
-                      pagination: {
-                        ...oldData.pagination,
-                        total_signals: (oldData.pagination?.total_signals || 0) + 1,
-                      }
-                    };
-                  });
+                      // Respect page size if needed, but for page 1 we can just grow it slightly until refetch
+                      // or trim to perPage
+                      const perPage = queryKey[4] as number || 10;
+                      const trimmedSignals = updatedSignals.slice(0, perPage);
+
+                      return {
+                        ...oldData,
+                        signals: trimmedSignals,
+                        total_analyzed: (oldData.total_analyzed || 0) + 1,
+                        active_signals: newSignal.signal_generated ? (oldData.active_signals || 0) + 1 : oldData.active_signals,
+                        last_updated: new Date().toISOString(),
+                        pagination: {
+                          ...oldData.pagination,
+                          total_signals: (oldData.pagination?.total_signals || 0) + 1,
+                        }
+                      };
+                    });
+                  }
                 }
-              }
-
-              // Still invalidate to ensure consistency with backend eventually
-              // Debounce invalidation if many signals come in fast? 
-              // For now, keep it but maybe with a delay or just let the optimistic update handle the immediate view
-              queryClient.invalidateQueries({ queryKey: query.queryKey });
+              });
+            });
+            
+            // Invalidate queries once after processing the batch
+            orderbookQueries.forEach((query: any) => {
+               queryClient.invalidateQueries({ queryKey: query.queryKey });
             });
 
           } catch (e) {
