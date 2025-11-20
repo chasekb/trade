@@ -268,41 +268,27 @@ class MLTradingOptimizer:
             signal_value = prediction[0]
             confidence = abs(signal_value)
 
-            # Win probability represents the model's estimated probability of a successful trade
-            # Use classifier if available, otherwise fallback to heuristic
+            # Win probability represents the ML model's estimated probability of a successful trade
+            # Get the probability from the model's classifier
             win_probability = 50.0
-            
-            # Check if the model has predict_proba (it should if it's our wrapper)
-            if hasattr(prediction, 'predict_proba'): 
-                # This branch won't be taken because prediction is the output of predict()
-                # We need to access the model object directly or change how predict is called
-                pass
-                
-            # Get the current model object to check for predict_proba
+
+            # Get the current model object (TradingModelWrapper) to access predict_proba
             current_model = self.model_manager.get_current_model()
-            if hasattr(current_model, 'predict_proba'):
+            if current_model is not None and hasattr(current_model, 'predict_proba'):
                 try:
-                    # Get probability of class 1 (win)
+                    # Get probability predictions from the classifier (probability of class 1 = win)
                     prob = current_model.predict_proba(X_processed)
-                    if prob is not None:
-                        win_probability = float(prob[0][1] * 100)
-                    else:
-                        # Fallback to sigmoid function if predict_proba returns None
-                        # Sigmoid: 1 / (1 + exp(-k * x))
-                        # We use k=5 to scale the signal value (typically -1 to 1) to a probability
-                        try:
-                            win_probability = 100 / (1 + np.exp(-5 * signal_value))
-                        except Exception:
-                            win_probability = 50.0
+                    if prob is not None and len(prob[0]) > 1:
+                        win_probability = float(prob[0][1] * 100)  # Probability of positive class (win)
                 except Exception as e:
-                    logger.warning(f"Error getting win probability: {e}")
-                    # Fallback to sigmoid
+                    logger.warning(f"Error getting win probability from classifier: {e}")
+                    # Fallback: use regressor signal to estimate probability
                     try:
                         win_probability = 100 / (1 + np.exp(-5 * signal_value))
                     except Exception:
                         win_probability = 50.0
             else:
-                # Fallback to sigmoid for regressors without predict_proba
+                # Fallback: use regressor signal to estimate probability
                 try:
                     win_probability = 100 / (1 + np.exp(-5 * signal_value))
                 except Exception:
@@ -310,25 +296,23 @@ class MLTradingOptimizer:
 
             if signal_value > 0.1:
                 action = 'buy'
-                # Calculate expected return as positive percentage based on signal strength
-                expected_return_percentage = signal_value * 100  # Convert raw signal to percentage
+                # Calculate expected return as percentage based on signal strength
+                expected_return_percentage = signal_value
             elif signal_value < -0.1:
                 action = 'sell'
-                # Calculate expected return as negative percentage based on signal strength
-                expected_return_percentage = signal_value * 100  # Convert raw signal to percentage
+                # Calculate expected return as percentage based on signal strength
+                expected_return_percentage = signal_value
             else:
                 action = 'hold'
-                expected_return_percentage = 0.0
+                expected_return_percentage = signal_value
                 # For hold, win probability is neutral (around 50%) but slightly biased by signal
                 try:
-                    win_probability = 100 / (1 + np.exp(-5 * signal_value))
+                    win_probability = 100 / (1 + np.exp(-2 * signal_value)) # Reduce sensitivity for hold
                 except Exception:
                     win_probability = 50.0
-
-            # Find similar market conditions
-            similar_conditions = self.vector_db_client.find_similar_market_conditions(
-                X_processed[0], current_features.symbol, limit=3
-            )
+            
+            # Cap win probability at 99% to avoid unrealistic 100% values
+            win_probability = min(win_probability, 99.0)
 
             return {
                 'action': action,
@@ -337,7 +321,7 @@ class MLTradingOptimizer:
                 'signal_value': float(signal_value),
                 'expected_return_percentage': float(expected_return_percentage),
                 'reason': f'ML prediction: {signal_value:.3f}',
-                'similar_conditions': len(similar_conditions),
+                'similar_conditions': len(historical_vectors),  # Number of similar historical patterns found
                 'timestamp': datetime.now().isoformat()
             }
             
