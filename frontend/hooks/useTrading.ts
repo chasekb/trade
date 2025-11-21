@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiClient, queryKeys } from '@/lib/api';
 import {
   TradingMode,
@@ -194,12 +194,108 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 
 // Simulated Trading WebSocket Hook
 
+// Simulated Trading WebSocket Hook with FIFO Signal Queue
+
 export function useSimTradingWebSocket(enabled: boolean = true) {
   const [connected, setConnected] = useState(false);
+  const [signalQueue, setSignalQueue] = useState<OrderBookSignal[]>([]);
+  const [processingSignal, setProcessingSignal] = useState<OrderBookSignal | null>(null);
   const queryClient = useQueryClient();
+
+  // Queue processing function - processes one signal at a time with delay
+  const processNextSignal = useCallback(() => {
+    if (signalQueue.length > 0 && !processingSignal) {
+      const nextSignal = signalQueue[0];
+      setProcessingSignal(nextSignal);
+      setSignalQueue(prev => prev.slice(1));
+
+      console.log('🎯 Processing signal from queue:', nextSignal.symbol, nextSignal.timestamp);
+
+      // Add to display cache (same logic as before)
+      const allQueries = queryClient.getQueryCache().getAll();
+      const orderbookQueries = allQueries.filter((q: any) =>
+        q.queryKey[0] === 'orderbook-signals'
+      );
+
+      orderbookQueries.forEach((query: any) => {
+        const queryKey = query.queryKey;
+        const querySymbols = queryKey[1] as string[] | undefined;
+        const page = queryKey[3] as number;
+
+        if (page === 1) {
+          const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(nextSignal.symbol);
+
+          if (isRelevant) {
+            queryClient.setQueryData(queryKey, (oldData: any) => {
+              // If no data exists yet (initial load), initialize with the new signal
+              if (!oldData) {
+                return {
+                  signals: [nextSignal],
+                  total_analyzed: 1,
+                  active_signals: nextSignal.signal_generated ? 1 : 0,
+                  average_strength: nextSignal.signal_strength || 0,
+                  last_updated: new Date().toISOString(),
+                  pagination: {
+                    current_page: 1,
+                    per_page: 10,
+                    total_signals: 1,
+                    total_pages: 1,
+                    has_next: false,
+                    has_prev: false
+                  }
+                };
+              }
+
+              const currentSignals = oldData.signals || [];
+              const isDuplicate = currentSignals.some((s: OrderBookSignal) =>
+                s.symbol === nextSignal.symbol && s.timestamp === nextSignal.timestamp
+              );
+
+              if (isDuplicate) return oldData;
+
+              const updatedSignals = [nextSignal, ...currentSignals];
+              const perPage = queryKey[4] as number || 10;
+              const trimmedSignals = updatedSignals.slice(0, perPage);
+
+              return {
+                ...oldData,
+                signals: trimmedSignals,
+                total_analyzed: (oldData.total_analyzed || 0) + 1,
+                active_signals: nextSignal.signal_generated ? (oldData.active_signals || 0) + 1 : oldData.active_signals,
+                last_updated: new Date().toISOString(),
+                pagination: {
+                  ...oldData.pagination,
+                  total_signals: (oldData.pagination?.total_signals || 0) + 1,
+                }
+              };
+            });
+          }
+        }
+      });
+
+      // Process next signal after delay (configurable, default 1 second)
+      const processingDelay = parseInt(process.env.NEXT_PUBLIC_SIGNAL_PROCESSING_DELAY || '1000');
+      setTimeout(() => {
+        setProcessingSignal(null);
+        // Continue processing queue if more signals exist
+        if (signalQueue.length > 1) {
+          // Trigger next processing after state updates
+          setTimeout(processNextSignal, 0);
+        }
+      }, processingDelay);
+    }
+  }, [signalQueue, processingSignal, queryClient]);
+
+  useEffect(() => {
+    // Auto-process queue when signals are added and not currently processing
+    if (signalQueue.length > 0 && !processingSignal) {
+      processNextSignal();
+    }
+  }, [signalQueue, processingSignal, processNextSignal]);
 
   useEffect(() => {
     console.log('🚀 useSimTradingWebSocket hook called with enabled:', enabled);
+    console.log('📊 Current queue length:', signalQueue.length, 'Processing:', !!processingSignal);
     if (!enabled) {
       console.log('🌐 WebSocket disabled - not connecting');
       return;
@@ -216,7 +312,6 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
     const ws = new WebSocket(wsUrl);
     let pingInterval: NodeJS.Timeout | null = null;
     let connectionTimeout: NodeJS.Timeout | null = null;
-
     const startHeartbeat = () => {
       // Send ping every 30 seconds to prevent connection timeout
       pingInterval = setInterval(() => {
@@ -295,88 +390,37 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
 
-        // Push orderbook signals updates into cache for instant UI updates
+        // ENQUEUE orderbook signals into FIFO queue for sequential processing
         if (type === 'orderbook_signals_update' && data) {
-          console.log('Received orderbook_signals_update WebSocket message:', data);
-          apiClient.logMessage('Order book signal update received and pushed to order book signals table');
+          console.log('📥 Received orderbook_signals_update WebSocket message:', data);
+          apiClient.logMessage('Order book signal received and queued for sequential processing');
 
           try {
             // Handle both array of signals (from signals key) or single signal object
-            // The backend sends { type: "orderbook_signals_update", data: { signals: [...] } }
             const signalsList = Array.isArray(data.signals) ? data.signals : (Array.isArray(data) ? data : [data]);
-            
+
             if (!signalsList || signalsList.length === 0) return;
 
-            const allQueries = queryClient.getQueryCache().getAll();
+            // Add signals to queue (FIFO)
+            setSignalQueue(prevQueue => {
+              const filteredSignals = signalsList.filter((newSignal: OrderBookSignal) => {
+                if (!newSignal || !newSignal.symbol) return false;
 
-            // Find all orderbook-signals queries
-            const orderbookQueries = allQueries.filter((q: any) =>
-              q.queryKey[0] === 'orderbook-signals'
-            );
-
-            console.log('📊 Found orderbook-signals queries to update:', orderbookQueries.length);
-
-            // Process each new signal
-            signalsList.forEach((newSignal: OrderBookSignal) => {
-              if (!newSignal || !newSignal.symbol) return;
-
-              orderbookQueries.forEach((query: any) => {
-                const queryKey = query.queryKey;
-                // queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy]
-                const querySymbols = queryKey[1] as string[] | undefined;
-                const page = queryKey[3] as number;
-
-                // Only update page 1
-                if (page === 1) {
-                  // Check if signal matches query symbols (if specified)
-                  const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(newSignal.symbol);
-
-                  if (isRelevant) {
-                    console.log('⚡ Optimistically updating query for symbol:', newSignal.symbol);
-
-                    queryClient.setQueryData(queryKey, (oldData: any) => {
-                      if (!oldData) return oldData;
-
-                      // Create new signals array with new signal at the top
-                      const currentSignals = oldData.signals || [];
-                      // Avoid duplicates if possible (check by timestamp and symbol)
-                      const isDuplicate = currentSignals.some((s: OrderBookSignal) =>
-                        s.symbol === newSignal.symbol && s.timestamp === newSignal.timestamp
-                      );
-
-                      if (isDuplicate) return oldData;
-
-                      const updatedSignals = [newSignal, ...currentSignals];
-
-                      // Respect page size if needed, but for page 1 we can just grow it slightly until refetch
-                      // or trim to perPage
-                      const perPage = queryKey[4] as number || 10;
-                      const trimmedSignals = updatedSignals.slice(0, perPage);
-
-                      return {
-                        ...oldData,
-                        signals: trimmedSignals,
-                        total_analyzed: (oldData.total_analyzed || 0) + 1,
-                        active_signals: newSignal.signal_generated ? (oldData.active_signals || 0) + 1 : oldData.active_signals,
-                        last_updated: new Date().toISOString(),
-                        pagination: {
-                          ...oldData.pagination,
-                          total_signals: (oldData.pagination?.total_signals || 0) + 1,
-                        }
-                      };
-                    });
-                  }
-                }
+                // Avoid duplicates in queue
+                const isDuplicate = prevQueue.some(queuedSignal =>
+                  queuedSignal.symbol === newSignal.symbol && queuedSignal.timestamp === newSignal.timestamp
+                );
+                return !isDuplicate;
               });
-            });
-            
-            // Invalidate queries once after processing the batch
-            orderbookQueries.forEach((query: any) => {
-               queryClient.invalidateQueries({ queryKey: query.queryKey });
+
+              const updatedQueue = [...prevQueue, ...filteredSignals];
+              console.log('🗂️ Added', filteredSignals.length, 'signals to queue. Queue length:', updatedQueue.length);
+
+              return updatedQueue;
             });
 
           } catch (e) {
-            console.error('❌ Failed to update orderbook signals cache:', e);
+            console.error('❌ Failed to enqueue orderbook signals:', e);
           }
         }
       } catch (e) {
@@ -416,7 +460,12 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
     };
   }, [enabled, queryClient]);
 
-  return { connected };
+  return {
+    connected,
+    signalQueue,
+    processingSignal,
+    queueLength: signalQueue.length
+  };
 }
 
 // Products/Symbols Hook
