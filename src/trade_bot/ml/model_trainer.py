@@ -18,7 +18,10 @@ from sklearn.pipeline import Pipeline
 logger = logging.getLogger(__name__)
 
 
-from .wrapper import TradingModelWrapper
+try:
+    from .wrapper import TradingModelWrapper
+except ImportError:
+    from wrapper import TradingModelWrapper
 
 
 class ModelTrainer:
