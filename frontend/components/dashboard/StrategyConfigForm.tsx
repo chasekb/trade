@@ -35,6 +35,19 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
     };
 
     const [selectedPreset, setSelectedPreset] = useState('aggressive');
+    const [trainingFeedback, setTrainingFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+    const handleTrainModel = () => {
+        setTrainingFeedback(null);
+        trainModel(undefined, {
+            onSuccess: (data: any) => {
+                setTrainingFeedback({ type: 'success', message: data.message || 'Model training started successfully' });
+            },
+            onError: (error: any) => {
+                setTrainingFeedback({ type: 'error', message: error.message || 'Failed to start model training' });
+            },
+        });
+    };
 
     const parameters = getStrategyParameters(strategy);
     const presets = getOrderBookPresets();
@@ -98,10 +111,17 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                         )}
                     </div>
                     <div className="space-y-2">
-                        <Button onClick={() => trainModel()} disabled={isTraining}>
+                        <Button onClick={handleTrainModel} disabled={isTraining}>
                             {isTraining ? 'Training...' : 'Train New Model'}
                         </Button>
+                        {trainingFeedback && (
+                            <div className={`mt-2 text-sm ${trainingFeedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                                {trainingFeedback.message}
+                            </div>
+                        )}
                     </div>
+
+
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">ML Server URL</label>
                         <Input

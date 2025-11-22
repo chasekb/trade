@@ -354,12 +354,11 @@ async def set_active_model(model_name: str):
     try:
         logger.info(f"Setting active model to: {model_name}")
         
-        success = ml_optimizer.model_manager.set_active_model(model_name)
+        # Run in thread to avoid blocking event loop
+        success = await asyncio.to_thread(ml_optimizer.model_manager.set_active_model, model_name)
         
         if success:
             # Update the optimizer's current model reference if needed
-            # (The model manager handles the loading, but we might need to refresh the optimizer's state if it caches anything)
-            # For now, we assume model_manager.set_active_model does the heavy lifting.
             model_ready = True
             
             return {
@@ -370,9 +369,12 @@ async def set_active_model(model_name: str):
         else:
             raise HTTPException(status_code=400, detail=f"Failed to set active model: {model_name}")
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error setting active model: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        logger.error(f"Error setting active model: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @app.post("/rollback")
 async def rollback_model():

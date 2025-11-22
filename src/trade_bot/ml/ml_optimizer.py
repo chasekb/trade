@@ -501,7 +501,7 @@ class MLTradingOptimizer:
     
     def get_system_status(self) -> Dict[str, Any]:
         """Get overall system status."""
-        current_model = self.model_manager.get_current_model()
+        current_model_info = self.model_manager.get_current_model_info()
 
         # Skip vector DB status calls that might hang - just check if collection exists
         vector_db_status = {"exists": self.vector_db_client.check_collection_exists()}
@@ -510,10 +510,10 @@ class MLTradingOptimizer:
             'is_trained': self.is_trained,
             'last_training_time': self.last_training_time.isoformat() if self.last_training_time else None,
             'current_model': {
-                'model_name': current_model.get('model_name'),
-                'version_id': current_model.get('version_id'),
-                'deployed_at': current_model.get('deployed_at'),
-            } if current_model else None,
+                'model_name': current_model_info.get('model_name'),
+                'version_id': current_model_info.get('version_id'),
+                'deployed_at': current_model_info.get('deployed_at'),
+            } if current_model_info else None,
             'model_performance': self.get_model_performance(),
             'vector_db_status': vector_db_status,
             'vector_db_stats': None  # Skip stats to avoid hanging
