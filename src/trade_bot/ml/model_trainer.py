@@ -113,7 +113,8 @@ class ModelTrainer:
         lr_score = self._evaluate_classifier(lr_model, X_test, y_test)
         self.classifiers['logistic_regression'] = lr_model
         self.classifier_performance['logistic_regression'] = lr_score
-        self.save_model(lr_model, f"data/models/win_classifier_logreg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
+        self.save_model(lr_model, f"data/models/win_classifier_logreg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.classifier_performance, score=lr_score['roc_auc'])
         
         # Random Forest Classifier
         rf_model = RandomForestClassifier(
@@ -125,7 +126,8 @@ class ModelTrainer:
         rf_score = self._evaluate_classifier(rf_model, X_test, y_test)
         self.classifiers['random_forest_classifier'] = rf_model
         self.classifier_performance['random_forest_classifier'] = rf_score
-        self.save_model(rf_model, f"data/models/win_classifier_rf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
+        self.save_model(rf_model, f"data/models/win_classifier_rf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.classifier_performance, score=rf_score['roc_auc'])
         
         # Select best classifier
         if self.classifier_performance:
@@ -399,7 +401,7 @@ class ModelTrainer:
         else:
             return None
     
-    def save_model(self, model: Any, filepath: str) -> bool:
+    def save_model(self, model: Any, filepath: str, performance_metrics: Dict = None, score: float = None) -> bool:
         """Save a model to disk."""
         if model is None:
             logger.error("No model to save")
@@ -415,8 +417,8 @@ class ModelTrainer:
             # Save metadata
             metadata = {
                 'model_type': self.model_type,
-                'model_performance': self.model_performance,
-                'best_score': self.best_score,
+                'model_performance': performance_metrics if performance_metrics is not None else self.model_performance,
+                'best_score': score if score is not None else self.best_score,
                 'timestamp': datetime.now().isoformat(),
                 'random_state': self.random_state
             }

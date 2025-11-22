@@ -267,9 +267,9 @@ Criteria Analysis:
 
 ${row.ml_analysis?.ml_enabled ? `
 ML Analysis:
-- Win Probability: ${(row.ml_analysis.win_probability).toFixed(1)}%
-- Expected Return: $${(row.ml_analysis.expected_return).toFixed(2)}
-- Confidence: ${(row.ml_analysis.confidence * 100).toFixed(1)}%
+- Win Probability: ${(row.ml_analysis.win_probability).toFixed(4)}%
+- Expected Return: $${(row.ml_analysis.expected_return).toFixed(4)}
+- Confidence: ${(row.ml_analysis.confidence * 100).toFixed(2)}%
 - Model: ${row.ml_analysis.model_version}
 - Features: ${row.ml_analysis.features_used?.length || 0}
 - Prediction Time: ${new Date(row.ml_analysis.prediction_timestamp).toLocaleString()}

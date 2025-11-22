@@ -187,15 +187,15 @@ class SimulatedTradingManager:
                     last_prediction = self.strategy_instance.ml_predictions[-1]
                     # Check if this prediction corresponds to the current signal
                     if last_prediction['timestamp'] == timestamp:
-                        signal_dict['win_probability'] = last_prediction.get('confidence', 0.0) * 100
-                        signal_dict['expected_return'] = last_prediction.get('signal_value', 0.0)
+                        signal_dict['win_probability'] = last_prediction.get('win_probability', 50.0)
+                        signal_dict['expected_return'] = last_prediction.get('expected_return_percentage', 0.0)
                         signal_dict['model_confidence'] = last_prediction.get('confidence', 0.0)
                         
                         # Also add to ml_analysis structure for consistency
                         signal_dict['ml_analysis'] = {
                             "ml_enabled": True,
-                            "win_probability": last_prediction.get('confidence', 0.0) * 100,
-                            "expected_return": last_prediction.get('signal_value', 0.0),
+                            "win_probability": last_prediction.get('win_probability', 50.0),
+                            "expected_return": last_prediction.get('expected_return_percentage', 0.0),
                             "confidence": last_prediction.get('confidence', 0.0),
                             "reason": trade_signal.reason
                         }

@@ -145,12 +145,35 @@ async def get_ml_dashboard_data():
     try:
         optimizer = _get_ml_optimizer()
         status = optimizer.get_system_status()
-        performance = optimizer.get_model_performance()
-        feature_importance = optimizer.get_feature_importance()
+        # Flatten performance metrics for frontend
+        flat_performance = {}
         
+        # Handle nested structure (regressor/classifier) if present
+        if 'latest_performance' in performance:
+            # It's from model manager history
+            perf_data = performance['latest_performance']
+        else:
+            # It's direct from current model
+            perf_data = performance
+
+        # Extract regressor metrics
+        if 'regressor' in perf_data:
+            flat_performance.update(perf_data['regressor'])
+        else:
+            # Maybe it's already flat or just regressor
+            flat_performance.update(perf_data)
+            
+        # Extract classifier metrics and map to win_rate
+        if 'classifier' in perf_data:
+            classifier_metrics = perf_data['classifier']
+            if 'accuracy' in classifier_metrics:
+                flat_performance['win_rate'] = classifier_metrics['accuracy']
+            # Add other classifier metrics if needed
+            flat_performance.update({k: v for k, v in classifier_metrics.items() if k not in flat_performance})
+            
         return {
             'status': status,
-            'performance': performance,
+            'performance': flat_performance,
             'feature_importance': feature_importance,
             'timestamp': datetime.now().isoformat()
         }
