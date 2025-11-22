@@ -18,22 +18,7 @@ from sklearn.pipeline import Pipeline
 logger = logging.getLogger(__name__)
 
 
-class TradingModelWrapper:
-    """Wrapper for both regressor (return) and classifier (win prob) models."""
-    
-    def __init__(self, regressor: Any, classifier: Any = None):
-        self.regressor = regressor
-        self.classifier = classifier
-        
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """Predict expected return using regressor."""
-        return self.regressor.predict(X)
-        
-    def predict_proba(self, X: np.ndarray) -> Optional[np.ndarray]:
-        """Predict win probability using classifier."""
-        if self.classifier is None:
-            return None
-        return self.classifier.predict_proba(X)
+from .wrapper import TradingModelWrapper
 
 
 class ModelTrainer:

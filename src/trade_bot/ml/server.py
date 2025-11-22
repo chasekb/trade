@@ -12,6 +12,7 @@ from pydantic import BaseModel
 import numpy as np
 
 from ml_optimizer import MLTradingOptimizer
+from wrapper import TradingModelWrapper  # Import to enable unpickling
 
 logger = logging.getLogger(__name__)
 
