@@ -7,10 +7,6 @@ import numpy as np
 class TradingModelWrapper:
     """Wrapper for both regressor (return) and classifier (win prob) models."""
     
-    # Force pickle to save this class as 'wrapper.TradingModelWrapper'
-    # instead of 'trade_bot.ml.wrapper.TradingModelWrapper'
-    __module__ = 'wrapper'
-    
     def __init__(self, regressor: Any, classifier: Any = None):
         self.regressor = regressor
         self.classifier = classifier
@@ -24,3 +20,17 @@ class TradingModelWrapper:
         if self.classifier is None:
             return None
         return self.classifier.predict_proba(X)
+    
+    def __reduce__(self):
+        """Custom pickle support to ensure compatibility across environments."""
+        # Return a callable and args that can reconstruct this object
+        # This ensures the class is always found as 'wrapper.TradingModelWrapper'
+        return (
+            _reconstruct_wrapper,
+            (self.regressor, self.classifier)
+        )
+
+
+def _reconstruct_wrapper(regressor: Any, classifier: Any = None):
+    """Helper function to reconstruct TradingModelWrapper from pickle."""
+    return TradingModelWrapper(regressor, classifier)
