@@ -7,6 +7,10 @@ import numpy as np
 class TradingModelWrapper:
     """Wrapper for both regressor (return) and classifier (win prob) models."""
     
+    # Force pickle to save this class as 'wrapper.TradingModelWrapper'
+    # instead of 'trade_bot.ml.wrapper.TradingModelWrapper'
+    __module__ = 'wrapper'
+    
     def __init__(self, regressor: Any, classifier: Any = None):
         self.regressor = regressor
         self.classifier = classifier
