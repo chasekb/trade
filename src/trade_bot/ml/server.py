@@ -343,6 +343,37 @@ async def update_model():
         logger.error(f"Error updating model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/set_active")
+async def set_active_model(model_name: str):
+    """Set the active ML model."""
+    global ml_optimizer, model_ready
+    
+    if ml_optimizer is None:
+        raise HTTPException(status_code=503, detail="ML optimizer not initialized")
+    
+    try:
+        logger.info(f"Setting active model to: {model_name}")
+        
+        success = ml_optimizer.model_manager.set_active_model(model_name)
+        
+        if success:
+            # Update the optimizer's current model reference if needed
+            # (The model manager handles the loading, but we might need to refresh the optimizer's state if it caches anything)
+            # For now, we assume model_manager.set_active_model does the heavy lifting.
+            model_ready = True
+            
+            return {
+                "status": "success",
+                "message": f"Active model set to {model_name}",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Failed to set active model: {model_name}")
+        
+    except Exception as e:
+        logger.error(f"Error setting active model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/rollback")
 async def rollback_model():
     """Rollback to previous model version."""
