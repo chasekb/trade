@@ -14,14 +14,16 @@ import json
 try:
     from .data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
     from .feature_engineer import FeatureEngineer
-    from .model_trainer import ModelTrainer, TradingModelWrapper
+    from .model_trainer import ModelTrainer
+    from .wrapper import TradingModelWrapper
     from .model_manager import ModelManager
     from .vector_db_client import VectorDBClient
 except ImportError:
     # Fallback to absolute imports when running as standalone script
     from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
     from feature_engineer import FeatureEngineer
-    from model_trainer import ModelTrainer, TradingModelWrapper
+    from model_trainer import ModelTrainer
+    from wrapper import TradingModelWrapper
     from model_manager import ModelManager
     from vector_db_client import VectorDBClient
 
