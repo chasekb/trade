@@ -245,7 +245,9 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
                 'action': action,
                 'confidence': confidence,
                 'signal_value': signal_value,
-                'price': current_price
+                'price': current_price,
+                'win_probability': ml_prediction.get('win_probability', 50.0),
+                'expected_return_percentage': ml_prediction.get('expected_return_percentage', 0.0)
             })
             
             if action in ['buy', 'sell']:

@@ -271,6 +271,9 @@ class MLTradingOptimizer:
             # Win probability represents the ML model's estimated probability of a successful trade
             # Get the probability from the model's classifier
             win_probability = 50.0
+            
+            # Log input features for debugging
+            logger.info(f"Predicting for {current_features.symbol} with features: {feature_dict}")
 
             # Get the current model object (TradingModelWrapper) to access predict_proba
             current_model = self.model_manager.get_current_model()
@@ -279,18 +282,26 @@ class MLTradingOptimizer:
                     # Get probability predictions from the classifier (probability of class 1 = win)
                     prob = current_model.predict_proba(X_processed)
                     if prob is not None and len(prob[0]) > 1:
-                        win_probability = float(prob[0][1] * 100)  # Probability of positive class (win)
+                        raw_prob = float(prob[0][1] * 100)
+                        # Clip probability to avoid unrealistic certainty
+                        win_probability = max(5.0, min(95.0, raw_prob))
+                        logger.info(f"Classifier raw probability: {raw_prob:.2f}%, clipped: {win_probability:.2f}%")
                 except Exception as e:
                     logger.warning(f"Error getting win probability from classifier: {e}")
                     # Fallback: use regressor signal to estimate probability
                     try:
-                        win_probability = 100 / (1 + np.exp(-5 * signal_value))
+                        # Use a sigmoid function that doesn't saturate too quickly
+                        # signal_value typically ranges -1 to 1. 
+                        # A value of 0.5 should give high confidence but not 100%
+                        win_probability = 100 / (1 + np.exp(-3 * signal_value))
+                        logger.info(f"Fallback probability from signal {signal_value:.4f}: {win_probability:.2f}%")
                     except Exception:
                         win_probability = 50.0
             else:
                 # Fallback: use regressor signal to estimate probability
                 try:
-                    win_probability = 100 / (1 + np.exp(-5 * signal_value))
+                    win_probability = 100 / (1 + np.exp(-3 * signal_value))
+                    logger.info(f"Fallback probability (no classifier) from signal {signal_value:.4f}: {win_probability:.2f}%")
                 except Exception:
                     win_probability = 50.0
 
@@ -307,12 +318,14 @@ class MLTradingOptimizer:
                 expected_return_percentage = signal_value
                 # For hold, win probability is neutral (around 50%) but slightly biased by signal
                 try:
-                    win_probability = 100 / (1 + np.exp(-2 * signal_value)) # Reduce sensitivity for hold
+                    win_probability = 100 / (1 + np.exp(-1 * signal_value)) # Reduce sensitivity for hold
                 except Exception:
                     win_probability = 50.0
             
             # Cap win probability at 99% to avoid unrealistic 100% values
             win_probability = min(win_probability, 99.0)
+            
+            logger.info(f"Final Prediction: Action={action}, Signal={signal_value:.4f}, WinProb={win_probability:.2f}%, ExpRet={expected_return_percentage:.4f}%")
 
             return {
                 'action': action,
