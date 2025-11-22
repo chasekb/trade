@@ -355,6 +355,8 @@ async def set_active_model(model_name: str):
         logger.info(f"Setting active model to: {model_name}")
         
         # Run in thread to avoid blocking event loop
+        # Reload registry first to ensure we see new models
+        ml_optimizer.model_manager.load_model_registry()
         success = await asyncio.to_thread(ml_optimizer.model_manager.set_active_model, model_name)
         
         if success:
