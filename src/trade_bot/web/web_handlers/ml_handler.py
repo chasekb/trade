@@ -5,6 +5,8 @@ import logging
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
+import os
+import requests
 
 from ...ml.ml_optimizer import MLTradingOptimizer
 from ..web_components import get_app_state
@@ -145,6 +147,11 @@ async def get_ml_dashboard_data():
     try:
         optimizer = _get_ml_optimizer()
         status = optimizer.get_system_status()
+        
+        # Get performance and feature importance
+        performance = status.get('model_performance', {})
+        feature_importance = optimizer.get_feature_importance()
+
         # Flatten performance metrics for frontend
         flat_performance = {}
         
@@ -248,6 +255,23 @@ async def set_active_model(model_name: str):
         except Exception as e:
             logger.error(f"Error saving active model to config: {e}")
             # Don't fail the request, but log the error
+
+        # Notify ML Server to update its active model
+        try:
+            ml_server_host = os.getenv("ML_SERVER_HOST", "ml-server") # Default to service name in docker
+            ml_server_port = os.getenv("ML_SERVER_PORT", "8002")
+            url = f"http://{ml_server_host}:{ml_server_port}/set_active"
+            
+            # Use params for query parameters in FastAPI
+            response = requests.post(url, params={"model_name": model_name}, timeout=5)
+            
+            if response.status_code == 200:
+                logger.info(f"Successfully notified ML server to set active model to {model_name}")
+            else:
+                logger.warning(f"ML server returned status {response.status_code} when setting active model")
+                
+        except Exception as e:
+            logger.warning(f"Failed to notify ML server: {e}")
 
         return {"status": "success", "message": f"Active model set to {model_name}"}
     except Exception as e:
