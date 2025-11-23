@@ -23,10 +23,13 @@ class TradingModelWrapper:
     
     def __reduce__(self):
         """Custom pickle support to ensure compatibility across environments."""
-        # Return a callable and args that can reconstruct this object
-        # This ensures the class is always found as 'wrapper.TradingModelWrapper'
+        # Use the current module and function to ensure proper reconstruction
+        # This allows the pickle to work whether imported as 'wrapper' or 'trade_bot.ml.wrapper'
+        import sys
+        # Get the module where _reconstruct_wrapper is defined
+        reconstruct_func = _reconstruct_wrapper
         return (
-            _reconstruct_wrapper,
+            reconstruct_func,
             (self.regressor, self.classifier)
         )
 

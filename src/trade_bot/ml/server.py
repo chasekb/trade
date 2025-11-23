@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 import json
 import asyncio
 from typing import Dict, List, Any, Optional
@@ -11,8 +12,45 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import numpy as np
 
+# Add parent directories to Python path to enable importing trade_bot modules
+# This is critical for unpickling models that were saved with absolute imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)  # Points to src/trade_bot
+grandparent_dir = os.path.dirname(parent_dir)  # Points to src
+
+# Add paths to enable both 'import trade_bot.ml.wrapper' and 'from trade_bot.ml import wrapper'
+if grandparent_dir not in sys.path:
+    sys.path.insert(0, grandparent_dir)
+
+# Now import local modules
 from ml_optimizer import MLTradingOptimizer
-from wrapper import TradingModelWrapper  # Import to enable unpickling
+# Import both the class and the reconstruction function to enable unpickling
+from wrapper import TradingModelWrapper, _reconstruct_wrapper
+
+# CRITICAL: Create module aliases to support unpickling models saved with different import paths
+# This allows models saved with "trade_bot.ml.wrapper" imports to work in this environment
+import sys
+current_module = sys.modules[__name__]  # Reference to the current 'server' module
+
+# Import all ML modules to make them available
+import wrapper
+import ml_optimizer
+import data_collector
+import feature_engineer
+import model_trainer
+import model_manager
+import vector_db_client
+
+# Register the modules with trade_bot prefix
+sys.modules['trade_bot'] = type(sys)('trade_bot')
+sys.modules['trade_bot.ml'] = type(sys)('trade_bot.ml')
+sys.modules['trade_bot.ml.wrapper'] = wrapper
+sys.modules['trade_bot.ml.ml_optimizer'] = ml_optimizer
+sys.modules['trade_bot.ml.data_collector'] = data_collector
+sys.modules['trade_bot.ml.feature_engineer'] = feature_engineer
+sys.modules['trade_bot.ml.model_trainer'] = model_trainer
+sys.modules['trade_bot.ml.model_manager'] = model_manager
+sys.modules['trade_bot.ml.vector_db_client'] = vector_db_client
 
 logger = logging.getLogger(__name__)
 
