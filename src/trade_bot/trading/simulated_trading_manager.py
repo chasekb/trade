@@ -552,6 +552,9 @@ class SimulatedTradingManager:
             symbol = signal.get('symbol')
             logger.info(f"Processing signal for {symbol}: {signal.get('signal')} (generated: {signal.get('signal_generated')})")
 
+            # Broadcast signal immediately via WebSocket for real-time frontend updates
+            self._broadcast_signal(signal)
+
             if not self._should_process_signal(signal):
                 continue
             
@@ -897,6 +900,40 @@ class SimulatedTradingManager:
             if symbol not in self.symbols_to_trade:
                 self.symbols_to_trade.append(symbol)
         logger.info(f"Updated trading symbols: {self.symbols_to_trade}")
+
+    def _broadcast_signal(self, signal: Dict[str, Any]) -> None:
+        """Broadcast individual order book signal to frontend via WebSocket."""
+        if not self.is_trading:
+            return
+
+        try:
+            websocket_manager = getattr(self, '_websocket_manager', None)
+            if websocket_manager:
+                # Prepare signal data for broadcasting in the same format as data_handlers
+                signal_data = {
+                    "signals": [signal],
+                    "trading_active": True,
+                    "message": f"Order book signal updated: {signal.get('symbol')}",
+                    "last_updated": datetime.now(timezone.utc).isoformat()
+                }
+
+                async def broadcast_signal():
+                    await websocket_manager.broadcast(json.dumps({
+                        "type": "orderbook_signals_update",
+                        "data": signal_data
+                    }))
+                    logger.info(f"📡 Broadcasted signal for {signal.get('symbol')} via WebSocket")
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(broadcast_signal())
+                except RuntimeError:
+                    asyncio.run(broadcast_signal())
+            else:
+                logger.warning(f"⚠️ WebSocket manager not available for broadcasting signal {signal.get('symbol')}")
+        except Exception as e:
+            logger.error(f"Error broadcasting signal: {e}")
+
 
     def _broadcast_trading_update(self) -> None:
         """Broadcast trading update to frontend widgets."""

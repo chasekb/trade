@@ -368,8 +368,11 @@ class WebSocketManager:
                        matches_data, status_data, market_trades_data]):
                     self.real_time_data[self.config.product_id] = current_data
                     
-                    # Broadcast to all connected clients
-                    await self.broadcast(f"data:{current_data}")
+                    # Broadcast to all connected clients as proper JSON
+                    await self.broadcast(json.dumps({
+                        "type": "realtime_data",
+                        "data": current_data
+                    }))
                 
                 # Wait before next collection
                 await asyncio.sleep(1)  # Collect every second

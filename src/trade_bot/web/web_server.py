@@ -182,7 +182,8 @@ async def startup_event():
         # Mark application as initialized
         app_state_local.set_initialized(True)
 
-        # Set the global app_state reference so routes can access it
+        # Set the global app_state reference BEFORE starting WebSocket connections
+        # This prevents "Service unavailable - application not initialized" errors
         set_app_state(app_state_local)
 
         # Start WebSocket client and real-time data processing
