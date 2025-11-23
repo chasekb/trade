@@ -242,10 +242,16 @@ class ModelManager:
         for filename in os.listdir(self.models_dir):
             if filename.endswith("_metadata.json"):
                 try:
+                    metadata_path = os.path.join(self.models_dir, filename)
+                    
+                    # Check if file is empty before attempting to parse
+                    if os.path.getsize(metadata_path) == 0:
+                        logger.debug(f"Skipping empty metadata file: {filename}")
+                        continue
+                    
                     model_name = filename.split('_202')[0]
                     version_id = filename.split(f'{model_name}_')[1].replace('_metadata.json', '')
                     
-                    metadata_path = os.path.join(self.models_dir, filename)
                     with open(metadata_path, 'r') as f:
                         metadata = json.load(f)
                     
