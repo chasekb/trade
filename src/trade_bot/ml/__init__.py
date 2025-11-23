@@ -6,6 +6,7 @@ from .model_trainer import ModelTrainer
 from .model_manager import ModelManager
 from .vector_db_client import VectorDBClient
 from .ml_optimizer import MLTradingOptimizer
+from .wrapper import TradingModelWrapper
 
 __all__ = [
     'MLDataCollector',
@@ -13,5 +14,6 @@ __all__ = [
     'ModelTrainer',
     'ModelManager',
     'VectorDBClient',
-    'MLTradingOptimizer'
+    'MLTradingOptimizer',
+    'TradingModelWrapper'
 ]
