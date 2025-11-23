@@ -175,44 +175,85 @@ class MLTradingOptimizer:
             wrapper_filename = f"trading_optimizer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
             wrapper_path = os.path.join(self.models_dir, wrapper_filename)
             
-            # Use model_trainer's save_model to save the wrapper (it handles directory creation)
-            # We manually save it here to ensure it's the wrapper that gets saved
+            # Ensure models directory exists
+            os.makedirs(self.models_dir, exist_ok=True)
+            
+            # Save the model with comprehensive error handling
             import joblib
-            joblib.dump(model_wrapper, wrapper_path)
+            model_saved_successfully = False
             
-            # Create metadata for the wrapper
-            wrapper_metadata = {
-                'model_type': 'combined_wrapper',
-                'regressor': best_model_name,
-                'classifier': training_results.get('best_classifier'),
-                'regressor_score': training_results['best_score'],
-                'classifier_score': training_results.get('best_classifier_score'),
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            metadata_path = wrapper_path.replace('.pkl', '_metadata.json')
-            with open(metadata_path, 'w') as f:
-                json.dump(wrapper_metadata, f, indent=2)
+            try:
+                joblib.dump(model_wrapper, wrapper_path)
                 
-            # Register the wrapper model
-            version_id = self.model_manager.register_model(
-                model_name="trading_optimizer",
-                model_path=wrapper_path,
-                performance_metrics={
-                    'regressor': training_results['model_performance'][best_model_name],
-                    'classifier': training_results.get('classifier_performance', {}).get(training_results.get('best_classifier'), {})
-                },
-                metadata=wrapper_metadata
-            )
-            
-            if version_id:
-                # Deploy the registered model
-                if self.model_manager.deploy_model("trading_optimizer", version_id):
-                    logger.info(f"Registered and deployed trading optimizer (Regressor: {best_model_name}, Classifier: {training_results.get('best_classifier')})")
+                # Verify the file was created and has content
+                if os.path.exists(wrapper_path) and os.path.getsize(wrapper_path) > 0:
+                    model_saved_successfully = True
+                    logger.info(f"Model saved successfully to {wrapper_path} ({os.path.getsize(wrapper_path)} bytes)")
                 else:
-                    logger.warning("Failed to deploy registered model")
+                    logger.error(f"Model file was not created or is empty: {wrapper_path}")
+                    
+            except Exception as e:
+                logger.error(f"Error saving model to {wrapper_path}: {e}")
+                # Clean up partial file if it exists
+                if os.path.exists(wrapper_path):
+                    try:
+                        os.remove(wrapper_path)
+                        logger.info(f"Cleaned up partial model file: {wrapper_path}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"Failed to clean up partial model file: {cleanup_error}")
+            
+            # Only create metadata if model was saved successfully
+            if model_saved_successfully:
+                try:
+                    # Create metadata for the wrapper
+                    wrapper_metadata = {
+                        'model_type': 'combined_wrapper',
+                        'regressor': best_model_name,
+                        'classifier': training_results.get('best_classifier'),
+                        'regressor_score': training_results['best_score'],
+                        'classifier_score': training_results.get('best_classifier_score'),
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+                    metadata_path = wrapper_path.replace('.pkl', '_metadata.json')
+                    with open(metadata_path, 'w') as f:
+                        json.dump(wrapper_metadata, f, indent=2)
+                    
+                    # Verify metadata was written
+                    if os.path.exists(metadata_path) and os.path.getsize(metadata_path) > 0:
+                        logger.info(f"Metadata saved successfully to {metadata_path}")
+                    else:
+                        logger.warning(f"Metadata file was not created or is empty: {metadata_path}")
+                        
+                except Exception as e:
+                    logger.error(f"Error saving metadata to {metadata_path}: {e}")
+                    # Don't fail the entire training if just metadata fails
             else:
-                logger.warning("Failed to register best model")
+                logger.error("Skipping metadata creation because model save failed")
+                
+            # Only register the model if it was saved successfully
+            if model_saved_successfully:
+                # Register the wrapper model
+                version_id = self.model_manager.register_model(
+                    model_name="trading_optimizer",
+                    model_path=wrapper_path,
+                    performance_metrics={
+                        'regressor': training_results['model_performance'][best_model_name],
+                        'classifier': training_results.get('classifier_performance', {}).get(training_results.get('best_classifier'), {})
+                    },
+                    metadata=wrapper_metadata
+                )
+                
+                if version_id:
+                    # Deploy the registered model
+                    if self.model_manager.deploy_model("trading_optimizer", version_id):
+                        logger.info(f"Registered and deployed trading optimizer (Regressor: {best_model_name}, Classifier: {training_results.get('best_classifier')})")
+                    else:
+                        logger.warning("Failed to deploy registered model")
+                else:
+                    logger.warning("Failed to register best model")
+            else:
+                logger.error("Skipping model registration because model save failed")
         
         self.last_training_time = datetime.now()
         
