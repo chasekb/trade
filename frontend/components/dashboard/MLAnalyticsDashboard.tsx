@@ -132,7 +132,7 @@ interface FeatureImportanceChartProps {
 function FeatureImportanceChart({ features }: FeatureImportanceChartProps) {
   // Sort features by importance and take top 10
   const sortedFeatures = Object.entries(features)
-    .sort(([,a], [,b]) => b - a)
+    .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
 
   if (sortedFeatures.length === 0) {
@@ -242,8 +242,8 @@ function ModelControls() {
                 <option>Loading models...</option>
               ) : (
                 availableModels?.map((model: any) => (
-                  <option key={model.model_name} value={model.model_name}>
-                    {model.model_name}
+                  <option key={model.model_id || model.model_name} value={model.model_id || model.model_name}>
+                    {model.model_name} {model.version_id ? `(${model.version_id})` : ''}
                   </option>
                 ))
               )}
