@@ -278,10 +278,8 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       setTimeout(() => {
         setProcessingSignal(null);
         // Continue processing queue if more signals exist
-        if (signalQueue.length > 1) {
-          // Trigger next processing after state updates
-          setTimeout(processNextSignal, 0);
-        }
+        // The useEffect hook will trigger the next processing cycle when processingSignal becomes null
+
       }, processingDelay);
     }
   }, [signalQueue, processingSignal, queryClient]);
