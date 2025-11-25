@@ -76,35 +76,62 @@ async def get_feature_importance():
 
 
 @ml_router.post("/train")
-async def trigger_model_training():
+async def trigger_model_training(batch_training: bool = None):
     """Trigger ML model training asynchronously."""
     try:
         import asyncio
         from concurrent.futures import ThreadPoolExecutor
-        import functools
-
+        
         optimizer = _get_ml_optimizer()
+        app_state = get_app_state()
+        
+        # Determine batch training mode
+        # Priority: 1. API parameter, 2. Config, 3. Default (True)
+        if batch_training is None:
+            if app_state and app_state.training_manager:
+                batch_training = app_state.training_manager.config.get("batch_training_enabled", True)
+            else:
+                batch_training = True
+                
+        # Get batch size from config
+        batch_size = 1000
+        if app_state and app_state.training_manager:
+            batch_size = app_state.training_manager.config.get("batch_size", 1000)
 
         # Run training in a thread pool to avoid blocking
         loop = asyncio.get_event_loop()
         executor = ThreadPoolExecutor(max_workers=1)
-        loop.run_in_executor(executor, train_model_background, optimizer)
+        loop.run_in_executor(executor, train_model_background, optimizer, batch_training, batch_size)
 
-        return {"status": "training_started", "message": "Model training started in background"}
+        return {
+            "status": "training_started", 
+            "message": f"Model training started in background (Batch Mode: {batch_training})"
+        }
     except Exception as e:
         logger.error(f"Error starting model training: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def train_model_background(optimizer):
+def train_model_background(optimizer, batch_training: bool, batch_size: int):
     """Background task to train ML model."""
     try:
-        logger.info("Starting background ML model training")
-        features, outcomes = optimizer.collect_and_preprocess_data(days_back=30)
-        if not features or not outcomes:
-            logger.error("Insufficient data for training")
-            return
-
-        result = optimizer.train_ml_models(features, outcomes)
+        logger.info(f"Starting background ML model training (Batch: {batch_training})")
+        
+        if batch_training:
+            # For batch training, we don't need to pre-collect all data
+            result = optimizer.train_ml_models(
+                batch_training=True, 
+                batch_size=batch_size,
+                days_back=30
+            )
+        else:
+            # Standard in-memory training
+            features, outcomes = optimizer.collect_and_preprocess_data(days_back=30)
+            if not features or not outcomes:
+                logger.error("Insufficient data for training")
+                return
+    
+            result = optimizer.train_ml_models(features, outcomes, batch_training=False)
+            
         logger.info(f"Background ML training completed: {result}")
     except Exception as e:
         logger.error(f"Error in background ML training: {e}")

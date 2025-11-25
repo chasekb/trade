@@ -246,6 +246,46 @@ class FeatureEngineer:
         self.feature_names = [extended_feature_names[i] for i in selected_indices]
         
         logger.info(f"Selected {len(self.feature_names)} most important features")
+
+    def partial_fit(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> None:
+        """Incrementally fit transformers on a batch of data."""
+        # Step 1: Handle missing values
+        if self.imputer is None:
+            self.imputer = SimpleImputer(strategy='mean')
+            # SimpleImputer doesn't support partial_fit in all versions/configurations easily 
+            # without knowing all stats, but for 'mean', we can use fit on the first batch 
+            # and then transform. True partial_fit for imputer is tricky.
+            # However, for 'mean', we can just fit on the batch if we assume batches are representative.
+            # Better approach for streaming: Use a pre-defined constant or robust scaling that handles NaNs.
+            # For now, we'll fit on the current batch if not fitted.
+            self.imputer.fit(X)
+        else:
+            # Re-fitting on new batch might shift means slightly, but standard SimpleImputer 
+            # doesn't have partial_fit. We'll stick with the initial fit or refit if needed.
+            # Ideally we'd use an incremental imputer, but for now let's assume the first batch 
+            # gives a good enough mean, or we just refit (which is wrong for global mean).
+            # Let's skip refitting imputer for now to keep it stable.
+            pass
+
+        X_imputed = self.imputer.transform(X)
+
+        # Step 2: Feature scaling
+        if self.scaler is None:
+            if self.feature_scaling == 'standard':
+                self.scaler = StandardScaler()
+            elif self.feature_scaling == 'minmax':
+                self.scaler = MinMaxScaler()
+        
+        if self.scaler is not None and hasattr(self.scaler, 'partial_fit'):
+            self.scaler.partial_fit(X_imputed)
+        
+        # Step 3: Feature selection
+        # SelectKBest does not support partial_fit. We will skip feature selection updates 
+        # during incremental learning and rely on the initial selection or a separate selection phase.
+        if self.feature_selector is None and y is not None:
+             # If this is the first batch, we can try to fit it
+             self.fit_feature_selector(X_imputed, y)
+
     
     def transform_features_selected(self, X: np.ndarray) -> np.ndarray:
         """Transform features using fitted selector."""
@@ -285,6 +325,36 @@ class FeatureEngineer:
 
         logger.info(f"Enhanced features with time series: {X_enhanced.shape}")
         return X_enhanced
+
+    def create_time_series_features_incremental(self, X: np.ndarray, window_size: int = 5, 
+                                              previous_window: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Create time series features for a batch, using previous window for continuity.
+        Returns (enhanced_features, last_window_of_this_batch).
+        """
+        # Combine with previous window if available
+        if previous_window is not None and previous_window.size > 0:
+            combined_data = np.vstack([previous_window, X])
+            start_idx = len(previous_window)
+        else:
+            combined_data = X
+            start_idx = 0
+            
+        # Calculate rolling stats
+        rolling_mean = pd.DataFrame(combined_data).rolling(window=window_size, min_periods=1).mean().values
+        rolling_std = pd.DataFrame(combined_data).rolling(window=window_size, min_periods=1).std().fillna(0).values
+        
+        # Slice back to the original batch size
+        batch_rolling_mean = rolling_mean[start_idx:]
+        batch_rolling_std = rolling_std[start_idx:]
+        
+        X_enhanced = np.column_stack([X, batch_rolling_mean, batch_rolling_std])
+        
+        # Save the last window for the next batch
+        last_window = combined_data[-window_size:] if len(combined_data) >= window_size else combined_data
+        
+        return X_enhanced, last_window
+
     
     def create_interaction_features(self, X: np.ndarray) -> np.ndarray:
         """Create interaction features between important variables."""
@@ -359,6 +429,41 @@ class FeatureEngineer:
         
         logger.info(f"Preprocessing complete: {X_final.shape}")
         return X_final, y
+
+    def preprocess_pipeline_incremental(self, X: np.ndarray, y: Optional[np.ndarray] = None, 
+                                      fit: bool = False,
+                                      previous_window: Optional[np.ndarray] = None) -> Tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Incremental preprocessing pipeline.
+        Returns (X_processed, y_processed, next_window).
+        """
+        # Step 1: Handle missing values
+        if fit:
+            self.partial_fit(X, y)
+            
+        if self.imputer:
+            X_imputed = self.imputer.transform(X)
+        else:
+            X_imputed = X # Should not happen if fit called or loaded
+
+        # Step 2: Feature scaling
+        if self.scaler:
+            X_scaled = self.scaler.transform(X_imputed)
+        else:
+            X_scaled = X_imputed
+        
+        # Step 3: Time series and interaction features
+        X_ts, next_window = self.create_time_series_features_incremental(X_scaled, previous_window=previous_window)
+        X_interactions = self.create_interaction_features(X_ts)
+
+        # Step 4: Feature selection
+        if self.feature_selector:
+            X_selected = self.feature_selector.transform(X_interactions)
+        else:
+            X_selected = X_interactions
+        
+        return X_selected, y, next_window
+
 
     def save_transformers(self, directory: str) -> None:
         """Save fitted transformers to disk."""

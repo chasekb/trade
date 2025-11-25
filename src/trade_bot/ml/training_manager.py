@@ -45,8 +45,11 @@ class TrainingManager:
         return {
             "continuous_training_enabled": True,
             "training_interval": 3600,
-            "new_data_threshold": 100
+            "new_data_threshold": 100,
+            "batch_training_enabled": True,
+            "batch_size": 1000
         }
+
 
     def _save_config(self):
         """Save the current configuration to the JSON file."""
