@@ -629,6 +629,21 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   // Use local symbols for polling; fallback to backend status if empty
   // Always pass symbols (even if empty) to enable query when trading is active
+
+  // Sync local symbols state with active trading status
+  useEffect(() => {
+    if (status.isActive && status.symbols && status.symbols.length > 0) {
+      // Only update if different to avoid infinite loops (though React handles identical state updates efficiently)
+      const isDifferent = symbols.length !== status.symbols.length ||
+        !symbols.every((s, i) => s === status.symbols![i]);
+
+      if (isDifferent) {
+        setSymbols(status.symbols);
+      }
+    }
+  }, [status.isActive, status.symbols, symbols]);
+
+  // Always pass symbols (even if empty) to enable query when trading is active
   const activeSymbols = (symbols && symbols.length > 0) ? symbols : (status.symbols || []);
   const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
     activeSymbols,
