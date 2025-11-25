@@ -309,7 +309,6 @@ class MLTradingOptimizer:
             
             # Convert prediction to trading signal
             signal_value = prediction[0]
-            confidence = abs(signal_value)
 
             # Win probability represents the ML model's estimated probability of a successful trade
             # Get the probability from the model's classifier
@@ -372,7 +371,7 @@ class MLTradingOptimizer:
 
             return {
                 'action': action,
-                'confidence': float(confidence),  # ML model confidence in signal (used for signal strength)
+                'confidence': float(win_probability / 100.0),  # Use win probability as confidence (0-1 range)
                 'win_probability': float(win_probability),  # Probability of success (separate from confidence)
                 'signal_value': float(signal_value),
                 'expected_return_percentage': float(expected_return_percentage),
