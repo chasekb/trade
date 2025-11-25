@@ -304,3 +304,77 @@ async def set_active_model(model_name: str):
     except Exception as e:
         logger.error(f"Error setting active model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@ml_router.post("/prediction-comparison")
+async def get_prediction_comparison(request: Dict[str, Any]):
+    """Compare predictions from multiple models."""
+    try:
+        optimizer = _get_ml_optimizer()
+        
+        # Extract model IDs and features from request
+        model_ids = request.get("model_ids", [])
+        features = request.get("features", {})
+        
+        if not model_ids or len(model_ids) < 2:
+            raise HTTPException(status_code=400, detail="At least two model IDs are required for comparison")
+        
+        if not features:
+            raise HTTPException(status_code=400, detail="Features data is required")
+        
+        # Get predictions from each model
+        comparison_results = []
+        available_models = optimizer.list_available_models()
+        
+        for model_id in model_ids:
+            # Find the model info
+            model_info = next((m for m in available_models if m.get("model_id") == model_id or m.get("model_name") == model_id), None)
+            
+            if not model_info:
+                logger.warning(f"Model {model_id} not found, skipping")
+                continue
+            
+            try:
+                # Load the model temporarily to get predictions
+                model_name = model_info.get("model_name")
+                
+                # Use the optimizer's predict method with the specific model
+                # First save current model, then switch to comparison model
+                current_model = optimizer.model
+                success = optimizer.set_active_model(model_name)
+                
+                if success:
+                    # Make prediction
+                    prediction = optimizer.predict_trade_outcome(features)
+                    
+                    comparison_results.append({
+                        "model_id": model_id,
+                        "model_name": model_name,
+                        "version_id": model_info.get("version_id"),
+                        "expected_return": prediction.get("expected_return", 0.0),
+                        "win_probability": prediction.get("win_probability", 0.0),
+                        "confidence": prediction.get("confidence", 0.0)
+                    })
+                    
+                    # Restore original model
+                    optimizer.model = current_model
+                else:
+                    logger.warning(f"Failed to activate model {model_name} for comparison")
+                    
+            except Exception as e:
+                logger.error(f"Error getting prediction from model {model_id}: {e}")
+                comparison_results.append({
+                    "model_id": model_id,
+                    "model_name": model_info.get("model_name"),
+                    "error": str(e)
+                })
+        
+        return {
+            "comparisons": comparison_results,
+            "features": features,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error comparing predictions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

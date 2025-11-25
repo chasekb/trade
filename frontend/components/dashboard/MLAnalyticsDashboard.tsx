@@ -204,11 +204,10 @@ function ModelControls() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Button
               onClick={() => trainModel(undefined)}
               disabled={isTraining}
-              className="flex-1"
               variant="primary"
             >
               {isTraining ? 'Training...' : 'Train Model'}
@@ -218,7 +217,6 @@ function ModelControls() {
             <Button
               onClick={() => updateModel()}
               disabled={isUpdating}
-              className="flex-1"
               variant="secondary"
             >
               {isUpdating ? 'Updating...' : 'Update Model'}
@@ -227,15 +225,14 @@ function ModelControls() {
             <Button
               onClick={() => rollbackModel()}
               disabled={isRollingBack}
-              className="flex-1"
               variant="outline"
             >
               {isRollingBack ? 'Rolling Back...' : 'Rollback'}
             </Button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="grid grid-cols-[1fr_auto] gap-3">
             <select
-              className="flex-1"
+              className="w-full px-3 py-2 border rounded-md"
               onChange={(e) => setActiveModel(e.target.value)}
               disabled={isLoadingModels || isSettingActiveModel}
             >
