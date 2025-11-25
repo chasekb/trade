@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useMLAnalytics } from '@/hooks/useMLAnalytics';
@@ -11,6 +11,16 @@ export function PredictionComparisonChart() {
   const [model1, setModel1] = useState<string>('');
   const [model2, setModel2] = useState<string>('');
 
+
+  // Sort models by most recent first
+  const sortedModels = useMemo(() => {
+    if (!availableModels) return [];
+    return [...availableModels].sort((a: any, b: any) => {
+      const dateA = new Date(a.trained_at || a.created_at || 0).getTime();
+      const dateB = new Date(b.trained_at || b.created_at || 0).getTime();
+      return dateB - dateA; // Descending order (newest first)
+    });
+  }, [availableModels]);
   const handleCompare = () => {
     if (!model1 || !model2) {
       alert('Please select two models to compare');
@@ -61,7 +71,7 @@ export function PredictionComparisonChart() {
                 disabled={isLoadingModels}
               >
                 <option value="">Select a model...</option>
-                {availableModels?.map((model: any) => (
+                {sortedModels.map((model: any) => (
                   <option key={model.model_id || model.model_name} value={model.model_id || model.model_name}>
                     {model.model_name} {model.version_id ? `(v${model.version_id})` : ''}
                   </option>
@@ -77,7 +87,7 @@ export function PredictionComparisonChart() {
                 disabled={isLoadingModels}
               >
                 <option value="">Select a model...</option>
-                {availableModels?.map((model: any) => (
+                {sortedModels.map((model: any) => (
                   <option key={model.model_id || model.model_name} value={model.model_id || model.model_name}>
                     {model.model_name} {model.version_id ? `(v${model.version_id})` : ''}
                   </option>
