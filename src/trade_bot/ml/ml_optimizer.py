@@ -122,12 +122,22 @@ class MLTradingOptimizer:
         logger.info(f"Collected {len(features)} feature vectors and {len(outcomes)} trade outcomes")
         return list(features), list(outcomes)
     
-    def train_ml_models(self, features: List[OrderBookFeatures], 
-                        outcomes: List[TradeOutcome],
-                        model_type: str = 'ensemble') -> Dict[str, Any]:
+    def train_ml_models(self, features: List[OrderBookFeatures] = None, 
+                        outcomes: List[TradeOutcome] = None,
+                        model_type: str = 'ensemble',
+                        batch_training: bool = False,
+                        batch_size: int = 1000,
+                        days_back: int = 30) -> Dict[str, Any]:
         """Train ML models on the collected data."""
-        logger.info("Starting ML model training")
+        logger.info(f"Starting ML model training (Batching: {batch_training})")
         
+        if batch_training:
+            return self._train_batch_models(model_type, batch_size, days_back)
+            
+        if features is None or outcomes is None:
+            # If not provided and not batch training, collect all data
+            features, outcomes = self.collect_and_preprocess_data(days_back)
+            
         # Create feature matrix
         X, y, feature_names = self.feature_engineer.create_feature_matrix(features, outcomes)
         
@@ -259,6 +269,86 @@ class MLTradingOptimizer:
         
         logger.info("ML model training completed")
         return training_results
+
+    def _train_batch_models(self, model_type: str, batch_size: int, days_back: int) -> Dict[str, Any]:
+        """Train models using batch processing."""
+        # Create generator that yields processed batches
+        data_generator = self._create_batch_generator(batch_size, days_back)
+        
+        # Train incrementally
+        # For batch training, we typically use SGD or Neural Networks
+        if model_type not in ['sgd', 'nn']:
+            logger.warning(f"Model type {model_type} not optimal for batch training. Switching to 'sgd'.")
+            model_type = 'sgd'
+            
+        training_results = self.model_trainer.train_incremental(data_generator, model_type=model_type)
+        
+        # Save transformers after training (they are updated incrementally)
+        self.feature_engineer.save_transformers(self.transformers_dir)
+        
+        # Register and deploy (similar logic to standard training)
+        if training_results and training_results.get('best_model'):
+            best_model_name = training_results['best_model']
+            
+            # Create wrapper
+            best_regressor = self.model_trainer.models[best_model_name]
+            best_classifier = self.model_trainer.classifiers.get(training_results.get('best_classifier'))
+            
+            model_wrapper = TradingModelWrapper(best_regressor, best_classifier)
+            
+            # Save wrapper
+            wrapper_filename = f"trading_optimizer_batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            wrapper_path = os.path.join(self.models_dir, wrapper_filename)
+            os.makedirs(self.models_dir, exist_ok=True)
+            
+            import joblib
+            joblib.dump(model_wrapper, wrapper_path)
+            
+            # Register
+            version_id = self.model_manager.register_model(
+                model_name="trading_optimizer",
+                model_path=wrapper_path,
+                performance_metrics=training_results,
+                metadata={'training_mode': 'batch', 'batch_size': batch_size}
+            )
+            
+            if version_id:
+                self.model_manager.deploy_model("trading_optimizer", version_id)
+        
+        self.last_training_time = datetime.now()
+        return training_results
+
+    def _create_batch_generator(self, batch_size: int, days_back: int):
+        """Create a generator that yields (X_processed, outcomes) batches."""
+        raw_batch_generator = self.data_collector.yield_training_batches(batch_size, days_back)
+        
+        previous_window = None
+        first_batch = True
+        
+        for features, outcomes in raw_batch_generator:
+            # Create feature matrix
+            X, y, _ = self.feature_engineer.create_feature_matrix(features, outcomes)
+            
+            if X.shape[0] == 0:
+                continue
+                
+            # Preprocess incrementally
+            # We fit on the first batch, then just transform (or partial fit if implemented fully)
+            # In our FeatureEngineer.preprocess_pipeline_incremental, 'fit' argument controls partial_fit
+            # We should probably fit on every batch for scaler/imputer to adapt, 
+            # but usually we want to fit on a representative sample or adapt slowly.
+            # Let's fit on every batch for now as our partial_fit implementation handles it safely.
+            X_processed, _, next_window = self.feature_engineer.preprocess_pipeline_incremental(
+                X, y, fit=True, previous_window=previous_window
+            )
+            
+            previous_window = next_window
+            
+            # Store vectors in DB (optional, might be slow for large datasets)
+            # self._store_feature_vectors_in_db(features, X_processed)
+            
+            yield X_processed, outcomes
+
     
     def predict_trading_signal(self, current_features: OrderBookFeatures) -> Dict[str, Any]:
         """Predict optimal trading signal using ML model."""

@@ -206,13 +206,14 @@ function ModelControls() {
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <Button
-              onClick={() => trainModel()}
+              onClick={() => trainModel(undefined)}
               disabled={isTraining}
               className="flex-1"
               variant="primary"
             >
               {isTraining ? 'Training...' : 'Train Model'}
             </Button>
+
 
             <Button
               onClick={() => updateModel()}
@@ -323,6 +324,26 @@ function ConfigControls() {
             value={config.new_data_threshold}
             onChange={(e) => setConfig({ ...config, new_data_threshold: parseInt(e.target.value, 10) })}
             className="w-full p-2 border rounded"
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <label htmlFor="batch-training">Enable Batch Training</label>
+          <input
+            id="batch-training"
+            type="checkbox"
+            checked={config.batch_training_enabled !== false}
+            onChange={(e) => setConfig({ ...config, batch_training_enabled: e.target.checked })}
+          />
+        </div>
+        <div>
+          <label htmlFor="batch-size">Batch Size</label>
+          <input
+            id="batch-size"
+            type="number"
+            value={config.batch_size || 1000}
+            onChange={(e) => setConfig({ ...config, batch_size: parseInt(e.target.value, 10) })}
+            className="w-full p-2 border rounded"
+            disabled={config.batch_training_enabled === false}
           />
         </div>
         <Button onClick={handleSave} disabled={isUpdatingConfig}>

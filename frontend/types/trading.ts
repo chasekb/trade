@@ -367,4 +367,7 @@ export interface MLConfig {
   continuous_training_enabled: boolean;
   training_interval: number;
   new_data_threshold: number;
+  batch_training_enabled: boolean;
+  batch_size: number;
 }
+

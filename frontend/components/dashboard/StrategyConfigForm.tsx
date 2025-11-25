@@ -39,7 +39,8 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
 
     const handleTrainModel = () => {
         setTrainingFeedback(null);
-        trainModel(undefined, {
+        const batchTraining = config.use_batch_training !== false; // Default to true
+        trainModel(batchTraining, {
             onSuccess: (data: any) => {
                 setTrainingFeedback({ type: 'success', message: data.message || 'Model training started successfully' });
             },
@@ -111,6 +112,20 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                         )}
                     </div>
                     <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <label className="block text-sm font-medium text-gray-700">Model Training</label>
+                        </div>
+                        <div className="flex items-center space-x-2 mb-2">
+                            <input
+                                type="checkbox"
+                                id="use_batch_training"
+                                checked={config.use_batch_training !== false}
+                                onChange={(e) => handleParameterChange('use_batch_training', e.target.checked)}
+                            />
+                            <label htmlFor="use_batch_training" className="text-sm font-medium text-gray-700">
+                                Use Batch Training (Memory Efficient)
+                            </label>
+                        </div>
                         <Button onClick={handleTrainModel} disabled={isTraining}>
                             {isTraining ? 'Training...' : 'Train New Model'}
                         </Button>

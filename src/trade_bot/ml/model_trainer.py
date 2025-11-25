@@ -9,7 +9,7 @@ from datetime import datetime
 import os
 
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, RandomForestClassifier
-from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression
+from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, SGDRegressor, SGDClassifier
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
@@ -84,6 +84,111 @@ class ModelTrainer:
             'training_samples': X_train.shape[0],
             'test_samples': X_test.shape[0]
         }
+    
+    def train_incremental(self, data_generator, model_type: str = 'sgd', 
+                         test_size: float = 0.2) -> Dict[str, Any]:
+        """Train models incrementally using a data generator."""
+        logger.info(f"Starting incremental training with model type: {model_type}")
+        
+        # Initialize model based on type
+        if model_type == 'sgd':
+            model = SGDRegressor(loss='squared_error', penalty='l2', alpha=0.0001, 
+                               learning_rate='invscaling', eta0=0.01, random_state=self.random_state)
+            model_name = 'sgd_regressor'
+        elif model_type == 'nn':
+            model = MLPRegressor(hidden_layer_sizes=(100, 50), activation='relu', 
+                               solver='adam', alpha=0.0001, batch_size=200, 
+                               learning_rate='adaptive', max_iter=1, warm_start=True, 
+                               random_state=self.random_state)
+            model_name = 'neural_network_incremental'
+        else:
+            logger.warning(f"Model type {model_type} does not support incremental learning. Defaulting to SGD.")
+            model = SGDRegressor(random_state=self.random_state)
+            model_name = 'sgd_regressor'
+            
+        # Initialize classifier for win probability
+        classifier = SGDClassifier(loss='log_loss', penalty='l2', alpha=0.0001, 
+                                 learning_rate='optimal', random_state=self.random_state)
+        classifier_name = 'sgd_classifier'
+        
+        total_samples = 0
+        batch_count = 0
+        
+        # Keep track of performance on the fly (using a rolling window of test data from batches)
+        rolling_mse = []
+        rolling_accuracy = []
+        
+        for X_batch, y_batch in data_generator:
+            if len(X_batch) == 0:
+                continue
+                
+            # Convert to numpy arrays
+            X_batch = np.array(X_batch)
+            y_batch_reg = np.array([y.pnl for y in y_batch]) # Target for regressor
+            y_batch_cls = np.array([y.is_win for y in y_batch]) # Target for classifier
+            
+            # Split batch for validation
+            X_train, X_test, y_train_reg, y_test_reg, y_train_cls, y_test_cls = train_test_split(
+                X_batch, y_batch_reg, y_batch_cls, test_size=test_size, random_state=self.random_state
+            )
+            
+            # Partial fit regressor
+            model.partial_fit(X_train, y_train_reg)
+            
+            # Partial fit classifier (needs classes for first call)
+            classes = np.array([False, True])
+            classifier.partial_fit(X_train, y_train_cls, classes=classes)
+            
+            # Evaluate on test split
+            reg_score = model.score(X_test, y_test_reg)
+            cls_score = classifier.score(X_test, y_test_cls)
+            
+            rolling_mse.append(reg_score)
+            rolling_accuracy.append(cls_score)
+            
+            total_samples += len(X_batch)
+            batch_count += 1
+            
+            if batch_count % 10 == 0:
+                logger.info(f"Processed {batch_count} batches, {total_samples} samples. "
+                          f"Avg Reg Score: {np.mean(rolling_mse[-10:]):.4f}, "
+                          f"Avg Cls Score: {np.mean(rolling_accuracy[-10:]):.4f}")
+        
+        # Store models
+        self.models[model_name] = model
+        self.classifiers[classifier_name] = classifier
+        
+        # Calculate final average scores
+        avg_reg_score = np.mean(rolling_mse) if rolling_mse else 0.0
+        avg_cls_score = np.mean(rolling_accuracy) if rolling_accuracy else 0.0
+        
+        self.model_performance[model_name] = {'score': avg_reg_score, 'type': 'incremental'}
+        self.classifier_performance[classifier_name] = {'accuracy': avg_cls_score, 'type': 'incremental'}
+        
+        # Set best models
+        self.best_model = model
+        self.best_score = avg_reg_score
+        self.best_classifier = classifier
+        self.best_classifier_score = avg_cls_score
+        
+        # Save models
+        self.save_model(model, f"data/models/{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.model_performance, score=avg_reg_score)
+        
+        self.save_model(classifier, f"data/models/{classifier_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.classifier_performance, score=avg_cls_score)
+        
+        return {
+            'model_performance': self.model_performance,
+            'classifier_performance': self.classifier_performance,
+            'best_model': model_name,
+            'best_classifier': classifier_name,
+            'best_score': self.best_score,
+            'best_classifier_score': self.best_classifier_score,
+            'total_samples': total_samples,
+            'batches_processed': batch_count
+        }
+
     
     def train_classifiers(self, X: np.ndarray, y: np.ndarray, 
                          test_size: float = 0.2) -> Dict[str, Any]:

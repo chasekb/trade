@@ -22,8 +22,8 @@ export function useModelTraining() {
   const { showSuccess, showError } = useToast();
 
   const trainMutation = useMutation({
-    mutationFn: async (): Promise<MLTrainingResponse> => {
-      const response = await apiClient.trainMLModel();
+    mutationFn: async (batchTraining?: boolean): Promise<MLTrainingResponse> => {
+      const response = await apiClient.trainMLModel(batchTraining);
       if (response.status === 'error' || !response.data) {
         throw new Error(response.error || 'Failed to train model');
       }

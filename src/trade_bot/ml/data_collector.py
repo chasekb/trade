@@ -98,6 +98,21 @@ class MLDataCollector:
         except Exception as e:
             logger.error(f"Error extracting order book signals: {e}")
             return []
+
+    def yield_order_book_signals(self, batch_size: int = 1000, days_back: int = 30) -> Any:
+        """Yield order book signals in batches."""
+        try:
+            # Calculate timestamp threshold
+            threshold_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
+            
+            if self.is_postgres:
+                yield from self._yield_signals_from_postgres(threshold_timestamp, batch_size)
+            else:
+                yield from self._yield_signals_from_sqlite(threshold_timestamp, batch_size)
+                
+        except Exception as e:
+            logger.error(f"Error yielding order book signals: {e}")
+            return
     
     def _extract_signals_from_postgres(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
         """Extract signals from PostgreSQL database."""
@@ -150,6 +165,63 @@ class MLDataCollector:
         conn.close()
         logger.info(f"Extracted {len(signals)} order book signals from PostgreSQL")
         return signals
+
+    def _yield_signals_from_postgres(self, threshold_timestamp: int, batch_size: int) -> Any:
+        """Yield signals from PostgreSQL database using server-side cursor."""
+        conn = psycopg.connect(self.db_path)
+        # Use a named cursor for server-side iteration
+        cursor = conn.cursor(name="signal_cursor")
+        
+        query = """
+            SELECT signal_id, session_id, symbol, signal_type, strength, price, 
+                   timestamp, signal_data
+            FROM order_book_signals 
+            WHERE timestamp >= %s
+            ORDER BY timestamp ASC
+        """
+        
+        cursor.execute(query, (threshold_timestamp,))
+        
+        while True:
+            results = cursor.fetchmany(batch_size)
+            if not results:
+                break
+                
+            signals = []
+            for row in results:
+                # Parse signal_data JSON
+                signal_data_json = json.loads(row[7]) if row[7] else {}
+                
+                # Extract fields from signal_data JSON (stored in criteria_analysis or directly)
+                criteria_analysis = signal_data_json.get('criteria_analysis', {})
+                volume_imbalance = criteria_analysis.get('volume_imbalance_buy', {})
+                ml_analysis = signal_data_json.get('ml_analysis', {})
+                
+                signals.append({
+                    'signal_id': row[0],
+                    'session_id': row[1],
+                    'symbol': row[2],
+                    'signal_type': row[3],
+                    'strength': row[4],
+                    'price': row[5],
+                    'timestamp': row[6],
+                    'signal_data': signal_data_json,
+                    'ml_analysis': ml_analysis,
+                    'spread': signal_data_json.get('spread', 0.0),
+                    'imbalance': volume_imbalance.get('current_value', 0.0) if isinstance(volume_imbalance, dict) else 0.0,
+                    'mid_price': row[5],  # Use price as mid_price
+                    'best_bid': signal_data_json.get('best_bid', row[5] * 0.999),  # Estimate if not available
+                    'best_ask': signal_data_json.get('best_ask', row[5] * 1.001),  # Estimate if not available
+                    'order_book_depth': 2,  # Default depth
+                    'volume': signal_data_json.get('volume', 0.0),
+                    'total_signals': 1  # Not stored in PostgreSQL
+                })
+            
+            yield signals
+        
+        cursor.close()
+        conn.close()
+
     
     def _extract_signals_from_sqlite(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
         """Extract signals from SQLite database."""
@@ -193,6 +265,57 @@ class MLDataCollector:
         conn.close()
         logger.info(f"Extracted {len(signals)} order book signals from SQLite")
         return signals
+
+    def _yield_signals_from_sqlite(self, threshold_timestamp: int, batch_size: int) -> Any:
+        """Yield signals from SQLite database using pagination."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        offset = 0
+        while True:
+            query = """
+                SELECT signal_id, session_id, symbol, signal_type, strength, price, 
+                       timestamp, signal_data, spread, imbalance, mid_price, 
+                       best_bid, best_ask, order_book_depth, volume, total_signals
+                FROM order_book_signals 
+                WHERE timestamp >= ?
+                ORDER BY timestamp ASC
+                LIMIT ? OFFSET ?
+            """
+            
+            cursor.execute(query, (threshold_timestamp, batch_size, offset))
+            results = cursor.fetchall()
+            
+            if not results:
+                break
+            
+            signals = []
+            for row in results:
+                signal_data = json.loads(row[7]) if row[7] else {}
+                signals.append({
+                    'signal_id': row[0],
+                    'session_id': row[1],
+                    'symbol': row[2],
+                    'signal_type': row[3],
+                    'strength': row[4],
+                    'price': row[5],
+                    'timestamp': row[6],
+                    'signal_data': signal_data,
+                    'spread': row[8],
+                    'imbalance': row[9],
+                    'mid_price': row[10],
+                    'best_bid': row[11],
+                    'best_ask': row[12],
+                    'order_book_depth': row[13],
+                    'volume': row[14],
+                    'total_signals': row[15]
+                })
+            
+            yield signals
+            offset += batch_size
+        
+        conn.close()
+
     
     def extract_trade_outcomes(self, days_back: int = 30) -> List[Dict[str, Any]]:
         """Extract trade outcomes for ML training."""
@@ -208,6 +331,21 @@ class MLDataCollector:
         except Exception as e:
             logger.error(f"Error extracting trade outcomes: {e}")
             return []
+
+    def yield_trade_outcomes(self, batch_size: int = 1000, days_back: int = 30) -> Any:
+        """Yield trade outcomes in batches."""
+        try:
+            # Calculate timestamp threshold
+            threshold_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
+            
+            if self.is_postgres:
+                yield from self._yield_trades_from_postgres(threshold_timestamp, batch_size)
+            else:
+                yield from self._yield_trades_from_sqlite(threshold_timestamp, batch_size)
+                
+        except Exception as e:
+            logger.error(f"Error yielding trade outcomes: {e}")
+            return
     
     def _extract_trades_from_postgres(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
         """Extract trades from PostgreSQL database."""
@@ -245,6 +383,49 @@ class MLDataCollector:
         conn.close()
         logger.info(f"Extracted {len(trades)} trade outcomes from PostgreSQL")
         return trades
+
+    def _yield_trades_from_postgres(self, threshold_timestamp: int, batch_size: int) -> Any:
+        """Yield trades from PostgreSQL database."""
+        conn = psycopg.connect(self.db_path)
+        cursor = conn.cursor(name="trade_cursor")
+        
+        query = """
+            SELECT trade_id, session_id, symbol, side, size, price, timestamp,
+                   strategy_type, signal_reason, pnl, fees, created_at
+            FROM individual_trades 
+            WHERE timestamp >= %s
+            ORDER BY timestamp ASC
+        """
+        
+        cursor.execute(query, (threshold_timestamp,))
+        
+        while True:
+            results = cursor.fetchmany(batch_size)
+            if not results:
+                break
+                
+            trades = []
+            for row in results:
+                trades.append({
+                    'trade_id': row[0],
+                    'session_id': row[1],
+                    'symbol': row[2],
+                    'side': row[3],
+                    'size': float(row[4]) if row[4] else 0.0,
+                    'price': float(row[5]),
+                    'timestamp': int(row[6]),
+                    'strategy_type': row[7],
+                    'signal_reason': row[8],
+                    'pnl': float(row[9]) if row[9] else 0.0,
+                    'fees': float(row[10]) if row[10] else 0.0,
+                    'created_at': row[11].isoformat() if row[11] else None
+                })
+            
+            yield trades
+        
+        cursor.close()
+        conn.close()
+
     
     def _extract_trades_from_sqlite(self, threshold_timestamp: int) -> List[Dict[str, Any]]:
         """Extract trades from SQLite database."""
@@ -282,6 +463,51 @@ class MLDataCollector:
         conn.close()
         logger.info(f"Extracted {len(trades)} trade outcomes from SQLite")
         return trades
+
+    def _yield_trades_from_sqlite(self, threshold_timestamp: int, batch_size: int) -> Any:
+        """Yield trades from SQLite database."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        offset = 0
+        while True:
+            query = """
+                SELECT trade_id, session_id, symbol, side, size, price, timestamp,
+                       strategy_type, signal_reason, pnl, fees, created_at
+            FROM individual_trades 
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC
+            LIMIT ? OFFSET ?
+        """
+        
+            cursor.execute(query, (threshold_timestamp, batch_size, offset))
+            results = cursor.fetchall()
+            
+            if not results:
+                break
+            
+            trades = []
+            for row in results:
+                trades.append({
+                    'trade_id': row[0],
+                    'session_id': row[1],
+                    'symbol': row[2],
+                    'side': row[3],
+                    'size': row[4],
+                    'price': row[5],
+                    'timestamp': row[6],
+                    'strategy_type': row[7],
+                    'signal_reason': row[8],
+                    'pnl': row[9],
+                    'fees': row[10],
+                    'created_at': row[11]
+                })
+            
+            yield trades
+            offset += batch_size
+        
+        conn.close()
+
     
     def get_trades_by_pnl(self, limit: int = 10, sort_by: str = 'pnl') -> Dict[str, List[Dict[str, Any]]]:
         """Get top and bottom trades by PnL."""
@@ -507,6 +733,46 @@ class MLDataCollector:
         
         logger.info(f"Created {len(training_data)} training examples")
         return training_data
+
+    def yield_training_batches(self, batch_size: int = 1000, days_back: int = 30) -> Any:
+        """Yield training data batches (features, outcomes)."""
+        # We need to coordinate signals and trades. 
+        # Since we need to match signals with future trades, we'll load trades first 
+        # (or at least have efficient access to them).
+        # For simplicity in this iteration, we'll load all trades (they are smaller than signals usually)
+        # or we could implement a more complex windowed join.
+        
+        # Strategy: Load all trades for the period into memory (assuming trade history is manageable)
+        # If trade history is too large, we'd need a sliding window approach which is more complex.
+        logger.info("Loading trade history for label matching...")
+        all_trades = self.extract_trade_outcomes(days_back)
+        trades_df = pd.DataFrame(all_trades)
+        
+        if trades_df.empty:
+            logger.warning("No trades available for training")
+            return
+            
+        # Iterate through signal batches
+        for signals_batch in self.yield_order_book_signals(batch_size, days_back):
+            if not signals_batch:
+                continue
+                
+            # Create feature vectors for this batch
+            feature_vectors = self.create_feature_vectors(signals_batch, all_trades)
+            
+            if not feature_vectors:
+                continue
+                
+            # Create labels
+            training_data = self.create_training_labels(feature_vectors, all_trades)
+            
+            if not training_data:
+                continue
+                
+            # Separate features and outcomes
+            features, outcomes = zip(*training_data)
+            yield list(features), list(outcomes)
+
     
     def _calculate_bid_volume(self, signal: pd.Series) -> float:
         """Calculate total bid volume from signal data."""
