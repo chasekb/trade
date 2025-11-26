@@ -351,7 +351,7 @@ export interface MLDashboardData {
 }
 
 export interface MLTrainingResponse {
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'training_started';
   message?: string;
   error?: string;
 }

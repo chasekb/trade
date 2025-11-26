@@ -30,7 +30,7 @@ export function useModelTraining() {
       return response.data;
     },
     onSuccess: (data) => {
-      if (data.status === 'success') {
+      if (data.status === 'success' || data.status === 'training_started') {
         showSuccess(data.message || 'Model training completed successfully');
         // Refetch ML dashboard data
         queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
