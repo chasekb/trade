@@ -230,20 +230,21 @@ class WebSocketManager:
 
                 executed_trades = 0
                 result = {}
-                if active_signals:
-                    logger.info(f"Auto-processing {len(active_signals)} active signals: {[s['symbol'] + ':' + s['signal'] for s in active_signals]}")
+                if signals:
+                    logger.info(f"Auto-processing {len(signals)} signals (active: {len(active_signals)}): {[s['symbol'] + ':' + s['signal'] for s in active_signals]}")
 
                     # Process the signals through the simulated trading manager
-                    result = await self.simulated_trading.process_signals(active_signals)
+                    # Pass ALL signals so the manager can determine if it has coverage for all symbols
+                    result = await self.simulated_trading.process_signals(signals)
 
                     # Ensure result is a dict to prevent errors
                     result = result or {}
 
                     executed_trades = result.get('executed_trades', 0)
                     if executed_trades > 0:
-                        logger.info(f"Auto-executed {executed_trades} trades from {len(active_signals)} signals")
+                        logger.info(f"Auto-executed {executed_trades} trades from {len(signals)} signals")
                     else:
-                        logger.debug(f"No trades executed from {len(active_signals)} active signals (may be due to position limits, existing positions, or insufficient funds)")
+                        logger.debug(f"No trades executed from {len(signals)} signals (may be due to position limits, existing positions, or insufficient funds)")
 
                 # Always broadcast signals update if signals were processed
                 signal_data = {

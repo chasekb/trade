@@ -543,21 +543,63 @@ class SimulatedTradingManager:
         # Update total signals processed counter
         self.total_signals_processed += len(signals)
         
+        # Check if we have signals for all symbols in the universe
+        # Only if we have symbols configured AND prioritization is not 'none'
+        prioritization = self.strategy_params.get('order_prioritization', 'signal_strength')
+        
+        if self.symbols_to_trade and prioritization != 'none':
+            # Create a set of symbols present in the signals list
+            received_symbols = set(s.get('symbol') for s in signals if s.get('symbol'))
+            missing_symbols = [s for s in self.symbols_to_trade if s not in received_symbols]
+            
+            if missing_symbols:
+                logger.info(f"Waiting for all signals. Missing: {len(missing_symbols)}/{len(self.symbols_to_trade)}. Present: {len(received_symbols)}")
+                # Broadcast anyway so UI updates with what we have
+                for signal in signals:
+                    self._broadcast_signal(signal)
+                return {
+                    "status": "waiting", 
+                    "message": f"Waiting for all signals ({len(received_symbols)}/{len(self.symbols_to_trade)})",
+                    "executed_trades": 0,
+                    "closed_positions": 0,
+                    "trades": [],
+                    "portfolio": self.get_portfolio_summary()
+                }
+        
         logger.info(f"Processing {len(signals)} signals. Total processed: {self.total_signals_processed}. Trading symbols: {self.symbols_to_trade}")
         
         executed_trades = []
         closed_positions = []
         
+        # Filter for executable signals
+        executable_signals = []
         for signal in signals:
             symbol = signal.get('symbol')
-            logger.info(f"Processing signal for {symbol}: {signal.get('signal')} (generated: {signal.get('signal_generated')})")
-
             # Broadcast signal immediately via WebSocket for real-time frontend updates
             self._broadcast_signal(signal)
 
-            if not self._should_process_signal(signal):
-                continue
-            
+            if self._should_process_signal(signal):
+                executable_signals.append(signal)
+        
+        # Sort signals based on prioritization
+        def get_sort_key(signal):
+            if prioritization == 'win_probability':
+                return float(signal.get('win_probability', 0.0))
+            elif prioritization == 'expected_return':
+                return float(signal.get('expected_return', 0.0))
+            else: # signal_strength
+                return float(signal.get('signal_strength', 0.0))
+
+        # Sort descending if prioritization is not 'none'
+        if executable_signals and prioritization != 'none':
+            executable_signals.sort(key=get_sort_key, reverse=True)
+            logger.info(f"Prioritizing {len(executable_signals)} signals by {prioritization}")
+        elif prioritization == 'none':
+            logger.info(f"Processing {len(executable_signals)} signals without prioritization (immediate execution)")
+
+        # Execute trades
+        for signal in executable_signals:
+            symbol = signal.get('symbol')
             current_price = signal.get('price', 0.0)
             signal_action = signal.get('signal')
             signal_strength = signal.get('signal_strength', 0.0)

@@ -158,6 +158,19 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                             className="w-full"
                         />
                     </div>
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Order Prioritization</label>
+                        <select
+                            value={config.order_prioritization || 'signal_strength'}
+                            onChange={(e) => handleParameterChange('order_prioritization', e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2"
+                        >
+                            <option value="signal_strength">Signal Strength</option>
+                            <option value="win_probability">Win Probability</option>
+                            <option value="expected_return">Expected Return (Descending)</option>
+                            <option value="none">No Prioritization (Immediate Execution)</option>
+                        </select>
+                    </div>
                     <div className="flex items-center space-x-2">
                         <input
                             type="checkbox"
