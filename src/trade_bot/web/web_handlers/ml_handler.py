@@ -306,6 +306,8 @@ async def set_active_model(model_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+from ...ml.data_collector import OrderBookFeatures
+
 @ml_router.post("/prediction-comparison")
 async def get_prediction_comparison(request: Dict[str, Any]):
     """Compare predictions from multiple models."""
@@ -314,13 +316,36 @@ async def get_prediction_comparison(request: Dict[str, Any]):
         
         # Extract model IDs and features from request
         model_ids = request.get("model_ids", [])
-        features = request.get("features", {})
+        features_dict = request.get("features", {})
         
         if not model_ids or len(model_ids) < 2:
             raise HTTPException(status_code=400, detail="At least two model IDs are required for comparison")
         
-        if not features:
+        if not features_dict:
             raise HTTPException(status_code=400, detail="Features data is required")
+            
+        # Convert dictionary to OrderBookFeatures object
+        try:
+            # Ensure all required fields are present with defaults if missing
+            features_obj = OrderBookFeatures(
+                timestamp=features_dict.get('timestamp', 0),
+                symbol=features_dict.get('symbol', 'UNKNOWN'),
+                bid_ask_imbalance=features_dict.get('bid_ask_imbalance', 0.0),
+                spread_percent=features_dict.get('spread_percent', 0.0),
+                mid_price=features_dict.get('mid_price', 0.0),
+                bid_volume=features_dict.get('bid_volume', 0.0),
+                ask_volume=features_dict.get('ask_volume', 0.0),
+                order_book_depth=features_dict.get('order_book_depth', 0),
+                large_bid_wall=features_dict.get('large_bid_wall', False),
+                large_ask_wall=features_dict.get('large_ask_wall', False),
+                wall_size=features_dict.get('wall_size', 0.0),
+                volume_weighted_price=features_dict.get('volume_weighted_price', 0.0),
+                price_momentum=features_dict.get('price_momentum', 0.0),
+                volatility=features_dict.get('volatility', 0.0)
+            )
+        except Exception as e:
+            logger.error(f"Error creating OrderBookFeatures object: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid features data: {str(e)}")
         
         # Get predictions from each model
         comparison_results = []
@@ -340,26 +365,32 @@ async def get_prediction_comparison(request: Dict[str, Any]):
                 
                 # Use the optimizer's predict method with the specific model
                 # First save current model, then switch to comparison model
-                current_model = optimizer.model
+                current_model = optimizer.model_manager.current_model_name
                 success = optimizer.set_active_model(model_name)
                 
                 if success:
-                    # Make prediction
-                    prediction = optimizer.predict_trade_outcome(features)
+                    # Make prediction using the correct method and object
+                    prediction = optimizer.predict_trading_signal(features_obj)
                     
                     comparison_results.append({
                         "model_id": model_id,
                         "model_name": model_name,
                         "version_id": model_info.get("version_id"),
-                        "expected_return": prediction.get("expected_return", 0.0),
-                        "win_probability": prediction.get("win_probability", 0.0),
+                        "expected_return": prediction.get("expected_return_percentage", 0.0), # Note: key is expected_return_percentage
+                        "win_probability": prediction.get("win_probability", 0.0) / 100.0, # Convert back to 0-1 for frontend
                         "confidence": prediction.get("confidence", 0.0)
                     })
                     
-                    # Restore original model
-                    optimizer.model = current_model
+                    # Restore original model if there was one
+                    if current_model:
+                        optimizer.set_active_model(current_model)
                 else:
                     logger.warning(f"Failed to activate model {model_name} for comparison")
+                    comparison_results.append({
+                        "model_id": model_id,
+                        "model_name": model_name,
+                        "error": "Failed to load model"
+                    })
                     
             except Exception as e:
                 logger.error(f"Error getting prediction from model {model_id}: {e}")
@@ -371,7 +402,7 @@ async def get_prediction_comparison(request: Dict[str, Any]):
         
         return {
             "comparisons": comparison_results,
-            "features": features,
+            "features": features_dict,
             "timestamp": datetime.now().isoformat()
         }
         
