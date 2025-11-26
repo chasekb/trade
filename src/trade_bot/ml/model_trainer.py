@@ -118,6 +118,9 @@ class ModelTrainer:
         rolling_mse = []
         rolling_accuracy = []
         
+        # Minimum samples required for train/test split
+        MIN_SAMPLES_FOR_SPLIT = 5
+        
         for X_batch, y_batch in data_generator:
             if len(X_batch) == 0:
                 continue
@@ -127,24 +130,36 @@ class ModelTrainer:
             y_batch_reg = np.array([y.pnl for y in y_batch]) # Target for regressor
             y_batch_cls = np.array([y.is_win for y in y_batch]) # Target for classifier
             
-            # Split batch for validation
-            X_train, X_test, y_train_reg, y_test_reg, y_train_cls, y_test_cls = train_test_split(
-                X_batch, y_batch_reg, y_batch_cls, test_size=test_size, random_state=self.random_state
-            )
-            
-            # Partial fit regressor
-            model.partial_fit(X_train, y_train_reg)
-            
-            # Partial fit classifier (needs classes for first call)
-            classes = np.array([False, True])
-            classifier.partial_fit(X_train, y_train_cls, classes=classes)
-            
-            # Evaluate on test split
-            reg_score = model.score(X_test, y_test_reg)
-            cls_score = classifier.score(X_test, y_test_cls)
-            
-            rolling_mse.append(reg_score)
-            rolling_accuracy.append(cls_score)
+            # Check if batch is large enough for train/test split
+            if len(X_batch) >= MIN_SAMPLES_FOR_SPLIT:
+                # Split batch for validation
+                X_train, X_test, y_train_reg, y_test_reg, y_train_cls, y_test_cls = train_test_split(
+                    X_batch, y_batch_reg, y_batch_cls, test_size=test_size, random_state=self.random_state
+                )
+                
+                # Partial fit regressor
+                model.partial_fit(X_train, y_train_reg)
+                
+                # Partial fit classifier (needs classes for first call)
+                classes = np.array([False, True])
+                classifier.partial_fit(X_train, y_train_cls, classes=classes)
+                
+                # Evaluate on test split
+                reg_score = model.score(X_test, y_test_reg)
+                cls_score = classifier.score(X_test, y_test_cls)
+                
+                rolling_mse.append(reg_score)
+                rolling_accuracy.append(cls_score)
+            else:
+                # Batch too small for split - use entire batch for training without validation
+                logger.info(f"Batch {batch_count + 1} has only {len(X_batch)} samples - using entire batch for training without validation")
+                
+                # Partial fit regressor with entire batch
+                model.partial_fit(X_batch, y_batch_reg)
+                
+                # Partial fit classifier with entire batch
+                classes = np.array([False, True])
+                classifier.partial_fit(X_batch, y_batch_cls, classes=classes)
             
             total_samples += len(X_batch)
             batch_count += 1
