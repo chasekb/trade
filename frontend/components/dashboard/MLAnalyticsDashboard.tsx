@@ -119,6 +119,28 @@ function PerformanceMetricsCard({ metrics }: PerformanceMetricsProps) {
               </p>
             </div>
           </div>
+          <div className="space-y-3 col-span-2 border-t pt-3 mt-1 grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Total Vectors</p>
+              <p className="text-lg font-semibold">
+                {metrics.total_feature_vectors !== undefined ? metrics.total_feature_vectors.toLocaleString() : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Used Samples</p>
+              <p className="text-lg font-semibold">
+                {metrics.total_used_samples !== undefined ? metrics.total_used_samples.toLocaleString() : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Data Utilization</p>
+              <p className="text-lg font-semibold">
+                {metrics.total_feature_vectors && metrics.total_used_samples
+                  ? `${((metrics.total_used_samples / metrics.total_feature_vectors) * 100).toFixed(1)}%`
+                  : 'N/A'}
+              </p>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
