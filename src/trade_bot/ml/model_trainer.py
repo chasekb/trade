@@ -113,7 +113,8 @@ class ModelTrainer:
                                  learning_rate='optimal', random_state=self.random_state)
         classifier_name = 'sgd_classifier'
         
-        total_samples = 0
+        total_feature_vectors = 0
+        total_used_samples = 0
         batch_count = 0
         
         # Keep track of performance on the fly (using a rolling window of test data from batches)
@@ -129,6 +130,7 @@ class ModelTrainer:
                 
             # Convert to numpy arrays
             X_batch = np.array(X_batch)
+            total_feature_vectors += len(X_batch)
             
             # Check for NaNs or Infs in input data
             if np.isnan(X_batch).any() or np.isinf(X_batch).any():
@@ -183,13 +185,14 @@ class ModelTrainer:
                 logger.error(f"Error training on batch {batch_count + 1}: {e}")
                 continue
             
-            total_samples += len(X_batch)
+            total_used_samples += len(X_batch)
             batch_count += 1
             
             if batch_count % 10 == 0:
                 avg_reg = np.mean(rolling_mse[-10:]) if rolling_mse else 0.0
                 avg_cls = np.mean(rolling_accuracy[-10:]) if rolling_accuracy else 0.0
-                logger.info(f"Processed {batch_count} batches, {total_samples} samples. "
+                logger.info(f"Processed {batch_count} batches. "
+                          f"Total Vectors: {total_feature_vectors}, Used Samples: {total_used_samples}. "
                           f"Avg Reg Score: {avg_reg:.4f}, "
                           f"Avg Cls Score: {avg_cls:.4f}")
         
@@ -221,6 +224,10 @@ class ModelTrainer:
         self.save_model(classifier, f"data/models/{classifier_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
                        performance_metrics=self.classifier_performance, score=avg_cls_score)
         
+        logger.info(f"Incremental training complete. "
+                  f"Total Vectors: {total_feature_vectors}, Used Samples: {total_used_samples}, Batches: {batch_count}. "
+                  f"Final Reg Score: {avg_reg_score:.4f}, Final Cls Score: {avg_cls_score:.4f}")
+        
         return {
             'model_performance': self.model_performance,
             'classifier_performance': self.classifier_performance,
@@ -228,7 +235,8 @@ class ModelTrainer:
             'best_classifier': classifier_name,
             'best_score': self.best_score,
             'best_classifier_score': self.best_classifier_score,
-            'total_samples': total_samples,
+            'total_feature_vectors': total_feature_vectors,
+            'total_used_samples': total_used_samples,
             'batches_processed': batch_count
         }
 
