@@ -92,8 +92,10 @@ class ModelTrainer:
         
         # Initialize model based on type
         if model_type == 'sgd':
+            # Use adaptive learning rate to prevent exploding gradients
             model = SGDRegressor(loss='squared_error', penalty='l2', alpha=0.0001, 
-                               learning_rate='invscaling', eta0=0.01, random_state=self.random_state)
+                               learning_rate='adaptive', eta0=0.001, n_iter_no_change=5,
+                               random_state=self.random_state)
             model_name = 'sgd_regressor'
         elif model_type == 'nn':
             model = MLPRegressor(hidden_layer_sizes=(100, 50), activation='relu', 
@@ -127,47 +129,69 @@ class ModelTrainer:
                 
             # Convert to numpy arrays
             X_batch = np.array(X_batch)
+            
+            # Check for NaNs or Infs in input data
+            if np.isnan(X_batch).any() or np.isinf(X_batch).any():
+                logger.warning(f"Batch {batch_count + 1} contains NaNs or Infs in features. Skipping.")
+                continue
+                
             y_batch_reg = np.array([y.pnl for y in y_batch]) # Target for regressor
             y_batch_cls = np.array([y.is_win for y in y_batch]) # Target for classifier
             
-            # Check if batch is large enough for train/test split
-            if len(X_batch) >= MIN_SAMPLES_FOR_SPLIT:
-                # Split batch for validation
-                X_train, X_test, y_train_reg, y_test_reg, y_train_cls, y_test_cls = train_test_split(
-                    X_batch, y_batch_reg, y_batch_cls, test_size=test_size, random_state=self.random_state
-                )
-                
-                # Partial fit regressor
-                model.partial_fit(X_train, y_train_reg)
-                
-                # Partial fit classifier (needs classes for first call)
-                classes = np.array([False, True])
-                classifier.partial_fit(X_train, y_train_cls, classes=classes)
-                
-                # Evaluate on test split
-                reg_score = model.score(X_test, y_test_reg)
-                cls_score = classifier.score(X_test, y_test_cls)
-                
-                rolling_mse.append(reg_score)
-                rolling_accuracy.append(cls_score)
-            else:
-                # Batch too small for split - use entire batch for training without validation
-                logger.info(f"Batch {batch_count + 1} has only {len(X_batch)} samples - using entire batch for training without validation")
-                
-                # Partial fit regressor with entire batch
-                model.partial_fit(X_batch, y_batch_reg)
-                
-                # Partial fit classifier with entire batch
-                classes = np.array([False, True])
-                classifier.partial_fit(X_batch, y_batch_cls, classes=classes)
+            # Check for NaNs or Infs in targets
+            if np.isnan(y_batch_reg).any() or np.isinf(y_batch_reg).any():
+                logger.warning(f"Batch {batch_count + 1} contains NaNs or Infs in targets. Skipping.")
+                continue
+            
+            try:
+                # Check if batch is large enough for train/test split
+                if len(X_batch) >= MIN_SAMPLES_FOR_SPLIT:
+                    # Split batch for validation
+                    X_train, X_test, y_train_reg, y_test_reg, y_train_cls, y_test_cls = train_test_split(
+                        X_batch, y_batch_reg, y_batch_cls, test_size=test_size, random_state=self.random_state
+                    )
+                    
+                    # Partial fit regressor
+                    model.partial_fit(X_train, y_train_reg)
+                    
+                    # Partial fit classifier (needs classes for first call)
+                    classes = np.array([False, True])
+                    classifier.partial_fit(X_train, y_train_cls, classes=classes)
+                    
+                    # Evaluate on test split
+                    reg_score = model.score(X_test, y_test_reg)
+                    cls_score = classifier.score(X_test, y_test_cls)
+                    
+                    # Handle NaN scores
+                    if np.isnan(reg_score):
+                        logger.warning(f"Batch {batch_count + 1} produced NaN regression score.")
+                        reg_score = 0.0
+                        
+                    rolling_mse.append(reg_score)
+                    rolling_accuracy.append(cls_score)
+                else:
+                    # Batch too small for split - use entire batch for training without validation
+                    logger.info(f"Batch {batch_count + 1} has only {len(X_batch)} samples - using entire batch for training without validation")
+                    
+                    # Partial fit regressor with entire batch
+                    model.partial_fit(X_batch, y_batch_reg)
+                    
+                    # Partial fit classifier with entire batch
+                    classes = np.array([False, True])
+                    classifier.partial_fit(X_batch, y_batch_cls, classes=classes)
+            except Exception as e:
+                logger.error(f"Error training on batch {batch_count + 1}: {e}")
+                continue
             
             total_samples += len(X_batch)
             batch_count += 1
             
             if batch_count % 10 == 0:
+                avg_reg = np.mean(rolling_mse[-10:]) if rolling_mse else 0.0
+                avg_cls = np.mean(rolling_accuracy[-10:]) if rolling_accuracy else 0.0
                 logger.info(f"Processed {batch_count} batches, {total_samples} samples. "
-                          f"Avg Reg Score: {np.mean(rolling_mse[-10:]):.4f}, "
-                          f"Avg Cls Score: {np.mean(rolling_accuracy[-10:]):.4f}")
+                          f"Avg Reg Score: {avg_reg:.4f}, "
+                          f"Avg Cls Score: {avg_cls:.4f}")
         
         # Store models
         self.models[model_name] = model
@@ -177,6 +201,10 @@ class ModelTrainer:
         avg_reg_score = np.mean(rolling_mse) if rolling_mse else 0.0
         avg_cls_score = np.mean(rolling_accuracy) if rolling_accuracy else 0.0
         
+        # Final sanity check for NaN
+        if np.isnan(avg_reg_score):
+            avg_reg_score = 0.0
+            
         self.model_performance[model_name] = {'score': avg_reg_score, 'type': 'incremental'}
         self.classifier_performance[classifier_name] = {'accuracy': avg_cls_score, 'type': 'incremental'}
         
