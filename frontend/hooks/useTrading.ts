@@ -148,7 +148,7 @@ export function useOrderBookSignals(
     },
     enabled: isEnabled,
     staleTime: 3000, // Consider data fresh for 3 seconds
-    refetchInterval: isEnabled ? 5000 : false, // Refetch every 5 seconds as a fallback
+    refetchInterval: false, // Disable auto-refetch to prevent overwriting live WebSocket data
     refetchOnWindowFocus: true,
     refetchIntervalInBackground: true,
     refetchOnMount: 'always', // Always refetch when component mounts
@@ -237,7 +237,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
                   last_updated: new Date().toISOString(),
                   pagination: {
                     current_page: 1,
-                    per_page: 10,
+                    per_page: 100, // Default to larger page size for live view
                     total_signals: 1,
                     total_pages: 1,
                     has_next: false,
@@ -247,25 +247,35 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
               }
 
               const currentSignals = oldData.signals || [];
-              const isDuplicate = currentSignals.some((s: OrderBookSignal) =>
-                s.symbol === nextSignal.symbol && s.timestamp === nextSignal.timestamp
+
+              // Create a map of existing signals by symbol for easy lookup and update
+              const signalMap = new Map<string, OrderBookSignal>();
+              currentSignals.forEach((s: OrderBookSignal) => signalMap.set(s.symbol, s));
+
+              // Update or add the new signal
+              const existingSignal = signalMap.get(nextSignal.symbol);
+
+              // Only update if the new signal is fresher (newer timestamp) or if the symbol doesn't exist
+              if (!existingSignal || new Date(nextSignal.timestamp) > new Date(existingSignal.timestamp)) {
+                signalMap.set(nextSignal.symbol, nextSignal);
+              }
+
+              // Convert map back to array and sort by timestamp descending
+              const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
               );
-
-              if (isDuplicate) return oldData;
-
-              const updatedSignals = [nextSignal, ...currentSignals];
-              const perPage = queryKey[4] as number || 10;
-              const trimmedSignals = updatedSignals.slice(0, perPage);
 
               return {
                 ...oldData,
-                signals: trimmedSignals,
-                total_analyzed: (oldData.total_analyzed || 0) + 1,
-                active_signals: nextSignal.signal_generated ? (oldData.active_signals || 0) + 1 : oldData.active_signals,
+                signals: updatedSignals,
+                total_analyzed: updatedSignals.length,
+                active_signals: updatedSignals.filter(s => s.signal_generated).length,
                 last_updated: new Date().toISOString(),
                 pagination: {
                   ...oldData.pagination,
-                  total_signals: (oldData.pagination?.total_signals || 0) + 1,
+                  total_signals: updatedSignals.length,
+                  // Update total pages based on current per_page setting
+                  total_pages: Math.ceil(updatedSignals.length / (oldData.pagination?.per_page || 10))
                 }
               };
             });
