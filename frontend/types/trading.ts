@@ -337,6 +337,8 @@ export interface MLPerformanceMetrics {
   profit_factor?: number;
   sharpe_ratio?: number;
   win_rate?: number;
+  total_feature_vectors?: number;
+  total_used_samples?: number;
   error?: string;
 }
 
