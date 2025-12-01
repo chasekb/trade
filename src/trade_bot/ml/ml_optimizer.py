@@ -18,15 +18,22 @@ try:
     from .wrapper import TradingModelWrapper
     from .model_manager import ModelManager
     from .vector_db_client import VectorDBClient
-    from ..data.data_provider import CoinbaseDataProvider
-except ImportError:
+    try:
+        from trade_bot.data.data_provider import CoinbaseDataProvider
+    except ImportError:
+        from ..data.data_provider import CoinbaseDataProvider
+except ImportError as e:
+    logger.warning(f"ImportError in MLTradingOptimizer: {e}")
     # Fallback to absolute imports when running as standalone script
-    from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
-    from feature_engineer import FeatureEngineer
-    from model_trainer import ModelTrainer
-    from wrapper import TradingModelWrapper
-    from model_manager import ModelManager
-    from vector_db_client import VectorDBClient
+    try:
+        from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
+        from feature_engineer import FeatureEngineer
+        from model_trainer import ModelTrainer
+        from wrapper import TradingModelWrapper
+        from model_manager import ModelManager
+        from vector_db_client import VectorDBClient
+    except ImportError:
+        pass
     # Mock/Placeholder for standalone run if data provider not available
     CoinbaseDataProvider = None
 
@@ -460,6 +467,9 @@ class MLTradingOptimizer:
             
             logger.info(f"Final Prediction: Action={action}, Signal={signal_value:.4f}, WinProb={win_probability:.2f}%, ExpRet={expected_return_percentage:.4f}%")
 
+            # Calculate number of historical points used
+            num_history = len(historical_vectors) if historical_vectors is not None else 0
+
             return {
                 'action': action,
                 'confidence': float(win_probability / 100.0),  # Use win probability as confidence (0-1 range)
@@ -467,7 +477,7 @@ class MLTradingOptimizer:
                 'signal_value': float(signal_value),
                 'expected_return_percentage': float(expected_return_percentage),
                 'reason': f'ML prediction: {signal_value:.3f}',
-                'similar_conditions': len(historical_vectors),  # Number of similar historical patterns found
+                'similar_conditions': num_history,  # Number of similar historical patterns found
                 'timestamp': datetime.now().isoformat()
             }
             
