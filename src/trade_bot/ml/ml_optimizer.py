@@ -18,6 +18,7 @@ try:
     from .wrapper import TradingModelWrapper
     from .model_manager import ModelManager
     from .vector_db_client import VectorDBClient
+    from ..data.data_provider import CoinbaseDataProvider
 except ImportError:
     # Fallback to absolute imports when running as standalone script
     from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
@@ -26,6 +27,12 @@ except ImportError:
     from wrapper import TradingModelWrapper
     from model_manager import ModelManager
     from vector_db_client import VectorDBClient
+    # Mock/Placeholder for standalone run if data provider not available
+    CoinbaseDataProvider = None
+
+import asyncio
+import nest_asyncio
+nest_asyncio.apply()
 
 logger = logging.getLogger(__name__)
 
@@ -371,17 +378,14 @@ class MLTradingOptimizer:
             X = pd.DataFrame([feature_dict])
 
             # Fetch historical data for time-series features
-            historical_data = self.vector_db_client.get_historical_patterns(current_features.symbol, days_back=1)
+            # Use raw historical data from Coinbase API to calculate correct rolling stats
+            # This ensures we don't mix processed vectors (from vector DB) with raw vectors (current)
+            historical_vectors = self._get_historical_feature_vectors(current_features.symbol)
             
-            historical_vectors = []
-            if historical_data:
-                # Sort by timestamp to ensure correct order
-                sorted_data = sorted(historical_data, key=lambda p: p['payload']['timestamp'])
-                historical_vectors = [p['vector'] for p in sorted_data]
-
             # Preprocess features using the same pipeline as training
+            # Pass historical vectors (raw/scaled) so create_time_series_features can calculate rolling stats correctly
             X_processed, _ = self.feature_engineer.preprocess_pipeline(
-                X.values, y=None, fit_transform=False, historical_data=np.array(historical_vectors)
+                X.values, y=None, fit_transform=False, historical_data=historical_vectors
             )
             
             # Make prediction
@@ -531,6 +535,101 @@ class MLTradingOptimizer:
         """Get current model performance metrics."""
         return self.model_manager.get_model_performance("trading_optimizer")
     
+    def _get_historical_feature_vectors(self, symbol: str) -> Optional[np.ndarray]:
+        """Fetch raw historical data from Coinbase and convert to feature vectors."""
+        try:
+            if CoinbaseDataProvider is None:
+                logger.warning("CoinbaseDataProvider not available")
+                return None
+
+            # Helper to run async method synchronously
+            async def fetch_history():
+                provider = CoinbaseDataProvider(symbol)
+                # Fetch recent trades to reconstruct price history
+                trades = await provider.get_recent_trades(limit=50)
+                return trades
+
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            if loop.is_running():
+                trades = loop.run_until_complete(fetch_history())
+            else:
+                trades = asyncio.run(fetch_history())
+            
+            if not trades:
+                return None
+
+            # Convert trades to OrderBookFeatures (approximation)
+            hist_features = []
+            
+            # Sort trades by timestamp ascending
+            trades.sort(key=lambda x: x['timestamp'])
+            
+            # Create features from trades
+            # We only have price info, so we fill others with defaults or 0
+            # This gives us valid Price Momentum and Volatility rolling stats, 
+            # while Imbalance stats will decay towards 0 (neutral)
+            
+            for i in range(len(trades)):
+                trade = trades[i]
+                price = float(trade['price'])
+                
+                # Calculate simple momentum/volatility based on window of previous trades
+                price_momentum = 0.0
+                volatility = 0.0
+                
+                if i >= 10:
+                    window = [float(t['price']) for t in trades[i-10:i+1]]
+                    if window[0] != 0:
+                        price_momentum = ((window[-1] - window[0]) / window[0]) * 100
+                    
+                    changes = np.diff(window) / (np.array(window[:-1]) + 1e-9)
+                    volatility = np.std(changes) * 100
+
+                # Create feature object
+                # Note: We use 0 for volume/imbalance as we don't have historical order book
+                feat = OrderBookFeatures(
+                    timestamp=int(datetime.fromisoformat(trade['timestamp'].replace('Z', '+00:00')).timestamp()),
+                    symbol=symbol,
+                    bid_ask_imbalance=0.0,
+                    spread_percent=0.0,
+                    mid_price=price,
+                    bid_volume=0.0,
+                    ask_volume=0.0,
+                    order_book_depth=0,
+                    large_bid_wall=False,
+                    large_ask_wall=False,
+                    wall_size=0.0,
+                    volume_weighted_price=price,
+                    price_momentum=price_momentum,
+                    volatility=volatility
+                )
+                
+                # Extract raw features (this applies log transforms etc.)
+                feature_dict = self.feature_engineer._extract_features(feat)
+                hist_features.append(list(feature_dict.values()))
+
+            if not hist_features:
+                return None
+                
+            X_hist = np.array(hist_features)
+            
+            # We must apply Imputer and Scaler to history to match X_scaled
+            if self.feature_engineer.imputer:
+                X_hist = self.feature_engineer.imputer.transform(X_hist)
+            if self.feature_engineer.scaler:
+                X_hist = self.feature_engineer.scaler.transform(X_hist)
+                
+            return X_hist
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch historical features from Coinbase: {e}")
+            return None
+
     def get_feature_importance(self) -> Dict[str, float]:
         """Get feature importance from the current model."""
         return self.feature_engineer.get_feature_importance()
