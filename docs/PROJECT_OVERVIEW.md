@@ -10,18 +10,22 @@ This is a comprehensive Python trading bot system built with modern technologies
 - **Real-time Trading**: WebSocket integration with Coinbase Advanced Trading API
 - **Multiple Trading Strategies**: 10+ strategies including SMA, RSI, Bollinger Bands, MACD, FIB, ATR, Stochastic, ML-enhanced order book analysis
 - **Advanced Backtesting**: Comprehensive historical data analysis with detailed performance metrics
-- **Modern Web Dashboard**: FastAPI-based interface with real-time data visualization and ML management
+- **Modern Web Dashboard**: Next.js/React dashboard with four tabs (ML Analytics, Simulated Trading, Live Trading, Backtesting)
 - **Risk Management**: Multi-level risk controls with stop-loss, take-profit, and position sizing
 - **Session-Based Trading**: Isolated trading sessions with comprehensive tracking and analytics
+- **Order Prioritization**: Configurable execution priority by signal strength, win probability, or expected return
 
 ### Machine Learning Optimization System
 - **ML Trading Optimization**: Integrated machine learning system for signal optimization and pattern recognition
-- **Hot-Swappable Feature Generation**: ML-based feature generation from raw order book data with hot-swappable models.
+- **Batch Training**: Memory-efficient training on large datasets using SGD regressor with incremental learning
+- **Hot-Swappable Feature Generation**: ML-based feature generation from raw order book data with hot-swappable models
 - **Vector Database Integration**: Qdrant + Redis architecture for ML feature storage and similarity search
 - **Automated Service Management**: Integrated startup of vector database, ML model server, and Redis cache
 - **Real-time Model Inference**: Sub-second ML predictions integrated into live trading strategies
-- **Model Management Framework**: Versioning, hot-swapping, and performance monitoring for both signal prediction and feature generation models.
-- **Feature Engineering Pipeline**: Advanced order book feature extraction and trading fee optimization
+- **Model Management Framework**: Versioning, hot-swapping, and performance monitoring for both signal prediction and feature generation models
+- **Feature Engineering Pipeline**: Advanced order book feature extraction with log-transform safety for zero values
+- **Model Comparison**: Side-by-side prediction comparison from multiple model versions
+- **Performance Tracking**: Top/bottom PnL trades analysis and model performance metrics
 
 ### Data Architecture
 - **Comprehensive Data Handling**: Multi-tier data architecture with specialized handlers
@@ -42,7 +46,10 @@ For a detailed overview of the system architecture, please see the [ARCHITECTURE
 - **[FEATURE_GENERATION.md](FEATURE_GENERATION.md)**: A detailed overview of the hot-swappable ML-based feature generation system.
 - **[SECURITY_SETUP.md](SECURITY_SETUP.md)**: A guide to setting up and managing API credentials.
 - **[VECTOR_DATABASE_SERVICE.md](VECTOR_DATABASE_SERVICE.md)**: An overview of the vector database service integration.
+- **[FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md)**: Comprehensive frontend component architecture and data flow.
 - **[WEBSOCKET_SUBSCRIPTIONS.md](WEBSOCKET_SUBSCRIPTIONS.md)**: A guide to the WebSocket subscription system.
+- **[API_REFERENCE.md](API_REFERENCE.md)**: Complete API endpoint reference for ML, trading, and WebSocket endpoints.
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**: Comprehensive troubleshooting guide for common issues.
 
 ## 🤝 Contributing
 

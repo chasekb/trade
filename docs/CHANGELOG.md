@@ -1,5 +1,162 @@
 # 📝 Changelog
 
+## [2.5.0] - 2024-12-01
+
+### 🚀 Features
+
+#### ML System Enhancements
+- **Batch Training**: Implemented memory-efficient batch training for large datasets using SGD regressor
+  - Configurable batch size (default: 1000 samples)
+  - Incremental learning support
+  - Automatic test_size adjustment based on sample count
+- **Model Prediction Comparison**: Added side-by-side comparison tool for multiple model versions
+  - Compare expected return, win probability, and confidence
+  - Model dropdowns ordered by most recent training date
+  - Accessible via ML Analytics tab
+- **Enhanced Model Management**:
+  - Model list with version history and timestamps
+  - Performance metrics tracking (R², RMSE, Sharpe ratio)
+  - Hot-swapping without trading interruption
+  - Rollback capability for model versioning
+
+#### Trading System Enhancements
+- **Order Prioritization**: Configurable execution priority for simulated trading
+  - Signal strength (descending)
+  - Win probability (descending)
+  - Expected return (descending)
+  - Waits for all symbols to have signals before execution
+- **Enhanced Order Book Signals Table**:
+  - Persistent signal updates (no data wiping)
+  - Symbol-based intelligent updating
+  - Timestamp-based freshness detection
+  - Maintains full signal history across tab switches
+
+#### Frontend Improvements
+- **ML Analytics Dashboard**:
+  - Batch training toggle and batch size configuration
+  - Model comparison interface
+  - Top/bottom PnL trades table
+  - Enhanced model selection dropdown
+  - Real-time training progress
+- **Simulated Trading Panel**:
+  - Order prioritization selector
+  - Improved order book signals table
+  - Better WebSocket handling
+  - Enhanced trading statistics display
+- **Live Trading Panel**:
+  - Synchronized features with Simulated Trading tab
+  - Enhanced configuration options
+  - Improved signals display
+
+### 🐛 Bug Fixes
+
+#### ML System Fixes
+- **NaN Score Issues**: Fixed insufficient training samples error
+  - Automatic test_size ratio adjustment
+  - Better handling of small datasets
+  - Validation on minimum sample requirements
+- **Extreme Value Calculations**: Fixed win probability and expected return extreme values
+  - Added log transform with epsilon for zero handling 
+  - Division by zero safety checks
+  - Feature engineering improvements for edge cases
+- **ML Server 503 Errors**: Fixed "Model is loading" errors
+  - Set `model_ready=True` during initialization
+  - Proper model activation endpoint
+  - Better error handling for model loading
+- **Model Training Display**: Fixed frontend misinterpreting training status
+  - Correct interpretation of `training_started` status
+  - Polling for completion
+  - Better status messages
+
+#### Frontend Fixes
+- **Order Book Signals Table**: Fixed table not rendering or showing partial data
+  - Improved WebSocket connection handling
+  - Better symbol list initialization
+  - Persistent data across tab switches
+- **Model Prediction Comparison**: Fixed "N/A" and "Error" results
+  - Better error handling
+  - Validation of model versions
+  - Improved prediction endpoint integration
+- **Batch Training Sample Size**: Fixed validation for minimum samples
+  - Proper error messaging
+  - Graceful degradation
+  - Better user feedback
+
+#### Trading System Fixes
+- **Signal Confidence**: Fixed confidence always showing same value
+  - Reverted to `confidence = abs(signal_value)`
+  - Removed incorrect `tanh` normalization
+  - Meaningful variation across signals
+
+### 📚 Documentation
+
+#### New Documentation
+- **API_REFERENCE.md**: Complete API endpoint reference
+  - ML endpoints with request/response examples
+  - Trading endpoints (simulated and live)
+  - WebSocket endpoints
+  - Error responses and rate limiting
+- **FRONTEND_ARCHITECTURE.md**: Comprehensive frontend documentation
+  - Component hierarchy and organization
+  - State management patterns
+  - Data flow diagrams
+  - TypeScript type definitions
+- **TROUBLESHOOTING.md**: Detailed troubleshooting guide
+  - ML system issues solutions
+  - Frontend problems and fixes
+  - Trading system troubleshooting
+  - Database and deployment issues
+
+#### Updated Documentation
+- **ML_TRADING_OPTIMIZATION.md**:
+  - Added batch training section
+  - Updated API endpoints with parameters
+  - Enhanced troubleshooting guide
+  - Model comparison documentation
+- **ARCHITECTURE.md**:
+  - Added frontend architecture section
+  - Updated ML system descriptions
+  - Enhanced data flow diagrams
+  - Recent feature documentation
+- **PROJECT_OVERVIEW.md**:
+  - Updated key features with batch training
+  - Added order prioritization
+  - New documentation links
+  - ML system enhancements
+
+### 🔧 Technical Improvements
+
+#### Performance
+- Memory-efficient batch processing for large datasets
+- Improved WebSocket connection stability
+- Optimized signal table rendering
+- Better database query performance
+
+#### Code Quality
+- Enhanced error handling across ML pipeline
+- Improved type safety in TypeScript components
+- Better logging and debugging information
+- Code organization improvements
+
+### 📊 Configuration Changes
+
+#### ML Configuration
+```json
+{
+  "batch_training_enabled": false,
+  "batch_size": 1000,
+  "default_days_back": 30
+}
+```
+
+#### Trading Configuration
+```json
+{
+  "order_prioritization": "signal_strength",
+  "wait_for_all_symbols": true
+}
+```
+
 ## [2.4.0] - 2025-11-12
 
 ### 🚀 Features
