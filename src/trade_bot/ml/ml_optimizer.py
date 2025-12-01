@@ -1,4 +1,3 @@
-from typing import List
 """ML Trading Optimization System - Main Integration."""
 
 import logging
@@ -9,6 +8,10 @@ from datetime import datetime
 import os
 import glob
 import json
+import asyncio
+import concurrent.futures
+
+logger = logging.getLogger(__name__)
 
 # Support both relative imports (when used as module) and absolute imports (when run standalone)
 try:
@@ -36,11 +39,6 @@ except ImportError as e:
         pass
     # Mock/Placeholder for standalone run if data provider not available
     CoinbaseDataProvider = None
-
-import asyncio
-import concurrent.futures
-
-logger = logging.getLogger(__name__)
 
 
 class MLTradingOptimizer:
