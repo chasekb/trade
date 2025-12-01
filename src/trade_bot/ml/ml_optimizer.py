@@ -399,8 +399,6 @@ class MLTradingOptimizer:
             
             # Convert prediction to trading signal
             signal_value = prediction[0]
-
-            # Win probability represents the ML model's estimated probability of a successful trade
             # Get the probability from the model's classifier
             win_probability = 50.0
             

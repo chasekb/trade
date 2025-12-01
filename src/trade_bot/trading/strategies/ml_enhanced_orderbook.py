@@ -172,6 +172,10 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         features['bid_volume'] = bid_volume
         features['ask_volume'] = ask_volume
         
+        if ask_volume == 0:
+            logger.warning(f"Ask volume is 0 for {len(self.asks)} asks. Top 5 asks: {self.asks[:5]}")
+
+        
         if ask_volume > 0:
             features['bid_ask_imbalance'] = bid_volume / ask_volume
         

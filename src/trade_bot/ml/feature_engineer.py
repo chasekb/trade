@@ -100,7 +100,7 @@ class FeatureEngineer:
         
         # Derived features
         feature_dict.update({
-            'volume_ratio': features.bid_volume / (features.ask_volume + 1e-8),
+            'volume_ratio': np.log(features.bid_volume + 1) - np.log(features.ask_volume + 1),
             'spread_normalized': features.spread_percent / (features.mid_price + 1e-8),
             'wall_size_normalized': features.wall_size / (features.bid_volume + features.ask_volume + 1e-8),
             'momentum_normalized': features.price_momentum / (features.volatility + 1e-8),
