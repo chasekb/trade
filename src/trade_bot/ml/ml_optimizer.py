@@ -31,8 +31,7 @@ except ImportError:
     CoinbaseDataProvider = None
 
 import asyncio
-import nest_asyncio
-nest_asyncio.apply()
+import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
@@ -547,18 +546,22 @@ class MLTradingOptimizer:
                 provider = CoinbaseDataProvider(symbol)
                 # Fetch recent trades to reconstruct price history
                 trades = await provider.get_recent_trades(limit=50)
+                await provider.close() if hasattr(provider, 'close') else None
                 return trades
 
+            # Run in a separate thread to avoid "loop is running" errors
+            # and to allow using asyncio.run() which creates a new loop
             try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            if loop.is_running():
-                trades = loop.run_until_complete(fetch_history())
-            else:
-                trades = asyncio.run(fetch_history())
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    trades = executor.submit(asyncio.run, fetch_history()).result()
+            except Exception as e:
+                logger.warning(f"Failed to run async fetch in thread: {e}")
+                # Fallback to direct run if threading fails (unlikely) or if asyncio.run fails
+                try:
+                    trades = asyncio.run(fetch_history())
+                except Exception as e2:
+                    logger.warning(f"Direct asyncio run also failed: {e2}")
+                    return None
             
             if not trades:
                 return None
