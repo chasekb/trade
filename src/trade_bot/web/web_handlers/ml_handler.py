@@ -205,23 +205,37 @@ async def get_ml_dashboard_data():
             # Add other classifier metrics if needed
             flat_performance.update({k: v for k, v in classifier_metrics.items() if k not in flat_performance})
             
-        return {
+        return sanitize_floats({
             'status': status,
             'performance': flat_performance,
             'feature_importance': feature_importance,
             'timestamp': datetime.now().isoformat()
-        }
+        })
     except Exception as e:
         logger.error(f"Error getting ML dashboard data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+def sanitize_floats(obj: Any) -> Any:
+    """Recursively replace NaN and Infinity with 0.0 or None."""
+    import math
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0.0
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_floats(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_floats(v) for v in obj]
+    return obj
 
 @ml_router.get("/pnl-trades")
 async def get_pnl_trades_data(sort_by: str = 'pnl'):
     """Get top and bottom trades by PnL."""
     try:
         optimizer = _get_ml_optimizer()
-        return optimizer.get_top_pnl_trades(sort_by=sort_by)
+        data = optimizer.get_top_pnl_trades(sort_by=sort_by)
+        return sanitize_floats(data)
     except Exception as e:
         logger.error(f"Error getting PnL trades data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
