@@ -759,15 +759,25 @@ class MLTradingOptimizer:
             for model in all_models:
                 model_name = model.get('model_name')
                 if model_name:
-                     if not self.delete_model(model_name):
-                         success = False
+                     # We use delete_model but allow it to fail (e.g. if file missing)
+                     # as long as we clear the registry
+                     try:
+                        self.delete_model(model_name)
+                     except Exception as e:
+                        logger.warning(f"Error deleting registered model {model_name}: {e}")
 
             # Legacy cleanup: Get all model files
+            # This catches files that were not in the registry
             model_files = glob.glob(os.path.join(self.models_dir, "trading_optimizer_*.pkl"))
             for model_file in model_files:
                 model_name = os.path.basename(model_file)
-                if not self.delete_model(model_name):
-                    success = False
+                # Only try to delete if file still exists
+                if os.path.exists(model_file):
+                    if not self.delete_model(model_name):
+                        # Only mark as failure if file exists and we couldn't delete it
+                        if os.path.exists(model_file):
+                            success = False
+                            logger.error(f"Failed to delete legacy model file: {model_file}")
 
             # Also delete any remaining transformer directories
             transformer_dirs = glob.glob(os.path.join(self.transformers_dir, "transformers_*"))
