@@ -216,8 +216,19 @@ function ModelControls() {
     updateModel, isUpdating,
     rollbackModel, isRollingBack,
     availableModels, isLoadingModels,
-    setActiveModel, isSettingActiveModel
+    setActiveModel, isSettingActiveModel,
+    deleteModel, isDeletingModel,
+    deleteAllModels, isDeletingAllModels
   } = useModelTraining();
+
+  const [selectedModel, setSelectedModel] = React.useState<string>('');
+
+  React.useEffect(() => {
+    if (availableModels && availableModels.length > 0 && !selectedModel) {
+      const firstModel = availableModels[0];
+      setSelectedModel(firstModel.model_id || firstModel.model_name);
+    }
+  }, [availableModels]);
 
   return (
     <Card>
@@ -252,32 +263,60 @@ function ModelControls() {
               {isRollingBack ? 'Rolling Back...' : 'Rollback'}
             </Button>
           </div>
-          <div className="grid grid-cols-[1fr_auto] gap-3">
-            <select
-              className="w-full px-3 py-2 border rounded-md"
-              onChange={(e) => setActiveModel(e.target.value)}
-              disabled={isLoadingModels || isSettingActiveModel}
+          
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium mb-3">Model Management</h4>
+            <div className="flex gap-3">
+              <select
+                className="flex-1 px-3 py-2 border rounded-md"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={isLoadingModels || isSettingActiveModel || isDeletingModel}
+              >
+                {isLoadingModels ? (
+                  <option>Loading models...</option>
+                ) : (
+                  availableModels?.map((model: any) => (
+                    <option key={model.model_id || model.model_name} value={model.model_id || model.model_name}>
+                      {model.model_name} {model.version_id ? `(${model.version_id})` : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+              <Button
+                onClick={() => {
+                  if (selectedModel) {
+                    setActiveModel(selectedModel);
+                  }
+                }}
+                disabled={isSettingActiveModel || !selectedModel}
+              >
+                {isSettingActiveModel ? 'Activating...' : 'Set Active'}
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedModel) {
+                    deleteModel(selectedModel);
+                  }
+                }}
+                disabled={isDeletingModel || !selectedModel}
+                variant="danger"
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isDeletingModel ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium mb-3 text-red-600">Danger Zone</h4>
+             <Button
+              onClick={() => deleteAllModels()}
+              disabled={isDeletingAllModels}
+              variant="danger"
+              className="w-full bg-red-100 text-red-700 hover:bg-red-200 border-red-200"
             >
-              {isLoadingModels ? (
-                <option>Loading models...</option>
-              ) : (
-                availableModels?.map((model: any) => (
-                  <option key={model.model_id || model.model_name} value={model.model_id || model.model_name}>
-                    {model.model_name} {model.version_id ? `(${model.version_id})` : ''}
-                  </option>
-                ))
-              )}
-            </select>
-            <Button
-              onClick={() => {
-                const select = document.querySelector('select');
-                if (select) {
-                  setActiveModel(select.value);
-                }
-              }}
-              disabled={isSettingActiveModel}
-            >
-              {isSettingActiveModel ? 'Activating...' : 'Set Active'}
+              {isDeletingAllModels ? 'Deleting All Models...' : 'Delete All Models'}
             </Button>
           </div>
         </div>

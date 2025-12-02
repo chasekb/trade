@@ -351,6 +351,18 @@ class ApiClient {
     });
   }
 
+  async deleteModel(modelName: string): Promise<ApiResponse<any>> {
+    return this.request(`/api/ml/models/${modelName}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async deleteAllModels(): Promise<ApiResponse<any>> {
+    return this.request('/api/ml/models', {
+      method: 'DELETE',
+    });
+  }
+
   async getPredictionComparison(modelIds: string[], features: any): Promise<ApiResponse<any>> {
     return this.request('/api/ml/prediction-comparison', {
       method: 'POST',

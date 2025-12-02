@@ -124,6 +124,60 @@ export function useModelTraining() {
     },
   });
 
+  const deleteModelMutation = useMutation({
+    mutationFn: async (modelName: string) => {
+      if (!confirm(`Are you sure you want to delete model "${modelName}"? This action cannot be undone.`)) {
+        throw new Error('Deletion cancelled by user');
+      }
+      const response = await apiClient.deleteModel(modelName);
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to delete model');
+      }
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (data.status === 'success') {
+        showSuccess(data.message || 'Model deleted successfully');
+        queryClient.invalidateQueries({ queryKey: ['ml', 'models'] });
+        queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+      } else {
+        showError(data.error || 'Failed to delete model');
+      }
+    },
+    onError: (error) => {
+      if (error.message !== 'Deletion cancelled by user') {
+        showError(error.message || 'Failed to delete model');
+      }
+    },
+  });
+
+  const deleteAllModelsMutation = useMutation({
+    mutationFn: async () => {
+      if (!confirm('Are you sure you want to delete ALL models? This action cannot be undone and will remove all trained models.')) {
+        throw new Error('Deletion cancelled by user');
+      }
+      const response = await apiClient.deleteAllModels();
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to delete all models');
+      }
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (data.status === 'success') {
+        showSuccess(data.message || 'All models deleted successfully');
+        queryClient.invalidateQueries({ queryKey: ['ml', 'models'] });
+        queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+      } else {
+        showError(data.error || 'Failed to delete all models');
+      }
+    },
+    onError: (error) => {
+      if (error.message !== 'Deletion cancelled by user') {
+        showError(error.message || 'Failed to delete all models');
+      }
+    },
+  });
+
   return {
     // Training
     trainModel: trainMutation.mutate,
@@ -145,5 +199,11 @@ export function useModelTraining() {
     isLoadingModels,
     setActiveModel: setActiveModelMutation.mutate,
     isSettingActiveModel: setActiveModelMutation.isPending,
+    
+    // Deletion
+    deleteModel: deleteModelMutation.mutate,
+    isDeletingModel: deleteModelMutation.isPending,
+    deleteAllModels: deleteAllModelsMutation.mutate,
+    isDeletingAllModels: deleteAllModelsMutation.isPending,
   };
 }

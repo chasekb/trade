@@ -320,6 +320,36 @@ async def set_active_model(model_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@ml_router.delete("/models/{model_name}")
+async def delete_model(model_name: str):
+    """Delete a specific ML model."""
+    try:
+        optimizer = _get_ml_optimizer()
+        success = optimizer.delete_model(model_name)
+        if not success:
+            raise HTTPException(status_code=400, detail=f"Failed to delete model: {model_name}")
+        
+        return {"status": "success", "message": f"Model {model_name} deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@ml_router.delete("/models")
+async def delete_all_models():
+    """Delete all ML models."""
+    try:
+        optimizer = _get_ml_optimizer()
+        success = optimizer.delete_all_models()
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete all models")
+        
+        return {"status": "success", "message": "All models deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting all models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 from ...ml.data_collector import OrderBookFeatures
 
 @ml_router.post("/prediction-comparison")
