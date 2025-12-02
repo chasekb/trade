@@ -516,11 +516,36 @@ class MLTradingOptimizer:
                 logger.warning("No valid new data for model update")
                 return False
             
-            # Preprocess new features (using existing scaler and selector)
-            X_new_processed = self.feature_engineer.transform_features(X_new)
-            X_new_selected = self.feature_engineer.transform_features_selected(X_new_processed)
-            X_new_ts = self.feature_engineer.create_time_series_features(X_new_selected)
-            X_new_final = self.feature_engineer.create_interaction_features(X_new_ts)
+            # Ensure transformers are loaded
+            self.load_transformers()
+
+            # Preprocess new features (correct order: Impute -> TS -> Interactions -> Scale -> Select)
+            
+            # 1. Impute
+            if self.feature_engineer.imputer:
+                X_new_imputed = self.feature_engineer.imputer.transform(X_new)
+            else:
+                X_new_imputed = X_new
+                
+            # 2. Time Series
+            # Note: We ideally need historical data for accurate rolling stats, 
+            # but for storage we'll calculate based on the batch
+            X_new_ts = self.feature_engineer.create_time_series_features(X_new_imputed)
+            
+            # 3. Interactions
+            X_new_interactions = self.feature_engineer.create_interaction_features(X_new_ts)
+            
+            # 4. Scale
+            if self.feature_engineer.scaler:
+                X_new_scaled = self.feature_engineer.transform_features(X_new_interactions)
+            else:
+                X_new_scaled = X_new_interactions
+                
+            # 5. Select
+            X_new_final = self.feature_engineer.transform_features_selected(X_new_scaled)
+            
+            # Save transformers
+            self.feature_engineer.save_transformers(self.transformers_dir)
             
             # Store new feature vectors
             self._store_feature_vectors_in_db(new_features, X_new_final)
