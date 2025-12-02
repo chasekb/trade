@@ -454,6 +454,8 @@ class FeatureEngineer:
         Incremental preprocessing pipeline.
         Returns (X_processed, y_processed, next_window).
         """
+        logger.info(f"Incremental pipeline: input shape {X.shape}, fit={fit}")
+
         # Step 1: Handle missing values
         if fit:
             self.partial_fit(X, y)
@@ -463,23 +465,35 @@ class FeatureEngineer:
         else:
             X_imputed = X # Should not happen if fit called or loaded
 
-        # Step 2: Time series and interaction features (on unscaled data for incremental)
+        logger.info(f"After imputation: {X_imputed.shape}")
+
+        # Step 2: Time series features (on unscaled data for incremental)
         # Note: For incremental learning, we create features first then scale
         X_ts, next_window = self.create_time_series_features_incremental(X_imputed, previous_window=previous_window)
-        X_interactions = self.create_interaction_features(X_ts)
-        
-        # Step 3: Feature scaling (AFTER creating interactions)
-        if self.scaler:
-            X_scaled = self.scaler.transform(X_interactions)
-        else:
-            X_scaled = X_interactions
+        logger.info(f"After time series: {X_ts.shape}")
 
-        # Step 4: Feature selection
-        if self.feature_selector:
-            X_selected = self.feature_selector.transform(X_scaled)
+        # Step 3: Feature scaling (BEFORE creating interactions for incremental learning)
+        # This is different from the main pipeline to avoid dimension mismatch
+        if self.scaler:
+            X_scaled = self.scaler.transform(X_ts)
+            logger.info(f"After scaling: {X_scaled.shape}")
         else:
-            X_selected = X_scaled
-        
+            X_scaled = X_ts
+            logger.info(f"No scaler available, using unscaled: {X_scaled.shape}")
+
+        # Step 4: Interaction features (AFTER scaling for incremental learning)
+        # This ensures we don't create interactions on unscaled data that would mismatch
+        X_interactions = self.create_interaction_features(X_scaled)
+        logger.info(f"After interactions: {X_interactions.shape}")
+
+        # Step 5: Feature selection
+        if self.feature_selector:
+            X_selected = self.feature_selector.transform(X_interactions)
+            logger.info(f"After selection: {X_selected.shape}")
+        else:
+            X_selected = X_interactions
+            logger.info(f"No selector available: {X_selected.shape}")
+
         # Log feature statistics for troubleshooting
         if X_selected.shape[0] > 0:
              logger.info(f"Processed Features Stats - "
