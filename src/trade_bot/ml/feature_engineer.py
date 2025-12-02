@@ -411,19 +411,21 @@ class FeatureEngineer:
         else:
             X_imputed = self.imputer.transform(X)
 
-        # Step 2: Feature scaling
-        if fit_transform:
-            self.fit_scaler(X_imputed)
-        X_scaled = self.transform_features(X_imputed)
-        
-        # Step 3: Time series and interaction features
-        X_ts = self.create_time_series_features(X_scaled, historical_data=historical_data)
+        # Step 2: Time series and interaction features (on unscaled data)
+        # Note: We create these first, then scale everything together
+        X_ts = self.create_time_series_features(X_imputed, historical_data=historical_data)
         X_interactions = self.create_interaction_features(X_ts)
+        
+        # Step 3: Feature scaling (AFTER creating interactions)
+        # This ensures polynomial features are also normalized
+        if fit_transform:
+            self.fit_scaler(X_interactions)
+        X_scaled = self.transform_features(X_interactions)
 
         # Step 4: Feature selection
         if fit_transform and y is not None:
-            self.fit_feature_selector(X_interactions, y)
-        X_selected = self.transform_features_selected(X_interactions)
+            self.fit_feature_selector(X_scaled, y)
+        X_selected = self.transform_features_selected(X_scaled)
         
         X_final = X_selected
         
@@ -446,22 +448,29 @@ class FeatureEngineer:
         else:
             X_imputed = X # Should not happen if fit called or loaded
 
-        # Step 2: Feature scaling
-        if self.scaler:
-            X_scaled = self.scaler.transform(X_imputed)
-        else:
-            X_scaled = X_imputed
-        
-        # Step 3: Time series and interaction features
-        X_ts, next_window = self.create_time_series_features_incremental(X_scaled, previous_window=previous_window)
+        # Step 2: Time series and interaction features (on unscaled data for incremental)
+        # Note: For incremental learning, we create features first then scale
+        X_ts, next_window = self.create_time_series_features_incremental(X_imputed, previous_window=previous_window)
         X_interactions = self.create_interaction_features(X_ts)
+        
+        # Step 3: Feature scaling (AFTER creating interactions)
+        if self.scaler:
+            X_scaled = self.scaler.transform(X_interactions)
+        else:
+            X_scaled = X_interactions
 
         # Step 4: Feature selection
         if self.feature_selector:
-            X_selected = self.feature_selector.transform(X_interactions)
+            X_selected = self.feature_selector.transform(X_scaled)
         else:
-            X_selected = X_interactions
+            X_selected = X_scaled
         
+        # Log feature statistics for troubleshooting
+        if X_selected.shape[0] > 0:
+             logger.info(f"Processed Features Stats - "
+                       f"min={np.min(X_selected):.4f}, max={np.max(X_selected):.4f}, "
+                       f"mean={np.mean(X_selected):.4f}, std={np.std(X_selected):.4f}")
+
         return X_selected, y, next_window
 
 

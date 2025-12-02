@@ -229,8 +229,8 @@ class MLDataCollector:
         cursor = conn.cursor()
         
         query = """
-            SELECT signal_id, session_id, symbol, signal_type, strength, price, 
-                   timestamp, signal_data, spread, imbalance, mid_price, 
+            SELECT signal_id, session_id, symbol, signal_type, signal_strength, price, 
+                   timestamp, signal, spread, imbalance, mid_price, 
                    best_bid, best_ask, order_book_depth, volume, total_signals
             FROM order_book_signals 
             WHERE timestamp >= ?
@@ -242,7 +242,12 @@ class MLDataCollector:
         
         signals = []
         for row in results:
-            signal_data = json.loads(row[7]) if row[7] else {}
+            # Parse signal JSON if it looks like JSON, otherwise empty dict
+            try:
+                signal_data = json.loads(row[7]) if row[7] and row[7].startswith('{') else {}
+            except json.JSONDecodeError:
+                signal_data = {}
+                
             signals.append({
                 'signal_id': row[0],
                 'session_id': row[1],
@@ -274,8 +279,8 @@ class MLDataCollector:
         offset = 0
         while True:
             query = """
-                SELECT signal_id, session_id, symbol, signal_type, strength, price, 
-                       timestamp, signal_data, spread, imbalance, mid_price, 
+                SELECT signal_id, session_id, symbol, signal_type, signal_strength, price, 
+                       timestamp, signal, spread, imbalance, mid_price, 
                        best_bid, best_ask, order_book_depth, volume, total_signals
                 FROM order_book_signals 
                 WHERE timestamp >= ?
@@ -291,7 +296,12 @@ class MLDataCollector:
             
             signals = []
             for row in results:
-                signal_data = json.loads(row[7]) if row[7] else {}
+                # Parse signal JSON if it looks like JSON, otherwise empty dict
+                try:
+                    signal_data = json.loads(row[7]) if row[7] and row[7].startswith('{') else {}
+                except json.JSONDecodeError:
+                    signal_data = {}
+                    
                 signals.append({
                     'signal_id': row[0],
                     'session_id': row[1],
