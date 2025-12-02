@@ -476,26 +476,26 @@ class FeatureEngineer:
         X_ts, next_window = self.create_time_series_features_incremental(X_imputed, previous_window=previous_window)
         logger.info(f"After time series: {X_ts.shape}")
 
-        # Step 3: Feature scaling (BEFORE creating interactions for incremental learning)
-        # This is different from the main pipeline to avoid dimension mismatch
+        # Step 3: Interaction features (on unscaled data for incremental)
+        # MUST create interactions BEFORE scaling to match main pipeline
+        X_interactions = self.create_interaction_features(X_ts)
+        logger.info(f"After interactions: {X_interactions.shape}")
+
+        # Step 4: Feature scaling (AFTER creating interactions to match main pipeline)
+        # This ensures we have the same feature expansion as the main training pipeline
         if self.scaler:
-            X_scaled = self.scaler.transform(X_ts)
+            X_scaled = self.scaler.transform(X_interactions)
             logger.info(f"After scaling: {X_scaled.shape}")
         else:
-            X_scaled = X_ts
+            X_scaled = X_interactions
             logger.info(f"No scaler available, using unscaled: {X_scaled.shape}")
-
-        # Step 4: Interaction features (AFTER scaling for incremental learning)
-        # This ensures we don't create interactions on unscaled data that would mismatch
-        X_interactions = self.create_interaction_features(X_scaled)
-        logger.info(f"After interactions: {X_interactions.shape}")
 
         # Step 5: Feature selection
         if self.feature_selector:
-            X_selected = self.feature_selector.transform(X_interactions)
+            X_selected = self.feature_selector.transform(X_scaled)
             logger.info(f"After selection: {X_selected.shape}")
         else:
-            X_selected = X_interactions
+            X_selected = X_scaled
             logger.info(f"No selector available: {X_selected.shape}")
 
         # Log feature statistics for troubleshooting
