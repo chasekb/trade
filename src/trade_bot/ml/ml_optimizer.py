@@ -141,26 +141,30 @@ class MLTradingOptimizer:
                         days_back: int = 30) -> Dict[str, Any]:
         """Train ML models on the collected data."""
         logger.info(f"Starting ML model training (Batching: {batch_training})")
-        
+
         if batch_training:
             return self._train_batch_models(model_type, batch_size, days_back)
-            
+
         if features is None or outcomes is None:
             # If not provided and not batch training, collect all data
             features, outcomes = self.collect_and_preprocess_data(days_back)
-            
+
         # Create feature matrix
         X, y, feature_names = self.feature_engineer.create_feature_matrix(features, outcomes)
-        
+
         if X.shape[0] == 0:
             logger.error("No valid training data")
             return {}
-        
-        # Preprocess features
+
+        # Preprocess features - create new transformers for this training session
+        # Clear existing transformers to ensure fresh fitting for this model
+        self.feature_engineer = FeatureEngineer()  # Create fresh feature engineer
         X_processed, y_processed = self.feature_engineer.preprocess_pipeline(X, y, fit_transform=True)
-        
-        # Save the fitted transformers
-        self.feature_engineer.save_transformers(self.transformers_dir)
+
+        # Save the fitted transformers with model-specific naming
+        model_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        model_transformers_dir = os.path.join(self.transformers_dir, f"transformers_{model_timestamp}")
+        self.feature_engineer.save_transformers(model_transformers_dir)
         
         # Train models
         # Train models
