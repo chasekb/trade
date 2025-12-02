@@ -338,7 +338,7 @@ class MLTradingOptimizer:
         return training_results
 
     def _create_batch_generator(self, batch_size: int, days_back: int):
-        """Create a generator that yields (X_processed, outcomes) batches."""
+        """Create a generator that yields (X_processed, outcomes, targets) batches."""
         raw_batch_generator = self.data_collector.yield_training_batches(batch_size, days_back)
         
         previous_window = None
@@ -366,7 +366,8 @@ class MLTradingOptimizer:
             # Store vectors in DB (optional, might be slow for large datasets)
             # self._store_feature_vectors_in_db(features, X_processed)
             
-            yield X_processed, outcomes
+            # Yield X_processed, outcomes (for classifier), and y (processed targets for regressor)
+            yield X_processed, outcomes, y
 
     
     def predict_trading_signal(self, current_features: OrderBookFeatures) -> Dict[str, Any]:

@@ -124,7 +124,14 @@ class ModelTrainer:
         # Minimum samples required for train/test split
         MIN_SAMPLES_FOR_SPLIT = 5
         
-        for X_batch, y_batch in data_generator:
+        for batch_data in data_generator:
+            # Handle different generator yield formats (X, y) or (X, y, processed_targets)
+            if len(batch_data) == 3:
+                X_batch, y_batch, processed_targets = batch_data
+            else:
+                X_batch, y_batch = batch_data
+                processed_targets = None
+
             if len(X_batch) == 0:
                 continue
                 
@@ -136,8 +143,13 @@ class ModelTrainer:
             if np.isnan(X_batch).any() or np.isinf(X_batch).any():
                 logger.warning(f"Batch {batch_count + 1} contains NaNs or Infs in features. Skipping.")
                 continue
+            
+            # Target for regressor - use processed targets if available (normalized), otherwise raw PnL
+            if processed_targets is not None:
+                y_batch_reg = np.array(processed_targets)
+            else:
+                y_batch_reg = np.array([y.pnl for y in y_batch])
                 
-            y_batch_reg = np.array([y.pnl for y in y_batch]) # Target for regressor
             y_batch_cls = np.array([y.is_win for y in y_batch]) # Target for classifier
             
             # Check for NaNs or Infs in targets
