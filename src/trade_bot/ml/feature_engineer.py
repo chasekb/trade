@@ -210,42 +210,57 @@ class FeatureEngineer:
         if k > X.shape[1]:
             logger.warning(f"k={k} is greater than the number of features {X.shape[1]}. Adjusting k to {X.shape[1]}.")
             k = X.shape[1]
-        
+
         self.feature_selector = SelectKBest(score_func=f_regression, k=k)
         self.feature_selector.fit(X, y)
-        
+
         # Update feature names to selected features
         selected_indices = self.feature_selector.get_support(indices=True)
-        
-        # Generate new names for the expanded features
-        base_names = self.feature_names
-        
-        # Names for time series features
-        ts_mean_names = [f"{name}_mean" for name in base_names]
-        ts_std_names = [f"{name}_std" for name in base_names]
-        
-        # Names for interaction features
-        interaction_names = []
-        key_features_indices = list(range(min(5, len(base_names))))
-        
-        for i in key_features_indices:
-            for j in range(i, len(key_features_indices)):
-                if i == j:
-                    interaction_names.append(f"{base_names[i]}_sq")
-                else:
-                    interaction_names.append(f"{base_names[i]}_x_{base_names[j]}")
 
-        # Combine all feature names in the correct order
-        extended_feature_names = base_names + ts_mean_names + ts_std_names + interaction_names
-        
+        # Generate feature names based on the actual input shape
+        # If we have base feature names and the input shape matches expected expansion, use them
+        if hasattr(self, 'feature_names') and len(self.feature_names) > 0:
+            base_count = len(self.feature_names)
+            expected_expanded_count = base_count * 3  # base + mean + std
+
+            if X.shape[1] == expected_expanded_count:
+                # We have time series features but no interactions (this is the standard case)
+                base_names = self.feature_names
+                ts_mean_names = [f"{name}_mean" for name in base_names]
+                ts_std_names = [f"{name}_std" for name in base_names]
+                extended_feature_names = base_names + ts_mean_names + ts_std_names
+            elif X.shape[1] > expected_expanded_count:
+                # We have both time series and interaction features
+                base_names = self.feature_names
+                ts_mean_names = [f"{name}_mean" for name in base_names]
+                ts_std_names = [f"{name}_std" for name in base_names]
+
+                # Add interaction feature names
+                interaction_names = []
+                key_features_indices = list(range(min(5, len(base_names))))
+                for i in key_features_indices:
+                    for j in range(i, len(key_features_indices)):
+                        if i == j:
+                            interaction_names.append(f"{base_names[i]}_sq")
+                        else:
+                            interaction_names.append(f"{base_names[i]}_x_{base_names[j]}")
+
+                extended_feature_names = base_names + ts_mean_names + ts_std_names + interaction_names
+            else:
+                # Fallback: use generic names if we can't determine the structure
+                extended_feature_names = [f"feature_{i}" for i in range(X.shape[1])]
+        else:
+            # No base feature names available, use generic names
+            extended_feature_names = [f"feature_{i}" for i in range(X.shape[1])]
+
         # Ensure the generated names match the number of features
         if len(extended_feature_names) != X.shape[1]:
             logger.warning(f"Mismatch in feature names ({len(extended_feature_names)}) and feature count ({X.shape[1]}). Using generic names.")
             extended_feature_names = [f"feature_{i}" for i in range(X.shape[1])]
 
         self.feature_names = [extended_feature_names[i] for i in selected_indices]
-        
-        logger.info(f"Selected {len(self.feature_names)} most important features")
+
+        logger.info(f"Selected {len(self.feature_names)} most important features from {X.shape[1]} total features")
 
     def partial_fit(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> None:
         """Incrementally fit transformers on a batch of data."""
@@ -403,7 +418,7 @@ class FeatureEngineer:
                           historical_data: Optional[np.ndarray] = None) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """Complete preprocessing pipeline."""
         logger.info("Starting preprocessing pipeline")
-        
+
         # Step 1: Handle missing values
         if fit_transform:
             self.imputer = SimpleImputer(strategy='mean')
@@ -415,7 +430,7 @@ class FeatureEngineer:
         # Note: We create these first, then scale everything together
         X_ts = self.create_time_series_features(X_imputed, historical_data=historical_data)
         X_interactions = self.create_interaction_features(X_ts)
-        
+
         # Step 3: Feature scaling (AFTER creating interactions)
         # This ensures polynomial features are also normalized
         if fit_transform:
@@ -426,10 +441,10 @@ class FeatureEngineer:
         if fit_transform and y is not None:
             self.fit_feature_selector(X_scaled, y)
         X_selected = self.transform_features_selected(X_scaled)
-        
+
         X_final = X_selected
-        
-        logger.info(f"Preprocessing complete: {X_final.shape}")
+
+        logger.info(f"Preprocessing complete: {X_final.shape} (original: {X.shape[1]}, after TS: {X_ts.shape[1]}, after interactions: {X_interactions.shape[1]}, after scaling: {X_scaled.shape[1]}, after selection: {X_selected.shape[1]})")
         return X_final, y
 
     def preprocess_pipeline_incremental(self, X: np.ndarray, y: Optional[np.ndarray] = None, 
