@@ -413,6 +413,26 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Error saving model registry: {e}")
     
+    def unregister_model(self, model_name: str) -> bool:
+        """Unregister a model and remove it from the registry."""
+        try:
+            if model_name in self.model_versions:
+                del self.model_versions[model_name]
+                
+                # Also remove from performance history if present
+                if model_name in self.performance_history:
+                    del self.performance_history[model_name]
+                
+                self._save_model_registry()
+                logger.info(f"Unregistered model {model_name}")
+                return True
+            else:
+                logger.warning(f"Model {model_name} not found in registry")
+                return False
+        except Exception as e:
+            logger.error(f"Error unregistering model: {e}")
+            return False
+
     def cleanup_old_versions(self, model_name: str, keep_versions: int = 5) -> bool:
         """Clean up old model versions, keeping only the most recent ones."""
         try:

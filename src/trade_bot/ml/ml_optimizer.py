@@ -694,6 +694,17 @@ class MLTradingOptimizer:
     def delete_model(self, model_name: str) -> bool:
         """Delete a specific model and its associated artifacts."""
         try:
+            # First try the new versioned structure
+            if self.model_manager.unregister_model(model_name):
+                # Delete versioned directory
+                model_dir = os.path.join(self.models_dir, model_name)
+                if os.path.exists(model_dir):
+                    import shutil
+                    shutil.rmtree(model_dir)
+                    logger.info(f"Deleted versioned model directory: {model_dir}")
+                return True
+
+            # Fallback to old flat file structure
             # Extract timestamp from model name to find corresponding transformers
             if model_name.startswith("trading_optimizer_") and model_name.endswith(".pkl"):
                 timestamp_part = model_name[len("trading_optimizer_"):-len(".pkl")]
@@ -717,13 +728,22 @@ class MLTradingOptimizer:
                     shutil.rmtree(transformer_dir)
                     logger.info(f"Deleted transformer directory: {transformer_dir}")
 
-                # Unregister from model manager
+                # Unregister from model manager (even if it wasn't found in versioned, it might be in legacy if loaded)
                 self.model_manager.unregister_model(model_name)
                 logger.info(f"Unregistered model: {model_name}")
 
                 return True
             else:
-                logger.warning(f"Invalid model name format: {model_name}")
+                # Try simple directory deletion if it matches model name
+                model_dir = os.path.join(self.models_dir, model_name)
+                if os.path.exists(model_dir) and os.path.isdir(model_dir):
+                     import shutil
+                     shutil.rmtree(model_dir)
+                     logger.info(f"Deleted model directory: {model_dir}")
+                     self.model_manager.unregister_model(model_name)
+                     return True
+                
+                logger.warning(f"Could not delete model: {model_name}")
                 return False
         except Exception as e:
             logger.error(f"Error deleting model {model_name}: {e}")
@@ -733,8 +753,16 @@ class MLTradingOptimizer:
         """Delete all models and their associated artifacts."""
         try:
             success = True
+            
+            # Delete from model registry
+            all_models = self.list_available_models()
+            for model in all_models:
+                model_name = model.get('model_name')
+                if model_name:
+                     if not self.delete_model(model_name):
+                         success = False
 
-            # Get all model files
+            # Legacy cleanup: Get all model files
             model_files = glob.glob(os.path.join(self.models_dir, "trading_optimizer_*.pkl"))
             for model_file in model_files:
                 model_name = os.path.basename(model_file)
