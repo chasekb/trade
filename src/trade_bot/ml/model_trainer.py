@@ -144,6 +144,12 @@ class ModelTrainer:
             if np.isnan(y_batch_reg).any() or np.isinf(y_batch_reg).any():
                 logger.warning(f"Batch {batch_count + 1} contains NaNs or Infs in targets. Skipping.")
                 continue
+
+            # Log batch statistics for troubleshooting
+            if batch_count % 10 == 0:
+                logger.info(f"Batch {batch_count + 1} Stats - "
+                          f"X: min={np.min(X_batch):.4f}, max={np.max(X_batch):.4f}, mean={np.mean(X_batch):.4f}, std={np.std(X_batch):.4f} | "
+                          f"y: min={np.min(y_batch_reg):.4f}, max={np.max(y_batch_reg):.4f}, mean={np.mean(y_batch_reg):.4f}, std={np.std(y_batch_reg):.4f}")
             
             try:
                 # Check if batch is large enough for train/test split
@@ -160,16 +166,22 @@ class ModelTrainer:
                     classes = np.array([False, True])
                     classifier.partial_fit(X_train, y_train_cls, classes=classes)
                     
-                    # Evaluate on test split
-                    reg_score = model.score(X_test, y_test_reg)
-                    cls_score = classifier.score(X_test, y_test_cls)
-                    
-                    # Handle NaN scores
-                    if np.isnan(reg_score):
-                        logger.warning(f"Batch {batch_count + 1} produced NaN regression score.")
-                        reg_score = 0.0
+                    # Evaluate on test split only if variance exists
+                    # Zero variance in targets makes R² undefined
+                    if np.std(y_test_reg) > 1e-6:  # Check for non-zero variance
+                        reg_score = model.score(X_test, y_test_reg)
                         
-                    rolling_mse.append(reg_score)
+                        # Handle NaN scores
+                        if np.isnan(reg_score):
+                            logger.warning(f"Batch {batch_count + 1} produced NaN regression score.")
+                            reg_score = 0.0
+                            
+                        rolling_mse.append(reg_score)
+                    else:
+                        # Skip score for zero-variance targets
+                        logger.debug(f"Batch {batch_count + 1} has zero target variance, skipping R² evaluation")
+                    
+                    cls_score = classifier.score(X_test, y_test_cls)
                     rolling_accuracy.append(cls_score)
                 else:
                     # Batch too small for split - use entire batch for training without validation
