@@ -264,42 +264,46 @@ class FeatureEngineer:
 
     def partial_fit(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> None:
         """Incrementally fit transformers on a batch of data."""
+        logger.info(f"Partial fit: input shape {X.shape}")
+
         # Step 1: Handle missing values
         if self.imputer is None:
             self.imputer = SimpleImputer(strategy='mean')
-            # SimpleImputer doesn't support partial_fit in all versions/configurations easily 
-            # without knowing all stats, but for 'mean', we can use fit on the first batch 
-            # and then transform. True partial_fit for imputer is tricky.
-            # However, for 'mean', we can just fit on the batch if we assume batches are representative.
-            # Better approach for streaming: Use a pre-defined constant or robust scaling that handles NaNs.
-            # For now, we'll fit on the current batch if not fitted.
             self.imputer.fit(X)
+            logger.info(f"Fitted imputer on shape {X.shape}")
         else:
-            # Re-fitting on new batch might shift means slightly, but standard SimpleImputer 
-            # doesn't have partial_fit. We'll stick with the initial fit or refit if needed.
-            # Ideally we'd use an incremental imputer, but for now let's assume the first batch 
-            # gives a good enough mean, or we just refit (which is wrong for global mean).
-            # Let's skip refitting imputer for now to keep it stable.
+            # For incremental learning, we need to fit on the expanded features
+            # Skip refitting imputer for now to keep it stable
             pass
 
         X_imputed = self.imputer.transform(X)
+        logger.info(f"After imputation: {X_imputed.shape}")
 
-        # Step 2: Feature scaling
+        # Step 2: Time series features (must be created before scaling for incremental)
+        X_ts, _ = self.create_time_series_features_incremental(X_imputed, previous_window=None)
+        logger.info(f"After time series: {X_ts.shape}")
+
+        # Step 3: Feature scaling (fit on expanded features for incremental)
         if self.scaler is None:
             if self.feature_scaling == 'standard':
                 self.scaler = StandardScaler()
             elif self.feature_scaling == 'minmax':
                 self.scaler = MinMaxScaler()
-        
+            logger.info(f"Created new scaler for shape {X_ts.shape}")
+
         if self.scaler is not None and hasattr(self.scaler, 'partial_fit'):
-            self.scaler.partial_fit(X_imputed)
-        
-        # Step 3: Feature selection
-        # SelectKBest does not support partial_fit. We will skip feature selection updates 
-        # during incremental learning and rely on the initial selection or a separate selection phase.
+            self.scaler.partial_fit(X_ts)
+            logger.info(f"Partial fitted scaler on shape {X_ts.shape}")
+        elif self.scaler is not None:
+            # If partial_fit not available, fit on the expanded features
+            self.scaler.fit(X_ts)
+            logger.info(f"Fitted scaler on expanded shape {X_ts.shape}")
+
+        # Step 4: Feature selection (fit on expanded features for incremental)
         if self.feature_selector is None and y is not None:
-             # If this is the first batch, we can try to fit it
-             self.fit_feature_selector(X_imputed, y)
+            # If this is the first batch, fit feature selector on expanded features
+            self.fit_feature_selector(X_ts, y)
+            logger.info(f"Fitted feature selector on expanded shape {X_ts.shape}")
 
     
     def transform_features_selected(self, X: np.ndarray) -> np.ndarray:
