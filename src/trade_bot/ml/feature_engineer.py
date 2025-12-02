@@ -283,27 +283,32 @@ class FeatureEngineer:
         X_ts, _ = self.create_time_series_features_incremental(X_imputed, previous_window=None)
         logger.info(f"After time series: {X_ts.shape}")
 
-        # Step 3: Feature scaling (fit on expanded features for incremental)
+        # Step 3: Interaction features (MUST be created before scaling to match main pipeline)
+        # This was the missing step causing the dimension mismatch!
+        X_interactions = self.create_interaction_features(X_ts)
+        logger.info(f"After interactions: {X_interactions.shape}")
+
+        # Step 4: Feature scaling (fit on expanded features for incremental)
         if self.scaler is None:
             if self.feature_scaling == 'standard':
                 self.scaler = StandardScaler()
             elif self.feature_scaling == 'minmax':
                 self.scaler = MinMaxScaler()
-            logger.info(f"Created new scaler for shape {X_ts.shape}")
+            logger.info(f"Created new scaler for shape {X_interactions.shape}")
 
         if self.scaler is not None and hasattr(self.scaler, 'partial_fit'):
-            self.scaler.partial_fit(X_ts)
-            logger.info(f"Partial fitted scaler on shape {X_ts.shape}")
+            self.scaler.partial_fit(X_interactions)
+            logger.info(f"Partial fitted scaler on shape {X_interactions.shape}")
         elif self.scaler is not None:
             # If partial_fit not available, fit on the expanded features
-            self.scaler.fit(X_ts)
-            logger.info(f"Fitted scaler on expanded shape {X_ts.shape}")
+            self.scaler.fit(X_interactions)
+            logger.info(f"Fitted scaler on expanded shape {X_interactions.shape}")
 
-        # Step 4: Feature selection (fit on expanded features for incremental)
+        # Step 5: Feature selection (fit on expanded features for incremental)
         if self.feature_selector is None and y is not None:
             # If this is the first batch, fit feature selector on expanded features
-            self.fit_feature_selector(X_ts, y)
-            logger.info(f"Fitted feature selector on expanded shape {X_ts.shape}")
+            self.fit_feature_selector(X_interactions, y)
+            logger.info(f"Fitted feature selector on expanded shape {X_interactions.shape}")
 
     
     def transform_features_selected(self, X: np.ndarray) -> np.ndarray:
