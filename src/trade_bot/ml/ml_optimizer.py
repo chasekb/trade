@@ -659,7 +659,23 @@ class MLTradingOptimizer:
 
     def set_active_model(self, model_name: str) -> bool:
         """Set the active model for predictions."""
-        return self.model_manager.set_active_model(model_name)
+        success = self.model_manager.set_active_model(model_name)
+        if success:
+            # Load the transformers associated with this model
+            # Extract timestamp from model name to find corresponding transformers
+            # Model names follow pattern: trading_optimizer_YYYYMMDD_HHMMSS.pkl
+            # Transformer directories follow pattern: transformers_YYYYMMDD_HHMMSS/
+            if model_name.startswith("trading_optimizer_") and model_name.endswith(".pkl"):
+                timestamp_part = model_name[len("trading_optimizer_"):-len(".pkl")]
+                transformer_dir = os.path.join(self.transformers_dir, f"transformers_{timestamp_part}")
+                if os.path.exists(transformer_dir):
+                    # Create new feature engineer and load the model-specific transformers
+                    self.feature_engineer = FeatureEngineer()
+                    self.feature_engineer.load_transformers(transformer_dir)
+                    logger.info(f"Loaded transformers for model {model_name} from {transformer_dir}")
+                else:
+                    logger.warning(f"No transformers found for model {model_name} at {transformer_dir}")
+        return success
 
     def get_prediction_comparison(self, features: OrderBookFeatures) -> Dict[str, Any]:
         """Get predictions from all models for comparison."""
@@ -674,6 +690,77 @@ class MLTradingOptimizer:
     def get_top_pnl_trades(self, limit: int = 10, sort_by: str = 'pnl') -> Dict[str, List[Dict[str, Any]]]:
         """Get top and bottom trades by PnL."""
         return self.data_collector.get_trades_by_pnl(limit, sort_by)
+
+    def delete_model(self, model_name: str) -> bool:
+        """Delete a specific model and its associated artifacts."""
+        try:
+            # Extract timestamp from model name to find corresponding transformers
+            if model_name.startswith("trading_optimizer_") and model_name.endswith(".pkl"):
+                timestamp_part = model_name[len("trading_optimizer_"):-len(".pkl")]
+                transformer_dir = os.path.join(self.transformers_dir, f"transformers_{timestamp_part}")
+
+                # Delete model file
+                model_path = os.path.join(self.models_dir, model_name)
+                if os.path.exists(model_path):
+                    os.remove(model_path)
+                    logger.info(f"Deleted model file: {model_path}")
+
+                # Delete metadata file
+                metadata_path = model_path.replace('.pkl', '_metadata.json')
+                if os.path.exists(metadata_path):
+                    os.remove(metadata_path)
+                    logger.info(f"Deleted metadata file: {metadata_path}")
+
+                # Delete associated transformers
+                if os.path.exists(transformer_dir):
+                    import shutil
+                    shutil.rmtree(transformer_dir)
+                    logger.info(f"Deleted transformer directory: {transformer_dir}")
+
+                # Unregister from model manager
+                self.model_manager.unregister_model(model_name)
+                logger.info(f"Unregistered model: {model_name}")
+
+                return True
+            else:
+                logger.warning(f"Invalid model name format: {model_name}")
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting model {model_name}: {e}")
+            return False
+
+    def delete_all_models(self) -> bool:
+        """Delete all models and their associated artifacts."""
+        try:
+            success = True
+
+            # Get all model files
+            model_files = glob.glob(os.path.join(self.models_dir, "trading_optimizer_*.pkl"))
+            for model_file in model_files:
+                model_name = os.path.basename(model_file)
+                if not self.delete_model(model_name):
+                    success = False
+
+            # Also delete any remaining transformer directories
+            transformer_dirs = glob.glob(os.path.join(self.transformers_dir, "transformers_*"))
+            for transformer_dir in transformer_dirs:
+                try:
+                    import shutil
+                    shutil.rmtree(transformer_dir)
+                    logger.info(f"Deleted transformer directory: {transformer_dir}")
+                except Exception as e:
+                    logger.error(f"Error deleting transformer directory {transformer_dir}: {e}")
+                    success = False
+
+            if success:
+                logger.info("All models and associated artifacts deleted successfully")
+            else:
+                logger.warning("Some models or artifacts could not be deleted")
+
+            return success
+        except Exception as e:
+            logger.error(f"Error deleting all models: {e}")
+            return False
         
     def _store_feature_vectors_in_db(self, features: List[OrderBookFeatures], 
                                     processed_features: np.ndarray) -> None:
