@@ -287,6 +287,10 @@ class MLTradingOptimizer:
 
     def _train_batch_models(self, model_type: str, batch_size: int, days_back: int) -> Dict[str, Any]:
         """Train models using batch processing."""
+        # Reset feature engineer for new training to avoid scaler dimension mismatches
+        # This ensures we start with a fresh scaler that adapts to the current feature set dimensions
+        self.feature_engineer = FeatureEngineer()
+
         # Create generator that yields processed batches
         data_generator = self._create_batch_generator(batch_size, days_back)
         
