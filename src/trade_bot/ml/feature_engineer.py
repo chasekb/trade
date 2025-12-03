@@ -26,7 +26,7 @@ class ProcessedFeatures:
 class FeatureEngineer:
     """Engineers features from raw trading data for ML models."""
     
-    def __init__(self, feature_scaling: str = 'standard'):
+    def __init__(self, feature_scaling: str = 'minmax'):
         """
         Initialize feature engineer.
         
@@ -39,6 +39,53 @@ class FeatureEngineer:
         self.feature_names = []
         self.imputer = None
         
+        # Feature weighting state
+        self.feature_weights = None
+        self.last_perturbation = None
+        self.last_error = float('inf')
+        self.weight_learning_rate = 0.05
+        
+    def update_error_signal(self, error: float) -> None:
+        """Update feature weights based on error signal using evolutionary strategy."""
+        if self.last_perturbation is not None and self.feature_weights is not None:
+            # If error improved, update weights in direction of perturbation
+            if error < self.last_error:
+                self.feature_weights += self.weight_learning_rate * self.last_perturbation
+                logger.debug(f"Error improved ({self.last_error:.4f} -> {error:.4f}), reinforcing weights")
+            else:
+                # Error got worse, revert/move opposite
+                self.feature_weights -= self.weight_learning_rate * self.last_perturbation
+                logger.debug(f"Error worsened ({self.last_error:.4f} -> {error:.4f}), correcting weights")
+            
+            # Ensure weights stay positive and reasonable
+            self.feature_weights = np.clip(self.feature_weights, 0.01, 5.0)
+            
+        self.last_error = float(error)
+
+    def _apply_learned_weights(self, X: np.ndarray, train_mode: bool = False) -> np.ndarray:
+        """Apply learned feature weights with exploration perturbation."""
+        if X.shape[0] == 0:
+            return X
+            
+        n_features = X.shape[1]
+        
+        # Initialize weights if needed (or if feature count changed)
+        if self.feature_weights is None or self.feature_weights.shape[0] != n_features:
+            self.feature_weights = np.ones(n_features)
+            
+        # Apply current weights
+        X_weighted = X * self.feature_weights
+        
+        if train_mode:
+            # Generate random perturbation for exploration
+            rng = np.random.RandomState(None)
+            self.last_perturbation = rng.normal(0, 0.02, size=n_features)
+            
+            # Apply perturbation (multiplicative)
+            X_weighted = X_weighted * (1 + self.last_perturbation)
+            
+        return X_weighted
+
     def create_feature_matrix(self, feature_vectors: List[Any], 
                              trade_outcomes: List[Any]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         """Create feature matrix and targets from raw data."""
@@ -190,12 +237,17 @@ class FeatureEngineer:
             self.scaler = None
         
         if self.scaler is not None:
-            # Initialize random sample weights for robust scaling
+            # Initialize random sample weights
+            rng = np.random.RandomState(42)
+            sample_weight = rng.uniform(0.1, 1.0, size=X.shape[0])
+            
             if self.feature_scaling == 'standard':
-                rng = np.random.RandomState(42)
-                sample_weight = rng.uniform(0.1, 1.0, size=X.shape[0])
                 self.scaler.fit(X, sample_weight=sample_weight)
                 logger.info(f"Fitted {self.feature_scaling} scaler with random sample weights")
+            elif self.feature_scaling == 'minmax':
+                # MinMaxScaler doesn't support sample_weight in fit, but we initialize them as requested
+                self.scaler.fit(X)
+                logger.info(f"Fitted {self.feature_scaling} scaler (random sample weights initialized but unused)")
             else:
                 self.scaler.fit(X)
                 logger.info(f"Fitted {self.feature_scaling} scaler")
@@ -305,10 +357,14 @@ class FeatureEngineer:
 
         if self.scaler is not None and hasattr(self.scaler, 'partial_fit'):
             # Use random sample weights for partial updates
+            rng = np.random.RandomState(None)
+            sample_weight = rng.uniform(0.1, 1.0, size=X_interactions.shape[0])
+
             if isinstance(self.scaler, StandardScaler):
-                rng = np.random.RandomState(None)
-                sample_weight = rng.uniform(0.1, 1.0, size=X_interactions.shape[0])
                 self.scaler.partial_fit(X_interactions, sample_weight=sample_weight)
+            elif isinstance(self.scaler, MinMaxScaler):
+                # MinMaxScaler partial_fit does not accept sample_weight
+                self.scaler.partial_fit(X_interactions)
             else:
                 self.scaler.partial_fit(X_interactions)
             logger.info(f"Partial fitted scaler on shape {X_interactions.shape}")
@@ -520,6 +576,10 @@ class FeatureEngineer:
         else:
             X_selected = X_scaled
             logger.info(f"No selector available: {X_selected.shape}")
+
+        # Apply learned feature weights (Evolutionary Feature Weighting)
+        if self.scaler: # Only apply if scaling is active
+            X_selected = self._apply_learned_weights(X_selected, train_mode=fit)
 
         # Log feature statistics for troubleshooting
         if X_selected.shape[0] > 0:
