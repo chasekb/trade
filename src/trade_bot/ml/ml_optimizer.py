@@ -393,7 +393,7 @@ class MLTradingOptimizer:
             # Fetch historical data for time-series features
             # Use raw historical data from Coinbase API to calculate correct rolling stats
             # This ensures we don't mix processed vectors (from vector DB) with raw vectors (current)
-            historical_vectors = self._get_historical_feature_vectors(current_features.symbol)
+            historical_vectors = self._get_historical_feature_vectors(current_features.symbol, current_features)
             
             # Preprocess features using the same pipeline as training
             # Pass historical vectors (raw/scaled) so create_time_series_features can calculate rolling stats correctly
@@ -430,9 +430,8 @@ class MLTradingOptimizer:
                     prob = current_model.predict_proba(X_processed)
                     if prob is not None and len(prob[0]) > 1:
                         raw_prob = float(prob[0][1] * 100)
-                        # Clip probability to avoid unrealistic certainty
-                        win_probability = max(5.0, min(95.0, raw_prob))
-                        logger.info(f"Classifier raw probability: {raw_prob:.2f}%, clipped: {win_probability:.2f}%")
+                        win_probability = raw_prob
+                        logger.info(f"Classifier raw probability: {raw_prob:.2f}%")
                 except Exception as e:
                     logger.warning(f"Error getting win probability from classifier: {e}")
                     # Fallback: use regressor signal to estimate probability
@@ -469,8 +468,7 @@ class MLTradingOptimizer:
                 except Exception:
                     win_probability = 50.0
             
-            # Cap win probability at 99% to avoid unrealistic 100% values
-            win_probability = min(win_probability, 99.0)
+            # No clipping as requested - trust the model output based on stabilized inputs
             
             logger.info(f"Final Prediction: Action={action}, Signal={signal_value:.4f}, WinProb={win_probability:.2f}%, ExpRet={expected_return_percentage:.4f}%")
 
@@ -576,7 +574,7 @@ class MLTradingOptimizer:
         """Get current model performance metrics."""
         return self.model_manager.get_model_performance("trading_optimizer")
     
-    def _get_historical_feature_vectors(self, symbol: str) -> Optional[np.ndarray]:
+    def _get_historical_feature_vectors(self, symbol: str, current_features: Optional[OrderBookFeatures] = None) -> Optional[np.ndarray]:
         """Fetch raw historical data from Coinbase and convert to feature vectors."""
         try:
             if CoinbaseDataProvider is None:
@@ -619,6 +617,14 @@ class MLTradingOptimizer:
             # This gives us valid Price Momentum and Volatility rolling stats, 
             # while Imbalance stats will decay towards 0 (neutral)
             
+            # Extract defaults from current_features if available to avoid artificial jumps
+            default_imbalance = current_features.bid_ask_imbalance if current_features else 0.0
+            default_spread = current_features.spread_percent if current_features else 0.0
+            default_bid_vol = current_features.bid_volume if current_features else 0.0
+            default_ask_vol = current_features.ask_volume if current_features else 0.0
+            default_depth = current_features.order_book_depth if current_features else 0
+            default_wall_size = current_features.wall_size if current_features else 0.0
+            
             for i in range(len(trades)):
                 trade = trades[i]
                 price = float(trade['price'])
@@ -636,20 +642,20 @@ class MLTradingOptimizer:
                     volatility = np.std(changes) * 100
 
                 # Create feature object
-                # Note: We use 0 for volume/imbalance as we don't have historical order book
+                # Use current values for missing historical data to avoid artificial jumps in rolling stats
                 feat = OrderBookFeatures(
                     timestamp=int(datetime.fromisoformat(trade['timestamp'].replace('Z', '+00:00')).timestamp()),
                     symbol=symbol,
-                    bid_ask_imbalance=0.0,
-                    spread_percent=0.0,
+                    bid_ask_imbalance=default_imbalance,
+                    spread_percent=default_spread,
                     mid_price=price,
-                    bid_volume=0.0,
-                    ask_volume=0.0,
-                    order_book_depth=0,
+                    bid_volume=default_bid_vol,
+                    ask_volume=default_ask_vol,
+                    order_book_depth=default_depth,
                     large_bid_wall=False,
                     large_ask_wall=False,
-                    wall_size=0.0,
-                    volume_weighted_price=price,
+                    wall_size=default_wall_size,
+                    volume_weighted_price=price, # Use price as best guess for historical VWAP
                     price_momentum=price_momentum,
                     volatility=volatility
                 )
