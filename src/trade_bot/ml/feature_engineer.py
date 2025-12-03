@@ -190,8 +190,15 @@ class FeatureEngineer:
             self.scaler = None
         
         if self.scaler is not None:
-            self.scaler.fit(X)
-            logger.info(f"Fitted {self.feature_scaling} scaler")
+            # Initialize random sample weights for robust scaling
+            if self.feature_scaling == 'standard':
+                rng = np.random.RandomState(42)
+                sample_weight = rng.uniform(0.1, 1.0, size=X.shape[0])
+                self.scaler.fit(X, sample_weight=sample_weight)
+                logger.info(f"Fitted {self.feature_scaling} scaler with random sample weights")
+            else:
+                self.scaler.fit(X)
+                logger.info(f"Fitted {self.feature_scaling} scaler")
     
     def transform_features(self, X: np.ndarray) -> np.ndarray:
         """Transform features using fitted scaler."""
@@ -297,11 +304,22 @@ class FeatureEngineer:
             logger.info(f"Created new scaler for shape {X_interactions.shape}")
 
         if self.scaler is not None and hasattr(self.scaler, 'partial_fit'):
-            self.scaler.partial_fit(X_interactions)
+            # Use random sample weights for partial updates
+            if isinstance(self.scaler, StandardScaler):
+                rng = np.random.RandomState(None)
+                sample_weight = rng.uniform(0.1, 1.0, size=X_interactions.shape[0])
+                self.scaler.partial_fit(X_interactions, sample_weight=sample_weight)
+            else:
+                self.scaler.partial_fit(X_interactions)
             logger.info(f"Partial fitted scaler on shape {X_interactions.shape}")
         elif self.scaler is not None:
             # If partial_fit not available, fit on the expanded features
-            self.scaler.fit(X_interactions)
+            if isinstance(self.scaler, StandardScaler):
+                rng = np.random.RandomState(42)
+                sample_weight = rng.uniform(0.1, 1.0, size=X_interactions.shape[0])
+                self.scaler.fit(X_interactions, sample_weight=sample_weight)
+            else:
+                self.scaler.fit(X_interactions)
             logger.info(f"Fitted scaler on expanded shape {X_interactions.shape}")
 
         # Step 5: Feature selection (fit on expanded features for incremental)
