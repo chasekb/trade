@@ -550,20 +550,20 @@ class MLTradingOptimizer:
             # Store new feature vectors
             self._store_feature_vectors_in_db(new_features, X_new_final)
             
-            # For now, we'll retrain the model with all data
-            # In a production system, you might implement incremental learning
-            logger.info("Retraining model with updated dataset")
+            # Use batch training for continuous updates to handle large datasets efficiently
+            logger.info("Retraining model with updated dataset using batch training")
             
-            # Collect all historical data
-            all_features, all_outcomes = self.collect_and_preprocess_data(days_back=90)
+            # Use batch training (days_back=90 or configurable)
+            # This will pick up the new data from the database
+            training_results = self.train_ml_models(
+                batch_training=True,
+                batch_size=1000,
+                days_back=90
+            )
             
-            if all_features and all_outcomes:
-                # Retrain the model
-                training_results = self.train_ml_models(all_features, all_outcomes)
-                
-                if training_results:
-                    logger.info("Model updated successfully")
-                    return True
+            if training_results:
+                logger.info("Model updated successfully via batch training")
+                return True
             
             logger.warning("Failed to update model")
             return False
