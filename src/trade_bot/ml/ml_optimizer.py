@@ -300,7 +300,11 @@ class MLTradingOptimizer:
             logger.warning(f"Model type {model_type} not optimal for batch training. Switching to 'sgd'.")
             model_type = 'sgd'
             
-        training_results = self.model_trainer.train_incremental(data_generator, model_type=model_type)
+        training_results = self.model_trainer.train_incremental(
+            data_generator, 
+            model_type=model_type,
+            feature_engineer=self.feature_engineer
+        )
         
         # Save transformers after training (they are updated incrementally)
         self.feature_engineer.save_transformers(self.transformers_dir)
