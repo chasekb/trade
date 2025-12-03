@@ -663,11 +663,11 @@ class MLTradingOptimizer:
                 
             X_hist = np.array(hist_features)
             
-            # We must apply Imputer and Scaler to history to match X_scaled
+            # We must apply Imputer to history to match X_imputed (raw features)
+            # DO NOT apply Scaler here, as Scaler expects expanded features (TS + Interactions)
+            # which are created in preprocess_pipeline using this history
             if self.feature_engineer.imputer:
                 X_hist = self.feature_engineer.imputer.transform(X_hist)
-            if self.feature_engineer.scaler:
-                X_hist = self.feature_engineer.scaler.transform(X_hist)
                 
             return X_hist
 
