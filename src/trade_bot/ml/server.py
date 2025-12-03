@@ -23,9 +23,14 @@ if grandparent_dir not in sys.path:
     sys.path.insert(0, grandparent_dir)
 
 # Now import local modules
-from ml_optimizer import MLTradingOptimizer
-# Import both the class and the reconstruction function to enable unpickling
-from wrapper import TradingModelWrapper, _reconstruct_wrapper
+# Use relative imports to ensure we remain within the package context
+try:
+    from .ml_optimizer import MLTradingOptimizer
+    from .wrapper import TradingModelWrapper, _reconstruct_wrapper
+except ImportError:
+    # Fallback for standalone execution
+    from ml_optimizer import MLTradingOptimizer
+    from wrapper import TradingModelWrapper, _reconstruct_wrapper
 
 # CRITICAL: Create module aliases to support unpickling models saved with different import paths
 # This allows models saved with "trade_bot.ml.wrapper" imports to work in this environment
@@ -33,17 +38,31 @@ import sys
 current_module = sys.modules[__name__]  # Reference to the current 'server' module
 
 # Import all ML modules to make them available
-import wrapper
-import ml_optimizer
-import data_collector
-import feature_engineer
-import model_trainer
-import model_manager
-import vector_db_client
+try:
+    from . import wrapper
+    from . import ml_optimizer
+    from . import data_collector
+    from . import feature_engineer
+    from . import model_trainer
+    from . import model_manager
+    from . import vector_db_client
+except ImportError:
+    import wrapper
+    import ml_optimizer
+    import data_collector
+    import feature_engineer
+    import model_trainer
+    import model_manager
+    import vector_db_client
 
-# Register the modules with trade_bot prefix
-sys.modules['trade_bot'] = type(sys)('trade_bot')
-sys.modules['trade_bot.ml'] = type(sys)('trade_bot.ml')
+# Ensure trade_bot package structure exists in sys.modules if not already present
+if 'trade_bot' not in sys.modules:
+    sys.modules['trade_bot'] = type(sys)('trade_bot')
+if 'trade_bot.ml' not in sys.modules:
+    sys.modules['trade_bot.ml'] = type(sys)('trade_bot.ml')
+
+# Ensure modules are mapped to their full package paths
+# This handles cases where they might have been loaded as top-level modules
 sys.modules['trade_bot.ml.wrapper'] = wrapper
 sys.modules['trade_bot.ml.ml_optimizer'] = ml_optimizer
 sys.modules['trade_bot.ml.data_collector'] = data_collector

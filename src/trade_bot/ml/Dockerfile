@@ -1,20 +1,27 @@
-# Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y procps curl && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory in the container
+# Set the working directory for installation
 WORKDIR /app
 
-# Copy the requirements file into the container at /app
-COPY requirements.txt .
+# Copy requirements from the correct location relative to build context (root)
+COPY src/trade_bot/ml/requirements.txt .
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application's code into the container at /app
-COPY . .
+# Copy the source code
+COPY src /app/src
 
-# Run the application
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8002"]
+# Set PYTHONPATH to include src so trade_bot package can be found
+ENV PYTHONPATH=/app/src
+
+# Set working directory to /app so that relative paths like "data/models" resolve correctly
+# (The docker-compose mounts data volume to /app/data)
+WORKDIR /app
+
+# Run the application using the full package path
+# This ensures that relative imports inside the package work correctly
+CMD ["uvicorn", "trade_bot.ml.server:app", "--host", "0.0.0.0", "--port", "8002"]
