@@ -100,7 +100,7 @@ class FeatureEngineer:
         
         # Derived features
         feature_dict.update({
-            'volume_ratio': np.log(features.bid_volume + 1) - np.log(features.ask_volume + 1),
+            'volume_ratio': features.bid_volume / (features.ask_volume + 1e-8),
             'spread_normalized': features.spread_percent / (features.mid_price + 1e-8),
             'wall_size_normalized': features.wall_size / (features.bid_volume + features.ask_volume + 1e-8),
             'momentum_normalized': features.price_momentum / (features.volatility + 1e-8),
@@ -137,7 +137,7 @@ class FeatureEngineer:
             risk_adjusted_return = 0.0
         
         # Scale to reasonable range for ML training
-        return np.clip(risk_adjusted_return * 100, -10.0, 10.0)
+        return risk_adjusted_return
     
     def _generate_feature_names(self, features: Any) -> List[str]:
         """Generate feature names from a sample feature object."""
