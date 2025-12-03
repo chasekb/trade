@@ -95,6 +95,7 @@ class ModelTrainer:
             # Use adaptive learning rate to prevent exploding gradients
             model = SGDRegressor(loss='squared_error', penalty='l2', alpha=0.0001, 
                                learning_rate='adaptive', eta0=0.001, n_iter_no_change=5,
+                               shuffle=False,
                                random_state=self.random_state)
             model_name = 'sgd_regressor'
         elif model_type == 'nn':
