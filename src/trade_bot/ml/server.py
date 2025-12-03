@@ -196,8 +196,8 @@ async def predict_trading_signal(request: PredictionRequest):
 
     try:
         # Convert request to OrderBookFeatures
-        from data_collector import OrderBookFeatures
-        features = OrderBookFeatures(
+        # Use global import instead of local import which might fail
+        features = data_collector.OrderBookFeatures(
             timestamp=request.timestamp,
             symbol=request.symbol,
             bid_ask_imbalance=request.bid_ask_imbalance,
