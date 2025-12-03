@@ -125,6 +125,9 @@ class ModelTrainer:
         # Minimum samples required for train/test split
         MIN_SAMPLES_FOR_SPLIT = 5
         
+        # Track weight initialization
+        weights_initialized = False
+        
         for batch_data in data_generator:
             # Handle different generator yield formats (X, y) or (X, y, processed_targets)
             if len(batch_data) == 3:
@@ -144,6 +147,17 @@ class ModelTrainer:
             if np.isnan(X_batch).any() or np.isinf(X_batch).any():
                 logger.warning(f"Batch {batch_count + 1} contains NaNs or Infs in features. Skipping.")
                 continue
+            
+            # Initialize random weights for SGDRegressor on first batch
+            if not weights_initialized and model_name == 'sgd_regressor':
+                n_features = X_batch.shape[1]
+                rng = np.random.RandomState(self.random_state)
+                # Initialize with small random values
+                model.coef_ = rng.normal(0, 0.01, size=n_features)
+                model.intercept_ = rng.normal(0, 0.01, size=1)
+                model.t_ = 1.0 # Initialize time step
+                weights_initialized = True
+                logger.info(f"Initialized SGDRegressor with random weights for {n_features} features")
             
             # Target for regressor - use processed targets if available (normalized), otherwise raw PnL
             if processed_targets is not None:
