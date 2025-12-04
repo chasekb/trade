@@ -166,7 +166,7 @@ class FeatureEngineer:
         
         # Clean up NaNs and infinities
         for key, value in feature_dict.items():
-            feature_dict[key] = np.nan_to_num(value, nan=0.0, posinf=1e9, neginf=-1e9)
+            feature_dict[key] = float(np.nan_to_num(value, nan=0.0, posinf=1e9, neginf=-1e9))
             
         return feature_dict
     
