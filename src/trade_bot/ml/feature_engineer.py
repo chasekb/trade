@@ -525,6 +525,10 @@ class FeatureEngineer:
             self.fit_feature_selector(X_scaled, y)
         X_selected = self.transform_features_selected(X_scaled)
 
+        # Apply learned feature weights (Evolutionary Feature Weighting)
+        if self.scaler: # Only apply if scaling is active
+            X_selected = self._apply_learned_weights(X_selected, train_mode=fit_transform)
+
         X_final = X_selected
 
         logger.info(f"Preprocessing complete: {X_final.shape} (original: {X.shape[1]}, after TS: {X_ts.shape[1]}, after interactions: {X_interactions.shape[1]}, after scaling: {X_scaled.shape[1]}, after selection: {X_selected.shape[1]})")
@@ -599,6 +603,11 @@ class FeatureEngineer:
             joblib.dump(self.scaler, os.path.join(directory, 'scaler.pkl'))
         if self.feature_selector:
             joblib.dump(self.feature_selector, os.path.join(directory, 'feature_selector.pkl'))
+        
+        # Save feature weights
+        if self.feature_weights is not None:
+            np.save(os.path.join(directory, 'feature_weights.npy'), self.feature_weights)
+            
         logger.info(f"Saved transformers to {directory}")
 
     def load_transformers(self, directory: str) -> None:
@@ -612,4 +621,14 @@ class FeatureEngineer:
         selector_path = os.path.join(directory, 'feature_selector.pkl')
         if os.path.exists(selector_path):
             self.feature_selector = joblib.load(selector_path)
+            
+        # Load feature weights
+        weights_path = os.path.join(directory, 'feature_weights.npy')
+        if os.path.exists(weights_path):
+            try:
+                self.feature_weights = np.load(weights_path)
+                logger.info(f"Loaded feature weights from {weights_path}")
+            except Exception as e:
+                logger.warning(f"Failed to load feature weights: {e}")
+                
         logger.info(f"Loaded transformers from {directory}")
