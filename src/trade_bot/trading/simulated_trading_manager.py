@@ -197,7 +197,8 @@ class SimulatedTradingManager:
                             "win_probability": last_prediction.get('win_probability', 50.0),
                             "expected_return": last_prediction.get('expected_return_percentage', 0.0),
                             "confidence": last_prediction.get('confidence', 0.0),
-                            "reason": trade_signal.reason
+                            "reason": trade_signal.reason,
+                            "analytics": last_prediction.get('analytics', {})
                         }
                 
                 return signal_dict
