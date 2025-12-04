@@ -641,6 +641,17 @@ class DataHandlers:
             # Sort signals by signal strength (descending)
             signals.sort(key=lambda x: x.get('signal_strength', 0), reverse=True)
             
+            # Process signals for simulated trading execution
+            if trading_active and self.simulated_trading_manager:
+                try:
+                    # Execute trades based on these signals
+                    # This handles the "Signal Strength Order Prioritization" logic internally
+                    # The manager will sort by priority and execute accordingly
+                    logger.info(f"Passing {len(signals)} signals to simulated trading manager for execution")
+                    await self.simulated_trading_manager.process_signals(signals)
+                except Exception as e:
+                    logger.error(f"Error processing signals for execution: {e}")
+
             # Calculate pagination
             total_signals = len(signals)
             total_pages = (total_signals + per_page - 1) // per_page
