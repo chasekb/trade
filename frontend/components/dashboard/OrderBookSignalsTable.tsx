@@ -273,7 +273,7 @@ ML Analysis:
 - Model: ${row.ml_analysis.model_version || 'N/A'}
 
 Analytics:
-${row.ml_analysis.analytics ? JSON.stringify(row.ml_analysis.analytics, null, 2) : 'No detailed analytics available'}
+${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 0) ? JSON.stringify(row.ml_analysis.analytics, null, 2) : 'No detailed analytics available (Empty/Null)'}
 ` : 'ML Analysis: Not enabled'}
             `;
                         alert(details); // Replace with proper modal in production
