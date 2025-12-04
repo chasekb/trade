@@ -415,19 +415,50 @@ class MLTradingOptimizer:
                     'signal_value': 0.0,
                     'reason': 'Prediction failed',
                     'similar_conditions': 0,
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': datetime.now().isoformat(),
+                    'win_probability': 0.0,
+                    'expected_return_percentage': 0.0,
+                    'analytics': {}
                 }
             
             # Convert prediction to trading signal
-            signal_value = prediction[0]
+            signal_value = float(prediction[0])
             # Get the probability from the model's classifier
             win_probability = 50.0
             
+            # Prepare detailed analytics
+            analytics = {
+                'input_features': feature_dict,
+                'transformed_features_stats': {
+                    'min': float(np.min(X_processed)),
+                    'max': float(np.max(X_processed)),
+                    'mean': float(np.mean(X_processed)),
+                    'std': float(np.std(X_processed))
+                },
+                'feature_names': self.feature_engineer.feature_names if hasattr(self.feature_engineer, 'feature_names') else [],
+                'model_raw_output': signal_value,
+                'scaler_info': {
+                    'type': str(type(self.feature_engineer.scaler)) if self.feature_engineer.scaler else 'None',
+                    'is_fitted': hasattr(self.feature_engineer.scaler, 'scale_') if self.feature_engineer.scaler else False
+                },
+                'transformations': [
+                    'Imputation (Mean)',
+                    'Time Series (Rolling Window)',
+                    'Interactions (Polynomial)',
+                    'Scaling (MinMax/Standard)',
+                    'Feature Selection (SelectKBest)'
+                ]
+            }
+            
             # Log input features for debugging
             logger.info(f"Predicting for {current_features.symbol} with features: {feature_dict}")
+            logger.info(f"Scaler info: {analytics['scaler_info']}")
+            logger.info(f"Transformed stats: {analytics['transformed_features_stats']}")
 
             # Get the current model object (TradingModelWrapper) to access predict_proba
             current_model = self.model_manager.get_current_model()
+            has_classifier = False
+            
             if current_model is not None and hasattr(current_model, 'predict_proba'):
                 try:
                     # Get probability predictions from the classifier (probability of class 1 = win)
@@ -435,21 +466,17 @@ class MLTradingOptimizer:
                     if prob is not None and len(prob[0]) > 1:
                         raw_prob = float(prob[0][1] * 100)
                         win_probability = raw_prob
+                        has_classifier = True
                         logger.info(f"Classifier raw probability: {raw_prob:.2f}%")
                 except Exception as e:
                     logger.warning(f"Error getting win probability from classifier: {e}")
-                    # Fallback: use regressor signal to estimate probability
-                    try:
-                        # Use a sigmoid function that doesn't saturate too quickly
-                        # signal_value typically ranges -1 to 1. 
-                        # A value of 0.5 should give high confidence but not 100%
-                        win_probability = 100 / (1 + np.exp(-3 * signal_value))
-                        logger.info(f"Fallback probability from signal {signal_value:.4f}: {win_probability:.2f}%")
-                    except Exception:
-                        win_probability = 50.0
-            else:
+
+            if not has_classifier:
                 # Fallback: use regressor signal to estimate probability
                 try:
+                    # Use a sigmoid function that doesn't saturate too quickly
+                    # signal_value typically ranges -1 to 1. 
+                    # A value of 0.5 should give high confidence but not 100%
                     win_probability = 100 / (1 + np.exp(-3 * signal_value))
                     logger.info(f"Fallback probability (no classifier) from signal {signal_value:.4f}: {win_probability:.2f}%")
                 except Exception:
@@ -461,18 +488,23 @@ class MLTradingOptimizer:
                 expected_return_percentage = signal_value
             elif signal_value < -0.1:
                 action = 'sell'
-                # Calculate expected return as percentage based on signal strength
                 expected_return_percentage = signal_value
             else:
                 action = 'hold'
                 expected_return_percentage = signal_value
                 # For hold, win probability is neutral (around 50%) but slightly biased by signal
-                try:
-                    win_probability = 100 / (1 + np.exp(-1 * signal_value)) # Reduce sensitivity for hold
-                except Exception:
-                    win_probability = 50.0
+                if not has_classifier:
+                    try:
+                        win_probability = 100 / (1 + np.exp(-1 * signal_value)) # Reduce sensitivity for hold
+                    except Exception:
+                        win_probability = 50.0
             
-            # No clipping as requested - trust the model output based on stabilized inputs
+            # Update analytics with decision info
+            analytics['decision'] = {
+                'action': action,
+                'raw_signal': signal_value,
+                'win_probability_source': 'classifier' if has_classifier else 'heuristic_fallback'
+            }
             
             logger.info(f"Final Prediction: Action={action}, Signal={signal_value:.4f}, WinProb={win_probability:.2f}%, ExpRet={expected_return_percentage:.4f}%")
 
@@ -487,7 +519,8 @@ class MLTradingOptimizer:
                 'expected_return_percentage': float(expected_return_percentage),
                 'reason': f'ML prediction: {signal_value:.3f}',
                 'similar_conditions': num_history,  # Number of similar historical patterns found
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'analytics': analytics
             }
             
         except Exception as e:

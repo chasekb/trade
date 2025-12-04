@@ -105,6 +105,9 @@ class PredictionResponse(BaseModel):
     reason: str
     similar_conditions: int
     timestamp: str
+    win_probability: Optional[float] = 0.0
+    expected_return_percentage: Optional[float] = 0.0
+    analytics: Optional[Dict[str, Any]] = {}
 
 class ModelStatusResponse(BaseModel):
     is_trained: bool

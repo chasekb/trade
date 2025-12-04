@@ -99,6 +99,7 @@ export interface OrderBookSignal {
     model_version: string;
     features_used?: string[];
     prediction_timestamp: string;
+    analytics?: any;
   };
   strength_composition?: {
     [featureName: string]: {
@@ -372,4 +373,3 @@ export interface MLConfig {
   batch_training_enabled: boolean;
   batch_size: number;
 }
-
