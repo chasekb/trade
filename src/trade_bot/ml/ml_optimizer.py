@@ -435,6 +435,7 @@ class MLTradingOptimizer:
                     'mean': float(np.mean(X_processed)),
                     'std': float(np.std(X_processed))
                 },
+                'scaled_features': X_processed.tolist()[0] if len(X_processed) > 0 else [],
                 'feature_names': self.feature_engineer.feature_names if hasattr(self.feature_engineer, 'feature_names') else [],
                 'model_raw_output': signal_value,
                 'scaler_info': {

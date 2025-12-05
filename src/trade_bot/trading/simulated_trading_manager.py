@@ -567,7 +567,10 @@ class SimulatedTradingManager:
                     "portfolio": self.get_portfolio_summary()
                 }
         
-        logger.info(f"Processing {len(signals)} signals. Total processed: {self.total_signals_processed}. Trading symbols: {self.symbols_to_trade}")
+        # Log ML statistics
+        ml_count = sum(1 for s in signals if s.get('ml_analysis', {}).get('ml_enabled'))
+        ml_percent = (ml_count / len(signals) * 100) if signals else 0
+        logger.info(f"Processing {len(signals)} signals. ML Enabled: {ml_count} ({ml_percent:.1f}%). Total processed: {self.total_signals_processed}. Trading symbols: {self.symbols_to_trade}")
         
         executed_trades = []
         closed_positions = []
