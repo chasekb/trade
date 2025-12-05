@@ -64,15 +64,7 @@ Key features:
 - Top/bottom P&L trade analysis for performance insights
 - Order book snapshot extraction for feature engineering
 
-### 2. Hot-Swappable Feature Generation (`src/trade_bot/ml/feature_model_manager.py`)
-
-This new layer introduces a hot-swappable machine learning model to process raw order book data and generate insightful features.
-
-- **Feature Generation Model**: A dedicated ML model (e.g., CNN or Autoencoder) that processes raw order book snapshots and outputs a dense feature vector.
-- **`FeatureModelManager`**: Manages the lifecycle of feature generation models, including registration, versioning, and hot-swapping.
-- **Integration**: The `MLDataCollector` now uses the active feature generation model to create learned features from raw order book data, which are then combined with the original statistical features.
-
-### 3. Feature Engineering (`src/trade_bot/ml/feature_engineer.py`)
+### 2. Feature Engineering (`src/trade_bot/ml/feature_engineer.py`)
 
 Transforms raw and ML-generated trading data into ML-ready features:
 
@@ -134,18 +126,11 @@ Manages feature vector storage and similarity search:
 
 ### 5. Model Management
 
-The system now includes two distinct model managers:
-
 - **`ModelManager` (`src/trade_bot/ml/model_manager.py`)**: Handles the lifecycle of the downstream signal prediction models.
   - **Versioning**: Track model versions and performance.
   - **Deployment**: Hot-swap models without trading interruption.
   - **Rollback**: Revert to previous model versions.
   - **Performance Monitoring**: Continuous model evaluation.
-
-- **`FeatureModelManager` (`src/trade_bot/ml/feature_model_manager.py`)**: Manages the new feature generation models.
-  - **Versioning & Registration**: Manages different versions of feature generation models.
-  - **Hot-Swapping**: Allows for changing the active feature generation model at runtime without service interruption.
-  - **API Integration**: Exposes endpoints for managing and switching feature generation models.
 
 ### 6. ML-Enhanced Strategy (`src/trade_bot/trading/strategies/ml_enhanced_orderbook.py`)
 
@@ -591,9 +576,6 @@ The ML Model Server provides REST API endpoints:
 - `GET /api/ml/models` - Get a list of available models with versions and metrics
 - `POST /api/ml/models/set_active` - Set the active signal prediction model
   - **Parameters:** `model_name` (string): Name/version of model to activate
-  
-- `GET /api/ml/feature_models` - Get a list of available feature generation models
-- `POST /api/ml/feature_models/set_active` - Set the active feature generation model
 
 ### Prediction
 - `POST /api/ml/predict` - Get trading signal prediction for current market conditions
