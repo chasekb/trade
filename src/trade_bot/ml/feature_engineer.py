@@ -368,7 +368,7 @@ class FeatureEngineer:
         # We will assume PCA is pre-fitted or we skip update. If we want to support incremental PCA update, we need IncrementalPCA.
         # For now, we skip fitting PCA in incremental mode if it's standard PCA.
         # If this is the first batch and fit=True, we should fit PCA.
-        if fit and self.pca is None:
+        if self.pca is None:
              self.fit_pca(X_interactions if self.scaler is None else self.scaler.transform(X_interactions), n_components=0.95)
              logger.info("Fitted PCA on initial batch in incremental pipeline")
 
