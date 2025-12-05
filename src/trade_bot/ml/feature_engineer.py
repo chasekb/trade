@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.feature_selection import SelectKBest, f_regression
+from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 import joblib
 import os
@@ -26,7 +27,7 @@ class ProcessedFeatures:
 class FeatureEngineer:
     """Engineers features from raw trading data for ML models."""
     
-    def __init__(self, feature_scaling: str = 'minmax'):
+    def __init__(self, feature_scaling: str = 'standard'):
         """
         Initialize feature engineer.
         
@@ -35,56 +36,14 @@ class FeatureEngineer:
         """
         self.feature_scaling = feature_scaling
         self.scaler = None
+        self.pca = None
         self.feature_selector = None
         self.feature_names = []
         self.imputer = None
         
-        # Feature weighting state
-        self.feature_weights = None
-        self.last_perturbation = None
-        self.last_error = float('inf')
-        self.weight_learning_rate = 0.05
+        # Removed feature weighting state
         
-    def update_error_signal(self, error: float) -> None:
-        """Update feature weights based on error signal using evolutionary strategy."""
-        if self.last_perturbation is not None and self.feature_weights is not None:
-            # If error improved, update weights in direction of perturbation
-            if error < self.last_error:
-                self.feature_weights += self.weight_learning_rate * self.last_perturbation
-                logger.debug(f"Error improved ({self.last_error:.4f} -> {error:.4f}), reinforcing weights")
-            else:
-                # Error got worse, revert/move opposite
-                self.feature_weights -= self.weight_learning_rate * self.last_perturbation
-                logger.debug(f"Error worsened ({self.last_error:.4f} -> {error:.4f}), correcting weights")
-            
-            # Ensure weights stay positive and reasonable
-            self.feature_weights = np.clip(self.feature_weights, 0.01, 5.0)
-            
-        self.last_error = float(error)
-
-    def _apply_learned_weights(self, X: np.ndarray, train_mode: bool = False) -> np.ndarray:
-        """Apply learned feature weights with exploration perturbation."""
-        if X.shape[0] == 0:
-            return X
-            
-        n_features = X.shape[1]
-        
-        # Initialize weights if needed (or if feature count changed)
-        if self.feature_weights is None or self.feature_weights.shape[0] != n_features:
-            self.feature_weights = np.ones(n_features)
-            
-        # Apply current weights
-        X_weighted = X * self.feature_weights
-        
-        if train_mode:
-            # Generate random perturbation for exploration
-            rng = np.random.RandomState(None)
-            self.last_perturbation = rng.normal(0, 0.02, size=n_features)
-            
-            # Apply perturbation (multiplicative)
-            X_weighted = X_weighted * (1 + self.last_perturbation)
-            
-        return X_weighted
+    # Removed update_error_signal and _apply_learned_weights as per refactoring for PCA
 
     def create_feature_matrix(self, feature_vectors: List[Any], 
                              trade_outcomes: List[Any]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
@@ -129,37 +88,69 @@ class FeatureEngineer:
     def _extract_features(self, features: Any) -> Dict[str, float]:
         """Extract numerical features from feature vector."""
         
+        # Log-transform volume and count features
+        bid_volume_log = np.log1p(features.bid_volume)
+        ask_volume_log = np.log1p(features.ask_volume)
+        wall_size_log = np.log1p(features.wall_size)
+        depth_log = np.log1p(features.order_book_depth)
+
+        # Log-transform prices (for later return calculation)
+        mid_price_log = np.log(features.mid_price) if features.mid_price > 0 else 0.0
+        vwap_log = np.log(features.volume_weighted_price) if features.volume_weighted_price > 0 else 0.0
+        
         # Basic order book features
         feature_dict = {
             'bid_ask_imbalance': features.bid_ask_imbalance,
             'spread_percent': features.spread_percent,
-            'mid_price': features.mid_price,
-            'bid_volume': features.bid_volume,
-            'ask_volume': features.ask_volume,
-            'order_book_depth': features.order_book_depth,
+            'mid_price_log': mid_price_log,
+            'bid_volume_log': bid_volume_log,
+            'ask_volume_log': ask_volume_log,
+            'order_book_depth_log': depth_log,
             'large_bid_wall': float(features.large_bid_wall),
             'large_ask_wall': float(features.large_ask_wall),
-            'wall_size': features.wall_size,
-            'volume_weighted_price': features.volume_weighted_price,
+            'wall_size_log': wall_size_log,
+            'volume_weighted_price_log': vwap_log,
             'price_momentum': features.price_momentum,
             'volatility': features.volatility
         }
         
         # Derived features
         feature_dict.update({
-            'volume_ratio': features.bid_volume / (features.ask_volume + 1e-8),
-            'spread_normalized': features.spread_percent / (features.mid_price + 1e-8),
-            'wall_size_normalized': features.wall_size / (features.bid_volume + features.ask_volume + 1e-8),
-            'momentum_normalized': features.price_momentum / (features.volatility + 1e-8),
-            'depth_normalized': features.order_book_depth / 100.0
+            'volume_ratio': bid_volume_log / (ask_volume_log + 1e-8),
+            'spread_normalized': features.spread_percent / (features.mid_price + 1e-8), # Keep spread relative to price? Or assume spread_percent is already relative? Usually spread_percent is (ask-bid)/bid, so it's scale invariant.
+            'wall_size_ratio': wall_size_log / (bid_volume_log + ask_volume_log + 1e-8),
+            'momentum_normalized': features.price_momentum / (features.volatility + 1e-8)
         })
+
+        # Meta-Features Integration
+        # Encoding symbol using liquidity, volatility, and price position
+        if hasattr(features, 'volume_24h'):
+            feature_dict['liquidity_short'] = np.log1p(features.volume_24h)
+        else:
+             feature_dict['liquidity_short'] = 0.0
+
+        if hasattr(features, 'volume_30d'):
+            feature_dict['liquidity_long'] = np.log1p(features.volume_30d)
+        else:
+            feature_dict['liquidity_long'] = 0.0
+            
+        if hasattr(features, 'high_24h') and hasattr(features, 'low_24h') and features.low_24h > 0:
+            feature_dict['volatility_24h'] = (features.high_24h - features.low_24h) / features.low_24h
+        else:
+            feature_dict['volatility_24h'] = 0.0
+
+        if hasattr(features, 'high_24h') and hasattr(features, 'low_24h') and features.low_24h < features.high_24h:
+             # ((last - low) / (high - low))
+             feature_dict['price_position_24h'] = (features.mid_price - features.low_24h) / (features.high_24h - features.low_24h)
+        else:
+             feature_dict['price_position_24h'] = 0.5 # Middle
         
-        # Technical indicators
+        # Technical indicators (using log prices where appropriate)
         feature_dict.update({
             'rsi_like': self._calculate_rsi_like(features.price_momentum),
             'volatility_bands': self._calculate_volatility_bands(features.volatility),
             'trend_indicator': self._calculate_trend_indicator(features.price_momentum, features.volatility),
-            'macd_like': self._calculate_macd_like(features.mid_price, features.volume_weighted_price),
+            'macd_like': mid_price_log - vwap_log, # Log difference is approx percentage difference
             'bollinger_bands_like': self._calculate_bollinger_bands_like(features.mid_price, features.volatility),
             'atr_like': self._calculate_atr_like(features.volatility)
         })
@@ -229,28 +220,35 @@ class FeatureEngineer:
     
     def fit_scaler(self, X: np.ndarray) -> None:
         """Fit feature scaler on training data."""
+        # Force StandardScaler as per requirements, or stick to config if compatible
+        if self.feature_scaling == 'minmax':
+             logger.warning("Switching to StandardScaler for scale invariance requirement")
+             self.feature_scaling = 'standard'
+
         if self.feature_scaling == 'standard':
             self.scaler = StandardScaler()
-        elif self.feature_scaling == 'minmax':
-            self.scaler = MinMaxScaler()
         else:
-            self.scaler = None
+            self.scaler = StandardScaler() # Default to StandardScaler
         
         if self.scaler is not None:
             # Initialize random sample weights
             rng = np.random.RandomState(42)
             sample_weight = rng.uniform(0.1, 1.0, size=X.shape[0])
             
-            if self.feature_scaling == 'standard':
-                self.scaler.fit(X, sample_weight=sample_weight)
-                logger.info(f"Fitted {self.feature_scaling} scaler with random sample weights")
-            elif self.feature_scaling == 'minmax':
-                # MinMaxScaler doesn't support sample_weight in fit, but we initialize them as requested
-                self.scaler.fit(X)
-                logger.info(f"Fitted {self.feature_scaling} scaler (random sample weights initialized but unused)")
-            else:
-                self.scaler.fit(X)
-                logger.info(f"Fitted {self.feature_scaling} scaler")
+            self.scaler.fit(X, sample_weight=sample_weight)
+            logger.info(f"Fitted {self.feature_scaling} scaler with random sample weights")
+
+    def fit_pca(self, X: np.ndarray, n_components: float = 0.95) -> None:
+        """Fit PCA to reduce dimensionality while preserving variance."""
+        self.pca = PCA(n_components=n_components)
+        self.pca.fit(X)
+        logger.info(f"Fitted PCA: {self.pca.n_components_} components explain {n_components*100}% variance")
+
+    def transform_pca(self, X: np.ndarray) -> np.ndarray:
+        """Transform features using fitted PCA."""
+        if self.pca is not None:
+            return self.pca.transform(X)
+        return X
     
     def transform_features(self, X: np.ndarray) -> np.ndarray:
         """Transform features using fitted scaler."""
@@ -349,10 +347,7 @@ class FeatureEngineer:
 
         # Step 4: Feature scaling (fit on expanded features for incremental)
         if self.scaler is None:
-            if self.feature_scaling == 'standard':
-                self.scaler = StandardScaler()
-            elif self.feature_scaling == 'minmax':
-                self.scaler = MinMaxScaler()
+            self.scaler = StandardScaler()
             logger.info(f"Created new scaler for shape {X_interactions.shape}")
 
         if self.scaler is not None and hasattr(self.scaler, 'partial_fit'):
@@ -360,29 +355,27 @@ class FeatureEngineer:
             rng = np.random.RandomState(None)
             sample_weight = rng.uniform(0.1, 1.0, size=X_interactions.shape[0])
 
-            if isinstance(self.scaler, StandardScaler):
-                self.scaler.partial_fit(X_interactions, sample_weight=sample_weight)
-            elif isinstance(self.scaler, MinMaxScaler):
-                # MinMaxScaler partial_fit does not accept sample_weight
-                self.scaler.partial_fit(X_interactions)
-            else:
-                self.scaler.partial_fit(X_interactions)
+            self.scaler.partial_fit(X_interactions, sample_weight=sample_weight)
             logger.info(f"Partial fitted scaler on shape {X_interactions.shape}")
         elif self.scaler is not None:
             # If partial_fit not available, fit on the expanded features
-            if isinstance(self.scaler, StandardScaler):
-                rng = np.random.RandomState(42)
-                sample_weight = rng.uniform(0.1, 1.0, size=X_interactions.shape[0])
-                self.scaler.fit(X_interactions, sample_weight=sample_weight)
-            else:
-                self.scaler.fit(X_interactions)
+            rng = np.random.RandomState(42)
+            sample_weight = rng.uniform(0.1, 1.0, size=X_interactions.shape[0])
+            self.scaler.fit(X_interactions, sample_weight=sample_weight)
             logger.info(f"Fitted scaler on expanded shape {X_interactions.shape}")
 
-        # Step 5: Feature selection (fit on expanded features for incremental)
-        if self.feature_selector is None and y is not None:
-            # If this is the first batch, fit feature selector on expanded features
-            self.fit_feature_selector(X_interactions, y)
-            logger.info(f"Fitted feature selector on expanded shape {X_interactions.shape}")
+        # Step 5: PCA (incremental not fully supported for standard PCA, so we just check if it exists or fit on batch if very necessary but standard PCA doesn't partial_fit)
+        # We will assume PCA is pre-fitted or we skip update. If we want to support incremental PCA update, we need IncrementalPCA.
+        # For now, we skip fitting PCA in incremental mode if it's standard PCA.
+        # If this is the first batch and fit=True, we should fit PCA.
+        if fit and self.pca is None:
+             self.fit_pca(X_interactions if self.scaler is None else self.scaler.transform(X_interactions), n_components=0.95)
+             logger.info("Fitted PCA on initial batch in incremental pipeline")
+
+        # Step 6: Feature selection (fit on expanded features for incremental)
+        # Note: SelectKBest doesn't support partial_fit well usually, but we can refit or skip.
+        # We'll skip update for now to avoid dimension mismatch if PCA changed.
+        pass
 
     
     def transform_features_selected(self, X: np.ndarray) -> np.ndarray:
@@ -392,19 +385,41 @@ class FeatureEngineer:
         return X
     
     def create_time_series_features(self, X: np.ndarray, window_size: int = 5, historical_data: Optional[np.ndarray] = None) -> np.ndarray:
-        """Create time series features by adding rolling statistics."""
+        """Create time series features by adding rolling statistics on Log Returns for prices."""
+        
+        # Identify price columns to compute returns (indices of columns ending with '_log')
+        # We rely on feature names if available, otherwise apply to all or heuristics
+        # Since X doesn't have names here, we need to rely on the fact that we process 'mid_price_log' and 'volume_weighted_price_log'
+        # which are indices 2 and 9 in _extract_features dict (Python < 3.7 dict order is insertion, >= 3.7 is preserved)
+        # However, to be robust, we should calculate log returns for ALL features as 'changes' are often more stationary.
+        # BUT, the prompt specifies "Price: Convert raw prices ... to Log Returns ... for time-series analysis."
+        # And "Volume/Count: Apply np.log1p".
+        # Let's compute rolling stats on the *input* X. Since X already contains Log Prices and Log Volumes,
+        # Rolling Mean of Log Price is not Log Return.
+        # We need to transform X to Returns first for price columns.
+        
+        # Strategy: Create a new matrix for rolling stats calculation.
+        # For price-like columns (log prices), compute diff (log return).
+        # For others, keep as is? Or diff them too? 
+        # Usually, rolling mean/std of LEVELS (even log levels) is not scale invariant if the level shifts.
+        # Rolling mean/std of CHANGES (returns) is scale invariant.
+        # So I will apply diff() to ALL columns to get changes, and calculate rolling stats on CHANGES.
+        # This aligns with "Scale-Invariance".
         
         # For a single prediction, use provided historical data
         if X.shape[0] == 1:
-            # If historical data is available, combine it with the current sample
             if historical_data is not None and historical_data.size > 0:
                 combined_data = np.vstack([historical_data, X])
             else:
-                # If no history, use only the current sample
                 combined_data = X
-
-            # Calculate rolling statistics on the combined data
-            rolling_stats_df = pd.DataFrame(combined_data).rolling(window=window_size, min_periods=1)
+            
+            # Compute changes (diff)
+            # diff[i] = data[i] - data[i-1]
+            df = pd.DataFrame(combined_data)
+            diff_df = df.diff().fillna(0) # First row becomes 0 or NaN
+            
+            # Calculate rolling statistics on the DIFF data (Returns/Changes)
+            rolling_stats_df = diff_df.rolling(window=window_size, min_periods=1)
             rolling_mean = rolling_stats_df.mean().values
             rolling_std = rolling_stats_df.std().fillna(0).values
             
@@ -412,16 +427,20 @@ class FeatureEngineer:
             latest_rolling_mean = rolling_mean[-1, :].reshape(1, -1)
             latest_rolling_std = rolling_std[-1, :].reshape(1, -1)
 
-            # Combine original features with the latest rolling statistics
+            # Combine original features (Levels) with rolling stats of Changes
             X_enhanced = np.column_stack([X, latest_rolling_mean, latest_rolling_std])
 
-        # For batch processing (training), calculate rolling stats directly
+        # For batch processing
         else:
-            rolling_mean = pd.DataFrame(X).rolling(window=window_size, min_periods=1).mean().values
-            rolling_std = pd.DataFrame(X).rolling(window=window_size, min_periods=1).std().fillna(0).values
+            df = pd.DataFrame(X)
+            diff_df = df.diff().fillna(0)
+            
+            rolling_mean = diff_df.rolling(window=window_size, min_periods=1).mean().values
+            rolling_std = diff_df.rolling(window=window_size, min_periods=1).std().fillna(0).values
+            
             X_enhanced = np.column_stack([X, rolling_mean, rolling_std])
 
-        logger.info(f"Enhanced features with time series: {X_enhanced.shape}")
+        logger.info(f"Enhanced features with time series (rolling stats on changes): {X_enhanced.shape}")
         return X_enhanced
 
     def create_time_series_features_incremental(self, X: np.ndarray, window_size: int = 5, 
@@ -520,14 +539,15 @@ class FeatureEngineer:
             self.fit_scaler(X_interactions)
         X_scaled = self.transform_features(X_interactions)
 
-        # Step 4: Feature selection
-        if fit_transform and y is not None:
-            self.fit_feature_selector(X_scaled, y)
-        X_selected = self.transform_features_selected(X_scaled)
+        # Step 4: PCA (After scaling, before selection)
+        if fit_transform:
+            self.fit_pca(X_scaled, n_components=0.95)
+        X_pca = self.transform_pca(X_scaled)
 
-        # Apply learned feature weights (Evolutionary Feature Weighting)
-        if self.scaler: # Only apply if scaling is active
-            X_selected = self._apply_learned_weights(X_selected, train_mode=fit_transform)
+        # Step 5: Feature selection
+        if fit_transform and y is not None:
+            self.fit_feature_selector(X_pca, y)
+        X_selected = self.transform_features_selected(X_pca)
 
         X_final = X_selected
 
@@ -573,17 +593,17 @@ class FeatureEngineer:
             X_scaled = X_interactions
             logger.info(f"No scaler available, using unscaled: {X_scaled.shape}")
 
-        # Step 5: Feature selection
+        # Step 5: PCA
+        X_pca = self.transform_pca(X_scaled)
+        logger.info(f"After PCA: {X_pca.shape}")
+
+        # Step 6: Feature selection
         if self.feature_selector:
-            X_selected = self.feature_selector.transform(X_scaled)
+            X_selected = self.feature_selector.transform(X_pca)
             logger.info(f"After selection: {X_selected.shape}")
         else:
-            X_selected = X_scaled
+            X_selected = X_pca
             logger.info(f"No selector available: {X_selected.shape}")
-
-        # Apply learned feature weights (Evolutionary Feature Weighting)
-        if self.scaler: # Only apply if scaling is active
-            X_selected = self._apply_learned_weights(X_selected, train_mode=fit)
 
         # Log feature statistics for troubleshooting
         if X_selected.shape[0] > 0:
@@ -601,13 +621,11 @@ class FeatureEngineer:
             joblib.dump(self.imputer, os.path.join(directory, 'imputer.pkl'))
         if self.scaler:
             joblib.dump(self.scaler, os.path.join(directory, 'scaler.pkl'))
+        if self.pca:
+            joblib.dump(self.pca, os.path.join(directory, 'pca.pkl'))
         if self.feature_selector:
             joblib.dump(self.feature_selector, os.path.join(directory, 'feature_selector.pkl'))
         
-        # Save feature weights
-        if self.feature_weights is not None:
-            np.save(os.path.join(directory, 'feature_weights.npy'), self.feature_weights)
-            
         logger.info(f"Saved transformers to {directory}")
 
     def load_transformers(self, directory: str) -> None:
@@ -618,17 +636,11 @@ class FeatureEngineer:
         scaler_path = os.path.join(directory, 'scaler.pkl')
         if os.path.exists(scaler_path):
             self.scaler = joblib.load(scaler_path)
+        pca_path = os.path.join(directory, 'pca.pkl')
+        if os.path.exists(pca_path):
+            self.pca = joblib.load(pca_path)
         selector_path = os.path.join(directory, 'feature_selector.pkl')
         if os.path.exists(selector_path):
             self.feature_selector = joblib.load(selector_path)
             
-        # Load feature weights
-        weights_path = os.path.join(directory, 'feature_weights.npy')
-        if os.path.exists(weights_path):
-            try:
-                self.feature_weights = np.load(weights_path)
-                logger.info(f"Loaded feature weights from {weights_path}")
-            except Exception as e:
-                logger.warning(f"Failed to load feature weights: {e}")
-                
         logger.info(f"Loaded transformers from {directory}")

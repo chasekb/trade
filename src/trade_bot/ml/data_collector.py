@@ -39,6 +39,11 @@ class OrderBookFeatures:
     volume_weighted_price: float
     price_momentum: float
     volatility: float
+    # Meta-features for scale invariance
+    volume_24h: float = 0.0
+    volume_30d: float = 0.0
+    high_24h: float = 0.0
+    low_24h: float = 0.0
     # Features from previous ML analysis
     prev_win_probability: float = 0.0
     prev_expected_return: float = 0.0
@@ -682,6 +687,11 @@ class MLDataCollector:
                         volume_weighted_price=self._calculate_vwap(signal),
                         price_momentum=self._calculate_price_momentum(symbol_signals, signal),
                         volatility=self._calculate_volatility(symbol_signals, signal),
+                        # Default meta-features for historical data if not available
+                        volume_24h=float(signal.get('volume', 0.0)), # Use signal volume as proxy if available
+                        volume_30d=0.0, # Not available in historical signals usually
+                        high_24h=float(signal.get('mid_price', signal['price'])) * 1.05, # Rough estimate
+                        low_24h=float(signal.get('mid_price', signal['price'])) * 0.95, # Rough estimate
                         prev_win_probability=float(prev_ml_analysis.get('win_probability', 0.0) / 100.0), # Normalize to 0-1
                         prev_expected_return=float(prev_ml_analysis.get('expected_return', 0.0)),
                         prev_confidence=float(prev_ml_analysis.get('confidence', 0.0))
