@@ -220,6 +220,8 @@ class ModelManager:
     def list_models(self) -> List[Dict[str, Any]]:
         """List all registered models."""
         models = []
+        
+        # Handle versioned directory structure
         for model_name in os.listdir(self.models_dir):
             model_dir = os.path.join(self.models_dir, model_name)
             if os.path.isdir(model_dir):
@@ -235,6 +237,33 @@ class ModelManager:
                                 'version_id': version_id,
                                 'trained_at': metadata.get('created_at'),
                             })
+
+        # Handle flat file structure for backward compatibility
+        for filename in os.listdir(self.models_dir):
+            if filename.endswith("_metadata.json"):
+                try:
+                    metadata_path = os.path.join(self.models_dir, filename)
+                    
+                    # Check if file is empty before attempting to parse
+                    if os.path.getsize(metadata_path) == 0:
+                        logger.debug(f"Skipping empty metadata file: {filename}")
+                        continue
+                    
+                    model_name = filename.split('_202')[0]
+                    version_id = filename.split(f'{model_name}_')[1].replace('_metadata.json', '')
+                    
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    models.append({
+                        'model_id': f"{model_name}:{version_id}",
+                        'model_name': model_name,
+                        'version_id': version_id,
+                        'trained_at': metadata.get('created_at'),
+                    })
+                except Exception as e:
+                    logger.warning(f"Could not parse model metadata from filename {filename}: {e}")
+
         return models
     
     def get_current_model_info(self) -> Optional[Dict[str, Any]]:
@@ -384,6 +413,26 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Error saving model registry: {e}")
     
+    def unregister_model(self, model_name: str) -> bool:
+        """Unregister a model and remove it from the registry."""
+        try:
+            if model_name in self.model_versions:
+                del self.model_versions[model_name]
+                
+                # Also remove from performance history if present
+                if model_name in self.performance_history:
+                    del self.performance_history[model_name]
+                
+                self._save_model_registry()
+                logger.info(f"Unregistered model {model_name}")
+                return True
+            else:
+                logger.warning(f"Model {model_name} not found in registry")
+                return False
+        except Exception as e:
+            logger.error(f"Error unregistering model: {e}")
+            return False
+
     def cleanup_old_versions(self, model_name: str, keep_versions: int = 5) -> bool:
         """Clean up old model versions, keeping only the most recent ones."""
         try:

@@ -132,7 +132,8 @@ async def startup_event():
         simulated_trading_manager = SimulatedTradingManager(
             initial_balance=10000.0,
             db_manager=database_manager,
-            model_manager=model_manager
+            model_manager=model_manager,
+            config=config
         )
         data_handler = DataHandler(config)
         websocket_client = WebSocketClient(config)
@@ -158,7 +159,11 @@ async def startup_event():
         backtest_handlers = BacktestHandlers(config, database_manager)
         data_handlers = DataHandlers(config, data_provider, cached_data_provider, database_manager, simulated_trading_manager, None, app_state_local.trading_state)
         trading_handlers = TradingHandlers(config, simulated_trading_manager, database_manager, websocket_manager, data_handlers)
+        
+        # Set websocket manager reference in data handlers after both are created
+        data_handlers.websocket_manager = websocket_manager
         data_handlers.trading_handlers = trading_handlers
+
         app_state_local.websocket_handlers = WebSocketHandlers(websocket_manager)
         app_state_local.data_handlers = data_handlers
         app_state_local.live_portfolio_handlers = LivePortfolioHandlers(config)
@@ -177,7 +182,8 @@ async def startup_event():
         # Mark application as initialized
         app_state_local.set_initialized(True)
 
-        # Set the global app_state reference so routes can access it
+        # Set the global app_state reference BEFORE starting WebSocket connections
+        # This prevents "Service unavailable - application not initialized" errors
         set_app_state(app_state_local)
 
         # Start WebSocket client and real-time data processing

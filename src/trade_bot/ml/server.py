@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 import json
 import asyncio
 from typing import Dict, List, Any, Optional
@@ -11,9 +12,77 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import numpy as np
 
-from ml_optimizer import MLTradingOptimizer
+# Add parent directories to Python path to enable importing trade_bot modules
+# This is critical for unpickling models that were saved with absolute imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)  # Points to src/trade_bot
+grandparent_dir = os.path.dirname(parent_dir)  # Points to src
+
+# Add paths to enable both 'import trade_bot.ml.wrapper' and 'from trade_bot.ml import wrapper'
+if grandparent_dir not in sys.path:
+    sys.path.insert(0, grandparent_dir)
+
+# Now import local modules
+# Use relative imports to ensure we remain within the package context
+try:
+    from .ml_optimizer import MLTradingOptimizer
+    from .wrapper import TradingModelWrapper, _reconstruct_wrapper
+except ImportError:
+    # Fallback for standalone execution
+    from ml_optimizer import MLTradingOptimizer
+    from wrapper import TradingModelWrapper, _reconstruct_wrapper
+
+# CRITICAL: Create module aliases to support unpickling models saved with different import paths
+# This allows models saved with "trade_bot.ml.wrapper" imports to work in this environment
+import sys
+current_module = sys.modules[__name__]  # Reference to the current 'server' module
+
+# Import all ML modules to make them available
+try:
+    from . import wrapper
+    from . import ml_optimizer
+    from . import data_collector
+    from . import feature_engineer
+    from . import model_trainer
+    from . import model_manager
+    from . import vector_db_client
+except ImportError:
+    import wrapper
+    import ml_optimizer
+    import data_collector
+    import feature_engineer
+    import model_trainer
+    import model_manager
+    import vector_db_client
 
 logger = logging.getLogger(__name__)
+
+# Import Data Provider for fetching real-time stats
+try:
+    from ..data.data_provider import CoinbaseDataProvider
+except ImportError:
+    try:
+        from trade_bot.data.data_provider import CoinbaseDataProvider
+    except ImportError:
+        # Fallback or mock if not available
+        CoinbaseDataProvider = None
+        logger.warning("CoinbaseDataProvider could not be imported. Real-time stats fetching disabled.")
+
+# Ensure trade_bot package structure exists in sys.modules if not already present
+if 'trade_bot' not in sys.modules:
+    sys.modules['trade_bot'] = type(sys)('trade_bot')
+if 'trade_bot.ml' not in sys.modules:
+    sys.modules['trade_bot.ml'] = type(sys)('trade_bot.ml')
+
+# Ensure modules are mapped to their full package paths
+# This handles cases where they might have been loaded as top-level modules
+sys.modules['trade_bot.ml.wrapper'] = wrapper
+sys.modules['trade_bot.ml.ml_optimizer'] = ml_optimizer
+sys.modules['trade_bot.ml.data_collector'] = data_collector
+sys.modules['trade_bot.ml.feature_engineer'] = feature_engineer
+sys.modules['trade_bot.ml.model_trainer'] = model_trainer
+sys.modules['trade_bot.ml.model_manager'] = model_manager
+sys.modules['trade_bot.ml.vector_db_client'] = vector_db_client
 
 # Initialize FastAPI app
 app = FastAPI(title="ML Trading Model Server", version="1.0.0")
@@ -22,6 +91,10 @@ app = FastAPI(title="ML Trading Model Server", version="1.0.0")
 ml_optimizer = None
 training_status: str = "idle"  # "idle", "training", "success", "failed"
 model_ready: bool = False
+
+# Stats Cache
+stats_cache: Dict[str, Dict[str, Any]] = {}
+STATS_CACHE_TTL = 300  # 5 minutes
 
 # Request/Response models
 class PredictionRequest(BaseModel):
@@ -39,6 +112,11 @@ class PredictionRequest(BaseModel):
     price_momentum: float
     volatility: float
     timestamp: int
+    # New meta-features
+    volume_24h: Optional[float] = 0.0
+    volume_30d: Optional[float] = 0.0
+    high_24h: Optional[float] = 0.0
+    low_24h: Optional[float] = 0.0
 
 class PredictionResponse(BaseModel):
     action: str
@@ -47,6 +125,9 @@ class PredictionResponse(BaseModel):
     reason: str
     similar_conditions: int
     timestamp: str
+    win_probability: Optional[float] = 0.0
+    expected_return_percentage: Optional[float] = 0.0
+    analytics: Optional[Dict[str, Any]] = {}
 
 class ModelStatusResponse(BaseModel):
     is_trained: bool
@@ -137,9 +218,46 @@ async def predict_trading_signal(request: PredictionRequest):
         raise HTTPException(status_code=503, detail="Model is loading, please try again later.")
 
     try:
+        # Fetch 24h stats if missing
+        volume_24h = request.volume_24h
+        volume_30d = request.volume_30d
+        high_24h = request.high_24h
+        low_24h = request.low_24h
+
+        if (volume_24h == 0.0 or high_24h == 0.0) and CoinbaseDataProvider:
+            try:
+                # Check cache
+                cached = stats_cache.get(request.symbol)
+                now = datetime.now().timestamp()
+                
+                if cached and (now - cached['timestamp'] < STATS_CACHE_TTL):
+                    stats = cached['data']
+                else:
+                    # Fetch fresh
+                    provider = CoinbaseDataProvider(request.symbol)
+                    stats = await provider.get_product_stats()
+                    # Also update cache
+                    if stats:
+                        stats_cache[request.symbol] = {
+                            'timestamp': now,
+                            'data': stats
+                        }
+                    # Don't need to close/cleanup provider as it uses aiohttp session created per request 
+                    # or if it uses a shared session, we should check implementation.
+                    # Looking at CoinbaseDataProvider, it creates a new session in methods unless configured otherwise.
+                
+                if stats:
+                    if volume_24h == 0.0: volume_24h = stats.get('volume', 0.0)
+                    if volume_30d == 0.0: volume_30d = stats.get('volume_30day', 0.0)
+                    if high_24h == 0.0: high_24h = stats.get('high', 0.0)
+                    if low_24h == 0.0: low_24h = stats.get('low', 0.0)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to fetch product stats for {request.symbol}: {e}")
+
         # Convert request to OrderBookFeatures
-        from data_collector import OrderBookFeatures
-        features = OrderBookFeatures(
+        # Use global import instead of local import which might fail
+        features = data_collector.OrderBookFeatures(
             timestamp=request.timestamp,
             symbol=request.symbol,
             bid_ask_imbalance=request.bid_ask_imbalance,
@@ -153,7 +271,11 @@ async def predict_trading_signal(request: PredictionRequest):
             wall_size=request.wall_size,
             volume_weighted_price=request.volume_weighted_price,
             price_momentum=request.price_momentum,
-            volatility=request.volatility
+            volatility=request.volatility,
+            volume_24h=volume_24h,
+            volume_30d=volume_30d,
+            high_24h=high_24h,
+            low_24h=low_24h
         )
 
         # Check if model is trained and deployed
@@ -342,6 +464,41 @@ async def update_model():
     except Exception as e:
         logger.error(f"Error updating model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/set_active")
+async def set_active_model(model_name: str):
+    """Set the active ML model."""
+    global ml_optimizer, model_ready
+    
+    if ml_optimizer is None:
+        raise HTTPException(status_code=503, detail="ML optimizer not initialized")
+    
+    try:
+        logger.info(f"Setting active model to: {model_name}")
+        
+        # Run in thread to avoid blocking event loop
+        # Reload registry first to ensure we see new models
+        ml_optimizer.model_manager.load_model_registry()
+        success = await asyncio.to_thread(ml_optimizer.model_manager.set_active_model, model_name)
+        
+        if success:
+            # Update the optimizer's current model reference if needed
+            model_ready = True
+            
+            return {
+                "status": "success",
+                "message": f"Active model set to {model_name}",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Failed to set active model: {model_name}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logger.error(f"Error setting active model: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @app.post("/rollback")
 async def rollback_model():

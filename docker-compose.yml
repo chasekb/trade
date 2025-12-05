@@ -122,8 +122,8 @@ services:
   # ML Model Server
   ml-server:
     build:
-      context: ./src/trade_bot/ml
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: src/trade_bot/ml/Dockerfile
     ports:
       - "8002:8002"
     volumes:

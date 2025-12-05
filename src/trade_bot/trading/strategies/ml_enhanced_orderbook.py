@@ -172,6 +172,10 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         features['bid_volume'] = bid_volume
         features['ask_volume'] = ask_volume
         
+        if ask_volume == 0:
+            logger.warning(f"Ask volume is 0 for {len(self.asks)} asks. Top 5 asks: {self.asks[:5]}")
+
+        
         if ask_volume > 0:
             features['bid_ask_imbalance'] = bid_volume / ask_volume
         
@@ -245,7 +249,10 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
                 'action': action,
                 'confidence': confidence,
                 'signal_value': signal_value,
-                'price': current_price
+                'price': current_price,
+                'win_probability': ml_prediction.get('win_probability', 50.0),
+                'expected_return_percentage': ml_prediction.get('expected_return_percentage', 0.0),
+                'analytics': ml_prediction.get('analytics', {})
             })
             
             if action in ['buy', 'sell']:
@@ -256,7 +263,8 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
                     price=current_price,
                     quantity=self.calculate_position_size(current_price),
                     reason=f"{reason} (ML confidence: {confidence:.2f})",
-                    timestamp=timestamp
+                    timestamp=timestamp,
+                    strength=confidence
                 )
             else:
                 self.signals_by_type['ml_hold'] += 1

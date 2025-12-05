@@ -99,6 +99,7 @@ export interface OrderBookSignal {
     model_version: string;
     features_used?: string[];
     prediction_timestamp: string;
+    analytics?: any;
   };
   strength_composition?: {
     [featureName: string]: {
@@ -337,6 +338,8 @@ export interface MLPerformanceMetrics {
   profit_factor?: number;
   sharpe_ratio?: number;
   win_rate?: number;
+  total_feature_vectors?: number;
+  total_used_samples?: number;
   error?: string;
 }
 
@@ -351,7 +354,7 @@ export interface MLDashboardData {
 }
 
 export interface MLTrainingResponse {
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'training_started';
   message?: string;
   error?: string;
 }
@@ -367,4 +370,6 @@ export interface MLConfig {
   continuous_training_enabled: boolean;
   training_interval: number;
   new_data_threshold: number;
+  batch_training_enabled: boolean;
+  batch_size: number;
 }

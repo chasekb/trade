@@ -139,3 +139,17 @@ async def get_data_summary_alt():
     app_state = get_app_state()
     check_handlers_ready("app_state.dashboard_handlers", app_state.dashboard_handlers)
     return await app_state.dashboard_handlers.get_data_summary()
+
+@router.post("/api/log")
+async def log_message(request: Request):
+    """Log a message from the frontend."""
+    try:
+        data = await request.json()
+        message = data.get("message")
+        if message:
+            print(f"Frontend log: {message}")
+            return {"status": "ok"}
+        else:
+            raise HTTPException(status_code=400, detail="Missing 'message' in request body")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

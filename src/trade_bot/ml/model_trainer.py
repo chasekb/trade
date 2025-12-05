@@ -8,14 +8,20 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import os
 
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, RandomForestClassifier
+from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression, SGDRegressor, SGDClassifier
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
+
+
+try:
+    from .wrapper import TradingModelWrapper
+except ImportError:
+    from wrapper import TradingModelWrapper
 
 
 class ModelTrainer:
@@ -35,6 +41,10 @@ class ModelTrainer:
         self.model_performance = {}
         self.best_model = None
         self.best_score = -np.inf
+        self.classifiers = {}
+        self.classifier_performance = {}
+        self.best_classifier = None
+        self.best_classifier_score = -np.inf
         
     def train_models(self, X: np.ndarray, y: np.ndarray, 
                     test_size: float = 0.2) -> Dict[str, Any]:
@@ -74,6 +84,271 @@ class ModelTrainer:
             'training_samples': X_train.shape[0],
             'test_samples': X_test.shape[0]
         }
+    
+    def train_incremental(self, data_generator, model_type: str = 'sgd', 
+                         test_size: float = 0.2, feature_engineer: Any = None) -> Dict[str, Any]:
+        """Train models incrementally using a data generator."""
+        logger.info(f"Starting incremental training with model type: {model_type}")
+        
+        # Initialize model based on type
+        if model_type == 'sgd':
+            # Use adaptive learning rate to prevent exploding gradients
+            model = SGDRegressor(loss='squared_error', penalty='l2', alpha=0.0001, 
+                               learning_rate='adaptive', eta0=0.001, n_iter_no_change=5,
+                               shuffle=False,
+                               random_state=self.random_state)
+            model_name = 'sgd_regressor'
+        elif model_type == 'nn':
+            model = MLPRegressor(hidden_layer_sizes=(100, 50), activation='relu', 
+                               solver='adam', alpha=0.0001, batch_size=200, 
+                               learning_rate='adaptive', max_iter=1, warm_start=True, 
+                               random_state=self.random_state)
+            model_name = 'neural_network_incremental'
+        else:
+            logger.warning(f"Model type {model_type} does not support incremental learning. Defaulting to SGD.")
+            model = SGDRegressor(random_state=self.random_state)
+            model_name = 'sgd_regressor'
+            
+        # Initialize classifier for win probability
+        classifier = SGDClassifier(loss='log_loss', penalty='l2', alpha=0.0001, 
+                                 learning_rate='optimal', random_state=self.random_state)
+        classifier_name = 'sgd_classifier'
+        
+        total_feature_vectors = 0
+        total_used_samples = 0
+        batch_count = 0
+        
+        # Keep track of performance on the fly (using a rolling window of test data from batches)
+        rolling_mse = []
+        rolling_accuracy = []
+        
+        # Minimum samples required for train/test split
+        MIN_SAMPLES_FOR_SPLIT = 5
+        
+        # Track weight initialization
+        weights_initialized = False
+        
+        for batch_data in data_generator:
+            # Handle different generator yield formats (X, y) or (X, y, processed_targets)
+            if len(batch_data) == 3:
+                X_batch, y_batch, processed_targets = batch_data
+            else:
+                X_batch, y_batch = batch_data
+                processed_targets = None
+
+            if len(X_batch) == 0:
+                continue
+                
+            # Convert to numpy arrays
+            X_batch = np.array(X_batch)
+            total_feature_vectors += len(X_batch)
+            
+            # Check for NaNs or Infs in input data
+            if np.isnan(X_batch).any() or np.isinf(X_batch).any():
+                logger.warning(f"Batch {batch_count + 1} contains NaNs or Infs in features. Skipping.")
+                continue
+            
+            # Initialize random weights for SGDRegressor on first batch
+            if not weights_initialized and model_name == 'sgd_regressor':
+                n_features = X_batch.shape[1]
+                rng = np.random.RandomState(self.random_state)
+                # Initialize with small random values
+                model.coef_ = rng.normal(0, 0.01, size=n_features)
+                model.intercept_ = rng.normal(0, 0.01, size=1)
+                model.t_ = 1.0 # Initialize time step
+                weights_initialized = True
+                logger.info(f"Initialized SGDRegressor with random weights for {n_features} features")
+            
+            # Target for regressor - use processed targets if available (normalized), otherwise raw PnL
+            if processed_targets is not None:
+                y_batch_reg = np.array(processed_targets)
+            else:
+                y_batch_reg = np.array([y.pnl for y in y_batch])
+                
+            y_batch_cls = np.array([y.is_win for y in y_batch]) # Target for classifier
+            
+            # Check for NaNs or Infs in targets
+            if np.isnan(y_batch_reg).any() or np.isinf(y_batch_reg).any():
+                logger.warning(f"Batch {batch_count + 1} contains NaNs or Infs in targets. Skipping.")
+                continue
+
+            # Log batch statistics for troubleshooting
+            if batch_count % 10 == 0:
+                logger.info(f"Batch {batch_count + 1} Stats - "
+                          f"X: min={np.min(X_batch):.4f}, max={np.max(X_batch):.4f}, mean={np.mean(X_batch):.4f}, std={np.std(X_batch):.4f} | "
+                          f"y: min={np.min(y_batch_reg):.4f}, max={np.max(y_batch_reg):.4f}, mean={np.mean(y_batch_reg):.4f}, std={np.std(y_batch_reg):.4f}")
+            
+            try:
+                # Check if batch is large enough for train/test split
+                if len(X_batch) >= MIN_SAMPLES_FOR_SPLIT:
+                    # Split batch for validation
+                    X_train, X_test, y_train_reg, y_test_reg, y_train_cls, y_test_cls = train_test_split(
+                        X_batch, y_batch_reg, y_batch_cls, test_size=test_size, random_state=self.random_state
+                    )
+                    
+                    # Partial fit regressor
+                    model.partial_fit(X_train, y_train_reg)
+                    
+                    # Partial fit classifier (needs classes for first call)
+                    classes = np.array([False, True])
+                    classifier.partial_fit(X_train, y_train_cls, classes=classes)
+                    
+                    # Evaluate on test split only if variance exists
+                    # Zero variance in targets makes R² undefined
+                    if np.std(y_test_reg) > 1e-6:  # Check for non-zero variance
+                        reg_score = model.score(X_test, y_test_reg)
+                        
+                        # Handle NaN scores
+                        if np.isnan(reg_score):
+                            logger.warning(f"Batch {batch_count + 1} produced NaN regression score.")
+                            reg_score = 0.0
+                            
+                        rolling_mse.append(reg_score)
+                        
+                        # Calculate MSE for feedback loop
+                        current_mse = mean_squared_error(y_test_reg, model.predict(X_test))
+                        if feature_engineer:
+                            feature_engineer.update_error_signal(current_mse)
+                    else:
+                        # Skip score for zero-variance targets
+                        logger.debug(f"Batch {batch_count + 1} has zero target variance, skipping R² evaluation")
+                    
+                    cls_score = classifier.score(X_test, y_test_cls)
+                    rolling_accuracy.append(cls_score)
+                else:
+                    # Batch too small for split - use entire batch for training without validation
+                    logger.info(f"Batch {batch_count + 1} has only {len(X_batch)} samples - using entire batch for training without validation")
+                    
+                    # Partial fit regressor with entire batch
+                    model.partial_fit(X_batch, y_batch_reg)
+                    
+                    # Partial fit classifier with entire batch
+                    classes = np.array([False, True])
+                    classifier.partial_fit(X_batch, y_batch_cls, classes=classes)
+            except Exception as e:
+                logger.error(f"Error training on batch {batch_count + 1}: {e}")
+                continue
+            
+            total_used_samples += len(X_batch)
+            batch_count += 1
+            
+            if batch_count % 10 == 0:
+                avg_reg = np.mean(rolling_mse[-10:]) if rolling_mse else 0.0
+                avg_cls = np.mean(rolling_accuracy[-10:]) if rolling_accuracy else 0.0
+                logger.info(f"Processed {batch_count} batches. "
+                          f"Total Vectors: {total_feature_vectors}, Used Samples: {total_used_samples}. "
+                          f"Avg Reg Score: {avg_reg:.4f}, "
+                          f"Avg Cls Score: {avg_cls:.4f}")
+        
+        # Store models
+        self.models[model_name] = model
+        self.classifiers[classifier_name] = classifier
+        
+        # Calculate final average scores
+        avg_reg_score = np.mean(rolling_mse) if rolling_mse else 0.0
+        avg_cls_score = np.mean(rolling_accuracy) if rolling_accuracy else 0.0
+        
+        # Final sanity check for NaN
+        if np.isnan(avg_reg_score):
+            avg_reg_score = 0.0
+            
+        self.model_performance[model_name] = {'score': avg_reg_score, 'type': 'incremental'}
+        self.classifier_performance[classifier_name] = {'accuracy': avg_cls_score, 'type': 'incremental'}
+        
+        # Set best models
+        self.best_model = model
+        self.best_score = avg_reg_score
+        self.best_classifier = classifier
+        self.best_classifier_score = avg_cls_score
+        
+        # Save models
+        self.save_model(model, f"data/models/{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.model_performance, score=avg_reg_score)
+        
+        self.save_model(classifier, f"data/models/{classifier_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.classifier_performance, score=avg_cls_score)
+        
+        logger.info(f"Incremental training complete. "
+                  f"Total Vectors: {total_feature_vectors}, Used Samples: {total_used_samples}, Batches: {batch_count}. "
+                  f"Final Reg Score: {avg_reg_score:.4f}, Final Cls Score: {avg_cls_score:.4f}")
+        
+        return {
+            'model_performance': self.model_performance,
+            'classifier_performance': self.classifier_performance,
+            'best_model': model_name,
+            'best_classifier': classifier_name,
+            'best_score': self.best_score,
+            'best_classifier_score': self.best_classifier_score,
+            'total_feature_vectors': total_feature_vectors,
+            'total_used_samples': total_used_samples,
+            'batches_processed': batch_count
+        }
+
+    
+    def train_classifiers(self, X: np.ndarray, y: np.ndarray, 
+                         test_size: float = 0.2) -> Dict[str, Any]:
+        """Train classifier models for win probability."""
+        logger.info(f"Training classifiers with {X.shape[0]} samples")
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=self.random_state, stratify=y
+        )
+        
+        # Logistic Regression
+        lr_model = LogisticRegression(random_state=self.random_state, max_iter=1000)
+        lr_model.fit(X_train, y_train)
+        lr_score = self._evaluate_classifier(lr_model, X_test, y_test)
+        self.classifiers['logistic_regression'] = lr_model
+        self.classifier_performance['logistic_regression'] = lr_score
+        self.save_model(lr_model, f"data/models/win_classifier_logreg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.classifier_performance, score=lr_score['roc_auc'])
+        
+        # Random Forest Classifier
+        rf_model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=8,
+            random_state=self.random_state
+        )
+        rf_model.fit(X_train, y_train)
+        rf_score = self._evaluate_classifier(rf_model, X_test, y_test)
+        self.classifiers['random_forest_classifier'] = rf_model
+        self.classifier_performance['random_forest_classifier'] = rf_score
+        self.save_model(rf_model, f"data/models/win_classifier_rf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl",
+                       performance_metrics=self.classifier_performance, score=rf_score['roc_auc'])
+        
+        # Select best classifier
+        if self.classifier_performance:
+            best_clf_name = max(self.classifier_performance.keys(),
+                                key=lambda k: self.classifier_performance[k]['roc_auc'])
+            self.best_classifier = self.classifiers[best_clf_name]
+            self.best_classifier_score = self.classifier_performance[best_clf_name]['roc_auc']
+            logger.info(f"Best classifier: {best_clf_name} with ROC AUC: {self.best_classifier_score}")
+            
+        return {
+            'classifier_performance': self.classifier_performance,
+            'best_classifier': best_clf_name if self.classifier_performance else None,
+            'best_score': self.best_classifier_score
+        }
+
+    def _evaluate_classifier(self, model: Any, X_test: np.ndarray, y_test: np.ndarray) -> Dict[str, float]:
+        """Evaluate classifier performance."""
+        y_pred = model.predict(X_test)
+        y_prob = model.predict_proba(X_test)[:, 1]
+        
+        return {
+            'accuracy': float(accuracy_score(y_test, y_pred)),
+            'precision': float(precision_score(y_test, y_pred, zero_division=0)),
+            'recall': float(recall_score(y_test, y_pred, zero_division=0)),
+            'f1': float(f1_score(y_test, y_pred, zero_division=0)),
+            'roc_auc': float(roc_auc_score(y_test, y_prob))
+        }
+
+    def predict_proba(self, X: np.ndarray) -> Optional[np.ndarray]:
+        """Make probability predictions using the best classifier."""
+        if self.best_classifier is None:
+            return None
+        return self.best_classifier.predict_proba(X)
     
     def _train_ensemble_models(self, X_train: np.ndarray, y_train: np.ndarray,
                               X_test: np.ndarray, y_test: np.ndarray) -> None:
@@ -314,7 +589,7 @@ class ModelTrainer:
         else:
             return None
     
-    def save_model(self, model: Any, filepath: str) -> bool:
+    def save_model(self, model: Any, filepath: str, performance_metrics: Dict = None, score: float = None) -> bool:
         """Save a model to disk."""
         if model is None:
             logger.error("No model to save")
@@ -330,8 +605,8 @@ class ModelTrainer:
             # Save metadata
             metadata = {
                 'model_type': self.model_type,
-                'model_performance': self.model_performance,
-                'best_score': self.best_score,
+                'model_performance': performance_metrics if performance_metrics is not None else self.model_performance,
+                'best_score': score if score is not None else self.best_score,
                 'timestamp': datetime.now().isoformat(),
                 'random_state': self.random_state
             }

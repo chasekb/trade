@@ -64,15 +64,7 @@ Key features:
 - Top/bottom P&L trade analysis for performance insights
 - Order book snapshot extraction for feature engineering
 
-### 2. Hot-Swappable Feature Generation (`src/trade_bot/ml/feature_model_manager.py`)
-
-This new layer introduces a hot-swappable machine learning model to process raw order book data and generate insightful features.
-
-- **Feature Generation Model**: A dedicated ML model (e.g., CNN or Autoencoder) that processes raw order book snapshots and outputs a dense feature vector.
-- **`FeatureModelManager`**: Manages the lifecycle of feature generation models, including registration, versioning, and hot-swapping.
-- **Integration**: The `MLDataCollector` now uses the active feature generation model to create learned features from raw order book data, which are then combined with the original statistical features.
-
-### 3. Feature Engineering (`src/trade_bot/ml/feature_engineer.py`)
+### 2. Feature Engineering (`src/trade_bot/ml/feature_engineer.py`)
 
 Transforms raw and ML-generated trading data into ML-ready features:
 
@@ -86,10 +78,42 @@ Transforms raw and ML-generated trading data into ML-ready features:
 
 Trains multiple ML models and selects the best performer:
 
-- **Ensemble Models**: Random Forest, Gradient Boosting, Neural Networks
+- **Ensemble Models**: Random Forest, Gradient Boosting, Neural Networks, SGD Regressor
 - **Hyperparameter Tuning**: Grid search optimization
 - **Cross-Validation**: Robust performance evaluation
 - **Trading Metrics**: Profit factor, Sharpe ratio, risk-adjusted returns
+- **Batch Training**: Memory-efficient training on large datasets
+
+#### Batch Training
+
+The system supports batch training for handling large datasets efficiently:
+
+**Benefits:**
+- **Memory Efficiency**: Process large datasets without loading all data into memory
+- **Scalability**: Train on millions of samples without memory issues
+- **Incremental Learning**: SGD regressor supports online learning
+
+**Configuration:**
+```python
+# Enable batch training
+ml_optimizer.train_ml_models(
+    batch_training=True,
+    batch_size=1000,  # Process 1000 samples at a time
+    days_back=30
+)
+```
+
+**How It Works:**
+1. Data is fetched from the database in batches
+2. Each batch is processed through feature engineering
+3. SGD regressor is trained incrementally on each batch
+4. Final model is validated on holdout set
+
+**Best Practices:**
+- Use batch training for datasets > 10,000 samples
+- Adjust `batch_size` based on available memory (default: 1000)
+- Monitor training progress through logs
+- Validate final model performance before deployment
 
 ### 4. Vector Database (`src/trade_bot/ml/vector_db_client.py`)
 
@@ -102,18 +126,11 @@ Manages feature vector storage and similarity search:
 
 ### 5. Model Management
 
-The system now includes two distinct model managers:
-
 - **`ModelManager` (`src/trade_bot/ml/model_manager.py`)**: Handles the lifecycle of the downstream signal prediction models.
   - **Versioning**: Track model versions and performance.
   - **Deployment**: Hot-swap models without trading interruption.
   - **Rollback**: Revert to previous model versions.
   - **Performance Monitoring**: Continuous model evaluation.
-
-- **`FeatureModelManager` (`src/trade_bot/ml/feature_model_manager.py`)**: Manages the new feature generation models.
-  - **Versioning & Registration**: Manages different versions of feature generation models.
-  - **Hot-Swapping**: Allows for changing the active feature generation model at runtime without service interruption.
-  - **API Integration**: Exposes endpoints for managing and switching feature generation models.
 
 ### 6. ML-Enhanced Strategy (`src/trade_bot/trading/strategies/ml_enhanced_orderbook.py`)
 
@@ -141,27 +158,71 @@ This command will start all the necessary services, including Qdrant, Redis, and
 
 ### 2. Training Models
 
-Models can be trained through the web dashboard or by calling the `/api/ml/train` API endpoint.
+Models can be trained through the web dashboard's **ML Analytics** tab or by calling the `/api/ml/train` API endpoint.
+
+**Training Options:**
+- **Standard Training**: Load all data into memory and train
+- **Batch Training**: Process data in batches for memory efficiency (recommended for large datasets)
+
+**Via Web Dashboard:**
+1. Navigate to the ML Analytics tab
+2. Configure training parameters:
+   - Days back (default: 30)
+   - Batch training toggle
+   - Batch size (if batch training enabled)
+3. Click "Train New Model"
+4. Monitor training progress in real-time
+
+**Via API:**
+```bash
+curl -X POST http://localhost:8000/api/ml/train \
+  -H "Content-Type: application/json" \
+  -d '{
+    "days_back": 30,
+    "batch_training": true,
+    "batch_size": 1000
+  }'
+```
 
 ### 3. Model Management
 
-Model management, including deploying, rolling back, and evaluating models, can be done through the web dashboard.
+Comprehensive model management through the ML Analytics dashboard:
+
+**Available Operations:**
+- **List Models**: View all trained models with versions and timestamps
+- **Set Active Model**: Switch the active model for predictions
+- **View Performance**: Compare model metrics (R², RMSE, Sharpe ratio)
+- **Rollback**: Revert to previous model version if issues arise
+- **Model Comparison**: Compare predictions from multiple models side-by-side
+
+**Model Comparison Feature:**
+The ML Analytics tab includes a model prediction comparison tool:
+1. Select two models from the dropdown (ordered by most recent training date)
+2. Click "Compare Predictions"
+3. View expected return, win probability, and confidence for each model
+4. Results displayed in formatted table for easy comparison
 
 ### 4. Strategy Validation
 
-The performance of the ML-enhanced strategy can be validated through the backtesting interface in the web dashboard.
+The performance of the ML-enhanced strategy can be validated through:
+- **Backtesting Interface**: Historical performance analysis
+- **Simulated Trading**: Paper trading with real-time ML predictions
+- **Performance Metrics**: R², RMSE, profit factor, Sharpe ratio
 
 ### Web Dashboard
 
 The ML system integrates with the web dashboard at `http://localhost:3000`:
 
+**ML Analytics Tab Features:**
 - **ML Status**: Model training status and performance
 - **Feature Importance**: Most important trading features
 - **Model Controls**: Train, update, and rollback models
-- **Performance Metrics**: Real-time model performance
+- **Performance Metrics**: Real-time model performance (R², RMSE, Sharpe ratio)
 - **PnL Tracking**: Display top and bottom trades by PnL
-- **Model Selection**: Switch between different ML models
-- **Prediction Comparison**: Compare predictions from all models
+- **Model Selection**: Switch between different ML models by version
+- **Prediction Comparison**: Compare predictions from all models with detailed metrics
+- **Training Configuration**: Toggle batch training, set batch size, and configure training parameters
+- **Model History**: View training history with timestamps and performance metrics
 
 ## Web Dashboard Integration Plan
 
@@ -498,25 +559,42 @@ app_state_local.ml_dashboard_integration = MLDashboardIntegration()
 The ML Model Server provides REST API endpoints:
 
 ### Model Status
-- `GET /status` - Get ML system status
-- `GET /performance` - Get model performance metrics
-- `GET /features/importance` - Get feature importance scores
+- `GET /api/ml/status` - Get ML system status and health
+- `GET /api/ml/performance` - Get active model performance metrics
+- `GET /api/ml/features/importance` - Get feature importance scores
 
 ### Model Control
-- `POST /train` - Trigger model training
-- `POST /update` - Update model with new data
-- `POST /rollback` - Rollback to previous version
-- `GET /models` - Get a list of available models
-- `POST /models/set_active` - Set the active signal prediction model
-- `GET /feature_models` - Get a list of available feature generation models
-- `POST /feature_models/set_active` - Set the active feature generation model
+- `POST /api/ml/train` - Trigger model training
+  - **Parameters:**
+    - `days_back` (int, optional): Number of days of historical data (default: 30)
+    - `batch_training` (bool, optional): Enable batch training mode (default: false)
+    - `batch_size` (int, optional): Batch size for batch training (default: 1000)
+  - **Response:** Training status and job ID
+  
+- `POST /api/ml/update` - Update model with new data
+- `POST /api/ml/rollback` - Rollback to previous version
+- `GET /api/ml/models` - Get a list of available models with versions and metrics
+- `POST /api/ml/models/set_active` - Set the active signal prediction model
+  - **Parameters:** `model_name` (string): Name/version of model to activate
 
 ### Prediction
-- `POST /predict` - Get trading signal prediction
-- `POST /prediction-comparison` - Get a comparison of predictions from all models
+- `POST /api/ml/predict` - Get trading signal prediction for current market conditions
+  - **Request Body:** OrderBookFeatures data
+  - **Response:** Action (buy/sell/hold), confidence, signal value, reason
+  
+- `POST /api/ml/prediction-comparison` - Compare predictions from multiple models
+  - **Parameters:**
+    - `model1` (string): First model name/version
+    - `model2` (string): Second model name/version
+    - `features` (object): OrderBookFeatures data
+  - **Response:** Side-by-side comparison with expected return, win probability, confidence
 
 ### PnL Tracking
-- `GET /pnl-trades` - Get top and bottom trades by PnL
+- `GET /api/ml/pnl-trades` - Get top and bottom trades by PnL
+  - **Parameters:**
+    - `limit` (int, optional): Number of trades to return (default: 10)
+    - `sort_by` (string, optional): Sort field (pnl, fees, duration)
+  - **Response:** List of trades with detailed metrics
 
 ## Configuration
 
@@ -574,11 +652,14 @@ MLEnhancedOrderBookStrategy(
 
 1. **ML Server Not Responding**
    ```bash
-   # Check service status
-   python main.py vector-db
+   # Check service status via Docker
+   docker-compose ps ml-server
    
-   # Check logs (services run in foreground with integrated logging)
-   # Logs are displayed in the terminal where the command is run
+   # Check logs
+   docker-compose logs ml-server
+   
+   # Restart ML server
+   docker-compose restart ml-server
    ```
 
 2. **No Training Data**
@@ -586,16 +667,47 @@ MLEnhancedOrderBookStrategy(
    # Check database for signals and trades
    sqlite3 data/databases/trading_cache.db "SELECT COUNT(*) FROM order_book_signals;"
    sqlite3 data/databases/trading_cache.db "SELECT COUNT(*) FROM individual_trades;"
+   
+   # Generate training data through simulated trading
+   # Navigate to Simulated Trading tab and start a session
    ```
 
 3. **Model Performance Degradation**
-   ```bash
-   # Rollback to previous version
-   python scripts/ml/manage_models.py rollback trading_optimizer
-   
-   # Retrain with more data
-   python scripts/ml/train_models.py --days-back 60
-   ```
+   - **Via Dashboard**: Use ML Analytics tab → Model Selection → Rollback
+   - **Via API**:
+     ```bash
+     curl -X POST http://localhost:8000/api/ml/rollback
+     ```
+   - **Retrain with more data**:
+     ```bash
+     curl -X POST http://localhost:8000/api/ml/train \
+       -H "Content-Type: application/json" \
+       -d '{"days_back": 60, "batch_training": true}'
+     ```
+
+4. **NaN Scores During Training**
+   - **Cause**: Insufficient training samples for train/test split
+   - **Solution**: 
+     - Reduce `test_size` ratio in training configuration
+     - Increase `days_back` to collect more data
+     - Use batch training with appropriate batch size
+   - **Fix Applied**: Automatic adjustment of test_size based on sample count
+
+5. **Extreme Win Probability / Expected Return Values**
+   - **Symptoms**: Win probability showing 5.0%, expected return showing -439378310.2%
+   - **Cause**: Division by zero or log transform issues with zero ask_volume
+   - **Solution**: Feature engineering now includes log transform with epsilon for zero handling
+   - **Verification**: Check that latest model version includes updated feature engineering
+
+6. **ML Server 503 Errors (Model Loading)**
+   - **Cause**: `model_ready` flag not set correctly during initialization
+   - **Solution**: ML server now sets `model_ready=True` after initialization
+   - **Check**: Verify `/api/ml/status` returns `ready: true`
+
+7. **Model Training Display Shows "Failed" When Training Succeeds**
+   - **Cause**: Frontend misinterpreting `training_started` status
+   - **Solution**: Frontend now correctly shows "Training Started" for `training_started` status
+   - **Frontend Fix**: Check MLAnalyticsDashboard.tsx for status handling
 
 ### Logs
 

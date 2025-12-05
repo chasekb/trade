@@ -30,9 +30,18 @@ class SignalManager(BaseDatabase):
                 signal_data TEXT,
                 processed BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                win_probability REAL,
+                expected_return REAL,
                 FOREIGN KEY (session_id) REFERENCES trading_sessions (session_id)
             )
         """)
+        
+        # Add columns if they don't exist (migration for existing tables)
+        try:
+            cursor.execute("ALTER TABLE order_book_signals ADD COLUMN IF NOT EXISTS win_probability REAL")
+            cursor.execute("ALTER TABLE order_book_signals ADD COLUMN IF NOT EXISTS expected_return REAL")
+        except Exception as e:
+            logger.warning(f"Migration warning for order_book_signals: {e}")
     
     def save_order_book_signal(self, signal_data: Dict[str, Any]) -> bool:
         """Save order book signal."""
@@ -40,8 +49,8 @@ class SignalManager(BaseDatabase):
             query = """
                 INSERT INTO order_book_signals
                 (signal_id, session_id, symbol, signal_type, strength, price,
-                 timestamp, signal_data, processed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 timestamp, signal_data, processed, win_probability, expected_return)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (signal_id)
                 DO UPDATE SET session_id = EXCLUDED.session_id,
                               symbol = EXCLUDED.symbol,
@@ -50,8 +59,20 @@ class SignalManager(BaseDatabase):
                               price = EXCLUDED.price,
                               timestamp = EXCLUDED.timestamp,
                               signal_data = EXCLUDED.signal_data,
-                              processed = EXCLUDED.processed
+                              processed = EXCLUDED.processed,
+                              win_probability = EXCLUDED.win_probability,
+                              expected_return = EXCLUDED.expected_return
             """
+
+            # Extract ML metrics from signal_data if available
+            ml_analysis = signal_data.get('signal_data', {}).get('ml_analysis', {})
+            win_prob = signal_data.get('win_probability')
+            if win_prob is None and ml_analysis:
+                win_prob = ml_analysis.get('win_probability')
+                
+            exp_return = signal_data.get('expected_return')
+            if exp_return is None and ml_analysis:
+                exp_return = ml_analysis.get('expected_return')
 
             return self._execute_update(query, (
                 signal_data.get('signal_id'),
@@ -62,7 +83,9 @@ class SignalManager(BaseDatabase):
                 signal_data.get('price', 0.0),
                 signal_data.get('timestamp'),
                 json.dumps(signal_data.get('signal_data', {})),
-                signal_data.get('processed', False)
+                signal_data.get('processed', False),
+                win_prob,
+                exp_return
             ))
         except Exception as e:
             logger.error(f"Error saving order book signal: {e}")
@@ -94,7 +117,7 @@ class SignalManager(BaseDatabase):
             # Get signals - use parameterized query
             signals_query = """
                 SELECT signal_id, session_id, symbol, signal_type, strength, price,
-                       timestamp, signal_data, processed, created_at
+                       timestamp, signal_data, processed, created_at, win_probability, expected_return
                 FROM order_book_signals
                 """ + where_clause + """
                 ORDER BY timestamp DESC
@@ -116,7 +139,9 @@ class SignalManager(BaseDatabase):
                     'timestamp': row[6],
                     'signal_data': json.loads(row[7]) if row[7] else {},
                     'processed': bool(row[8]),
-                    'created_at': row[9]
+                    'created_at': row[9],
+                    'win_probability': row[10],
+                    'expected_return': row[11]
                 })
 
             return {
@@ -135,7 +160,7 @@ class SignalManager(BaseDatabase):
         try:
             query = """
                 SELECT signal_id, session_id, symbol, signal_type, strength, price,
-                       timestamp, signal_data, processed, created_at
+                       timestamp, signal_data, processed, created_at, win_probability, expected_return
                 FROM order_book_signals
                 WHERE symbol = %s
                 ORDER BY timestamp DESC
@@ -156,7 +181,9 @@ class SignalManager(BaseDatabase):
                     'timestamp': row[6],
                     'signal_data': json.loads(row[7]) if row[7] else {},
                     'processed': bool(row[8]),
-                    'created_at': row[9]
+                    'created_at': row[9],
+                    'win_probability': row[10],
+                    'expected_return': row[11]
                 })
 
             return signals

@@ -562,6 +562,9 @@ class TradingHandlers:
             
             logger.info(f"Processed {len(signals)} signals, executed {result.get('executed_trades', 0)} trades")
             
+            # Broadcast signals to frontend
+            await self._broadcast_trading_update_to_frontend({"signals": signals})
+            
             return result
             
         except Exception as e:

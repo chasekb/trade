@@ -1,4 +1,3 @@
-from typing import List
 """ML Trading Optimization System - Main Integration."""
 
 import logging
@@ -8,23 +7,38 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import os
 import glob
+import json
+import asyncio
+import concurrent.futures
+
+logger = logging.getLogger(__name__)
 
 # Support both relative imports (when used as module) and absolute imports (when run standalone)
 try:
     from .data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
     from .feature_engineer import FeatureEngineer
     from .model_trainer import ModelTrainer
+    from .wrapper import TradingModelWrapper
     from .model_manager import ModelManager
     from .vector_db_client import VectorDBClient
-except ImportError:
+    try:
+        from trade_bot.data.data_provider import CoinbaseDataProvider
+    except ImportError:
+        from ..data.data_provider import CoinbaseDataProvider
+except ImportError as e:
+    logger.warning(f"ImportError in MLTradingOptimizer: {e}")
     # Fallback to absolute imports when running as standalone script
-    from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
-    from feature_engineer import FeatureEngineer
-    from model_trainer import ModelTrainer
-    from model_manager import ModelManager
-    from vector_db_client import VectorDBClient
-
-logger = logging.getLogger(__name__)
+    try:
+        from data_collector import MLDataCollector, OrderBookFeatures, TradeOutcome
+        from feature_engineer import FeatureEngineer
+        from model_trainer import ModelTrainer
+        from wrapper import TradingModelWrapper
+        from model_manager import ModelManager
+        from vector_db_client import VectorDBClient
+    except ImportError:
+        pass
+    # Mock/Placeholder for standalone run if data provider not available
+    CoinbaseDataProvider = None
 
 
 class MLTradingOptimizer:
@@ -65,7 +79,23 @@ class MLTradingOptimizer:
     @property
     def is_trained(self) -> bool:
         """Check if a model is currently loaded in the model manager."""
-        return self.model_manager.current_model is not None
+        if self.model_manager.current_model is not None:
+            return True
+        
+        # Also try to load the active model from config if not already loaded
+        try:
+            config_path = "data/ml_config.json"
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    active_model = config.get("active_model")
+                    if active_model:
+                        success = self.model_manager.set_active_model(active_model)
+                        return success
+        except Exception as e:
+            logger.warning(f"Failed to auto-load active model: {e}")
+            
+        return False
         
     def collect_and_preprocess_data(self, days_back: int = 30) -> Tuple[List[OrderBookFeatures], List[TradeOutcome]]:
         """Collect and preprocess trading data for ML training."""
@@ -103,70 +133,246 @@ class MLTradingOptimizer:
         logger.info(f"Collected {len(features)} feature vectors and {len(outcomes)} trade outcomes")
         return list(features), list(outcomes)
     
-    def train_ml_models(self, features: List[OrderBookFeatures], 
-                        outcomes: List[TradeOutcome],
-                        model_type: str = 'ensemble') -> Dict[str, Any]:
+    def train_ml_models(self, features: List[OrderBookFeatures] = None, 
+                        outcomes: List[TradeOutcome] = None,
+                        model_type: str = 'ensemble',
+                        batch_training: bool = False,
+                        batch_size: int = 1000,
+                        days_back: int = 30) -> Dict[str, Any]:
         """Train ML models on the collected data."""
-        logger.info("Starting ML model training")
-        
+        logger.info(f"Starting ML model training (Batching: {batch_training})")
+
+        if batch_training:
+            return self._train_batch_models(model_type, batch_size, days_back)
+
+        if features is None or outcomes is None:
+            # If not provided and not batch training, collect all data
+            features, outcomes = self.collect_and_preprocess_data(days_back)
+
         # Create feature matrix
         X, y, feature_names = self.feature_engineer.create_feature_matrix(features, outcomes)
-        
+
         if X.shape[0] == 0:
             logger.error("No valid training data")
             return {}
-        
-        # Preprocess features
+
+        # Preprocess features - create new transformers for this training session
+        # Clear existing transformers to ensure fresh fitting for this model
+        self.feature_engineer = FeatureEngineer()  # Create fresh feature engineer
         X_processed, y_processed = self.feature_engineer.preprocess_pipeline(X, y, fit_transform=True)
+
+        # Save the fitted transformers with model-specific naming
+        model_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        model_transformers_dir = os.path.join(self.transformers_dir, f"transformers_{model_timestamp}")
+        self.feature_engineer.save_transformers(model_transformers_dir)
         
-        # Save the fitted transformers
-        self.feature_engineer.save_transformers(self.transformers_dir)
-        
+        # Train models
         # Train models
         self.model_trainer.model_type = model_type
         training_results = self.model_trainer.train_models(X_processed, y_processed)
+        
+        # Train classifiers
+        y_class = np.array([outcome.is_win for outcome in outcomes])
+        classifier_results = self.model_trainer.train_classifiers(X_processed, y_class)
+        
+        training_results['classifier_performance'] = classifier_results['classifier_performance']
+        training_results['best_classifier'] = classifier_results['best_classifier']
+        training_results['best_classifier_score'] = classifier_results['best_score']
         
         # Store feature vectors in vector database
         self._store_feature_vectors_in_db(features, X_processed)
         
         # Register and deploy the best model
+        # Register and deploy the best model
         if training_results and training_results.get('best_model') and training_results.get('best_score') is not None:
             best_model_name = max(training_results['model_performance'].keys(), 
                                 key=lambda k: training_results['model_performance'][k]['score'])
             
-            # Find the saved model file for the best model
-            model_files = glob.glob(os.path.join(self.models_dir, f"{best_model_name}_*.pkl"))
-            if model_files:
-                # Get the most recent file
-                latest_model_file = max(model_files, key=os.path.getctime)
+            # Create wrapper with best regressor and best classifier
+            best_regressor = self.model_trainer.models[best_model_name]
+            best_classifier = None
+            if training_results.get('best_classifier'):
+                best_classifier = self.model_trainer.classifiers[training_results['best_classifier']]
                 
-                # Register the best model as "trading_optimizer"
-                best_performance = training_results['model_performance'][best_model_name]
+            model_wrapper = TradingModelWrapper(best_regressor, best_classifier)
+            
+            # Save the wrapper model
+            wrapper_filename = f"trading_optimizer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            wrapper_path = os.path.join(self.models_dir, wrapper_filename)
+            
+            # Ensure models directory exists
+            os.makedirs(self.models_dir, exist_ok=True)
+            
+            # Save the model with comprehensive error handling
+            import joblib
+            model_saved_successfully = False
+            
+            try:
+                joblib.dump(model_wrapper, wrapper_path)
+                
+                # Verify the file was created and has content
+                if os.path.exists(wrapper_path) and os.path.getsize(wrapper_path) > 0:
+                    model_saved_successfully = True
+                    logger.info(f"Model saved successfully to {wrapper_path} ({os.path.getsize(wrapper_path)} bytes)")
+                else:
+                    logger.error(f"Model file was not created or is empty: {wrapper_path}")
+                    
+            except Exception as e:
+                logger.error(f"Error saving model to {wrapper_path}: {e}")
+                # Clean up partial file if it exists
+                if os.path.exists(wrapper_path):
+                    try:
+                        os.remove(wrapper_path)
+                        logger.info(f"Cleaned up partial model file: {wrapper_path}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"Failed to clean up partial model file: {cleanup_error}")
+            
+            # Only create metadata if model was saved successfully
+            if model_saved_successfully:
+                try:
+                    # Create metadata for the wrapper
+                    wrapper_metadata = {
+                        'model_type': 'combined_wrapper',
+                        'regressor': best_model_name,
+                        'classifier': training_results.get('best_classifier'),
+                        'regressor_score': training_results['best_score'],
+                        'classifier_score': training_results.get('best_classifier_score'),
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+                    metadata_path = wrapper_path.replace('.pkl', '_metadata.json')
+                    with open(metadata_path, 'w') as f:
+                        json.dump(wrapper_metadata, f, indent=2)
+                    
+                    # Verify metadata was written
+                    if os.path.exists(metadata_path) and os.path.getsize(metadata_path) > 0:
+                        logger.info(f"Metadata saved successfully to {metadata_path}")
+                    else:
+                        logger.warning(f"Metadata file was not created or is empty: {metadata_path}")
+                        
+                except Exception as e:
+                    logger.error(f"Error saving metadata to {metadata_path}: {e}")
+                    # Don't fail the entire training if just metadata fails
+            else:
+                logger.error("Skipping metadata creation because model save failed")
+                
+            # Only register the model if it was saved successfully
+            if model_saved_successfully:
+                # Register the wrapper model
                 version_id = self.model_manager.register_model(
                     model_name="trading_optimizer",
-                    model_path=latest_model_file,
-                    performance_metrics=best_performance,
-                    metadata={
-                        'original_model_name': best_model_name,
-                        'best_score': training_results['best_score'],
-                        'training_samples': training_results['training_samples'],
-                        'test_samples': training_results['test_samples']
-                    }
+                    model_path=wrapper_path,
+                    performance_metrics={
+                        'regressor': training_results['model_performance'][best_model_name],
+                        'classifier': training_results.get('classifier_performance', {}).get(training_results.get('best_classifier'), {})
+                    },
+                    metadata=wrapper_metadata
                 )
                 
                 if version_id:
                     # Deploy the registered model
                     if self.model_manager.deploy_model("trading_optimizer", version_id):
-                        logger.info(f"Registered and deployed best model ({best_model_name}) as trading_optimizer")
+                        logger.info(f"Registered and deployed trading optimizer (Regressor: {best_model_name}, Classifier: {training_results.get('best_classifier')})")
                     else:
                         logger.warning("Failed to deploy registered model")
                 else:
                     logger.warning("Failed to register best model")
+            else:
+                logger.error("Skipping model registration because model save failed")
         
         self.last_training_time = datetime.now()
         
         logger.info("ML model training completed")
         return training_results
+
+    def _train_batch_models(self, model_type: str, batch_size: int, days_back: int) -> Dict[str, Any]:
+        """Train models using batch processing."""
+        # Reset feature engineer for new training to avoid scaler dimension mismatches
+        # This ensures we start with a fresh scaler that adapts to the current feature set dimensions
+        self.feature_engineer = FeatureEngineer()
+
+        # Create generator that yields processed batches
+        data_generator = self._create_batch_generator(batch_size, days_back)
+        
+        # Train incrementally
+        # For batch training, we typically use SGD or Neural Networks
+        if model_type not in ['sgd', 'nn']:
+            logger.warning(f"Model type {model_type} not optimal for batch training. Switching to 'sgd'.")
+            model_type = 'sgd'
+            
+        training_results = self.model_trainer.train_incremental(
+            data_generator, 
+            model_type=model_type,
+            feature_engineer=self.feature_engineer
+        )
+        
+        # Save transformers after training (they are updated incrementally)
+        self.feature_engineer.save_transformers(self.transformers_dir)
+        
+        # Register and deploy (similar logic to standard training)
+        if training_results and training_results.get('best_model'):
+            best_model_name = training_results['best_model']
+            
+            # Create wrapper
+            best_regressor = self.model_trainer.models[best_model_name]
+            best_classifier = self.model_trainer.classifiers.get(training_results.get('best_classifier'))
+            
+            model_wrapper = TradingModelWrapper(best_regressor, best_classifier)
+            
+            # Save wrapper
+            wrapper_filename = f"trading_optimizer_batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            wrapper_path = os.path.join(self.models_dir, wrapper_filename)
+            os.makedirs(self.models_dir, exist_ok=True)
+            
+            import joblib
+            joblib.dump(model_wrapper, wrapper_path)
+            
+            # Register
+            version_id = self.model_manager.register_model(
+                model_name="trading_optimizer",
+                model_path=wrapper_path,
+                performance_metrics=training_results,
+                metadata={'training_mode': 'batch', 'batch_size': batch_size}
+            )
+            
+            if version_id:
+                self.model_manager.deploy_model("trading_optimizer", version_id)
+        
+        self.last_training_time = datetime.now()
+        return training_results
+
+    def _create_batch_generator(self, batch_size: int, days_back: int):
+        """Create a generator that yields (X_processed, outcomes, targets) batches."""
+        raw_batch_generator = self.data_collector.yield_training_batches(batch_size, days_back)
+        
+        previous_window = None
+        first_batch = True
+        
+        for features, outcomes in raw_batch_generator:
+            # Create feature matrix
+            X, y, _ = self.feature_engineer.create_feature_matrix(features, outcomes)
+            
+            if X.shape[0] == 0:
+                continue
+                
+            # Preprocess incrementally
+            # We fit on the first batch, then just transform (or partial fit if implemented fully)
+            # In our FeatureEngineer.preprocess_pipeline_incremental, 'fit' argument controls partial_fit
+            # We should probably fit on every batch for scaler/imputer to adapt, 
+            # but usually we want to fit on a representative sample or adapt slowly.
+            # Let's fit on every batch for now as our partial_fit implementation handles it safely.
+            X_processed, _, next_window = self.feature_engineer.preprocess_pipeline_incremental(
+                X, y, fit=True, previous_window=previous_window
+            )
+            
+            previous_window = next_window
+            
+            # Store vectors in DB (optional, might be slow for large datasets)
+            # self._store_feature_vectors_in_db(features, X_processed)
+            
+            # Yield X_processed, outcomes (for classifier), and y (processed targets for regressor)
+            yield X_processed, outcomes, y
+
     
     def predict_trading_signal(self, current_features: OrderBookFeatures) -> Dict[str, Any]:
         """Predict optimal trading signal using ML model."""
@@ -189,17 +395,14 @@ class MLTradingOptimizer:
             X = pd.DataFrame([feature_dict])
 
             # Fetch historical data for time-series features
-            historical_data = self.vector_db_client.get_historical_patterns(current_features.symbol, days_back=1)
+            # Use raw historical data from Coinbase API to calculate correct rolling stats
+            # This ensures we don't mix processed vectors (from vector DB) with raw vectors (current)
+            historical_vectors = self._get_historical_feature_vectors(current_features.symbol, current_features)
             
-            historical_vectors = []
-            if historical_data:
-                # Sort by timestamp to ensure correct order
-                sorted_data = sorted(historical_data, key=lambda p: p['payload']['timestamp'])
-                historical_vectors = [p['vector'] for p in sorted_data]
-
             # Preprocess features using the same pipeline as training
+            # Pass historical vectors (raw/scaled) so create_time_series_features can calculate rolling stats correctly
             X_processed, _ = self.feature_engineer.preprocess_pipeline(
-                X.values, y=None, fit_transform=False, historical_data=np.array(historical_vectors)
+                X.values, y=None, fit_transform=False, historical_data=historical_vectors
             )
             
             # Make prediction
@@ -212,32 +415,113 @@ class MLTradingOptimizer:
                     'signal_value': 0.0,
                     'reason': 'Prediction failed',
                     'similar_conditions': 0,
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': datetime.now().isoformat(),
+                    'win_probability': 0.0,
+                    'expected_return_percentage': 0.0,
+                    'analytics': {}
                 }
             
             # Convert prediction to trading signal
-            signal_value = prediction[0]
-            confidence = abs(signal_value)
+            signal_value = float(prediction[0])
+            # Get the probability from the model's classifier
+            win_probability = 50.0
             
+            # Prepare detailed analytics
+            analytics = {
+                'input_features': feature_dict,
+                'transformed_features_stats': {
+                    'min': float(np.min(X_processed)),
+                    'max': float(np.max(X_processed)),
+                    'mean': float(np.mean(X_processed)),
+                    'std': float(np.std(X_processed))
+                },
+                'scaled_features': X_processed.tolist()[0] if len(X_processed) > 0 else [],
+                'feature_names': self.feature_engineer.feature_names if hasattr(self.feature_engineer, 'feature_names') else [],
+                'model_raw_output': signal_value,
+                'scaler_info': {
+                    'type': str(type(self.feature_engineer.scaler)) if self.feature_engineer.scaler else 'None',
+                    'is_fitted': hasattr(self.feature_engineer.scaler, 'scale_') if self.feature_engineer.scaler else False
+                },
+                'transformations': [
+                    'Imputation (Mean)',
+                    'Time Series (Rolling Window)',
+                    'Interactions (Polynomial)',
+                    'Scaling (MinMax/Standard)',
+                    'Feature Selection (SelectKBest)'
+                ]
+            }
+            
+            # Log input features for debugging
+            logger.info(f"Predicting for {current_features.symbol} with features: {feature_dict}")
+            logger.info(f"Scaler info: {analytics['scaler_info']}")
+            logger.info(f"Transformed stats: {analytics['transformed_features_stats']}")
+
+            # Get the current model object (TradingModelWrapper) to access predict_proba
+            current_model = self.model_manager.get_current_model()
+            has_classifier = False
+            
+            if current_model is not None and hasattr(current_model, 'predict_proba'):
+                try:
+                    # Get probability predictions from the classifier (probability of class 1 = win)
+                    prob = current_model.predict_proba(X_processed)
+                    if prob is not None and len(prob[0]) > 1:
+                        raw_prob = float(prob[0][1] * 100)
+                        win_probability = raw_prob
+                        has_classifier = True
+                        logger.info(f"Classifier raw probability: {raw_prob:.2f}%")
+                except Exception as e:
+                    logger.warning(f"Error getting win probability from classifier: {e}")
+
+            if not has_classifier:
+                # Fallback: use regressor signal to estimate probability
+                try:
+                    # Use a sigmoid function that doesn't saturate too quickly
+                    # signal_value typically ranges -1 to 1. 
+                    # A value of 0.5 should give high confidence but not 100%
+                    win_probability = 100 / (1 + np.exp(-3 * signal_value))
+                    logger.info(f"Fallback probability (no classifier) from signal {signal_value:.4f}: {win_probability:.2f}%")
+                except Exception:
+                    win_probability = 50.0
+
             if signal_value > 0.1:
                 action = 'buy'
+                # Calculate expected return as percentage based on signal strength
+                expected_return_percentage = signal_value
             elif signal_value < -0.1:
                 action = 'sell'
+                expected_return_percentage = signal_value
             else:
                 action = 'hold'
+                expected_return_percentage = signal_value
+                # For hold, win probability is neutral (around 50%) but slightly biased by signal
+                if not has_classifier:
+                    try:
+                        win_probability = 100 / (1 + np.exp(-1 * signal_value)) # Reduce sensitivity for hold
+                    except Exception:
+                        win_probability = 50.0
             
-            # Find similar market conditions
-            similar_conditions = self.vector_db_client.find_similar_market_conditions(
-                X_processed[0], current_features.symbol, limit=3
-            )
+            # Update analytics with decision info
+            analytics['decision'] = {
+                'action': action,
+                'raw_signal': signal_value,
+                'win_probability_source': 'classifier' if has_classifier else 'heuristic_fallback'
+            }
             
+            logger.info(f"Final Prediction: Action={action}, Signal={signal_value:.4f}, WinProb={win_probability:.2f}%, ExpRet={expected_return_percentage:.4f}%")
+
+            # Calculate number of historical points used
+            num_history = len(historical_vectors) if historical_vectors is not None else 0
+
             return {
                 'action': action,
-                'confidence': float(confidence),
+                'confidence': float(win_probability / 100.0),  # Use win probability as confidence (0-1 range)
+                'win_probability': float(win_probability),  # Probability of success (separate from confidence)
                 'signal_value': float(signal_value),
+                'expected_return_percentage': float(expected_return_percentage),
                 'reason': f'ML prediction: {signal_value:.3f}',
-                'similar_conditions': len(similar_conditions),
-                'timestamp': datetime.now().isoformat()
+                'similar_conditions': num_history,  # Number of similar historical patterns found
+                'timestamp': datetime.now().isoformat(),
+                'analytics': analytics
             }
             
         except Exception as e:
@@ -268,29 +552,54 @@ class MLTradingOptimizer:
                 logger.warning("No valid new data for model update")
                 return False
             
-            # Preprocess new features (using existing scaler and selector)
-            X_new_processed = self.feature_engineer.transform_features(X_new)
-            X_new_selected = self.feature_engineer.transform_features_selected(X_new_processed)
-            X_new_ts = self.feature_engineer.create_time_series_features(X_new_selected)
-            X_new_final = self.feature_engineer.create_interaction_features(X_new_ts)
+            # Ensure transformers are loaded
+            self.load_transformers()
+
+            # Preprocess new features (correct order: Impute -> TS -> Interactions -> Scale -> Select)
+            
+            # 1. Impute
+            if self.feature_engineer.imputer:
+                X_new_imputed = self.feature_engineer.imputer.transform(X_new)
+            else:
+                X_new_imputed = X_new
+                
+            # 2. Time Series
+            # Note: We ideally need historical data for accurate rolling stats, 
+            # but for storage we'll calculate based on the batch
+            X_new_ts = self.feature_engineer.create_time_series_features(X_new_imputed)
+            
+            # 3. Interactions
+            X_new_interactions = self.feature_engineer.create_interaction_features(X_new_ts)
+            
+            # 4. Scale
+            if self.feature_engineer.scaler:
+                X_new_scaled = self.feature_engineer.transform_features(X_new_interactions)
+            else:
+                X_new_scaled = X_new_interactions
+                
+            # 5. Select
+            X_new_final = self.feature_engineer.transform_features_selected(X_new_scaled)
+            
+            # Save transformers
+            self.feature_engineer.save_transformers(self.transformers_dir)
             
             # Store new feature vectors
             self._store_feature_vectors_in_db(new_features, X_new_final)
             
-            # For now, we'll retrain the model with all data
-            # In a production system, you might implement incremental learning
-            logger.info("Retraining model with updated dataset")
+            # Use batch training for continuous updates to handle large datasets efficiently
+            logger.info("Retraining model with updated dataset using batch training")
             
-            # Collect all historical data
-            all_features, all_outcomes = self.collect_and_preprocess_data(days_back=90)
+            # Use batch training (days_back=90 or configurable)
+            # This will pick up the new data from the database
+            training_results = self.train_ml_models(
+                batch_training=True,
+                batch_size=1000,
+                days_back=90
+            )
             
-            if all_features and all_outcomes:
-                # Retrain the model
-                training_results = self.train_ml_models(all_features, all_outcomes)
-                
-                if training_results:
-                    logger.info("Model updated successfully")
-                    return True
+            if training_results:
+                logger.info("Model updated successfully via batch training")
+                return True
             
             logger.warning("Failed to update model")
             return False
@@ -303,6 +612,113 @@ class MLTradingOptimizer:
         """Get current model performance metrics."""
         return self.model_manager.get_model_performance("trading_optimizer")
     
+    def _get_historical_feature_vectors(self, symbol: str, current_features: Optional[OrderBookFeatures] = None) -> Optional[np.ndarray]:
+        """Fetch raw historical data from Coinbase and convert to feature vectors."""
+        try:
+            if CoinbaseDataProvider is None:
+                logger.warning("CoinbaseDataProvider not available")
+                return None
+
+            # Helper to run async method synchronously
+            async def fetch_history():
+                provider = CoinbaseDataProvider(symbol)
+                # Fetch recent trades to reconstruct price history
+                trades = await provider.get_recent_trades(limit=50)
+                await provider.close() if hasattr(provider, 'close') else None
+                return trades
+
+            # Run in a separate thread to avoid "loop is running" errors
+            # and to allow using asyncio.run() which creates a new loop
+            try:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    trades = executor.submit(asyncio.run, fetch_history()).result()
+            except Exception as e:
+                logger.warning(f"Failed to run async fetch in thread: {e}")
+                # Fallback to direct run if threading fails (unlikely) or if asyncio.run fails
+                try:
+                    trades = asyncio.run(fetch_history())
+                except Exception as e2:
+                    logger.warning(f"Direct asyncio run also failed: {e2}")
+                    return None
+            
+            if not trades:
+                return None
+
+            # Convert trades to OrderBookFeatures (approximation)
+            hist_features = []
+            
+            # Sort trades by timestamp ascending
+            trades.sort(key=lambda x: x['timestamp'])
+            
+            # Create features from trades
+            # We only have price info, so we fill others with defaults or 0
+            # This gives us valid Price Momentum and Volatility rolling stats, 
+            # while Imbalance stats will decay towards 0 (neutral)
+            
+            # Extract defaults from current_features if available to avoid artificial jumps
+            default_imbalance = current_features.bid_ask_imbalance if current_features else 0.0
+            default_spread = current_features.spread_percent if current_features else 0.0
+            default_bid_vol = current_features.bid_volume if current_features else 0.0
+            default_ask_vol = current_features.ask_volume if current_features else 0.0
+            default_depth = current_features.order_book_depth if current_features else 0
+            default_wall_size = current_features.wall_size if current_features else 0.0
+            
+            for i in range(len(trades)):
+                trade = trades[i]
+                price = float(trade['price'])
+                
+                # Calculate simple momentum/volatility based on window of previous trades
+                price_momentum = 0.0
+                volatility = 0.0
+                
+                if i >= 10:
+                    window = [float(t['price']) for t in trades[i-10:i+1]]
+                    if window[0] != 0:
+                        price_momentum = ((window[-1] - window[0]) / window[0]) * 100
+                    
+                    changes = np.diff(window) / (np.array(window[:-1]) + 1e-9)
+                    volatility = np.std(changes) * 100
+
+                # Create feature object
+                # Use current values for missing historical data to avoid artificial jumps in rolling stats
+                feat = OrderBookFeatures(
+                    timestamp=int(datetime.fromisoformat(trade['timestamp'].replace('Z', '+00:00')).timestamp()),
+                    symbol=symbol,
+                    bid_ask_imbalance=default_imbalance,
+                    spread_percent=default_spread,
+                    mid_price=price,
+                    bid_volume=default_bid_vol,
+                    ask_volume=default_ask_vol,
+                    order_book_depth=default_depth,
+                    large_bid_wall=False,
+                    large_ask_wall=False,
+                    wall_size=default_wall_size,
+                    volume_weighted_price=price, # Use price as best guess for historical VWAP
+                    price_momentum=price_momentum,
+                    volatility=volatility
+                )
+                
+                # Extract raw features (this applies log transforms etc.)
+                feature_dict = self.feature_engineer._extract_features(feat)
+                hist_features.append(list(feature_dict.values()))
+
+            if not hist_features:
+                return None
+                
+            X_hist = np.array(hist_features)
+            
+            # We must apply Imputer to history to match X_imputed (raw features)
+            # DO NOT apply Scaler here, as Scaler expects expanded features (TS + Interactions)
+            # which are created in preprocess_pipeline using this history
+            if self.feature_engineer.imputer:
+                X_hist = self.feature_engineer.imputer.transform(X_hist)
+                
+            return X_hist
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch historical features from Coinbase: {e}")
+            return None
+
     def get_feature_importance(self) -> Dict[str, float]:
         """Get feature importance from the current model."""
         return self.feature_engineer.get_feature_importance()
@@ -317,7 +733,23 @@ class MLTradingOptimizer:
 
     def set_active_model(self, model_name: str) -> bool:
         """Set the active model for predictions."""
-        return self.model_manager.set_active_model(model_name)
+        success = self.model_manager.set_active_model(model_name)
+        if success:
+            # Load the transformers associated with this model
+            # Extract timestamp from model name to find corresponding transformers
+            # Model names follow pattern: trading_optimizer_YYYYMMDD_HHMMSS.pkl
+            # Transformer directories follow pattern: transformers_YYYYMMDD_HHMMSS/
+            if model_name.startswith("trading_optimizer_") and model_name.endswith(".pkl"):
+                timestamp_part = model_name[len("trading_optimizer_"):-len(".pkl")]
+                transformer_dir = os.path.join(self.transformers_dir, f"transformers_{timestamp_part}")
+                if os.path.exists(transformer_dir):
+                    # Create new feature engineer and load the model-specific transformers
+                    self.feature_engineer = FeatureEngineer()
+                    self.feature_engineer.load_transformers(transformer_dir)
+                    logger.info(f"Loaded transformers for model {model_name} from {transformer_dir}")
+                else:
+                    logger.warning(f"No transformers found for model {model_name} at {transformer_dir}")
+        return success
 
     def get_prediction_comparison(self, features: OrderBookFeatures) -> Dict[str, Any]:
         """Get predictions from all models for comparison."""
@@ -332,6 +764,115 @@ class MLTradingOptimizer:
     def get_top_pnl_trades(self, limit: int = 10, sort_by: str = 'pnl') -> Dict[str, List[Dict[str, Any]]]:
         """Get top and bottom trades by PnL."""
         return self.data_collector.get_trades_by_pnl(limit, sort_by)
+
+    def delete_model(self, model_name: str) -> bool:
+        """Delete a specific model and its associated artifacts."""
+        try:
+            # First try the new versioned structure
+            if self.model_manager.unregister_model(model_name):
+                # Delete versioned directory
+                model_dir = os.path.join(self.models_dir, model_name)
+                if os.path.exists(model_dir):
+                    import shutil
+                    shutil.rmtree(model_dir)
+                    logger.info(f"Deleted versioned model directory: {model_dir}")
+                return True
+
+            # Fallback to old flat file structure
+            # Extract timestamp from model name to find corresponding transformers
+            if model_name.startswith("trading_optimizer_") and model_name.endswith(".pkl"):
+                timestamp_part = model_name[len("trading_optimizer_"):-len(".pkl")]
+                transformer_dir = os.path.join(self.transformers_dir, f"transformers_{timestamp_part}")
+
+                # Delete model file
+                model_path = os.path.join(self.models_dir, model_name)
+                if os.path.exists(model_path):
+                    os.remove(model_path)
+                    logger.info(f"Deleted model file: {model_path}")
+
+                # Delete metadata file
+                metadata_path = model_path.replace('.pkl', '_metadata.json')
+                if os.path.exists(metadata_path):
+                    os.remove(metadata_path)
+                    logger.info(f"Deleted metadata file: {metadata_path}")
+
+                # Delete associated transformers
+                if os.path.exists(transformer_dir):
+                    import shutil
+                    shutil.rmtree(transformer_dir)
+                    logger.info(f"Deleted transformer directory: {transformer_dir}")
+
+                # Unregister from model manager (even if it wasn't found in versioned, it might be in legacy if loaded)
+                self.model_manager.unregister_model(model_name)
+                logger.info(f"Unregistered model: {model_name}")
+
+                return True
+            else:
+                # Try simple directory deletion if it matches model name
+                model_dir = os.path.join(self.models_dir, model_name)
+                if os.path.exists(model_dir) and os.path.isdir(model_dir):
+                     import shutil
+                     shutil.rmtree(model_dir)
+                     logger.info(f"Deleted model directory: {model_dir}")
+                     self.model_manager.unregister_model(model_name)
+                     return True
+                
+                logger.warning(f"Could not delete model: {model_name}")
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting model {model_name}: {e}")
+            return False
+
+    def delete_all_models(self) -> bool:
+        """Delete all models and their associated artifacts."""
+        try:
+            success = True
+            
+            # Delete from model registry
+            all_models = self.list_available_models()
+            for model in all_models:
+                model_name = model.get('model_name')
+                if model_name:
+                     # We use delete_model but allow it to fail (e.g. if file missing)
+                     # as long as we clear the registry
+                     try:
+                        self.delete_model(model_name)
+                     except Exception as e:
+                        logger.warning(f"Error deleting registered model {model_name}: {e}")
+
+            # Legacy cleanup: Get all model files
+            # This catches files that were not in the registry
+            model_files = glob.glob(os.path.join(self.models_dir, "trading_optimizer_*.pkl"))
+            for model_file in model_files:
+                model_name = os.path.basename(model_file)
+                # Only try to delete if file still exists
+                if os.path.exists(model_file):
+                    if not self.delete_model(model_name):
+                        # Only mark as failure if file exists and we couldn't delete it
+                        if os.path.exists(model_file):
+                            success = False
+                            logger.error(f"Failed to delete legacy model file: {model_file}")
+
+            # Also delete any remaining transformer directories
+            transformer_dirs = glob.glob(os.path.join(self.transformers_dir, "transformers_*"))
+            for transformer_dir in transformer_dirs:
+                try:
+                    import shutil
+                    shutil.rmtree(transformer_dir)
+                    logger.info(f"Deleted transformer directory: {transformer_dir}")
+                except Exception as e:
+                    logger.error(f"Error deleting transformer directory {transformer_dir}: {e}")
+                    success = False
+
+            if success:
+                logger.info("All models and associated artifacts deleted successfully")
+            else:
+                logger.warning("Some models or artifacts could not be deleted")
+
+            return success
+        except Exception as e:
+            logger.error(f"Error deleting all models: {e}")
+            return False
         
     def _store_feature_vectors_in_db(self, features: List[OrderBookFeatures], 
                                     processed_features: np.ndarray) -> None:
@@ -403,7 +944,7 @@ class MLTradingOptimizer:
     
     def get_system_status(self) -> Dict[str, Any]:
         """Get overall system status."""
-        current_model = self.model_manager.get_current_model()
+        current_model_info = self.model_manager.get_current_model_info()
 
         # Skip vector DB status calls that might hang - just check if collection exists
         vector_db_status = {"exists": self.vector_db_client.check_collection_exists()}
@@ -412,10 +953,10 @@ class MLTradingOptimizer:
             'is_trained': self.is_trained,
             'last_training_time': self.last_training_time.isoformat() if self.last_training_time else None,
             'current_model': {
-                'model_name': current_model.get('model_name'),
-                'version_id': current_model.get('version_id'),
-                'deployed_at': current_model.get('deployed_at'),
-            } if current_model else None,
+                'model_name': current_model_info.get('model_name'),
+                'version_id': current_model_info.get('version_id'),
+                'deployed_at': current_model_info.get('deployed_at'),
+            } if current_model_info else None,
             'model_performance': self.get_model_performance(),
             'vector_db_status': vector_db_status,
             'vector_db_stats': None  # Skip stats to avoid hanging

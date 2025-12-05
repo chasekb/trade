@@ -183,15 +183,14 @@ class WebSocketManager:
         """Process simulated trading signals in the background."""
         while True:
             try:
-                # Check if trading is active
-                strategy_type = self.trading_state.get("strategy_type")
-                if (self.trading_state.get("is_active") and
-                    strategy_type in ["orderbook", "ml_enhanced_orderbook"]):
-                    # Get live order book signals
-                    symbols = self.trading_state.get("symbols", [])
-                    if symbols and self.simulated_trading:
-                        # Process signals through simulated trading
-                        await self._fetch_and_process_signals(symbols)
+                # Check if trading is active directly from the simulated trading manager
+                if self.simulated_trading and self.simulated_trading.is_trading:
+                    strategy_type = self.simulated_trading.strategy_type
+                    if strategy_type in ["orderbook", "ml_enhanced_orderbook"]:
+                        symbols = self.simulated_trading.symbols_to_trade
+                        if symbols:
+                            # Process signals through simulated trading
+                            await self._fetch_and_process_signals(symbols)
 
                 # Wait before next check
                 await asyncio.sleep(10)  # Check every 10 seconds for more responsive trading
@@ -203,31 +202,16 @@ class WebSocketManager:
     async def _fetch_and_process_signals(self, symbols):
         """Fetch live order book signals and process them automatically."""
         try:
-            # Import data handlers to get signals
-            from ..web_handlers.data_handlers import DataHandlers
+            # Import app_state to get the shared data_handler instance
+            from ..web_components import get_app_state
 
-            # Limit symbols to avoid API timeouts
-            max_symbols = 50
-            if len(symbols) > max_symbols:
-                # Prioritize symbols that might have signals - could be improved with more logic
-                symbols = symbols[:max_symbols]
+            app_state = get_app_state()
+            if not app_state or not app_state.data_handlers:
+                logger.error("DataHandlers not available in app_state. Cannot fetch signals.")
+                await asyncio.sleep(5)  # Wait before retrying
+                return
 
-            # Create data handler instance
-            # We'll need to create a minimal config for this
-            class MinimalConfig:
-                def __init__(self):
-                    self.max_symbols_per_request = 1000
-                    self.ml_server_host = os.getenv("ML_SERVER_HOST", "localhost")
-                    self.ml_server_port = int(os.getenv("ML_SERVER_PORT", "8002"))
-
-            config = MinimalConfig()
-            data_handler = DataHandlers(
-                config=config,
-                data_provider=None,
-                cached_data_provider=None,
-                database_manager=None,
-                simulated_trading_manager=self.simulated_trading
-            )
+            data_handler = app_state.data_handlers
 
             # Get the signals string format
             symbols_str = ','.join(symbols)
@@ -244,38 +228,42 @@ class WebSocketManager:
                     if signal.get('signal_generated', False) and signal.get('signal') in ['buy', 'sell']
                 ]
 
-                if active_signals:
-                    logger.info(f"Auto-processing {len(active_signals)} active signals: {[s['symbol'] + ':' + s['signal'] for s in active_signals]}")
+                executed_trades = 0
+                result = {}
+                if signals:
+                    logger.info(f"Auto-processing {len(signals)} signals (active: {len(active_signals)}): {[s['symbol'] + ':' + s['signal'] for s in active_signals]}")
 
                     # Process the signals through the simulated trading manager
-                    result = await self.simulated_trading.process_signals(active_signals)
+                    # Pass ALL signals so the manager can determine if it has coverage for all symbols
+                    result = await self.simulated_trading.process_signals(signals)
+
+                    # Ensure result is a dict to prevent errors
+                    result = result or {}
 
                     executed_trades = result.get('executed_trades', 0)
                     if executed_trades > 0:
-                        logger.info(f"Auto-executed {executed_trades} trades from {len(active_signals)} signals")
+                        logger.info(f"Auto-executed {executed_trades} trades from {len(signals)} signals")
                     else:
-                        logger.debug(f"No trades executed from {len(active_signals)} active signals (may be due to position limits, existing positions, or insufficient funds)")
+                        logger.debug(f"No trades executed from {len(signals)} signals (may be due to position limits, existing positions, or insufficient funds)")
 
-                    # Broadcast signals update to frontend order book signals widget
-                    if result and 'portfolio' in result:
-                        signal_data = {
-                            "signals": result.get('signals', active_signals),  # Use processed results if available
-                            "trading_active": True,
-                            "message": f"Signals processed: {len(active_signals)} received, {executed_trades} trades executed",
-                            "total_analyzed": self.simulated_trading.get_total_signals_processed(),
-                            "active_signals": len([s for s in active_signals if s.get('signal_generated', False)]),
-                            "last_updated": datetime.now().isoformat()
-                        }
+                # Always broadcast signals update if signals were processed
+                signal_data = {
+                    "signals": result.get('signals', signals),  # Use all signals for the update
+                    "trading_active": True,
+                    "message": f"Signals processed: {len(signals)} received, {executed_trades} trades executed",
+                    "total_analyzed": self.simulated_trading.get_total_signals_processed(),
+                    "active_signals": len(active_signals),
+                    "last_updated": datetime.now().isoformat()
+                }
 
-                        try:
-                            await self.broadcast(json.dumps({
-                                "type": "orderbook_signals_update",
-                                "data": signal_data
-                            }))
-                            logger.debug(f"Broadcasted signal update with {len(active_signals)} signals")
-                        except Exception as broadcast_error:
-                            logger.warning(f"Failed to broadcast signal update: {broadcast_error}")
-
+                try:
+                    await self.broadcast(json.dumps({
+                        "type": "orderbook_signals_update",
+                        "data": signal_data
+                    }))
+                    logger.debug(f"Broadcasted signal update with {len(signals)} signals")
+                except Exception as broadcast_error:
+                    logger.warning(f"Failed to broadcast signal update: {broadcast_error}")
         except Exception as e:
             logger.error(f"Error fetching and processing signals: {e}")
     
@@ -381,8 +369,11 @@ class WebSocketManager:
                        matches_data, status_data, market_trades_data]):
                     self.real_time_data[self.config.product_id] = current_data
                     
-                    # Broadcast to all connected clients
-                    await self.broadcast(f"data:{current_data}")
+                    # Broadcast to all connected clients as proper JSON
+                    await self.broadcast(json.dumps({
+                        "type": "realtime_data",
+                        "data": current_data
+                    }))
                 
                 # Wait before next collection
                 await asyncio.sleep(1)  # Collect every second

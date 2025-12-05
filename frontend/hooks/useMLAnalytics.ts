@@ -42,8 +42,8 @@ export function useMLAnalytics() {
   });
 
   const comparePredictionsMutation = useMutation({
-    mutationFn: async (features: any) => {
-      const response = await apiClient.getPredictionComparison(features);
+    mutationFn: async ({ modelIds, features }: { modelIds: string[], features: any }) => {
+      const response = await apiClient.getPredictionComparison(modelIds, features);
       if (response.status === 'error' || !response.data) {
         throw new Error(response.error || 'Failed to fetch prediction comparison');
       }

@@ -119,6 +119,28 @@ function PerformanceMetricsCard({ metrics }: PerformanceMetricsProps) {
               </p>
             </div>
           </div>
+          <div className="space-y-3 col-span-2 border-t pt-3 mt-1 grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Total Vectors</p>
+              <p className="text-lg font-semibold">
+                {metrics.total_feature_vectors !== undefined ? metrics.total_feature_vectors.toLocaleString() : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Used Samples</p>
+              <p className="text-lg font-semibold">
+                {metrics.total_used_samples !== undefined ? metrics.total_used_samples.toLocaleString() : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Data Utilization</p>
+              <p className="text-lg font-semibold">
+                {metrics.total_feature_vectors && metrics.total_used_samples
+                  ? `${((metrics.total_used_samples / metrics.total_feature_vectors) * 100).toFixed(1)}%`
+                  : 'N/A'}
+              </p>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -132,7 +154,7 @@ interface FeatureImportanceChartProps {
 function FeatureImportanceChart({ features }: FeatureImportanceChartProps) {
   // Sort features by importance and take top 10
   const sortedFeatures = Object.entries(features)
-    .sort(([,a], [,b]) => b - a)
+    .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
 
   if (sortedFeatures.length === 0) {
@@ -194,8 +216,19 @@ function ModelControls() {
     updateModel, isUpdating,
     rollbackModel, isRollingBack,
     availableModels, isLoadingModels,
-    setActiveModel, isSettingActiveModel
+    setActiveModel, isSettingActiveModel,
+    deleteModel, isDeletingModel,
+    deleteAllModels, isDeletingAllModels
   } = useModelTraining();
+
+  const [selectedModel, setSelectedModel] = React.useState<string>('');
+
+  React.useEffect(() => {
+    if (availableModels && availableModels.length > 0 && !selectedModel) {
+      const firstModel = availableModels[0];
+      setSelectedModel(firstModel.model_id || firstModel.model_name);
+    }
+  }, [availableModels]);
 
   return (
     <Card>
@@ -204,20 +237,19 @@ function ModelControls() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Button
-              onClick={() => trainModel()}
+              onClick={() => trainModel(undefined)}
               disabled={isTraining}
-              className="flex-1"
               variant="primary"
             >
               {isTraining ? 'Training...' : 'Train Model'}
             </Button>
 
+
             <Button
               onClick={() => updateModel()}
               disabled={isUpdating}
-              className="flex-1"
               variant="secondary"
             >
               {isUpdating ? 'Updating...' : 'Update Model'}
@@ -226,38 +258,65 @@ function ModelControls() {
             <Button
               onClick={() => rollbackModel()}
               disabled={isRollingBack}
-              className="flex-1"
               variant="outline"
             >
               {isRollingBack ? 'Rolling Back...' : 'Rollback'}
             </Button>
           </div>
-          <div className="flex items-center gap-3">
-            <select
-              className="flex-1"
-              onChange={(e) => setActiveModel(e.target.value)}
-              disabled={isLoadingModels || isSettingActiveModel}
+          
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium mb-3">Model Management</h4>
+            <div className="flex gap-3">
+              <select
+                className="flex-1 px-3 py-2 border rounded-md"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={isLoadingModels || isSettingActiveModel || isDeletingModel}
+              >
+                {isLoadingModels ? (
+                  <option>Loading models...</option>
+                ) : (
+                  availableModels?.map((model: any) => (
+                    <option key={model.model_id || model.model_name} value={model.model_id || model.model_name}>
+                      {model.model_name} {model.version_id ? `(${model.version_id})` : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+              <Button
+                onClick={() => {
+                  if (selectedModel) {
+                    setActiveModel(selectedModel);
+                  }
+                }}
+                disabled={isSettingActiveModel || !selectedModel}
+              >
+                {isSettingActiveModel ? 'Activating...' : 'Set Active'}
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedModel) {
+                    deleteModel(selectedModel);
+                  }
+                }}
+                disabled={isDeletingModel || !selectedModel}
+                variant="danger"
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isDeletingModel ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium mb-3 text-red-600">Danger Zone</h4>
+             <Button
+              onClick={() => deleteAllModels()}
+              disabled={isDeletingAllModels}
+              variant="danger"
+              className="w-full bg-red-100 text-red-700 hover:bg-red-200 border-red-200"
             >
-              {isLoadingModels ? (
-                <option>Loading models...</option>
-              ) : (
-                availableModels?.map((model: any) => (
-                  <option key={model.model_name} value={model.model_name}>
-                    {model.model_name}
-                  </option>
-                ))
-              )}
-            </select>
-            <Button
-              onClick={() => {
-                const select = document.querySelector('select');
-                if (select) {
-                  setActiveModel(select.value);
-                }
-              }}
-              disabled={isSettingActiveModel}
-            >
-              {isSettingActiveModel ? 'Activating...' : 'Set Active'}
+              {isDeletingAllModels ? 'Deleting All Models...' : 'Delete All Models'}
             </Button>
           </div>
         </div>
@@ -323,6 +382,26 @@ function ConfigControls() {
             value={config.new_data_threshold}
             onChange={(e) => setConfig({ ...config, new_data_threshold: parseInt(e.target.value, 10) })}
             className="w-full p-2 border rounded"
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <label htmlFor="batch-training">Enable Batch Training</label>
+          <input
+            id="batch-training"
+            type="checkbox"
+            checked={config.batch_training_enabled !== false}
+            onChange={(e) => setConfig({ ...config, batch_training_enabled: e.target.checked })}
+          />
+        </div>
+        <div>
+          <label htmlFor="batch-size">Batch Size</label>
+          <input
+            id="batch-size"
+            type="number"
+            value={config.batch_size || 1000}
+            onChange={(e) => setConfig({ ...config, batch_size: parseInt(e.target.value, 10) })}
+            className="w-full p-2 border rounded"
+            disabled={config.batch_training_enabled === false}
           />
         </div>
         <Button onClick={handleSave} disabled={isUpdatingConfig}>

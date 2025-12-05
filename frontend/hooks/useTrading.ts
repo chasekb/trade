@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiClient, queryKeys } from '@/lib/api';
 import {
   TradingMode,
@@ -130,14 +130,15 @@ export function useOrderBookSignals(
   symbols?: string[],
   enabled: boolean = true,
   page: number = 1,
-  perPage: number = 10
+  perPage: number = 10,
+  strategy?: string
 ) {
   // Enable query when trading is active, even if symbols aren't loaded yet
   // This allows WebSocket updates to populate the widget immediately
   const isEnabled = enabled;
 
   return useQuery({
-    queryKey: ['orderbook-signals', symbols, enabled, page, perPage], // Include pagination params in key
+    queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy], // Include strategy in key to invalidate cache when strategy changes
     queryFn: async () => {
       const response = await apiClient.getOrderBookSignals(symbols, { page, per_page: perPage });
       if (response.status === 'error') {
@@ -146,10 +147,10 @@ export function useOrderBookSignals(
       return response.data;
     },
     enabled: isEnabled,
-    staleTime: Infinity,
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    refetchIntervalInBackground: false,
+    staleTime: 3000, // Consider data fresh for 3 seconds
+    refetchInterval: false, // Disable auto-refetch to prevent overwriting live WebSocket data
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: true,
     refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
@@ -193,25 +194,192 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 
 // Simulated Trading WebSocket Hook
 
+// Simulated Trading WebSocket Hook with FIFO Signal Queue
+
 export function useSimTradingWebSocket(enabled: boolean = true) {
   const [connected, setConnected] = useState(false);
+  const [signalQueue, setSignalQueue] = useState<OrderBookSignal[]>([]);
+  const [processingSignal, setProcessingSignal] = useState<OrderBookSignal | null>(null);
+  const queryClient = useQueryClient();
+
+  // Queue processing function - processes one signal at a time with delay
+  const processNextSignal = useCallback(() => {
+    if (signalQueue.length > 0 && !processingSignal) {
+      const nextSignal = signalQueue[0];
+      setProcessingSignal(nextSignal);
+      setSignalQueue(prev => prev.slice(1));
+
+      console.log('🎯 Processing signal from queue:', nextSignal.symbol, nextSignal.timestamp);
+
+      // Add to display cache (same logic as before)
+      const allQueries = queryClient.getQueryCache().getAll();
+      const orderbookQueries = allQueries.filter((q: any) =>
+        q.queryKey[0] === 'orderbook-signals'
+      );
+
+      orderbookQueries.forEach((query: any) => {
+        const queryKey = query.queryKey;
+        const querySymbols = queryKey[1] as string[] | undefined;
+        const page = queryKey[3] as number;
+
+        if (page === 1) {
+          const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(nextSignal.symbol);
+
+          if (isRelevant) {
+            queryClient.setQueryData(queryKey, (oldData: any) => {
+              // If no data exists yet (initial load), initialize with the new signal
+              if (!oldData) {
+                return {
+                  signals: [nextSignal],
+                  total_analyzed: 1,
+                  active_signals: nextSignal.signal_generated ? 1 : 0,
+                  average_strength: nextSignal.signal_strength || 0,
+                  last_updated: new Date().toISOString(),
+                  pagination: {
+                    current_page: 1,
+                    per_page: 100, // Default to larger page size for live view
+                    total_signals: 1,
+                    total_pages: 1,
+                    has_next: false,
+                    has_prev: false
+                  }
+                };
+              }
+
+              const currentSignals = oldData.signals || [];
+
+              // Create a map of existing signals by symbol for easy lookup and update
+              const signalMap = new Map<string, OrderBookSignal>();
+              currentSignals.forEach((s: OrderBookSignal) => signalMap.set(s.symbol, s));
+
+              // Update or add the new signal
+              const existingSignal = signalMap.get(nextSignal.symbol);
+
+              // Only update if the new signal is fresher (newer timestamp) or if the symbol doesn't exist
+              if (!existingSignal || new Date(nextSignal.timestamp) > new Date(existingSignal.timestamp)) {
+                signalMap.set(nextSignal.symbol, nextSignal);
+              }
+
+              // Convert map back to array and sort by timestamp descending
+              const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+              );
+
+              return {
+                ...oldData,
+                signals: updatedSignals,
+                total_analyzed: updatedSignals.length,
+                active_signals: updatedSignals.filter(s => s.signal_generated).length,
+                last_updated: new Date().toISOString(),
+                pagination: {
+                  ...oldData.pagination,
+                  total_signals: updatedSignals.length,
+                  // Update total pages based on current per_page setting
+                  total_pages: Math.ceil(updatedSignals.length / (oldData.pagination?.per_page || 10))
+                }
+              };
+            });
+          }
+        }
+      });
+
+      // Process next signal after delay (configurable, default 1 second)
+      const processingDelay = parseInt(process.env.NEXT_PUBLIC_SIGNAL_PROCESSING_DELAY || '1000');
+      setTimeout(() => {
+        setProcessingSignal(null);
+        // Continue processing queue if more signals exist
+        // The useEffect hook will trigger the next processing cycle when processingSignal becomes null
+
+      }, processingDelay);
+    }
+  }, [signalQueue, processingSignal, queryClient]);
+
   useEffect(() => {
-    if (!enabled) return;
+    // Auto-process queue when signals are added and not currently processing
+    if (signalQueue.length > 0 && !processingSignal) {
+      processNextSignal();
+    }
+  }, [signalQueue, processingSignal, processNextSignal]);
+
+  useEffect(() => {
+    console.log('🚀 useSimTradingWebSocket hook called with enabled:', enabled);
+    console.log('📊 Current queue length:', signalQueue.length, 'Processing:', !!processingSignal);
+    if (!enabled) {
+      console.log('🌐 WebSocket disabled - not connecting');
+      return;
+    }
 
     const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
     const wsUrl = base.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
+
+    console.log('🔌 Attempting to connect to WebSocket:', wsUrl);
+    console.log('📡 Environment NEXT_PUBLIC_WS_URL:', process.env.NEXT_PUBLIC_WS_URL);
+    console.log('🌐 Running in browser:', typeof window !== 'undefined');
+    console.log('🚀 Trading enabled:', enabled);
+
     const ws = new WebSocket(wsUrl);
-    const onOpen = () => setConnected(true);
-    const onClose = () => setConnected(false);
+    let pingInterval: NodeJS.Timeout | null = null;
+    let connectionTimeout: NodeJS.Timeout | null = null;
+    const startHeartbeat = () => {
+      // Send ping every 30 seconds to prevent connection timeout
+      pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: 'ping' }));
+            console.log('💓 Sent ping to maintain connection');
+          } catch (error) {
+            console.error('❌ Failed to send ping:', error);
+          }
+        }
+      }, 30000);
+    };
 
-    ws.addEventListener('open', onOpen);
-    ws.addEventListener('close', onClose);
+    const onOpen = () => {
+      console.log('✅ WebSocket connection opened successfully');
+      setConnected(true);
+      startHeartbeat();
+    };
 
-    ws.addEventListener('message', (event) => {
+    const onClose = (event: CloseEvent) => {
+      console.log('❌ WebSocket connection closed:', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean
+      });
+      setConnected(false);
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+        connectionTimeout = null;
+      }
+    };
+
+    const onError = (event: Event) => {
+      console.error('💥 WebSocket connection error:', event);
+      setConnected(false);
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+        connectionTimeout = null;
+      }
+    };
+
+    const onMessage = (event: MessageEvent) => {
       try {
         const payload = JSON.parse(event.data || '{}');
         const type = payload?.type;
         const data = payload?.data;
+
+        if (type === 'pong') {
+          console.log('💓 Received pong from server');
+          return;
+        }
 
         // Push trading statistics into cache for instant UI updates
         if (type === 'trading_statistics_update' && data) {
@@ -221,79 +389,91 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
             ...data,
           };
           // Update the stats query cache
-          // Use global variable to avoid import cycle; dynamic import of queryClient is avoided here.
-          // Rely on window.dispatchEvent for a lightweight cache invalidation signal.
           try {
-            (window as any).__RQ_SET__?.(['simulated-trading-stats'], normalized);
-          } catch {}
+            queryClient.setQueryData(['simulated-trading-stats'], normalized);
+          } catch (e) {
+            console.error('❌ Failed to update trading stats cache:', e);
+          }
           // Also emit a custom event for components not using React Query
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
 
-        // Push orderbook signals updates into cache for instant UI updates
+        // ENQUEUE orderbook signals into FIFO queue for sequential processing
         if (type === 'orderbook_signals_update' && data) {
+          console.log('📥 Received orderbook_signals_update WebSocket message:', data);
+          apiClient.logMessage('Order book signal received and queued for sequential processing');
+
           try {
-            const queryClient = (window as any).__RQ_CLIENT__;
-            if (queryClient) {
-              // Update all queries that start with ['orderbook-signals']
-              queryClient.setQueriesData({ queryKey: ['orderbook-signals'] }, (oldData: any) => {
-                if (!oldData || !oldData.signals) {
-                  return data; // If no old data, use the new data
-                }
+            // Handle both array of signals (from signals key) or single signal object
+            const signalsList = Array.isArray(data.signals) ? data.signals : (Array.isArray(data) ? data : [data]);
 
-                const newSignals = data.signals || [];
-                const oldSignals = oldData.signals || [];
+            if (!signalsList || signalsList.length === 0) return;
 
-                // Create a map of existing signals for quick lookup
-                const oldSignalsMap = new Map(oldSignals.map((s: OrderBookSignal) => [`${s.symbol}-${s.timestamp}`, s]));
+            // Add signals to queue (FIFO)
+            setSignalQueue(prevQueue => {
+              const filteredSignals = signalsList.filter((newSignal: OrderBookSignal) => {
+                if (!newSignal || !newSignal.symbol) return false;
 
-                // Add or update signals from the new data
-                newSignals.forEach((newSignal: OrderBookSignal) => {
-                  oldSignalsMap.set(`${newSignal.symbol}-${newSignal.timestamp}`, newSignal);
-                });
-
-                // Convert map back to array and sort
-                const mergedSignals = (Array.from(oldSignalsMap.values()) as OrderBookSignal[])
-                  .sort((a: OrderBookSignal, b: OrderBookSignal) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-                return {
-                  ...oldData,
-                  ...data, // Update summary and pagination info from new data
-                  signals: mergedSignals,
-                };
+                // Avoid duplicates in queue
+                const isDuplicate = prevQueue.some(queuedSignal =>
+                  queuedSignal.symbol === newSignal.symbol && queuedSignal.timestamp === newSignal.timestamp
+                );
+                return !isDuplicate;
               });
-            }
+
+              const updatedQueue = [...prevQueue, ...filteredSignals];
+              console.log('🗂️ Added', filteredSignals.length, 'signals to queue. Queue length:', updatedQueue.length);
+
+              return updatedQueue;
+            });
+
           } catch (e) {
-            console.error('Failed to update orderbook signals cache:', e);
+            console.error('❌ Failed to enqueue orderbook signals:', e);
           }
         }
       } catch (e) {
-        // ignore malformed messages
+        console.error('❌ Failed to parse WebSocket message:', e);
       }
-    });
+    };
+
+    ws.addEventListener('open', onOpen);
+    ws.addEventListener('close', onClose);
+    ws.addEventListener('error', onError);
+    ws.addEventListener('message', onMessage);
+
+    // Set timeout for initial connection
+    connectionTimeout = setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.warn('⚠️ WebSocket connection timeout, closing...');
+        try {
+          ws.close();
+        } catch (error) {
+          console.error('❌ Error closing timed out connection:', error);
+        }
+      }
+    }, 10000); // 10 second connection timeout
 
     return () => {
-      try { ws.removeEventListener('open', onOpen); } catch {}
-      try { ws.removeEventListener('close', onClose); } catch {}
-      try { ws.close(); } catch {}
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+      }
+      try { ws.removeEventListener('open', onOpen); } catch { }
+      try { ws.removeEventListener('close', onClose); } catch { }
+      try { ws.removeEventListener('error', onError); } catch { }
+      try { ws.removeEventListener('message', onMessage); } catch { }
+      try { ws.close(); } catch { }
     };
-  }, [enabled]);
+  }, [enabled, queryClient]);
 
-  return { connected };
-}
-
-// React Query integration helpers (optional, set globally once in app bootstrap)
-if (typeof window !== 'undefined' && !(window as any).__RQ_SET__) {
-  try {
-    const { queryClient } = require('@/lib/api');
-    (window as any).__RQ_CLIENT__ = queryClient; // Expose client for more complex cache updates
-    (window as any).__RQ_SET__ = (key: any, data: any) => {
-      try { queryClient.setQueryData(key, data); } catch {}
-    };
-    (window as any).__RQ_INVALIDATE__ = (key: any) => {
-      try { queryClient.invalidateQueries({ queryKey: key }); } catch {}
-    };
-  } catch {}
+  return {
+    connected,
+    signalQueue,
+    processingSignal,
+    queueLength: signalQueue.length
+  };
 }
 
 // Products/Symbols Hook
