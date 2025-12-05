@@ -14,8 +14,8 @@ The ML system processes trading data through a multi-stage pipeline that transfo
 │   Data          │───▶│   Collection    │───▶│   Generation    │───▶│   Inference     │
 │                 │    │                 │    │                 │    │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │Order Book   │ │    │ │DataCollector │ │    │ │FeatureModel │ │    │ │SignalModel  │ │
-│ │Updates      │ │    │ │             │ │    │ │Manager      │ │    │ │Manager      │ │
+│ │Order Book   │ │    │ │DataCollector │ │    │ │FeatureEngi- │ │    │ │SignalModel  │ │
+│ │Updates      │ │    │ │             │ │    │ │neer         │ │    │ │Manager      │ │
 │ ├─────────────┤ │    │ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
 │ │Trade        │ │    │                 │    │                 │    │                 │
 │ │Executions   │ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
@@ -180,7 +180,6 @@ class OrderBookFeatures:
     prev_win_probability: float   # Previous ML prediction (if available)
     prev_expected_return: float   # Previous expected return
     prev_confidence: float        # Previous prediction confidence
-    learned_features: List[float] # Features from the feature generation model
 ```
 
 **TradeOutcome Dataclass**:

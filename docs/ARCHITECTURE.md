@@ -12,6 +12,7 @@ The system is divided into several core components, each with a specific respons
 
 - **`TradingBot`**: The main orchestration engine that manages the trading lifecycle, including strategy execution, risk management, and order placement.
 - **`TradingConfig`**: A centralized configuration management system that loads settings from environment variables and provides a unified interface for accessing configuration values.
+- **`UniverseSelector`**: Selects symbols for trading based on strategy signals, handling signal strength analysis and prioritization.
 
 ### 2. **Data Layer** (`src/trade_bot/data/`)
 
@@ -48,7 +49,6 @@ The system is divided into several core components, each with a specific respons
   - **Batch Training Support**: Memory-efficient processing of large datasets
   - **Incremental Learning**: SGD regressor for online learning
 - **`ModelManager`**: Handles model versioning, deployment, rollback, and performance monitoring for signal prediction models
-- **`FeatureModelManager`**: Manages the lifecycle of hot-swappable feature generation models
 - **`VectorDBClient`**: Manages Qdrant vector database for feature vector storage and similarity search
 - **`MLServer`**: FastAPI server providing REST API for model inference and management
 - **`TrainingManager`**: Manages training configuration and defaults
@@ -83,9 +83,9 @@ The following diagram illustrates the flow of data through the system, including
 [Coinbase API] → [WebSocketClient] → [DataHandler] → [DatabaseManager]
                                           |
                                           v
-                                [MLDataCollector] → [FeatureGenerationModel] → [FeatureEngineer] → [ModelTrainer]
-                                          |                                                              |
-                                          v                                                              v
+                                [MLDataCollector] → [FeatureEngineer] → [ModelTrainer]
+                                          |                                     |
+                                          v                                     v
                                 [TradingBot] → [SimulatedTradingManager] → [DatabaseManager]    [Model Files]
                                           |              |
                                           v              v
@@ -105,7 +105,7 @@ The following diagram illustrates the flow of data through the system, including
 
 1.  **Data Ingestion**: The `WebSocketClient` connects to the Coinbase Advanced Trading API and streams real-time market data.
 2.  **Data Processing**: The `DataHandler` processes the incoming data and stores it in the database via the `DatabaseManager`.
-3.  **ML Feature Generation**: The `MLDataCollector` retrieves raw order book data, processes it with a hot-swappable `FeatureGenerationModel` to create learned features, and combines them with statistical features.
+3.  **ML Feature Generation**: The `MLDataCollector` retrieves raw order book data and uses `FeatureEngineer` to transform it into ML-ready features.
 4.  **Model Training**: The `ModelTrainer` trains ensemble models (including SGD regressor for batch training) on processed features.
 5.  **Trading Logic**: The `TradingBot` retrieves market data and ML-enhanced features to execute trading strategies.
 6.  **Strategy Execution**: The `SimulatedTradingManager` executes trades based on signals, with configurable order prioritization (signal strength, win probability, or expected return).
