@@ -55,6 +55,19 @@ except ImportError:
     import model_manager
     import vector_db_client
 
+logger = logging.getLogger(__name__)
+
+# Import Data Provider for fetching real-time stats
+try:
+    from ..data.data_provider import CoinbaseDataProvider
+except ImportError:
+    try:
+        from trade_bot.data.data_provider import CoinbaseDataProvider
+    except ImportError:
+        # Fallback or mock if not available
+        CoinbaseDataProvider = None
+        logger.warning("CoinbaseDataProvider could not be imported. Real-time stats fetching disabled.")
+
 # Ensure trade_bot package structure exists in sys.modules if not already present
 if 'trade_bot' not in sys.modules:
     sys.modules['trade_bot'] = type(sys)('trade_bot')
@@ -71,8 +84,6 @@ sys.modules['trade_bot.ml.model_trainer'] = model_trainer
 sys.modules['trade_bot.ml.model_manager'] = model_manager
 sys.modules['trade_bot.ml.vector_db_client'] = vector_db_client
 
-logger = logging.getLogger(__name__)
-
 # Initialize FastAPI app
 app = FastAPI(title="ML Trading Model Server", version="1.0.0")
 
@@ -80,6 +91,10 @@ app = FastAPI(title="ML Trading Model Server", version="1.0.0")
 ml_optimizer = None
 training_status: str = "idle"  # "idle", "training", "success", "failed"
 model_ready: bool = False
+
+# Stats Cache
+stats_cache: Dict[str, Dict[str, Any]] = {}
+STATS_CACHE_TTL = 300  # 5 minutes
 
 # Request/Response models
 class PredictionRequest(BaseModel):
@@ -97,6 +112,11 @@ class PredictionRequest(BaseModel):
     price_momentum: float
     volatility: float
     timestamp: int
+    # New meta-features
+    volume_24h: Optional[float] = 0.0
+    volume_30d: Optional[float] = 0.0
+    high_24h: Optional[float] = 0.0
+    low_24h: Optional[float] = 0.0
 
 class PredictionResponse(BaseModel):
     action: str
@@ -198,6 +218,43 @@ async def predict_trading_signal(request: PredictionRequest):
         raise HTTPException(status_code=503, detail="Model is loading, please try again later.")
 
     try:
+        # Fetch 24h stats if missing
+        volume_24h = request.volume_24h
+        volume_30d = request.volume_30d
+        high_24h = request.high_24h
+        low_24h = request.low_24h
+
+        if (volume_24h == 0.0 or high_24h == 0.0) and CoinbaseDataProvider:
+            try:
+                # Check cache
+                cached = stats_cache.get(request.symbol)
+                now = datetime.now().timestamp()
+                
+                if cached and (now - cached['timestamp'] < STATS_CACHE_TTL):
+                    stats = cached['data']
+                else:
+                    # Fetch fresh
+                    provider = CoinbaseDataProvider(request.symbol)
+                    stats = await provider.get_product_stats()
+                    # Also update cache
+                    if stats:
+                        stats_cache[request.symbol] = {
+                            'timestamp': now,
+                            'data': stats
+                        }
+                    # Don't need to close/cleanup provider as it uses aiohttp session created per request 
+                    # or if it uses a shared session, we should check implementation.
+                    # Looking at CoinbaseDataProvider, it creates a new session in methods unless configured otherwise.
+                
+                if stats:
+                    if volume_24h == 0.0: volume_24h = stats.get('volume', 0.0)
+                    if volume_30d == 0.0: volume_30d = stats.get('volume_30day', 0.0)
+                    if high_24h == 0.0: high_24h = stats.get('high', 0.0)
+                    if low_24h == 0.0: low_24h = stats.get('low', 0.0)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to fetch product stats for {request.symbol}: {e}")
+
         # Convert request to OrderBookFeatures
         # Use global import instead of local import which might fail
         features = data_collector.OrderBookFeatures(
@@ -214,7 +271,11 @@ async def predict_trading_signal(request: PredictionRequest):
             wall_size=request.wall_size,
             volume_weighted_price=request.volume_weighted_price,
             price_momentum=request.price_momentum,
-            volatility=request.volatility
+            volatility=request.volatility,
+            volume_24h=volume_24h,
+            volume_30d=volume_30d,
+            high_24h=high_24h,
+            low_24h=low_24h
         )
 
         # Check if model is trained and deployed
