@@ -161,8 +161,11 @@ class MLTradingOptimizer:
         self.feature_engineer = FeatureEngineer()  # Create fresh feature engineer
         X_processed, y_processed = self.feature_engineer.preprocess_pipeline(X, y, fit_transform=True)
 
+        # Generate timestamp for model and transformers synchronization
+        current_time = datetime.now()
+        model_timestamp = current_time.strftime('%Y%m%d_%H%M%S')
+
         # Save the fitted transformers with model-specific naming
-        model_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         model_transformers_dir = os.path.join(self.transformers_dir, f"transformers_{model_timestamp}")
         self.feature_engineer.save_transformers(model_transformers_dir)
         
