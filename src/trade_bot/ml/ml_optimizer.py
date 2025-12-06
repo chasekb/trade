@@ -200,7 +200,7 @@ class MLTradingOptimizer:
             model_wrapper = TradingModelWrapper(best_regressor, best_classifier)
             
             # Save the wrapper model
-            wrapper_filename = f"trading_optimizer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            wrapper_filename = f"trading_optimizer_{model_timestamp}.pkl"
             wrapper_path = os.path.join(self.models_dir, wrapper_filename)
             
             # Ensure models directory exists
@@ -309,8 +309,13 @@ class MLTradingOptimizer:
             feature_engineer=self.feature_engineer
         )
         
+        # Generate timestamp for synchronization
+        current_time = datetime.now()
+        model_timestamp = current_time.strftime('%Y%m%d_%H%M%S')
+
         # Save transformers after training (they are updated incrementally)
-        self.feature_engineer.save_transformers(self.transformers_dir)
+        model_transformers_dir = os.path.join(self.transformers_dir, f"transformers_{model_timestamp}")
+        self.feature_engineer.save_transformers(model_transformers_dir)
         
         # Register and deploy (similar logic to standard training)
         if training_results and training_results.get('best_model'):
@@ -323,7 +328,7 @@ class MLTradingOptimizer:
             model_wrapper = TradingModelWrapper(best_regressor, best_classifier)
             
             # Save wrapper
-            wrapper_filename = f"trading_optimizer_batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            wrapper_filename = f"trading_optimizer_batch_{model_timestamp}.pkl"
             wrapper_path = os.path.join(self.models_dir, wrapper_filename)
             os.makedirs(self.models_dir, exist_ok=True)
             
