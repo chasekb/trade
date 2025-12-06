@@ -743,20 +743,46 @@ class MLTradingOptimizer:
         """Set the active model for predictions."""
         success = self.model_manager.set_active_model(model_name)
         if success:
-            # Load the transformers associated with this model
-            # Extract timestamp from model name to find corresponding transformers
-            # Model names follow pattern: trading_optimizer_YYYYMMDD_HHMMSS.pkl
-            # Transformer directories follow pattern: transformers_YYYYMMDD_HHMMSS/
+            # Attempt to resolve timestamp to load matching transformers
+            timestamp_part = None
+            
+            # Case 1: Filename provided (Legacy or direct file load)
             if model_name.startswith("trading_optimizer_") and model_name.endswith(".pkl"):
                 timestamp_part = model_name[len("trading_optimizer_"):-len(".pkl")]
+            
+            # Case 2: Version ID provided (Standard operation)
+            elif ':' in model_name:
+                try:
+                    # Format: model_name:version_id (e.g. trading_optimizer:v20251206_123456)
+                    parts = model_name.split(':')
+                    if len(parts) == 2:
+                        version_id = parts[1]
+                        if version_id.startswith('v'):
+                            timestamp_part = version_id[1:] # Strip 'v' prefix to get timestamp
+                except Exception:
+                    pass
+            
+            # Case 3: Check currently loaded model version if input was ambiguous
+            if not timestamp_part:
+                current_info = self.model_manager.get_current_model_info()
+                if current_info and 'version_id' in current_info:
+                    vid = current_info['version_id']
+                    if vid and vid.startswith('v'):
+                        timestamp_part = vid[1:]
+
+            # Load transformers if timestamp found
+            if timestamp_part:
                 transformer_dir = os.path.join(self.transformers_dir, f"transformers_{timestamp_part}")
                 if os.path.exists(transformer_dir):
                     # Create new feature engineer and load the model-specific transformers
                     self.feature_engineer = FeatureEngineer()
                     self.feature_engineer.load_transformers(transformer_dir)
-                    logger.info(f"Loaded transformers for model {model_name} from {transformer_dir}")
+                    logger.info(f"Loaded transformers for model {model_name} (timestamp {timestamp_part}) from {transformer_dir}")
                 else:
-                    logger.warning(f"No transformers found for model {model_name} at {transformer_dir}")
+                    logger.warning(f"No transformers found for model {model_name} at {transformer_dir}. Using default/current transformers.")
+            else:
+                logger.warning(f"Could not determine timestamp for model {model_name}. Using default/current transformers.")
+
         return success
 
     def get_prediction_comparison(self, features: OrderBookFeatures) -> Dict[str, Any]:
