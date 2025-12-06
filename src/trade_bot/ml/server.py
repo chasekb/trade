@@ -175,7 +175,7 @@ async def load_model_background():
         if active_model_name:
             logger.info(f"Attempting to deploy configured model '{active_model_name}' in background.")
             # Run the blocking model loading in a separate thread
-            success = await asyncio.to_thread(ml_optimizer.model_manager.set_active_model, active_model_name)
+            success = await asyncio.to_thread(ml_optimizer.set_active_model, active_model_name)
             if success:
                 model_ready = True
                 logger.info(f"Model '{active_model_name}' deployed successfully. Server is ready for predictions.")
@@ -479,7 +479,7 @@ async def set_active_model(model_name: str):
         # Run in thread to avoid blocking event loop
         # Reload registry first to ensure we see new models
         ml_optimizer.model_manager.load_model_registry()
-        success = await asyncio.to_thread(ml_optimizer.model_manager.set_active_model, model_name)
+        success = await asyncio.to_thread(ml_optimizer.set_active_model, model_name)
         
         if success:
             # Update the optimizer's current model reference if needed
