@@ -603,7 +603,7 @@ class FeatureEngineer:
             logger.info(f"After selection: {X_selected.shape}")
         else:
             X_selected = X_pca
-            logger.info(f"No selector available: {X_selected.shape}")
+            logger.info(f"Feature selection disabled during online/incremental training: {X_selected.shape}")
 
         # Log feature statistics for troubleshooting
         if X_selected.shape[0] > 0:

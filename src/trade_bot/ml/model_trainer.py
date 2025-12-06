@@ -205,10 +205,6 @@ class ModelTrainer:
                             
                         rolling_mse.append(reg_score)
                         
-                        # Calculate MSE for feedback loop
-                        current_mse = mean_squared_error(y_test_reg, model.predict(X_test))
-                        if feature_engineer:
-                            feature_engineer.update_error_signal(current_mse)
                     else:
                         # Skip score for zero-variance targets
                         logger.debug(f"Batch {batch_count + 1} has zero target variance, skipping R² evaluation")
