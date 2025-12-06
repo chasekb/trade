@@ -303,16 +303,30 @@ async def set_active_model(model_name: str):
             ml_server_port = os.getenv("ML_SERVER_PORT", "8002")
             url = f"http://{ml_server_host}:{ml_server_port}/set_active"
             
+            logger.info(f"Notifying ML server at {url} to set active model to {model_name}")
+            
             # Use params for query parameters in FastAPI
-            response = requests.post(url, params={"model_name": model_name}, timeout=5)
+            response = requests.post(url, params={"model_name": model_name}, timeout=60)
             
             if response.status_code == 200:
                 logger.info(f"Successfully notified ML server to set active model to {model_name}")
             else:
-                logger.warning(f"ML server returned status {response.status_code} when setting active model")
+                error_msg = f"ML server returned status {response.status_code} when setting active model"
+                logger.error(error_msg)
+                # If we can't sync with ML server, we should probably warn the user or fail
+                # For now, let's include it in the response message
+                return {
+                    "status": "warning", 
+                    "message": f"Active model set locally, but ML server sync failed: {response.status_code}"
+                }
                 
         except Exception as e:
-            logger.warning(f"Failed to notify ML server: {e}")
+            error_msg = f"Failed to notify ML server at {url}: {e}"
+            logger.error(error_msg)
+            return {
+                "status": "warning", 
+                "message": f"Active model set locally, but ML server connection failed: {str(e)}"
+            }
 
         return {"status": "success", "message": f"Active model set to {model_name}"}
     except Exception as e:
