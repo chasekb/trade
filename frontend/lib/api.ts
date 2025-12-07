@@ -363,6 +363,12 @@ class ApiClient {
     });
   }
 
+  async resetDatabases(): Promise<ApiResponse<any>> {
+    return this.request('/api/ml/databases', {
+      method: 'DELETE',
+    });
+  }
+
   async getPredictionComparison(modelIds: string[], features: any): Promise<ApiResponse<any>> {
     return this.request('/api/ml/prediction-comparison', {
       method: 'POST',

@@ -178,6 +178,34 @@ export function useModelTraining() {
     },
   });
 
+  const resetDatabasesMutation = useMutation({
+    mutationFn: async () => {
+      if (!confirm('Are you sure you want to RESET ALL DATABASES? This will delete all training data, trading history, and cache. This action CANNOT be undone.')) {
+        throw new Error('Reset cancelled by user');
+      }
+      const response = await apiClient.resetDatabases();
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to reset databases');
+      }
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (data.status === 'success') {
+        showSuccess(data.message || 'Databases reset successfully');
+        // Invalidate all relevant queries
+        queryClient.invalidateQueries({ queryKey: ['ml'] });
+        queryClient.invalidateQueries({ queryKey: ['trading'] });
+      } else {
+        showError(data.error || 'Failed to reset databases');
+      }
+    },
+    onError: (error) => {
+      if (error.message !== 'Reset cancelled by user') {
+        showError(error.message || 'Failed to reset databases');
+      }
+    },
+  });
+
   return {
     // Training
     trainModel: trainMutation.mutate,
@@ -205,5 +233,9 @@ export function useModelTraining() {
     isDeletingModel: deleteModelMutation.isPending,
     deleteAllModels: deleteAllModelsMutation.mutate,
     isDeletingAllModels: deleteAllModelsMutation.isPending,
+    
+    // Reset Databases
+    resetDatabases: resetDatabasesMutation.mutate,
+    isResettingDatabases: resetDatabasesMutation.isPending,
   };
 }

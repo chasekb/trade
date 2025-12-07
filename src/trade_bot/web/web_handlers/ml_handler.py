@@ -2,7 +2,8 @@
 
 import json
 import logging
-from typing import Dict, Any
+import sqlite3
+from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 import os
@@ -361,6 +362,144 @@ async def delete_all_models():
         return {"status": "success", "message": "All models deleted successfully"}
     except Exception as e:
         logger.error(f"Error deleting all models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@ml_router.delete("/databases")
+async def reset_databases():
+    """Reset all databases (clear all data)."""
+    try:
+        results = []
+        
+        # 1. Reset SQLite databases
+        sqlite_databases = {
+            "data/databases/trading_cache.db": [
+                "dashboard_state", 
+                "historical_candles", 
+                "individual_trades", 
+                "order_book_signals", 
+                "order_book_snapshots", 
+                "trade_history", 
+                "trading_sessions"
+            ],
+            "data/databases/backtests.db": [
+                "backtests"
+            ]
+        }
+        
+        for db_path, tables in sqlite_databases.items():
+            if not os.path.exists(db_path):
+                results.append(f"SQLite DB {db_path} not found, skipping")
+                continue
+                
+            try:
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                
+                for table in tables:
+                    try:
+                        # Check if table exists
+                        cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
+                        if cursor.fetchone():
+                            cursor.execute(f"DELETE FROM {table}")
+                            logger.info(f"Cleared table {table} in {db_path}")
+                    except Exception as table_error:
+                        logger.error(f"Error clearing table {table} in {db_path}: {table_error}")
+                
+                conn.commit()
+                cursor.execute("VACUUM")
+                conn.close()
+                results.append(f"Successfully reset SQLite database {db_path}")
+                
+            except Exception as db_error:
+                logger.error(f"Error resetting SQLite database {db_path}: {db_error}")
+                results.append(f"Failed to reset SQLite database {db_path}: {str(db_error)}")
+
+        # 2. Reset Postgres Database
+        # Retrieve connection details from environment variables
+        db_url = os.getenv('DATABASE_URL')
+        
+        # If DATABASE_URL is not set, try to construct it from standard PG environment variables
+        if not db_url:
+            pg_user = os.getenv('POSTGRES_USER')
+            pg_password = os.getenv('POSTGRES_PASSWORD')
+            pg_host = os.getenv('POSTGRES_HOST')
+            pg_port = os.getenv('POSTGRES_PORT', '5432')
+            pg_db = os.getenv('POSTGRES_DB')
+            
+            if pg_user and pg_password and pg_host and pg_db:
+                db_url = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+        
+        # Only attempt if we have a valid Postgres URL
+        if db_url and (db_url.startswith("postgresql://") or db_url.startswith("postgres://")):
+            try:
+                # Import psycopg inside the function to avoid dependency issues if not installed
+                import psycopg
+                
+                # Connect to Postgres
+                with psycopg.connect(db_url) as conn:
+                    with conn.cursor() as cursor:
+                        tables = [
+                            "dashboard_state", 
+                            "historical_candles", 
+                            "individual_trades", 
+                            "order_book_signals", 
+                            "order_book_snapshots", 
+                            "trade_history", 
+                            "trading_sessions"
+                        ]
+                        
+                        for table in tables:
+                            try:
+                                # TRUNCATE is faster and cleaner for full reset
+                                # CASCADE ensures dependent tables (if any) are also cleared
+                                cursor.execute(f"TRUNCATE TABLE {table} CASCADE")
+                                logger.info(f"Truncated table {table} in Postgres")
+                            except Exception as table_error:
+                                # Fallback to DELETE if TRUNCATE fails (e.g. if table doesn't exist)
+                                try:
+                                    # Check if table exists first to avoid error spam
+                                    cursor.execute("""
+                                        SELECT exists (
+                                            SELECT FROM information_schema.tables 
+                                            WHERE  table_schema = 'public'
+                                            AND    table_name   = %s
+                                        );
+                                    """, (table,))
+                                    if cursor.fetchone()[0]:
+                                        cursor.execute(f"DELETE FROM {table}")
+                                        logger.info(f"Deleted rows from table {table} in Postgres")
+                                except Exception as delete_error:
+                                    logger.warning(f"Error clearing table {table} in Postgres: {delete_error}")
+                    
+                    conn.commit()
+                results.append("Successfully reset Postgres database")
+                
+            except ImportError:
+                results.append("psycopg not installed, skipping Postgres reset via Python")
+            except Exception as e:
+                logger.error(f"Error resetting Postgres database: {e}")
+                results.append(f"Failed to reset Postgres database: {str(e)}")
+
+        # 3. Reset Vector Database
+        try:
+            optimizer = _get_ml_optimizer()
+            if optimizer:
+                if hasattr(optimizer, 'vector_db_client'):
+                    optimizer.vector_db_client.delete_collection()
+                    optimizer.initialize_vector_database()
+                    results.append("Successfully reset vector database")
+        except Exception as e:
+            logger.error(f"Error resetting vector database: {e}")
+            results.append(f"Failed to reset vector database: {str(e)}")
+
+        return {
+            "status": "success", 
+            "message": "Databases reset operation completed",
+            "details": results
+        }
+    except Exception as e:
+        logger.error(f"Error resetting databases: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
