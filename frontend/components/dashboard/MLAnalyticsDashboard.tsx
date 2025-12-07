@@ -218,7 +218,8 @@ function ModelControls() {
     availableModels, isLoadingModels,
     setActiveModel, isSettingActiveModel,
     deleteModel, isDeletingModel,
-    deleteAllModels, isDeletingAllModels
+    deleteAllModels, isDeletingAllModels,
+    resetDatabases, isResettingDatabases
   } = useModelTraining();
 
   const [selectedModel, setSelectedModel] = React.useState<string>('');
@@ -310,14 +311,24 @@ function ModelControls() {
 
           <div className="border-t pt-4">
             <h4 className="text-sm font-medium mb-3 text-red-600">Danger Zone</h4>
-             <Button
-              onClick={() => deleteAllModels()}
-              disabled={isDeletingAllModels}
-              variant="danger"
-              className="w-full bg-red-100 text-red-700 hover:bg-red-200 border-red-200"
-            >
-              {isDeletingAllModels ? 'Deleting All Models...' : 'Delete All Models'}
-            </Button>
+            <div className="space-y-3">
+              <Button
+                onClick={() => deleteAllModels()}
+                disabled={isDeletingAllModels}
+                variant="danger"
+                className="w-full bg-red-100 text-red-700 hover:bg-red-200 border-red-200"
+              >
+                {isDeletingAllModels ? 'Deleting All Models...' : 'Delete All Models'}
+              </Button>
+              <Button
+                onClick={() => resetDatabases()}
+                disabled={isResettingDatabases}
+                variant="danger"
+                className="w-full bg-red-100 text-red-700 hover:bg-red-200 border-red-200"
+              >
+                {isResettingDatabases ? 'Resetting Databases...' : 'Reset All Databases'}
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>
