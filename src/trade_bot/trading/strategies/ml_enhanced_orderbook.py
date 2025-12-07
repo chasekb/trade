@@ -68,6 +68,14 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
             'ml_error': 0
         }
         
+        # Outlier tracking
+        self.outlier_stats = {
+            'abnormal_spread': 0,
+            'abnormal_imbalance': 0,
+            'negative_prices': 0
+        }
+        self.last_stats_log_time = datetime.now()
+        
         logger.info(f"ML-Enhanced Order Book Strategy initialized with ML server: {ml_server_url}")
     
     def add_price(self, price: float, timestamp: datetime) -> None:
@@ -84,8 +92,11 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
     
     def update_order_book(self, bids: List[List[float]], asks: List[List[float]], timestamp: datetime) -> None:
         """Update order book data."""
-        self.bids = bids
-        self.asks = asks
+        # Sort bids descending (highest first) and asks ascending (lowest first) to ensure correctness
+        # This protects against unsorted data which can cause massive spread calculations
+        self.bids = sorted(bids, key=lambda x: x[0], reverse=True)
+        self.asks = sorted(asks, key=lambda x: x[0])
+        
         self.last_order_book_time = timestamp
         
         # Keep only recent data
@@ -178,6 +189,11 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         
         if ask_volume > 0:
             features['bid_ask_imbalance'] = bid_volume / ask_volume
+            
+            # Log abnormal imbalance values
+            if features['bid_ask_imbalance'] > 50.0:
+                self.outlier_stats['abnormal_imbalance'] += 1
+                logger.warning(f"Abnormal bid-ask imbalance: {features['bid_ask_imbalance']:.2f} (Bid Vol: {bid_volume}, Ask Vol: {ask_volume})")
         
         # Calculate spread
         best_bid = self.bids[0][0] if len(self.bids[0]) >= 1 else 0
@@ -186,6 +202,11 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         if best_bid > 0 and best_ask > 0:
             features['spread_percent'] = (best_ask - best_bid) / best_bid * 100
             features['mid_price'] = (best_bid + best_ask) / 2
+            
+            # Log abnormal spread values for troubleshooting
+            if features['spread_percent'] > 50.0:
+                self.outlier_stats['abnormal_spread'] += 1
+                logger.warning(f"Abnormal spread detected: {features['spread_percent']:.2f}% (Bid: {best_bid}, Ask: {best_ask})")
         
         # Calculate order book depth
         features['order_book_depth'] = len(self.bids) + len(self.asks)
@@ -230,6 +251,13 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
     
     def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
         """Generate trading signal using ML predictions."""
+        # Log cumulative stats periodically (every 60 seconds)
+        current_time = datetime.now()
+        if (current_time - self.last_stats_log_time).total_seconds() > 60:
+            if any(v > 0 for v in self.outlier_stats.values()):
+                logger.info(f"ML Strategy Outlier Stats: {self.outlier_stats}")
+            self.last_stats_log_time = current_time
+
         if not self.bids or not self.asks:
             return None
         
@@ -323,6 +351,7 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
                 'total_predictions': total_predictions
             },
             'signals_by_type': self.signals_by_type.copy(),
+            'outlier_stats': self.outlier_stats.copy(),
             'total_signals': sum(self.signals_by_type.values()),
             'no_signal_count': self.no_signal_count,
             'baseline_strategy': baseline_info.get('strategy_name', 'None') if baseline_info else 'None'
