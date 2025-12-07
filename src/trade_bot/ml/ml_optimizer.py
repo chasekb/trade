@@ -860,36 +860,64 @@ class MLTradingOptimizer:
             return False
 
     def delete_all_models(self) -> bool:
-        """Delete all models and their associated artifacts."""
+        """
+        Delete all models and their associated artifacts.
+        
+        This method performs a comprehensive cleanup including:
+        1. All registered models and versioned directories
+        2. All legacy flat-file models (*.pkl)
+        3. All orphaned artifacts and mismatched files
+        4. All transformer directories
+        """
         try:
             success = True
+            logger.info("Starting comprehensive model cleanup...")
             
-            # Delete from model registry
-            all_models = self.list_available_models()
+            # 1. Clear Registry
+            # Iterate through all known models in the registry first
+            all_models = self.model_manager.list_models()
             for model in all_models:
                 model_name = model.get('model_name')
                 if model_name:
-                     # We use delete_model but allow it to fail (e.g. if file missing)
-                     # as long as we clear the registry
-                     try:
-                        self.delete_model(model_name)
-                     except Exception as e:
-                        logger.warning(f"Error deleting registered model {model_name}: {e}")
+                    try:
+                        self.model_manager.unregister_model(model_name)
+                    except Exception as e:
+                        logger.warning(f"Error unregistering model {model_name}: {e}")
 
-            # Legacy cleanup: Get all model files
-            # This catches files that were not in the registry
-            model_files = glob.glob(os.path.join(self.models_dir, "trading_optimizer_*.pkl"))
-            for model_file in model_files:
-                model_name = os.path.basename(model_file)
-                # Only try to delete if file still exists
-                if os.path.exists(model_file):
-                    if not self.delete_model(model_name):
-                        # Only mark as failure if file exists and we couldn't delete it
-                        if os.path.exists(model_file):
+            # 2. Force delete ALL directories in models_dir
+            # This handles versioned directories for ANY model type
+            if os.path.exists(self.models_dir):
+                for item in os.listdir(self.models_dir):
+                    item_path = os.path.join(self.models_dir, item)
+                    if os.path.isdir(item_path):
+                        try:
+                            import shutil
+                            shutil.rmtree(item_path)
+                            logger.info(f"Deleted model directory: {item_path}")
+                        except Exception as e:
+                            logger.error(f"Error deleting directory {item_path}: {e}")
                             success = False
-                            logger.error(f"Failed to delete legacy model file: {model_file}")
 
-            # Also delete any remaining transformer directories
+            # 3. Legacy cleanup: Force delete all .pkl and .json files in models_dir
+            # This catches legacy flat-file models and metadata for ANY model type
+            legacy_patterns = [
+                "*.pkl",
+                "*_metadata.json",
+                "model_registry.json" # Also reset the registry file itself
+            ]
+            
+            for pattern in legacy_patterns:
+                files = glob.glob(os.path.join(self.models_dir, pattern))
+                for file_path in files:
+                    try:
+                        os.remove(file_path)
+                        logger.info(f"Deleted artifact: {file_path}")
+                    except Exception as e:
+                        logger.error(f"Error deleting file {file_path}: {e}")
+                        success = False
+
+            # 4. Delete ALL transformer directories
+            # This is critical for cleaning up mismatched timestamp artifacts
             transformer_dirs = glob.glob(os.path.join(self.transformers_dir, "transformers_*"))
             for transformer_dir in transformer_dirs:
                 try:
@@ -899,6 +927,11 @@ class MLTradingOptimizer:
                 except Exception as e:
                     logger.error(f"Error deleting transformer directory {transformer_dir}: {e}")
                     success = False
+
+            # 5. Reset internal state
+            self.feature_engineer = FeatureEngineer()
+            self.last_training_time = None
+            self.model_manager = ModelManager(self.models_dir) # Reload manager to refresh registry
 
             if success:
                 logger.info("All models and associated artifacts deleted successfully")
