@@ -46,7 +46,8 @@ async def get_ml_status():
             "is_trained": is_trained,
             "current_model": current_model_info,
             "last_training_time": app_state.training_manager.async_trainer.last_training_time if app_state.training_manager else None,
-            "is_training": app_state.training_manager.async_trainer.is_running if app_state.training_manager else False
+            "is_training": app_state.training_manager.async_trainer.is_running if app_state.training_manager else False,
+            "training_status": app_state.training_manager.async_trainer.status if app_state.training_manager else "unknown"
         }
         return status
     except Exception as e:

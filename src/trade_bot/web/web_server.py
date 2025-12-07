@@ -123,7 +123,8 @@ async def startup_event():
         # Initialize TrainingManager and ModelManager
         training_manager = TrainingManager(
             db_path=os.getenv("DATABASE_URL", "data/databases/trading_cache.db"),
-            models_dir="data/models"
+            models_dir="data/models",
+            ml_optimizer=app_state_local.ml_optimizer
         )
         app_state_local.training_manager = training_manager
         model_manager = training_manager.model_manager
