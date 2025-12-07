@@ -514,6 +514,14 @@ class TradingHandlers:
             open_positions = self.simulated_trading_manager.get_open_positions()
             recent_trades = self.simulated_trading_manager.get_recent_trades()
             
+            # Get detailed strategy info if available
+            strategy_info = {}
+            if self.simulated_trading_manager.strategy_instance and hasattr(self.simulated_trading_manager.strategy_instance, 'get_strategy_info'):
+                 try:
+                     strategy_info = self.simulated_trading_manager.strategy_instance.get_strategy_info()
+                 except Exception as e:
+                     logger.error(f"Error getting strategy info: {e}")
+            
             # Convert portfolio to dictionary for JSON serialization
             from dataclasses import asdict
             portfolio_dict = asdict(portfolio)
@@ -523,6 +531,7 @@ class TradingHandlers:
                 "symbols": self.simulated_trading_manager.symbols_to_trade,
                 "strategy_type": self.simulated_trading_manager.strategy_type,
                 "strategy_params": self.simulated_trading_manager.strategy_params,
+                "strategy_info": strategy_info,
                 "max_positions": self.simulated_trading_manager.max_positions,
                 "position_size_percent": self.simulated_trading_manager.position_size_percent * 100,
                 "position_update_interval": self.simulated_trading_manager.position_update_interval,
