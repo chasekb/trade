@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class TrainingManager:
     """Orchestrates the continuous training of ML models."""
 
-    def __init__(self, db_path: str, models_dir: str, config_path: str = "data/ml_config.json"):
+    def __init__(self, db_path: str, models_dir: str, config_path: str = "data/ml_config.json", ml_optimizer=None):
         """
         Initialize the TrainingManager.
 
@@ -22,6 +22,7 @@ class TrainingManager:
             db_path: Path to the database.
             models_dir: Directory to store models.
             config_path: Path to the ML configuration file.
+            ml_optimizer: Optional MLTradingOptimizer instance.
         """
         self.config_path = config_path
         self.config = self._load_config()
@@ -34,7 +35,8 @@ class TrainingManager:
             model_trainer=self.model_trainer,
             model_manager=self.model_manager,
             training_interval=self.config.get("training_interval", 3600),
-            new_data_threshold=self.config.get("new_data_threshold", 100)
+            new_data_threshold=self.config.get("new_data_threshold", 100),
+            ml_optimizer=ml_optimizer
         )
 
     def _load_config(self) -> dict:
