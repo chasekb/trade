@@ -36,11 +36,13 @@ class ModelManager:
     
     def register_model(self, model_name: str, model_path: str, 
                       performance_metrics: Dict[str, Any],
-                      metadata: Dict[str, Any] = None) -> str:
+                      metadata: Dict[str, Any] = None,
+                      version_id: str = None) -> str:
         """Register a new model version."""
         try:
-            # Generate version ID
-            version_id = self._generate_version_id()
+            # Generate version ID if not provided
+            if version_id is None:
+                version_id = self._generate_version_id()
             
             # Create version directory
             version_dir = os.path.join(self.models_dir, model_name, version_id)

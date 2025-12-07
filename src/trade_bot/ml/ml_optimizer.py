@@ -269,7 +269,8 @@ class MLTradingOptimizer:
                         'regressor': training_results['model_performance'][best_model_name],
                         'classifier': training_results.get('classifier_performance', {}).get(training_results.get('best_classifier'), {})
                     },
-                    metadata=wrapper_metadata
+                    metadata=wrapper_metadata,
+                    version_id=f"v{model_timestamp}"
                 )
                 
                 if version_id:
@@ -340,7 +341,8 @@ class MLTradingOptimizer:
                 model_name="trading_optimizer",
                 model_path=wrapper_path,
                 performance_metrics=training_results,
-                metadata={'training_mode': 'batch', 'batch_size': batch_size}
+                metadata={'training_mode': 'batch', 'batch_size': batch_size},
+                version_id=f"v{model_timestamp}"
             )
             
             if version_id:
