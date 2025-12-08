@@ -14,23 +14,26 @@ The project demonstrates a sophisticated architecture integrating machine learni
 - **Resilience:** Error handling and fallbacks (e.g., falling back to baseline strategy if ML fails) are implemented in critical paths.
 
 ### Critical Issues
-1. **Blocking Network Calls in Async Contexts:**
+1. **Blocking Network Calls in Async Contexts:** **[COMPLETED]**
    - **Severity:** High
    - **Location:** `src/trade_bot/trading/strategies/ml_enhanced_orderbook.py`, `src/trade_bot/ml/ml_optimizer.py`
    - **Issue:** The use of synchronous `requests` library and synchronous execution of `CoinbaseDataProvider` within methods that are likely called from an async event loop (via FastAPI or `SimulatedTradingManager`) causes blocking. This can lead to performance degradation and "loop is running" errors.
    - **Recommendation:** Replace `requests` with `aiohttp` or `httpx` for async HTTP calls. Ensure all data provider interactions are properly awaited.
+   - **Status:** **Resolved.** Implemented async methods in `MLEnhancedOrderBookStrategy` and updated `SimulatedTradingManager` to use them.
 
-2. **Inefficient Data Processing Loops:**
+2. **Inefficient Data Processing Loops:** **[COMPLETED]**
    - **Severity:** Medium
    - **Location:** `src/trade_bot/ml/data_collector.py`
    - **Issue:** `create_feature_vectors` and `create_training_labels` iterate through DataFrames using loops (`iterrows` or similar) and perform filtering inside the loop. This results in $O(N \cdot M)$ or $O(N^2)$ complexity, which will not scale with large datasets.
    - **Recommendation:** Vectorize these operations using pandas native merging (`merge_asof`) and vectorized calculations.
+   - **Status:** **Resolved.** Refactored to use vectorized pandas operations and `merge_asof`.
 
-3. **Redundant Data Sorting:**
+3. **Redundant Data Sorting:** **[COMPLETED]**
    - **Severity:** Low
    - **Location:** `src/trade_bot/trading/strategies/ml_enhanced_orderbook.py`
    - **Issue:** `update_order_book` sorts the entire bid/ask lists on every update.
    - **Recommendation:** If the source API provides sorted data (standard for order books), verify and skip sorting. If not, consider using `bisect` for maintaining order or only sorting the top $N$ levels needed for features.
+   - **Status:** **Resolved.** Implemented `heapq.nlargest`/`nsmallest` to efficiently extract top bids/asks without full sorting ($O(N \log K)$ vs $O(N \log N)$).
 
 ## Optimization Opportunities
 
