@@ -192,6 +192,73 @@ class TradingHandlers:
             logger.error(f"Error reconstructing open positions from DB: {e}")
             return []
     
+    async def execute_manual_trade(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a manual trade."""
+        try:
+            symbol = request_data.get('symbol')
+            side = request_data.get('side', '').lower()
+            amount = float(request_data.get('amount', 0))
+            # amount_type: 'quote' (USD) or 'base' (Crypto)
+            amount_type = request_data.get('amount_type', 'quote' if side == 'buy' else 'base')
+
+            if not symbol or side not in ['buy', 'sell'] or amount <= 0:
+                raise HTTPException(status_code=400, detail="Invalid trade parameters")
+
+            # Initialize executor
+            trade_handler = TradeHandler(self.database_manager)
+            live_trade_executor = LiveTradeExecutor(self.config, trade_handler)
+
+            order = None
+            if side == 'buy':
+                # Coinbase Retail API usually prefers quote_size (USD amount) for market buys
+                if amount_type == 'quote':
+                     order = live_trade_executor.rest_client.market_order_buy(
+                        product_id=symbol,
+                        quote_size=str(amount)
+                    )
+                else:
+                    # If base amount (Crypto) is specified, we might need to use base_size if API supports it for market orders,
+                    # or estimate quote_size. Coinbase Advanced Trade API market_order_buy takes quote_size usually.
+                    # We will restrict manual buy to USD amount for simplicity and safety.
+                     raise HTTPException(status_code=400, detail="Manual buy orders must specify amount in USD (quote currency)")
+            elif side == 'sell':
+                # Coinbase Retail API usually prefers base_size (Crypto amount) for market sells
+                 if amount_type == 'base':
+                    order = live_trade_executor.rest_client.market_order_sell(
+                        product_id=symbol,
+                        base_size=str(amount)
+                    )
+                 else:
+                     raise HTTPException(status_code=400, detail="Manual sell orders must specify amount in Crypto (base currency)")
+
+            # Log trade
+            if order:
+                # Basic trade data logging
+                trade_data = {
+                    'trade_id': order.get('order_id', ''),
+                    'product_id': symbol,
+                    'side': side,
+                    'size': str(amount),
+                    'price': 'Market', 
+                    'value': str(amount) if side == 'buy' else 'Unknown',
+                    'status': order.get('status', 'unknown'),
+                    'order_id': order.get('order_id', '')
+                }
+                try:
+                    trade_handler.add_trade_data(trade_data)
+                except Exception as log_err:
+                    logger.error(f"Failed to log trade to DB: {log_err}")
+                
+            return {
+                "status": "executed",
+                "order": order,
+                "message": f"{side.upper()} order for {symbol} executed successfully"
+            }
+
+        except Exception as e:
+            logger.error(f"Error executing manual trade: {e}")
+            raise HTTPException(status_code=500, detail=f"Trade execution failed: {str(e)}")
+
     async def close_live_position(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Close a specific live trading position."""
         try:
@@ -199,12 +266,58 @@ class TradingHandlers:
             if not symbol or not re.fullmatch(r"[A-Z0-9\-]{3,30}", str(symbol)):
                 raise HTTPException(status_code=400, detail="Symbol is required")
             
-            # Close position logic would go here
-            return {
-                "status": "closed",
-                "symbol": symbol,
-                "message": f"Position for {symbol} closed successfully"
-            }
+            # Initialize executor
+            trade_handler = TradeHandler(self.database_manager)
+            live_trade_executor = LiveTradeExecutor(self.config, trade_handler)
+            
+            # Fetch current position size from Coinbase (using portfolio logic)
+            # For now, we will assume we need to close the entire position.
+            # Ideally we should fetch the balance.
+            # But since we don't have the balance here easily without calling another service, 
+            # we rely on the user or frontend to have passed the correct logic, or we implement 'close all'.
+            
+            # NOTE: To implement 'close all', we would need to fetch the account balance for the base currency.
+            # This is available via rest_client.get_accounts().
+            
+            accounts = live_trade_executor.rest_client.get_accounts()
+            # Find account for the base currency (e.g. BTC for BTC-USD)
+            base_currency = symbol.split('-')[0]
+            balance = 0.0
+            for account in accounts.get('accounts', []):
+                if account['currency'] == base_currency:
+                    balance = float(account['available'])
+                    break
+            
+            if balance > 0:
+                order = live_trade_executor.rest_client.market_order_sell(
+                    product_id=symbol,
+                    base_size=str(balance)
+                )
+                
+                trade_data = {
+                    'trade_id': order.get('order_id', ''),
+                    'product_id': symbol,
+                    'side': 'sell',
+                    'size': str(balance),
+                    'price': 'Market',
+                    'status': order.get('status', 'unknown'),
+                    'order_id': order.get('order_id', '')
+                }
+                trade_handler.add_trade_data(trade_data)
+                
+                return {
+                    "status": "closed",
+                    "symbol": symbol,
+                    "order": order,
+                    "message": f"Position for {symbol} closed successfully ({balance} {base_currency})"
+                }
+            else:
+                 return {
+                    "status": "skipped",
+                    "symbol": symbol,
+                    "message": f"No available balance for {symbol} to close"
+                }
+
         except Exception as e:
             logger.error(f"Error closing live position: {e}")
             raise HTTPException(status_code=500, detail=str(e))
