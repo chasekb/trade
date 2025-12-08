@@ -6,6 +6,7 @@ import requests
 import json
 import asyncio
 import aiohttp
+import heapq
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -94,18 +95,14 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
     
     def update_order_book(self, bids: List[List[float]], asks: List[List[float]], timestamp: datetime) -> None:
         """Update order book data."""
-        # Sort bids descending (highest first) and asks ascending (lowest first) to ensure correctness
-        # This protects against unsorted data which can cause massive spread calculations
-        self.bids = sorted(bids, key=lambda x: x[0], reverse=True)
-        self.asks = sorted(asks, key=lambda x: x[0])
+        # Use heapq to efficiently get top 100 bids/asks (O(N log K) vs O(N log N))
+        # Bids: highest prices first (nlargest)
+        self.bids = heapq.nlargest(100, bids, key=lambda x: x[0])
+        
+        # Asks: lowest prices first (nsmallest)
+        self.asks = heapq.nsmallest(100, asks, key=lambda x: x[0])
         
         self.last_order_book_time = timestamp
-        
-        # Keep only recent data
-        if len(self.bids) > 100:
-            self.bids = self.bids[-100:]
-        if len(self.asks) > 100:
-            self.asks = self.asks[-100:]
         
         # Update baseline strategy if available
         if self.baseline_strategy:
