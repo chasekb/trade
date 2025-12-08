@@ -79,6 +79,10 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         }
         self.last_stats_log_time = datetime.now()
         
+        # Feature calculation cache
+        self._feature_cache = {}
+        self._last_calculation_state = None
+        
         logger.info(f"ML-Enhanced Order Book Strategy initialized with ML server: {ml_server_url}")
     
     def add_price(self, price: float, timestamp: datetime) -> None:
@@ -193,7 +197,18 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         }
     
     def _calculate_order_book_features(self, current_price: float) -> Dict[str, Any]:
-        """Calculate order book features for ML prediction."""
+        """Calculate order book features for ML prediction with caching."""
+        # Check cache validity
+        current_state = (
+            self.last_order_book_time,
+            current_price,
+            len(self.price_history),
+            self.price_history[-1] if self.price_history else None
+        )
+        
+        if self._last_calculation_state == current_state and self._feature_cache:
+            return self._feature_cache.copy()
+
         features = {
             'bid_ask_imbalance': 0.0,
             'spread_percent': 0.0,
@@ -210,6 +225,8 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         }
         
         if not self.bids or not self.asks:
+            self._feature_cache = features
+            self._last_calculation_state = current_state
             return features
         
         # Calculate bid-ask imbalance
@@ -283,6 +300,9 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
                 import numpy as np
                 features['volatility'] = float(np.std(price_changes)) * 100
         
+        # Update cache
+        self._feature_cache = features
+        self._last_calculation_state = current_state
         return features
     
     def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
