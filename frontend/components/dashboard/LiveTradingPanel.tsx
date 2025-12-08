@@ -16,6 +16,7 @@ import { StrategySelector } from './StrategySelector';
 import { TradingControls } from './TradingControls';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { OrderBookSignalsTable } from './OrderBookSignalsTable';
+import { ManualTradeSection } from './ManualTradeSection';
 
 // Trading Configuration Section
 function TradingConfiguration({
@@ -853,6 +854,9 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
           )}
         </CardContent>
       </Card>
+
+      {/* Manual Trade Execution */}
+      <ManualTradeSection symbols={activeSymbols} />
 
       {/* Live Trading Statistics */}
       <LiveTradingStatistics isTradingActive={status.isActive} />

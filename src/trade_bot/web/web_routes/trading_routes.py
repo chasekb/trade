@@ -48,6 +48,16 @@ async def get_live_positions(page: int = 1, limit: int = 50):
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_live_positions(page=page, limit=limit)
 
+@router.post("/api/trading/live/execute")
+async def execute_manual_trade(request: dict):
+    """Execute a manual trade."""
+    try:
+        app_state = get_app_state()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    return await app_state.trading_handlers.execute_manual_trade(request)
+
 @router.post("/api/trading/live/close-position")
 async def close_live_position(request: dict):
     """Close a specific live trading position."""
