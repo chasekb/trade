@@ -63,11 +63,27 @@ class TradingHandlers:
             if not isinstance(strategy_params, dict):
                 raise HTTPException(status_code=400, detail="strategy_params must be an object")
             
+            # Instantiate strategy based on type
+            strategy_instance = None
+            try:
+                if strategy_type == 'ml_enhanced_orderbook':
+                    from ...trading.strategies.ml_enhanced_orderbook import MLEnhancedOrderBookStrategy
+                    strategy_instance = MLEnhancedOrderBookStrategy(self.config, **strategy_params)
+                elif strategy_type == 'orderbook':
+                    from ...trading.strategies.orderbook import OrderBookStrategy
+                    strategy_instance = OrderBookStrategy(self.config, **strategy_params)
+            except Exception as e:
+                logger.error(f"Error initializing strategy {strategy_type}: {e}")
+                # Don't fail completely, let TradingBot use default or raise if critical
+                # But better to raise so user knows strategy didn't start
+                raise HTTPException(status_code=400, detail=f"Failed to initialize strategy {strategy_type}: {str(e)}")
+
             # Start live trading
             trade_handler = TradeHandler(self.database_manager)
             live_trade_executor = LiveTradeExecutor(self.config, trade_handler)
-            trading_bot = TradingBot(self.config)
-            trading_bot.trade_executor = live_trade_executor
+            
+            # Pass strategy and executor to TradingBot
+            trading_bot = TradingBot(self.config, strategy=strategy_instance, trade_executor=live_trade_executor)
             
             asyncio.create_task(trading_bot.start())
             

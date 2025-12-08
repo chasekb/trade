@@ -100,6 +100,18 @@ class TradingBot:
     async def _execute_trade(self, signal: TradeSignal) -> None:
         """Execute a trade using the REST API."""
         try:
+            # Delegate to trade executor if available
+            if self.trade_executor:
+                signal_dict = {
+                    'action': signal.action,
+                    'product_id': self.config.product_id,
+                    'quantity': signal.quantity,
+                    'price': signal.price
+                }
+                await self.trade_executor.execute_trade(signal_dict)
+                return
+
+            # Fallback internal implementation
             if signal.action == 'buy':
                 order = self.rest_client.market_order_buy(
                     product_id=self.config.product_id,
