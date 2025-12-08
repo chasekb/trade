@@ -945,28 +945,32 @@ class MLTradingOptimizer:
         
     def _store_feature_vectors_in_db(self, features: List[OrderBookFeatures], 
                                     processed_features: np.ndarray) -> None:
-        """Store feature vectors in vector database."""
+        """Store feature vectors in vector database using bulk operations."""
         try:
-            vectors = []
-            metadata_list = []
+            limit = min(len(features), processed_features.shape[0])
+            if limit == 0:
+                return
+
+            # Bulk convert vectors to list
+            vectors = processed_features[:limit].tolist()
             
-            for i, feature in enumerate(features):
-                if i < processed_features.shape[0]:
-                    vector = processed_features[i]
-                    # Extract all features for metadata storage
-                    feature_dict = self.feature_engineer._extract_features(feature)
-                    
-                    # Convert all values to native Python types for JSON serialization
-                    serializable_features = {k: v.item() if isinstance(v, np.generic) else v for k, v in feature_dict.items()}
-                    
-                    metadata = {
-                        'symbol': feature.symbol,
-                        'timestamp': feature.timestamp,
-                        **serializable_features
-                    }
-                    
-                    vectors.append(vector)
-                    metadata_list.append(metadata)
+            # Helper for fast type conversion
+            def to_native(x):
+                return x.item() if isinstance(x, np.generic) else x
+
+            metadata_list = []
+            for i in range(limit):
+                feature = features[i]
+                # Extract features (this creates a dict)
+                feature_dict = self.feature_engineer._extract_features(feature)
+                
+                # Create metadata dict efficiently
+                metadata = {
+                    'symbol': feature.symbol,
+                    'timestamp': feature.timestamp,
+                    **{k: to_native(v) for k, v in feature_dict.items()}
+                }
+                metadata_list.append(metadata)
             
             if vectors:
                 self.vector_db_client.upsert_vectors(vectors, metadata_list)

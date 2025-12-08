@@ -40,7 +40,8 @@ The project demonstrates a sophisticated architecture integrating machine learni
 ### Performance
 - **Vectorization:** **[COMPLETED]** Rewrite `data_collector.py` feature engineering to use pandas vectorization instead of row-wise iteration.
 - **Async I/O:** **[COMPLETED]** Migrate all external API calls (ML server, Coinbase) to asynchronous libraries (`aiohttp`, `httpx`).
-- **Database Bulk Operations:** **[PENDING]** Ensure `upsert_vectors` and other DB writes use batching effectively. The current implementation creates metadata dictionaries one-by-one in a loop; using list comprehensions or generator expressions would be slightly faster.
+- **Database Bulk Operations:** **[COMPLETED]** Ensure `upsert_vectors` and other DB writes use batching effectively. The current implementation creates metadata dictionaries one-by-one in a loop; using list comprehensions or generator expressions would be slightly faster.
+  - **Status:** Done. Updated `_store_feature_vectors_in_db` in `ml_optimizer.py` to use bulk list conversions and optimized metadata extraction.
 
 ### Code Clarity & Maintenance
 - **Dependency Injection:** **[PENDING]** The `web_server.py` uses a global `ApplicationState` object. Migrating to FastAPI's dependency injection system (`Depends`) would improve testability and modularity.
@@ -49,7 +50,8 @@ The project demonstrates a sophisticated architecture integrating machine learni
 
 ## Minimizing Unnecessary Code
 - **Legacy Cleanup Logic:** **[PENDING]** `ml_optimizer.py` contains extensive logic for cleaning up "legacy" model files. If the project is moving forward, this can be simplified or moved to a separate migration script.
-- **Redundant Calculations:** **[PENDING]** `_calculate_order_book_features` in `ml_enhanced_orderbook.py` recalculates features from scratch on every call. Caching features for the same timestamp/orderbook state could save compute.
+- **Redundant Calculations:** **[COMPLETED]** `_calculate_order_book_features` in `ml_enhanced_orderbook.py` recalculates features from scratch on every call. Caching features for the same timestamp/orderbook state could save compute.
+  - **Status:** Done. Implemented caching mechanism in `MLEnhancedOrderBookStrategy` to reuse calculated features when order book state and price history haven't changed.
 
 ## Specific Recommendations
 
