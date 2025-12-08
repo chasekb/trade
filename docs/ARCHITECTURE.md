@@ -37,17 +37,19 @@ The system is divided into several core components, each with a specific respons
   - Simple Moving Average (SMA)
   - Relative Strength Index (RSI)
   - MACD, Bollinger Bands, ATR, Stochastic
-  - ML Enhanced Order Book (with real-time ML predictions)
+  - ML Enhanced Order Book (Client-server architecture with external ML service predictions)
   - Buy and Hold, DCA
 
 ### 5. **Machine Learning System** (`src/trade_bot/ml/`)
 
 - **`MLTradingOptimizer`**: Main orchestration system for ML trading optimization
+- **`AsyncModelTrainer`**: Manages continuous, asynchronous model retraining in the background as new data arrives.
 - **`DataCollector`**: Extracts and preprocesses trading data from databases (SQLite/PostgreSQL)
 - **`FeatureEngineer`**: Transforms raw trading data into ML-ready features with scaling and selection
 - **`ModelTrainer`**: Trains ensemble ML models (Random Forest, Gradient Boosting, Neural Networks, SGD Regressor)
   - **Batch Training Support**: Memory-efficient processing of large datasets
   - **Incremental Learning**: SGD regressor for online learning
+- **`TradingModelWrapper`**: Wraps regressor and classifier models to provide unified prediction interface for both win probability and expected return.
 - **`ModelManager`**: Handles model versioning, deployment, rollback, and performance monitoring for signal prediction models
 - **`VectorDBClient`**: Manages Qdrant vector database for feature vector storage and similarity search
 - **`MLServer`**: FastAPI server providing REST API for model inference and management

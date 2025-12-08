@@ -9,10 +9,11 @@ The ML Trading Optimization system consists of several key components:
 1. **Data Collection & Preprocessing** - Extracts order book signals and trade outcomes
 2. **Feature Engineering** - Creates ML-ready feature vectors from raw trading data
 3. **Model Training** - Trains ensemble ML models for trading signal prediction
-4. **Vector Database** - Stores feature vectors for similarity search and pattern matching
-5. **Model Management** - Handles model versioning, deployment, and rollback
-6. **Integration** - ML-enhanced order book strategy with real-time inference
-7. **Validation** - Backtesting and performance comparison tools
+4. **Continuous Learning** - Asynchronously retrains models as new market data arrives
+5. **Vector Database** - Stores feature vectors for similarity search and pattern matching
+6. **Model Management** - Handles model versioning, deployment, and rollback
+7. **Integration** - ML-enhanced order book strategy with real-time inference
+8. **Validation** - Backtesting and performance comparison tools
 
 ## Architecture
 
@@ -84,6 +85,13 @@ Trains multiple ML models and selects the best performer:
 - **Trading Metrics**: Profit factor, Sharpe ratio, risk-adjusted returns
 - **Batch Training**: Memory-efficient training on large datasets
 
+#### Trading Model Wrapper (`src/trade_bot/ml/wrapper.py`)
+
+Unified interface for ML predictions:
+- **Combined Predictions**: Wraps both Regressor (Expected Return) and Classifier (Win Probability) models
+- **Unified API**: Simplifies interaction for strategies needing both types of predictions
+- **Serialization**: Custom pickling support for cross-environment compatibility
+
 #### Batch Training
 
 The system supports batch training for handling large datasets efficiently:
@@ -115,7 +123,16 @@ ml_optimizer.train_ml_models(
 - Monitor training progress through logs
 - Validate final model performance before deployment
 
-### 4. Vector Database (`src/trade_bot/ml/vector_db_client.py`)
+### 4. Continuous Learning (`src/trade_bot/ml/async_model_trainer.py`)
+
+The system implements continuous, asynchronous learning to adapt to changing market conditions:
+
+- **Background Training**: Runs in a separate thread to avoid blocking trading operations
+- **Trigger-Based**: Retrains when sufficient new data (e.g., 100 new samples) is collected
+- **Interval Checks**: Checks for new data at configurable intervals (default: 1 hour)
+- **Automated Deployment**: Automatically deploys improved models without downtime
+
+### 5. Vector Database (`src/trade_bot/ml/vector_db_client.py`)
 
 Manages feature vector storage and similarity search:
 
@@ -124,7 +141,7 @@ Manages feature vector storage and similarity search:
 - **Real-time Updates**: Continuous feature vector storage
 - **Pattern Matching**: Historical pattern recognition
 
-### 5. Model Management
+### 6. Model Management
 
 - **`ModelManager` (`src/trade_bot/ml/model_manager.py`)**: Handles the lifecycle of the downstream signal prediction models.
   - **Versioning**: Track model versions and performance.
@@ -132,7 +149,7 @@ Manages feature vector storage and similarity search:
   - **Rollback**: Revert to previous model versions.
   - **Performance Monitoring**: Continuous model evaluation.
 
-### 6. ML-Enhanced Strategy (`src/trade_bot/trading/strategies/ml_enhanced_orderbook.py`)
+### 7. ML-Enhanced Strategy (`src/trade_bot/trading/strategies/ml_enhanced_orderbook.py`)
 
 Integrates ML predictions into trading decisions:
 
@@ -742,7 +759,6 @@ python scripts/ml/manage_models.py list
 
 - **Reinforcement Learning**: Dynamic strategy adaptation
 - **Multi-Symbol Models**: Cross-symbol pattern recognition
-- **Real-time Learning**: Continuous model updates
 - **Advanced Features**: Market microstructure analysis
 - **Risk Management**: ML-based position sizing
 - **Portfolio Optimization**: Multi-strategy coordination
