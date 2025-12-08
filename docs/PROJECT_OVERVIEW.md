@@ -17,6 +17,7 @@ This is a comprehensive Python trading bot system built with modern technologies
 
 ### Machine Learning Optimization System
 - **ML Trading Optimization**: Integrated machine learning system for signal optimization and pattern recognition
+- **Continuous Learning**: Asynchronous model training system that continuously updates models as new market data arrives
 - **Batch Training**: Memory-efficient training on large datasets using SGD regressor with incremental learning
 - **Hot-Swappable Feature Generation**: ML-based feature generation from raw order book data with hot-swappable models
 - **Vector Database Integration**: Qdrant + Redis architecture for ML feature storage and similarity search

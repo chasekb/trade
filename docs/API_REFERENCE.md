@@ -262,7 +262,9 @@ Content-Type: application/json
   "position_size": 0.1,
   "stop_loss": 0.02,
   "take_profit": 0.03,
-  "order_prioritization": "signal_strength"
+  "order_prioritization": "signal_strength",
+  "confidence_threshold": 0.6,
+  "fallback_to_baseline": true
 }
 ```
 
@@ -274,6 +276,8 @@ Content-Type: application/json
 - `stop_loss` (number, optional): Stop loss percentage
 - `take_profit` (number, optional): Take profit percentage
 - `order_prioritization` (string, optional): Order execution priority - `signal_strength`, `win_probability`, or `expected_return` (default: signal_strength)
+- `confidence_threshold` (number, optional): Minimum confidence for ML strategy (default: 0.6)
+- `fallback_to_baseline` (boolean, optional): Whether ML strategy falls back to standard order book analysis on failure (default: true)
 
 **Response:**
 ```json
