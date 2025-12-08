@@ -209,6 +209,68 @@ class SimulatedTradingManager:
             logger.error(f"Error generating signal in strategy: {e}")
             return None
 
+    async def generate_signal_async(self, symbol: str, current_price: float, timestamp: datetime, orderbook_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """Generate a signal using the active strategy (Asynchronous)."""
+        if not self.strategy_instance:
+            return None
+            
+        try:
+            # Update strategy with latest order book data if available
+            if orderbook_data:
+                bids = [[float(b['price']), float(b['size'])] for b in orderbook_data.get('bids', [])]
+                asks = [[float(a['price']), float(a['size'])] for a in orderbook_data.get('asks', [])]
+                self.strategy_instance.update_order_book(bids, asks, timestamp)
+            
+            # Generate signal
+            # Check if strategy supports async generation
+            if hasattr(self.strategy_instance, 'generate_signal_async'):
+                trade_signal = await self.strategy_instance.generate_signal_async(current_price, timestamp)
+            else:
+                # Fallback to synchronous generation
+                trade_signal = self.strategy_instance.generate_signal(current_price, timestamp)
+            
+            if trade_signal:
+                # Convert TradeSignal to dictionary format expected by the system
+                signal_dict = {
+                    "symbol": symbol,
+                    "signal": trade_signal.action,
+                    "signal_type": trade_signal.action,
+                    "signal_strength": getattr(trade_signal, 'strength', 0.5) if trade_signal.action != 'hold' else 0.0,
+                    "strength": getattr(trade_signal, 'strength', 0.5) if trade_signal.action != 'hold' else 0.0,
+                    "price": trade_signal.price,
+                    "timestamp": trade_signal.timestamp.isoformat(),
+                    "reason": trade_signal.reason,
+                    "signal_reason": trade_signal.reason,
+                    "signal_generated": trade_signal.action != 'hold'
+                }
+                
+                # Add ML metadata if available
+                if hasattr(self.strategy_instance, 'ml_predictions') and self.strategy_instance.ml_predictions:
+                    last_prediction = self.strategy_instance.ml_predictions[-1]
+                    # Check if this prediction corresponds to the current signal
+                    if last_prediction['timestamp'] == timestamp:
+                        signal_dict['win_probability'] = last_prediction.get('win_probability', 50.0)
+                        signal_dict['expected_return'] = last_prediction.get('expected_return_percentage', 0.0)
+                        signal_dict['model_confidence'] = last_prediction.get('confidence', 0.0)
+                        
+                        # Also add to ml_analysis structure for consistency
+                        signal_dict['ml_analysis'] = {
+                            "ml_enabled": True,
+                            "win_probability": last_prediction.get('win_probability', 50.0),
+                            "expected_return": last_prediction.get('expected_return_percentage', 0.0),
+                            "confidence": last_prediction.get('confidence', 0.0),
+                            "reason": trade_signal.reason,
+                            "analytics": last_prediction.get('analytics', {})
+                        }
+                
+                return signal_dict
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error generating signal in strategy: {e}")
+            return None
+
     def update_strategy_parameters(self, new_params: Dict[str, Any]) -> None:
         """Update strategy parameters during an active session."""
         if not self.is_trading:

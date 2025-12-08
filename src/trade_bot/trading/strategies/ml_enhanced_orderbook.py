@@ -4,6 +4,8 @@ from typing import List
 import logging
 import requests
 import json
+import asyncio
+import aiohttp
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -110,28 +112,13 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
             self.baseline_strategy.update_order_book(bids, asks, timestamp)
     
     def _get_ml_prediction(self, current_price: float, timestamp: datetime) -> Optional[Dict[str, Any]]:
-        """Get ML prediction from the model server."""
+        """Get ML prediction from the model server (Synchronous)."""
         try:
             # Calculate order book features
             features = self._calculate_order_book_features(current_price)
             
             # Prepare request
-            request_data = {
-                "symbol": self.config.product_id,
-                "bid_ask_imbalance": features['bid_ask_imbalance'],
-                "spread_percent": features['spread_percent'],
-                "mid_price": features['mid_price'],
-                "bid_volume": features['bid_volume'],
-                "ask_volume": features['ask_volume'],
-                "order_book_depth": features['order_book_depth'],
-                "large_bid_wall": features['large_bid_wall'],
-                "large_ask_wall": features['large_ask_wall'],
-                "wall_size": features['wall_size'],
-                "volume_weighted_price": features['volume_weighted_price'],
-                "price_momentum": features['price_momentum'],
-                "volatility": features['volatility'],
-                "timestamp": int(timestamp.timestamp())
-            }
+            request_data = self._prepare_request_data(features, timestamp)
             
             # Make request to ML server
             response = requests.post(
@@ -155,6 +142,58 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
             logger.error(f"Error getting ML prediction: {e}")
             self.ml_failures += 1
             return None
+
+    async def _get_ml_prediction_async(self, current_price: float, timestamp: datetime) -> Optional[Dict[str, Any]]:
+        """Get ML prediction from the model server (Asynchronous)."""
+        try:
+            # Calculate order book features
+            features = self._calculate_order_book_features(current_price)
+            
+            # Prepare request
+            request_data = self._prepare_request_data(features, timestamp)
+            
+            # Make request to ML server
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.ml_server_url}/predict",
+                    json=request_data,
+                    timeout=5
+                ) as response:
+                    self.ml_requests += 1
+                    
+                    if response.status == 200:
+                        prediction = await response.json()
+                        logger.debug(f"ML prediction (async): {prediction}")
+                        return prediction
+                    else:
+                        text = await response.text()
+                        logger.warning(f"ML server returned status {response.status}: {text}")
+                        self.ml_failures += 1
+                        return None
+                
+        except Exception as e:
+            logger.error(f"Error getting ML prediction (async): {e}")
+            self.ml_failures += 1
+            return None
+
+    def _prepare_request_data(self, features: Dict[str, Any], timestamp: datetime) -> Dict[str, Any]:
+        """Prepare request data for ML server."""
+        return {
+            "symbol": self.config.product_id,
+            "bid_ask_imbalance": features['bid_ask_imbalance'],
+            "spread_percent": features['spread_percent'],
+            "mid_price": features['mid_price'],
+            "bid_volume": features['bid_volume'],
+            "ask_volume": features['ask_volume'],
+            "order_book_depth": features['order_book_depth'],
+            "large_bid_wall": features['large_bid_wall'],
+            "large_ask_wall": features['large_ask_wall'],
+            "wall_size": features['wall_size'],
+            "volume_weighted_price": features['volume_weighted_price'],
+            "price_momentum": features['price_momentum'],
+            "volatility": features['volatility'],
+            "timestamp": int(timestamp.timestamp())
+        }
     
     def _calculate_order_book_features(self, current_price: float) -> Dict[str, Any]:
         """Calculate order book features for ML prediction."""
@@ -250,7 +289,19 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
         return features
     
     def generate_signal(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
-        """Generate trading signal using ML predictions."""
+        """Generate trading signal using ML predictions (Synchronous)."""
+        # Try to get ML prediction synchronously
+        ml_prediction = self._get_ml_prediction(current_price, timestamp)
+        return self._process_prediction(ml_prediction, current_price, timestamp, is_end_of_period)
+
+    async def generate_signal_async(self, current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
+        """Generate trading signal using ML predictions (Asynchronous)."""
+        # Try to get ML prediction asynchronously
+        ml_prediction = await self._get_ml_prediction_async(current_price, timestamp)
+        return self._process_prediction(ml_prediction, current_price, timestamp, is_end_of_period)
+
+    def _process_prediction(self, ml_prediction: Optional[Dict[str, Any]], current_price: float, timestamp: datetime, is_end_of_period: bool = False) -> Optional[TradeSignal]:
+        """Process prediction and generate signal (Common logic)."""
         # Log cumulative stats periodically (every 60 seconds)
         current_time = datetime.now()
         if (current_time - self.last_stats_log_time).total_seconds() > 60:
@@ -260,10 +311,7 @@ class MLEnhancedOrderBookStrategy(BaseStrategy):
 
         if not self.bids or not self.asks:
             return None
-        
-        # Try to get ML prediction
-        ml_prediction = self._get_ml_prediction(current_price, timestamp)
-        
+            
         if ml_prediction and ml_prediction.get('confidence', 0) >= self.confidence_threshold:
             # Use ML prediction
             action = ml_prediction.get('action', 'hold')
