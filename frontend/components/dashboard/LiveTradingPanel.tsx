@@ -329,36 +329,48 @@ function TradingConfiguration({
 // Live Trading Statistics Component
 function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
   const queryClient = useQueryClient();
-  const { data: stats, isLoading, error } = useLivePortfolio(isTradingActive);
+  // Fetch live portfolio data always (enabled=true) to show balance even when not trading
+  const { data: stats, isLoading, error } = useLivePortfolio(true);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['live-portfolio'] });
   };
 
-  if (!isTradingActive) {
+  if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Live Trading Statistics</CardTitle>
+          <CardTitle>Live Portfolio & Trading Statistics</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            <p>Start trading to see live trading statistics.</p>
+          <div className="text-center py-8">
+            <p>Loading portfolio data...</p>
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (isLoading) {
+  // Handle missing API credentials specifically
+  if (error && (error.message.includes('400') || error.message.includes('setup_required'))) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Live Trading Statistics</CardTitle>
+          <CardTitle>Live Portfolio & Trading Statistics</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <p>Loading statistics...</p>
+            <div className="text-red-500 mb-2">
+              <i className="fas fa-exclamation-circle text-2xl"></i>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">Coinbase API Setup Required</h3>
+            <p className="text-gray-500 mb-4">
+              To view your portfolio and trade live, please configure your Coinbase API credentials.
+            </p>
+            <div className="bg-gray-50 p-4 rounded-md text-left inline-block">
+              <p className="text-sm font-mono text-gray-700">COINBASE_API_KEY=your_key</p>
+              <p className="text-sm font-mono text-gray-700">COINBASE_API_SECRET=your_secret</p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -370,7 +382,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <CardTitle>Live Trading Statistics</CardTitle>
+            <CardTitle>Live Portfolio & Trading Statistics</CardTitle>
             <Button variant="secondary" size="sm" onClick={handleRefresh}>
               <i className="fas fa-sync-alt mr-1"></i>Refresh
             </Button>
@@ -378,7 +390,8 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
         </CardHeader>
         <CardContent>
           <div className="text-center py-8 text-gray-500">
-            <p>No statistics available. Trading may not be active.</p>
+            <p>Unable to load portfolio data.</p>
+            {error && <p className="text-sm text-red-500 mt-2">{error.message}</p>}
           </div>
         </CardContent>
       </Card>
@@ -387,11 +400,29 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 
   const portfolio = stats;
   const trades = portfolio.trades || [];
-  const positions = portfolio.positions || {};
+  // Support both 'positions' (simulated/legacy) and 'active_positions_data' (Coinbase live)
+  const positions = portfolio.positions || portfolio.active_positions_data || {};
+  
   // Normalize positions to an array of open positions
-  const openPositions = Array.isArray(positions)
+  let openPositions = Array.isArray(positions)
     ? positions
     : Object.values(positions).filter((pos: any) => (pos?.status || 'open') === 'open');
+
+  // If using Coinbase data format, normalize to standard Position format
+  if (openPositions.length > 0 && 'asset' in openPositions[0]) {
+    openPositions = openPositions.map((pos: any) => ({
+      symbol: pos.asset,
+      quantity: pos.balance_crypto,
+      // Calculate implied price if quantity > 0
+      current_price: pos.balance_crypto ? (pos.balance_fiat / pos.balance_crypto) : 0,
+      entry_price: 0, // Entry price not available in portfolio summary
+      unrealized_pnl: pos.unrealized_pnl,
+      pnl_percent: 0, // Needs entry price
+      side: 'LONG', // Spot holdings are effectively long
+      status: 'open',
+      timestamp: new Date().toISOString() // Placeholder
+    }));
+  }
 
   // Calculate derived statistics (similar to vanilla JS implementation)
   const winningTrades = trades.filter((trade: any) => trade.pnl > 0);
@@ -417,10 +448,13 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
   const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0));
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
 
-  const cashBalance = portfolio.cash_balance || 0;
-  const totalValue = portfolio.total_value || 0;
-  const totalPositionsValue = portfolio.total_positions_value || 0;
-  const unrealizedPnl = portfolio.unrealized_pnl || 0;
+  // Support both standard field names and Coinbase API response field names
+  const cashBalance = portfolio.cash_balance || portfolio.available_balance_usd || 0;
+  const totalValue = portfolio.total_value || portfolio.total_balance_usd || 0;
+  // Calculate total positions value if not provided directly
+  const totalPositionsValue = portfolio.total_positions_value || (totalValue - cashBalance) || 0;
+  
+  const unrealizedPnl = portfolio.unrealized_pnl || portfolio.total_unrealized_pnl || 0;
   const realizedPnl = portfolio.realized_pnl || 0;
   const netPnl = portfolio.net_pnl || (unrealizedPnl + realizedPnl);
   const totalFees = portfolio.total_fees || 0;
@@ -443,7 +477,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>Live Trading Statistics</CardTitle>
+          <CardTitle>Live Portfolio & Trading Statistics</CardTitle>
           <Button variant="secondary" size="sm" onClick={handleRefresh}>
             <i className="fas fa-sync-alt mr-1"></i>Refresh
           </Button>
