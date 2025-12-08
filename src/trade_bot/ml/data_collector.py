@@ -643,34 +643,51 @@ class MLDataCollector:
     
     def create_feature_vectors(self, signals: List[Dict[str, Any]], 
                               trades: List[Dict[str, Any]]) -> List[OrderBookFeatures]:
-        """Create feature vectors from signals and trades."""
+        """Create feature vectors from signals and trades using vectorized operations."""
+        if not signals:
+            logger.warning("No signals available for feature vector creation")
+            return []
+            
+        # Convert to DataFrame
+        signals_df = pd.DataFrame(signals)
+        
+        # Ensure proper types
+        signals_df['timestamp'] = signals_df['timestamp'].astype(float)
+        signals_df['price'] = pd.to_numeric(signals_df['price'], errors='coerce').fillna(0.0)
+        
+        # Sort by symbol and timestamp
+        signals_df.sort_values(['symbol', 'timestamp'], inplace=True)
+        
+        # Calculate vectorized features
+        grouped = signals_df.groupby('symbol')
+        
+        # Momentum: (price_t - price_{t-10}) / price_{t-10}
+        signals_df['price_momentum'] = grouped['price'].pct_change(periods=10).fillna(0.0) * 100
+        
+        # Volatility: std(returns) over 20 periods
+        signals_df['volatility'] = grouped['price'].pct_change().rolling(window=20).std().fillna(0.0) * 100
+
         feature_vectors = []
         
-        # Convert to DataFrames for easier processing
-        signals_df = pd.DataFrame(signals)
-        trades_df = pd.DataFrame(trades)
-        
-        if signals_df.empty:
-            logger.warning("No signals available for feature vector creation")
-            return feature_vectors
-        
-        # Group by symbol and timestamp for feature engineering
-        for symbol in signals_df['symbol'].unique():
-            symbol_signals = signals_df[signals_df['symbol'] == symbol].copy()
-            symbol_trades = trades_df[trades_df['symbol'] == symbol].copy() if not trades_df.empty else pd.DataFrame()
+        # Extract features row by row (now faster due to pre-calculated heavy features)
+        # Iterate over groups to handle previous ML analysis (shifting)
+        for symbol, group in signals_df.groupby('symbol'):
+            # Pre-shift ml_analysis to get previous values aligned with current row
+            # ml_analysis is a dict column, tricky to shift and extract vectorized without unpacking
+            # So we keep it simple: access prev row in loop or shift list
             
-            # Sort by timestamp and reset index for positional access
-            symbol_signals = symbol_signals.sort_values('timestamp').reset_index(drop=True)
+            # Convert group to records for iteration
+            records = group.to_dict('records')
             
-            for pos_idx, (df_idx, signal) in enumerate(symbol_signals.iterrows()):
+            for i, signal in enumerate(records):
                 try:
-                    # Get previous signal's ML analysis if available
+                    # Get previous ML analysis
                     prev_ml_analysis = {}
-                    if pos_idx > 0:
-                        prev_signal = symbol_signals.iloc[pos_idx - 1]
+                    if i > 0:
+                        prev_signal = records[i - 1]
                         if 'ml_analysis' in prev_signal and prev_signal['ml_analysis']:
                             prev_ml_analysis = prev_signal['ml_analysis']
-
+                    
                     # Extract order book features
                     features = OrderBookFeatures(
                         timestamp=int(signal['timestamp']),
@@ -685,14 +702,14 @@ class MLDataCollector:
                         large_ask_wall=self._detect_large_ask_wall(signal),
                         wall_size=self._calculate_wall_size(signal),
                         volume_weighted_price=self._calculate_vwap(signal),
-                        price_momentum=self._calculate_price_momentum(symbol_signals, signal),
-                        volatility=self._calculate_volatility(symbol_signals, signal),
-                        # Default meta-features for historical data if not available
-                        volume_24h=float(signal.get('volume', 0.0)), # Use signal volume as proxy if available
-                        volume_30d=0.0, # Not available in historical signals usually
-                        high_24h=float(signal.get('mid_price', signal['price'])) * 1.05, # Rough estimate
-                        low_24h=float(signal.get('mid_price', signal['price'])) * 0.95, # Rough estimate
-                        prev_win_probability=float(prev_ml_analysis.get('win_probability', 0.0) / 100.0), # Normalize to 0-1
+                        price_momentum=float(signal['price_momentum']),
+                        volatility=float(signal['volatility']),
+                        # Default meta-features
+                        volume_24h=float(signal.get('volume', 0.0)),
+                        volume_30d=0.0,
+                        high_24h=float(signal.get('mid_price', signal['price'])) * 1.05,
+                        low_24h=float(signal.get('mid_price', signal['price'])) * 0.95,
+                        prev_win_probability=float(prev_ml_analysis.get('win_probability', 0.0) / 100.0),
                         prev_expected_return=float(prev_ml_analysis.get('expected_return', 0.0)),
                         prev_confidence=float(prev_ml_analysis.get('confidence', 0.0))
                     )
@@ -700,7 +717,7 @@ class MLDataCollector:
                     feature_vectors.append(features)
                     
                 except Exception as e:
-                    logger.warning(f"Error creating feature vector for signal {signal['signal_id']}: {e}")
+                    logger.warning(f"Error creating feature vector for signal {signal.get('signal_id', 'unknown')}: {e}")
                     continue
         
         logger.info(f"Created {len(feature_vectors)} feature vectors")
@@ -708,48 +725,72 @@ class MLDataCollector:
     
     def create_training_labels(self, feature_vectors: List[OrderBookFeatures], 
                               trades: List[Dict[str, Any]]) -> List[Tuple[OrderBookFeatures, TradeOutcome]]:
-        """Create training labels by matching features with trade outcomes."""
-        training_data = []
-        
-        # Convert trades to DataFrame for easier matching
-        trades_df = pd.DataFrame(trades) if trades else pd.DataFrame()
-        
-        if trades_df.empty:
-            logger.warning("No trades available for label creation")
-            return training_data
-        
-        for features in feature_vectors:
-            # Find trades that occurred within a time window after this signal
-            time_window = 300  # 5 minutes
-            matching_trades = trades_df[
-                (trades_df['symbol'] == features.symbol) &
-                (trades_df['timestamp'] >= features.timestamp) &
-                (trades_df['timestamp'] <= features.timestamp + time_window)
-            ]
+        """Create training labels by matching features with trade outcomes using merge_asof."""
+        if not feature_vectors or not trades:
+            logger.warning("No features or trades available for label creation")
+            return []
             
-            if not matching_trades.empty:
-                # Use the first matching trade as the outcome
-                trade = matching_trades.iloc[0]
-                
-                # Calculate trade outcome
-                outcome = TradeOutcome(
-                    trade_id=trade['trade_id'],
-                    symbol=trade['symbol'],
-                    side=trade['side'],
-                    entry_price=float(trade['price']),
-                    exit_price=float(trade['price']),  # Simplified - would need actual exit price
-                    quantity=float(trade['size']),
-                    pnl=float(trade['pnl']),
-                    fees=float(trade['fees']),
-                    duration_seconds=int(trade['timestamp']) - features.timestamp,
-                    signal_type=features.symbol,  # Placeholder
-                    signal_strength=features.bid_ask_imbalance,
-                    entry_timestamp=features.timestamp,
-                    exit_timestamp=int(trade['timestamp']),
-                    is_win=float(trade['pnl']) > 0
-                )
-                
-                training_data.append((features, outcome))
+        # Convert inputs to DataFrames
+        # We store the original OrderBookFeatures object in the DF to retrieve it later
+        features_data = []
+        for f in feature_vectors:
+            features_data.append({
+                'timestamp': float(f.timestamp),
+                'symbol': f.symbol,
+                'feature_obj': f
+            })
+            
+        features_df = pd.DataFrame(features_data)
+        trades_df = pd.DataFrame(trades)
+        
+        if features_df.empty or trades_df.empty:
+            return []
+            
+        # Ensure timestamps are float and sorted for merge_asof
+        features_df['timestamp'] = features_df['timestamp'].astype(float)
+        trades_df['timestamp'] = trades_df['timestamp'].astype(float)
+        
+        features_df.sort_values('timestamp', inplace=True)
+        trades_df.sort_values('timestamp', inplace=True)
+        
+        # Perform asof merge to find the next trade after signal
+        # direction='forward' matches with the first trade where trade.timestamp >= signal.timestamp
+        merged = pd.merge_asof(
+            features_df,
+            trades_df,
+            on='timestamp',
+            by='symbol',
+            direction='forward',
+            tolerance=300,  # 5 minutes window
+            suffixes=('_feat', '_trade')
+        )
+        
+        # Filter for successful matches
+        valid_matches = merged[merged['trade_id'].notna()]
+        
+        training_data = []
+        for _, row in valid_matches.iterrows():
+            features = row['feature_obj']
+            
+            # Calculate trade outcome
+            outcome = TradeOutcome(
+                trade_id=row['trade_id'],
+                symbol=row['symbol'],
+                side=row['side'],
+                entry_price=float(row['price']),
+                exit_price=float(row['price']),
+                quantity=float(row['size']),
+                pnl=float(row['pnl']),
+                fees=float(row['fees']),
+                duration_seconds=int(row['timestamp_trade']) - features.timestamp,
+                signal_type=features.symbol,
+                signal_strength=features.bid_ask_imbalance,
+                entry_timestamp=features.timestamp,
+                exit_timestamp=int(row['timestamp_trade']),
+                is_win=float(row['pnl']) > 0
+            )
+            
+            training_data.append((features, outcome))
         
         logger.info(f"Created {len(training_data)} training examples")
         return training_data

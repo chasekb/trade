@@ -198,12 +198,23 @@ class DataHandlers:
 
                         # Check for active strategy override
                         strategy_ml_analysis = None
-                        if self.simulated_trading_manager and hasattr(self.simulated_trading_manager, 'generate_signal'):
+                        if self.simulated_trading_manager:
                             try:
                                 ts = datetime.fromisoformat(orderbook_data.get('timestamp', '2024-01-01T00:00:00Z').replace('Z', '+00:00'))
-                                strategy_result = self.simulated_trading_manager.generate_signal(
-                                    symbol, current_price, ts, orderbook_data
-                                )
+                                
+                                # Use async signal generation if available to prevent blocking
+                                if hasattr(self.simulated_trading_manager, 'generate_signal_async'):
+                                    strategy_result = await self.simulated_trading_manager.generate_signal_async(
+                                        symbol, current_price, ts, orderbook_data
+                                    )
+                                elif hasattr(self.simulated_trading_manager, 'generate_signal'):
+                                    # Fallback to sync generation (blocking)
+                                    strategy_result = self.simulated_trading_manager.generate_signal(
+                                        symbol, current_price, ts, orderbook_data
+                                    )
+                                else:
+                                    strategy_result = None
+
                                 if strategy_result:
                                     signal = strategy_result['signal']
                                     signal_strength = strategy_result['strength']
