@@ -1,8 +1,21 @@
 import React, { useState } from 'react';
+import { Button } from '@/components/ui/Button';
 
-export function OpenPositionsSection({ positions }: { positions: any[] }) {
+export function OpenPositionsSection({ positions, onClose }: { positions: any[], onClose?: (symbol: string) => void }) {
     const [page, setPage] = useState(1);
     const [perPage, setPerPage] = useState(10);
+    const [closingPosition, setClosingPosition] = useState<string | null>(null);
+
+    const handleClose = async (symbol: string) => {
+        if (onClose) {
+            setClosingPosition(symbol);
+            try {
+                await onClose(symbol);
+            } finally {
+                setClosingPosition(null);
+            }
+        }
+    };
 
     const totalPages = Math.ceil(positions.length / perPage) || 1;
     const start = (page - 1) * perPage;
@@ -39,6 +52,7 @@ export function OpenPositionsSection({ positions }: { positions: any[] }) {
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unrealized P&L</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Opened</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -61,6 +75,16 @@ export function OpenPositionsSection({ positions }: { positions: any[] }) {
                                     ${Number(pos.unrealized_pnl || 0).toFixed(2)}
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                    <Button
+                                        size="sm"
+                                        variant="danger"
+                                        disabled={closingPosition === pos.symbol}
+                                        onClick={() => handleClose(pos.symbol)}
+                                    >
+                                        {closingPosition === pos.symbol ? 'Closing...' : 'Close'}
+                                    </Button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>

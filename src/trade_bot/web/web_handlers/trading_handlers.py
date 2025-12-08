@@ -83,7 +83,7 @@ class TradingHandlers:
             live_trade_executor = LiveTradeExecutor(self.config, trade_handler)
             
             # Pass strategy and executor to TradingBot
-            trading_bot = TradingBot(self.config, strategy=strategy_instance, trade_executor=live_trade_executor)
+            trading_bot = TradingBot(self.config, strategy=strategy_instance, trade_executor=live_trade_executor, websocket_manager=self.websocket_manager)
             
             asyncio.create_task(trading_bot.start())
             
