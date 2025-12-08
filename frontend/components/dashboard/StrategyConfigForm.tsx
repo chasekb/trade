@@ -277,6 +277,32 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                             ? 'Example: 1 means 1% of portfolio per position'
                             : 'Example: 250 means allocate $250 per position'}
                     </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Stop Loss (%)</label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            placeholder="0 (Disabled)"
+                            value={config.stop_loss_percent ?? ''}
+                            onChange={(e) => handleParameterChange('stop_loss_percent', Number(e.target.value))}
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Take Profit (%)</label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            placeholder="0 (Disabled)"
+                            value={config.take_profit_percent ?? ''}
+                            onChange={(e) => handleParameterChange('take_profit_percent', Number(e.target.value))}
+                            className="w-full"
+                        />
+                    </div>
                 </div>
             </div>
         </div>

@@ -139,33 +139,43 @@ class TradingBot:
                 'order_id': order.get('order_id', '')
             }
             self.data_handler.add_trade_data(trade_data)
+
+            # Broadcast trade if manager available
+            if self.websocket_manager:
+                try:
+                    await self.websocket_manager.broadcast(json.dumps({
+                        "type": "trade_update",
+                        "data": trade_data
+                    }))
+                except Exception as ws_e:
+                    logger.warning(f"Failed to broadcast trade: {ws_e}")
             
         except Exception as e:
             logger.error(f"Error executing trade: {e}")
     
     async def start(self) -> None:
         """Start the trading bot."""
-        logger.info("Starting trading bot...")
+        await self._log("Starting trading bot...")
         self.running = True
         
         try:
             # Start WebSocket client
             await self.websocket_client.run()
         except KeyboardInterrupt:
-            logger.info("Received interrupt signal")
+            await self._log("Received interrupt signal", "warning")
         except Exception as e:
-            logger.error(f"Error in trading bot: {e}")
+            await self._log(f"Error in trading bot: {e}", "error")
         finally:
             await self.stop()
     
     async def stop(self) -> None:
         """Stop the trading bot."""
-        logger.info("Stopping trading bot...")
+        await self._log("Stopping trading bot...")
         self.running = False
         
         # Save all data
         files = self.data_handler.save_all_data()
-        logger.info(f"Saved data files: {files}")
+        await self._log(f"Saved data files: {files}")
         
         # Get final statistics
         stats = self.data_handler.get_summary_stats()

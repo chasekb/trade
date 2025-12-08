@@ -17,6 +17,7 @@ import { TradingControls } from './TradingControls';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { OrderBookSignalsTable } from './OrderBookSignalsTable';
 import { ManualTradeSection } from './ManualTradeSection';
+import { BotActivityLog } from './BotActivityLog';
 
 // Trading Configuration Section
 function TradingConfiguration({
@@ -598,7 +599,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 
         {/* Open Positions Table with Pagination */}
         {openPositions.length > 0 && (
-          <OpenPositionsSection positions={openPositions} />
+          <OpenPositionsSection positions={openPositions} onClose={handleClosePosition} />
         )}
 
         {/* Recent Trades Table */}
@@ -614,6 +615,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Side</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fees</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">P&L</th>
                   </tr>
                 </thead>
@@ -637,6 +639,9 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900">
                         ${typeof trade.price === 'number' ? trade.price.toFixed(2) : trade.price || 0}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900 text-red-600">
+                        ${typeof trade.fee === 'number' ? trade.fee.toFixed(2) : (trade.fee || 0)}
                       </td>
                       <td className={`px-4 py-2 text-sm font-medium ${(trade.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
@@ -685,6 +690,8 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     position_size_mode: 'percent',
     position_size_value: 1,
     initial_portfolio_size: 10000,
+    stop_loss_percent: 0,
+    take_profit_percent: 0,
   });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
 
@@ -854,6 +861,9 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
           )}
         </CardContent>
       </Card>
+
+      {/* Bot Activity Log */}
+      <BotActivityLog />
 
       {/* Manual Trade Execution */}
       <ManualTradeSection symbols={activeSymbols} />

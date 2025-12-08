@@ -398,6 +398,11 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
 
+        // Handle log messages
+        if (type === 'log_message' && data) {
+          window.dispatchEvent(new CustomEvent('bot-log-message', { detail: data }));
+        }
+
         // ENQUEUE orderbook signals into FIFO queue for sequential processing
         if (type === 'orderbook_signals_update' && data) {
           console.log('📥 Received orderbook_signals_update WebSocket message:', data);
