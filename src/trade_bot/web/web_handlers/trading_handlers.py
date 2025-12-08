@@ -249,6 +249,27 @@ class TradingHandlers:
 
             # Log trade
             if order:
+                # Attempt to fetch fee
+                fee = 0.0
+                order_id = order.get('order_id')
+                status = order.get('status', 'unknown')
+                
+                if order_id:
+                    try:
+                        import asyncio
+                        # Poll for fill to get accurate fee
+                        for _ in range(5):
+                            await asyncio.sleep(1)
+                            order_details = live_trade_executor.rest_client.get_order(order_id)
+                            if order_details and 'order' in order_details:
+                                order_info = order_details['order']
+                                status = order_info.get('status', status)
+                                fee = float(order_info.get('total_fees', 0.0))
+                                if status == 'FILLED':
+                                    break
+                    except Exception as fee_err:
+                        logger.warning(f"Failed to fetch fee for manual trade {order_id}: {fee_err}")
+
                 # Basic trade data logging
                 trade_data = {
                     'trade_id': order.get('order_id', ''),
@@ -257,7 +278,8 @@ class TradingHandlers:
                     'size': str(amount),
                     'price': 'Market', 
                     'value': str(amount) if side == 'buy' else 'Unknown',
-                    'status': order.get('status', 'unknown'),
+                    'fee': fee,
+                    'status': status,
                     'order_id': order.get('order_id', '')
                 }
                 try:
@@ -268,7 +290,7 @@ class TradingHandlers:
             return {
                 "status": "executed",
                 "order": order,
-                "message": f"{side.upper()} order for {symbol} executed successfully"
+                "message": f"{side.upper()} order for {symbol} executed successfully (Status: {status}, Fee: {fee})"
             }
 
         except Exception as e:
