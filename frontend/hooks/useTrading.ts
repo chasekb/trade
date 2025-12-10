@@ -12,6 +12,7 @@ import {
 // Live Trading Hooks
 
 export function useLiveTrading() {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState({
     isActive: false,
     mode: 'simulated' as TradingMode,
@@ -114,13 +115,23 @@ export function useLiveTrading() {
     },
   });
 
+  const closePositionMutation = useMutation({
+    mutationFn: (symbol: string) => apiClient.closePosition(symbol),
+    onSuccess: () => {
+      // Refetch portfolio status to update positions list
+      queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+      queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+    },
+  });
+
   return {
     status,
     startTrading: startTradingMutation.mutateAsync,
     stopTrading: stopTradingMutation.mutateAsync,
     updateStrategyParameters: updateStrategyParamsMutation.mutateAsync,
-    loading: startTradingMutation.isPending || stopTradingMutation.isPending,
-    error: startTradingMutation.error || stopTradingMutation.error,
+    closePosition: closePositionMutation.mutateAsync,
+    loading: startTradingMutation.isPending || stopTradingMutation.isPending || closePositionMutation.isPending,
+    error: startTradingMutation.error || stopTradingMutation.error || closePositionMutation.error,
   };
 }
 

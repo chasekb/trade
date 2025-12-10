@@ -235,11 +235,11 @@ export function OrderBookSignalsTable({
                             <span className={`font-medium ${winProb >= 60 ? 'text-green-600' :
                                 winProb >= 40 ? 'text-yellow-600' : 'text-red-600'
                                 }`}>
-                                Win Probability: {winProb.toFixed(1)}%
+                                Win Probability: {winProb.toFixed(4)}%
                             </span>
                         </div>
                         <div className="text-gray-500">
-                            Expected Return: {(ml.expected_return || 0).toFixed(1)}%
+                            Expected Return: {(ml.expected_return || 0).toFixed(4)}%
                         </div>
                     </div>
                 );

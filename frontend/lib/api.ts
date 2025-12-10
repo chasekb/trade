@@ -183,6 +183,30 @@ class ApiClient {
     }));
   }
 
+  async closePosition(symbol: string): Promise<ApiResponse<{ message: string; trade_id?: string }>> {
+    return fetch(`${API_BASE_URL}/api/trading/live/close-position`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ symbol }),
+    }).then(async (response) => {
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        return {
+          status: 'error',
+          error: errorData.error || `HTTP ${response.status}`,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      return response.json();
+    }).catch(error => ({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
   // Simulated Trading Status
   async getSimulatedTradingStatus(): Promise<ApiResponse<any>> {
     return this.request('/api/simulated-trading/status');

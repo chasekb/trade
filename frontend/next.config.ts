@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['ws', 'bufferutil', 'utf-8-validate'],
   experimental: {
     optimizePackageImports: [
       'chart.js',
@@ -10,7 +11,6 @@ const nextConfig: NextConfig = {
       'socket.io-client',
       'zustand'
     ],
-    serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate'],
   },
 
   // Proxy API routes to backend
