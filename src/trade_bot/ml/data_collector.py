@@ -750,6 +750,9 @@ class MLDataCollector:
         features_df['timestamp'] = features_df['timestamp'].astype(float)
         trades_df['timestamp'] = trades_df['timestamp'].astype(float)
         
+        # Preserve trade timestamp before merge
+        trades_df['trade_timestamp'] = trades_df['timestamp']
+        
         features_df.sort_values('timestamp', inplace=True)
         trades_df.sort_values('timestamp', inplace=True)
         
@@ -782,11 +785,11 @@ class MLDataCollector:
                 quantity=float(row['size']),
                 pnl=float(row['pnl']),
                 fees=float(row['fees']),
-                duration_seconds=int(row['timestamp_trade']) - features.timestamp,
+                duration_seconds=int(row['trade_timestamp']) - features.timestamp,
                 signal_type=features.symbol,
                 signal_strength=features.bid_ask_imbalance,
                 entry_timestamp=features.timestamp,
-                exit_timestamp=int(row['timestamp_trade']),
+                exit_timestamp=int(row['trade_timestamp']),
                 is_win=float(row['pnl']) > 0
             )
             

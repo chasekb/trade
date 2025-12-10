@@ -331,11 +331,20 @@ function TradingConfiguration({
 // Live Trading Statistics Component
 function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
   const queryClient = useQueryClient();
+  const { closePosition } = useLiveTrading();
   // Fetch live portfolio data always (enabled=true) to show balance even when not trading
   const { data: stats, isLoading, error } = useLivePortfolio(true);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['live-portfolio'] });
+  };
+
+  const handleClosePosition = async (symbol: string) => {
+    try {
+      await closePosition(symbol);
+    } catch (error) {
+      console.error('Failed to close position:', error);
+    }
   };
 
   if (isLoading) {
@@ -660,7 +669,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 }
 
 export default function LiveTradingPanel({ className = '' }: LiveTradingPanelProps) {
-  const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading();
+  const { status, startTrading, stopTrading, loading, updateStrategyParameters, closePosition } = useLiveTrading();
   // Start native WebSocket to receive live updates for stats/signals
   useSimTradingWebSocket(status.isActive);
 
@@ -738,6 +747,14 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('orderbook-signals-pageSize', newPageSize.toString());
       sessionStorage.setItem('orderbook-signals-page', '1');
+    }
+  };
+
+  const handleClosePosition = async (symbol: string) => {
+    try {
+      await closePosition(symbol);
+    } catch (error) {
+      console.error('Failed to close position:', error);
     }
   };
 
