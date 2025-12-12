@@ -666,11 +666,12 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   // Always pass symbols (even if empty) to enable query when trading is active
   const activeSymbols = (symbols && symbols.length > 0) ? symbols : (status.symbols || []);
+  // Fetch a larger set of signals to enable proper sorting across all data while using client-side pagination
   const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
     activeSymbols,
     status.isActive,
-    currentPage,
-    pageSize,
+    1, // Always start from page 1 for the larger dataset
+    10000, // Fetch many signals to enable sorting across all data
     strategy // Include strategy in query key to invalidate cache when strategy changes
   );
   const [configHidden, setConfigHidden] = useState(false);
@@ -830,6 +831,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
             <OrderBookSignalsTable
               signals={signalsToDisplay}
               pagination={orderBookData?.pagination}
+              currentPage={currentPage}
+              pageSize={pageSize}
               onPageChange={handlePageChange}
               onPageSizeChange={handlePageSizeChange}
               summary={signalsSummary}

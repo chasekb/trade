@@ -3,9 +3,12 @@ import { DataTable } from '@/components/ui/DataTable';
 import Tooltip from '@/components/ui/Tooltip';
 import { DataTableColumn, OrderBookSignal } from '@/types/trading';
 
+// Updated interface to separate server pagination from client pagination state
 export function OrderBookSignalsTable({
     signals,
-    pagination,
+    pagination, // Server-side pagination info (optional, mainly for consistency)
+    currentPage,
+    pageSize,
     onPageChange,
     onPageSizeChange,
     summary,
@@ -19,6 +22,8 @@ export function OrderBookSignalsTable({
         has_next: boolean;
         has_prev: boolean;
     };
+    currentPage: number;
+    pageSize: number;
     onPageChange?: (page: number) => void;
     onPageSizeChange?: (pageSize: number) => void;
     summary?: {
@@ -59,14 +64,22 @@ export function OrderBookSignalsTable({
         });
     }, [signals, sortKey, sortDirection]);
 
-    // Use pagination from props
+    // Use pagination from props or default
     const activePage = pagination?.current_page || 1;
     const activePageSize = pagination?.per_page || 10;
     const totalPages = pagination?.total_pages || 1;
     const totalSignals = (summary?.total_analyzed ?? pagination?.total_signals ?? (signals?.length || 0));
 
-    // Data is paginated by the server, so we use it directly.
-    const paginatedSignals = sortedSignals;
+    // Apply client-side pagination using the activePageSize for proper pagination
+    const paginatedSignals = useMemo(() => {
+        const startIndex = (activePage - 1) * activePageSize;
+        const endIndex = startIndex + activePageSize;
+        return sortedSignals.slice(startIndex, endIndex);
+    }, [sortedSignals, activePage, activePageSize]);
+
+    // Calculate actual pagination info
+    const actualTotalPages = Math.ceil(sortedSignals.length / activePageSize);
+    const actualTotalSignals = sortedSignals.length;
 
     const handlePageChange = (page: number) => {
         onPageChange?.(page);
@@ -288,7 +301,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
 
     return (
         <div className="space-y-4">
-            {/* Pagination Controls */}
+            {/* Pagination Controls - Use actual client-side pagination info */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                     <label className="text-sm text-gray-700">Show:</label>
@@ -308,7 +321,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                 </div>
 
                 <div className="text-sm text-gray-600">
-                    Page {activePage} of {totalPages} ({totalSignals} total signals)
+                    Page {activePage} of {actualTotalPages} ({actualTotalSignals} total signals)
                 </div>
 
                 <div className="flex items-center space-x-2">
@@ -321,9 +334,9 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                     </button>
 
                     <div className="flex items-center space-x-1">
-                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                            const pageNum = Math.max(1, Math.min(totalPages - 4, activePage - 2)) + i;
-                            if (pageNum > totalPages) return null;
+                        {Array.from({ length: Math.min(5, actualTotalPages) }, (_, i) => {
+                            const pageNum = Math.max(1, Math.min(actualTotalPages - 4, activePage - 2)) + i;
+                            if (pageNum > actualTotalPages) return null;
 
                             return (
                                 <button
@@ -342,7 +355,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
 
                     <button
                         onClick={() => handlePageChange(activePage + 1)}
-                        disabled={activePage >= totalPages}
+                        disabled={activePage >= actualTotalPages}
                         className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                     >
                         Next<i className="fas fa-chevron-right ml-1"></i>
@@ -363,16 +376,16 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                 className="w-full"
             />
 
-            {/* Statistics Summary */}
-            {signals && signals.length > 0 && (
+            {/* Statistics Summary - Use actual sorted data for calculations */}
+            {sortedSignals && sortedSignals.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
                     <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{totalSignals}</div>
+                        <div className="text-lg font-semibold text-gray-900">{actualTotalSignals}</div>
                         <div className="text-sm text-gray-600">Total Analyzed</div>
                     </div>
                     <div className="text-center">
                         <div className="text-lg font-semibold text-green-600">
-                            {summary?.active_signals ?? signals.filter(s => s.signal_generated === true).length}
+                            {summary?.active_signals ?? sortedSignals.filter(s => s.signal_generated === true).length}
                         </div>
                         <div className="text-sm text-gray-600">Active Signals</div>
                     </div>
@@ -380,7 +393,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                         <div className="text-lg font-semibold text-blue-600">
                             {(
                                 summary?.average_strength ??
-                                (signals.length > 0 ? (signals.reduce((sum, s) => sum + (s.signal_strength || 0), 0) / signals.length) : 0)
+                                (sortedSignals.length > 0 ? (sortedSignals.reduce((sum, s) => sum + (s.signal_strength || 0), 0) / sortedSignals.length) : 0)
                             ).toFixed(2)}
                         </div>
                         <div className="text-sm text-gray-600">Avg Strength</div>
