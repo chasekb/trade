@@ -898,6 +898,8 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
             <OrderBookSignalsTable
               signals={signalsToDisplay}
               pagination={orderBookData?.pagination}
+              currentPage={currentPage}
+              pageSize={pageSize}
               onPageChange={handlePageChange}
               onPageSizeChange={handlePageSizeChange}
               summary={signalsSummary}
