@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y cmake g++ make git libc-ares-dev libpq-dev uuid-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev && rm -rf /var/lib/apt/lists/*
 
 # Clone and setup vcpkg
 RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg \
