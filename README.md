@@ -148,13 +148,23 @@ This single command starts:
 
 #### ☁️ Remote Build & CI/CD
 
-The system uses **GitHub Actions** for remote multi-platform builds (`linux/amd64`, `linux/arm64`). To pull and run the latest remote images locally:
+The system uses **GitHub Actions** for remote multi-platform builds. Images are tagged by branch name (e.g., `:dev`, `:main`) ensuring isolation between development and production.
+
+**To run the latest `dev` branch images locally:**
 
 ```bash
-# Pull remote images from GHCR
-podman-compose pull
+# Pull branch-specific images from GHCR
+TAG=dev podman-compose pull
 
-# Run using remote images
+# Run using the dev branch images
+TAG=dev podman-compose up
+```
+
+**To run the production (`main`) images:**
+
+```bash
+# Defaults to :latest (linked to main)
+podman-compose pull
 podman-compose up
 ```
 
