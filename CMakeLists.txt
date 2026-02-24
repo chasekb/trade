@@ -36,7 +36,7 @@ target_link_libraries(trading_bot_cpp PRIVATE
     libpqxx::pqxx
     redis++::redis++_static
     spdlog::spdlog
-    onnxruntime
+    onnxruntime::onnxruntime
     xtensor
 )
 
