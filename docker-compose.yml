@@ -3,6 +3,7 @@ version: '3.8'
 services:
   # C++ Backend Service (New)
   cpp-backend:
+    image: ghcr.io/chasekb/trade/cpp-backend:latest
     build:
       context: .
       dockerfile: Dockerfile.cpp
@@ -29,6 +30,7 @@ services:
 
   # Backend API Service (Python FastAPI)
   backend:
+    image: ghcr.io/chasekb/trade/backend:latest
     build:
       context: .
       dockerfile: Dockerfile

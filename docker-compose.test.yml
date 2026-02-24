@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   cpp-test:
+    image: ghcr.io/chasekb/trade/cpp-backend:latest
     build:
       context: .
       dockerfile: Dockerfile.cpp

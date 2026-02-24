@@ -8,8 +8,13 @@ A comprehensive trading bot system with web dashboard, backtesting, live trading
 trade/
 ├── app.py                      # FastAPI backend server (Docker deployment)
 ├── docker-compose.yml          # Docker Compose deployment configuration
-├── Dockerfile                  # Backend Docker container configuration
+├── docker-compose.test.yml     # Testing configuration for C++ backend
+├── Dockerfile                  # Python Backend Docker configuration
+├── Dockerfile.cpp              # C++ Backend Docker configuration
 ├── frontend/                   # Next.js React/TypeScript frontend
+├── src/                        # C++ Source code (New)
+│   └── cpp_backend/            # High-performance C++ backend
+├── legacy_python/              # Previous Python system (Archived)
 ├── README.md                   # This file
 │
 ├── archive/                    # Archived unused code (see archive/README.md)
@@ -62,6 +67,7 @@ trade/
 ## ✨ Key Features
 
 ### 🎯 **Integrated ML Trading System**
+
 - **One Command Setup**: `docker-compose up` starts everything
 - **Automatic Service Management**: Vector database and ML services start automatically
 - **Seamless Trading Integration**: ML predictions available for simulated and live trading
@@ -70,6 +76,7 @@ trade/
 - **Graceful Shutdown**: Proper cleanup when stopping the system
 
 ### 🏗️ **Modern Architecture**
+
 - **Microservices Design**: Modular, scalable component architecture
 - **Async/Await**: High-performance asynchronous Python
 - **Vector Database**: Qdrant for ML pattern matching and similarity search
@@ -80,6 +87,7 @@ trade/
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Python 3.11+
 - Node.js 18+
 - UV package manager
@@ -87,6 +95,7 @@ trade/
 - Redis (for ML caching)
 
 ### Installation
+
 ```bash
 # Install Python dependencies
 uv sync
@@ -99,9 +108,11 @@ pip install scikit-learn pandas numpy joblib requests
 ```
 
 ### Security Setup
+
 **IMPORTANT:** Before running the application, you must set up your Coinbase API credentials securely.
 
 1. **Copy the environment template:**
+
    ```bash
    cp docs/env.example .env
    ```
@@ -115,6 +126,7 @@ pip install scikit-learn pandas numpy joblib requests
 5. **See [Security Setup Guide](docs/SECURITY_SETUP.md)** for detailed instructions
 
 **⚠️ Never commit your `.env` file or expose your API credentials!**
+
 ```
 
 ### Running the Application
@@ -126,14 +138,35 @@ docker-compose up
 ```
 
 This single command starts:
+
+- **C++ Backend**: High-performance ML inference at `http://localhost:8080`
 - **Frontend**: Next.js React dashboard on `http://localhost:3000`
-- **Backend**: FastAPI server on `http://localhost:8000`
+- **Backend**: FastAPI server on `http://localhost:8000` (Legacy/Integration)
 - Qdrant vector database on `http://localhost:6333`
 - Redis cache on `localhost:6379`
 - PostgreSQL database on `localhost:5432`
-- All ML services available for trading
+
+#### ☁️ Remote Build & CI/CD
+
+The system uses **GitHub Actions** for remote multi-platform builds (`linux/amd64`, `linux/arm64`). To pull and run the latest remote images locally:
+
+```bash
+# Pull remote images from GHCR
+podman-compose pull
+
+# Run using remote images
+podman-compose up
+```
+
+#### 🧪 Running C++ Tests
+
+```bash
+# Run the C++ test suite via Podman
+podman-compose -f docker-compose.test.yml up --build cpp-test
+```
 
 #### Development Mode (Individual Services)
+
 If you need to run services individually for development:
 
 ```bash
@@ -148,6 +181,7 @@ docker-compose up db redis qdrant
 ```
 
 #### Previous CLI Commands (Archived)
+
 The previous CLI interface using `main.py` has been archived. If you need to restore the vanilla JavaScript dashboard for comparison or testing, see `archive/README.md` for restoration instructions.
 
 ## 📊 Features
@@ -171,6 +205,7 @@ The previous CLI interface using `main.py` has been archived. If you need to res
 ## 🔧 Configuration
 
 Configuration files are located in the `config/` directory:
+
 - `pyproject.toml`: Python project settings
 - `requirements.txt`: Python dependencies
 - `package.json`: Node.js dependencies
@@ -199,11 +234,13 @@ npx playwright test
 ## 🌐 Web Dashboard
 
 Access the web dashboard at `http://localhost:3000` after running:
+
 ```bash
 docker-compose up
 ```
 
 Features:
+
 - Real-time price charts
 - Trading strategy configuration
 - Backtest results visualization
@@ -223,6 +260,7 @@ Features:
 The ML Trading Optimization system enhances trading decisions using machine learning:
 
 ### ML System Architecture
+
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Trading Bot   │    │  ML Optimizer   │    │ Vector Database │
@@ -246,6 +284,7 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 ```
 
 ### Key Components
+
 - **Data Collection**: Extract order book signals and trade outcomes
 - **Feature Engineering**: Transform raw data into ML-ready features
 - **Model Training**: Ensemble models (RF, GB, NN, Linear)
@@ -254,6 +293,7 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 - **Real-time Inference**: Sub-second ML predictions during trading
 
 ### ML Services (Automatically Started with Docker Compose)
+
 - **Qdrant Vector DB**: `http://localhost:6333` - Feature vector storage
 - **Redis Cache**: `localhost:6379` - High-performance caching
 - **PostgreSQL DB**: `localhost:5432` - Main database
@@ -261,6 +301,7 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 - **Web Dashboard**: `http://localhost:3000` - Next.js React dashboard
 
 ### ML Service Management
+
 - **Automatic Startup**: All ML services start automatically with `docker-compose up`
 - **Health Monitoring**: Built-in health checks and service status monitoring
 - **Graceful Shutdown**: Proper cleanup when web dashboard stops
@@ -269,6 +310,7 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 ## 📚 Documentation
 
 Detailed documentation is available in the `docs/` directory:
+
 - [Project Overview](docs/PROJECT_OVERVIEW.md)
 - [Web Dashboard Guide](docs/WEB_DASHBOARD_README.md)
 - [WebSocket Subscriptions](docs/WEBSOCKET_SUBSCRIPTIONS.md)
@@ -281,6 +323,7 @@ Detailed documentation is available in the `docs/` directory:
 ### Common Issues
 
 #### ML Services Not Starting
+
 ```bash
 # Check if Qdrant and Redis are installed
 which qdrant
@@ -295,7 +338,9 @@ sudo apt-get install qdrant redis-server
 ```
 
 #### Port Conflicts
+
 If ports 3000, 8000, 6333, 6379, or 5432 are already in use:
+
 ```bash
 # Check what's using the ports
 lsof -i :3000  # Frontend
@@ -308,6 +353,7 @@ lsof -i :5432  # PostgreSQL
 ```
 
 #### ML Model Training Issues
+
 ```bash
 # Start the application with Docker Compose
 docker-compose up
@@ -317,6 +363,7 @@ docker-compose up
 ```
 
 #### Service Health Checks
+
 ```bash
 # Check service status
 curl http://localhost:6333/health        # Qdrant
