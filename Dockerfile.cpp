@@ -8,16 +8,18 @@ RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh \
     && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg
 
-# Install dependencies using vcpkg
-COPY vcpkg.json /tmp/vcpkg.json
-RUN cd /tmp && vcpkg install
-
 # Provide the project code
 WORKDIR /app
-COPY CMakeLists.txt vcpkg.json ./
+COPY vcpkg.json CMakeLists.txt ./
+
+# Build dependencies separately to leverage Docker cache
+# We use the toolchain file to trigger manifest mode
+RUN cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release || true
+
+# Copy the rest of the source
 COPY src/cpp_backend src/cpp_backend
 
-# Build the project using the vcpkg toolchain
+# Final build
 RUN cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build build -j$(nproc)
 
