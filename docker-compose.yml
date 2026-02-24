@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # C++ Backend Service (New)
   cpp-backend:
-    image: ghcr.io/chasekb/trade/cpp-backend:latest
+    image: ghcr.io/chasekb/trade/cpp-backend:${TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.cpp
@@ -30,7 +30,7 @@ services:
 
   # Backend API Service (Python FastAPI)
   backend:
-    image: ghcr.io/chasekb/trade/backend:latest
+    image: ghcr.io/chasekb/trade/backend:${TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
