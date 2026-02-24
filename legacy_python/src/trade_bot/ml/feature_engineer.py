@@ -278,19 +278,24 @@ class FeatureEngineer:
         # If we have base feature names and the input shape matches expected expansion, use them
         if hasattr(self, 'feature_names') and len(self.feature_names) > 0:
             base_count = len(self.feature_names)
-            expected_expanded_count = base_count * 3  # base + mean + std
+            # Default windows [5, 10, 20, 50, 90, 200]
+            windows = [5, 10, 20, 50, 90, 200]
+            expected_expanded_count = base_count * (1 + 2 * len(windows))
 
             if X.shape[1] == expected_expanded_count:
-                # We have time series features but no interactions (this is the standard case)
+                # We have time series features but no interactions
                 base_names = self.feature_names
-                ts_mean_names = [f"{name}_mean" for name in base_names]
-                ts_std_names = [f"{name}_std" for name in base_names]
-                extended_feature_names = base_names + ts_mean_names + ts_std_names
+                extended_feature_names = base_names.copy()
+                for w in windows:
+                    extended_feature_names += [f"{name}_mean_{w}" for name in base_names]
+                    extended_feature_names += [f"{name}_std_{w}" for name in base_names]
             elif X.shape[1] > expected_expanded_count:
                 # We have both time series and interaction features
                 base_names = self.feature_names
-                ts_mean_names = [f"{name}_mean" for name in base_names]
-                ts_std_names = [f"{name}_std" for name in base_names]
+                extended_feature_names = base_names.copy()
+                for w in windows:
+                    extended_feature_names += [f"{name}_mean_{w}" for name in base_names]
+                    extended_feature_names += [f"{name}_std_{w}" for name in base_names]
 
                 # Add interaction feature names
                 interaction_names = []
@@ -302,7 +307,7 @@ class FeatureEngineer:
                         else:
                             interaction_names.append(f"{base_names[i]}_x_{base_names[j]}")
 
-                extended_feature_names = base_names + ts_mean_names + ts_std_names + interaction_names
+                extended_feature_names += interaction_names
             else:
                 # Fallback: use generic names if we can't determine the structure
                 extended_feature_names = [f"feature_{i}" for i in range(X.shape[1])]
@@ -384,26 +389,10 @@ class FeatureEngineer:
             return self.feature_selector.transform(X)
         return X
     
-    def create_time_series_features(self, X: np.ndarray, window_size: int = 5, historical_data: Optional[np.ndarray] = None) -> np.ndarray:
-        """Create time series features by adding rolling statistics on Log Returns for prices."""
+    def create_time_series_features(self, X: np.ndarray, windows: List[int] = [5, 10, 20, 50, 90, 200], historical_data: Optional[np.ndarray] = None) -> np.ndarray:
+        """Create time series features by adding rolling statistics on Log Returns for prices across multiple horizons."""
         
-        # Identify price columns to compute returns (indices of columns ending with '_log')
-        # We rely on feature names if available, otherwise apply to all or heuristics
-        # Since X doesn't have names here, we need to rely on the fact that we process 'mid_price_log' and 'volume_weighted_price_log'
-        # which are indices 2 and 9 in _extract_features dict (Python < 3.7 dict order is insertion, >= 3.7 is preserved)
-        # However, to be robust, we should calculate log returns for ALL features as 'changes' are often more stationary.
-        # BUT, the prompt specifies "Price: Convert raw prices ... to Log Returns ... for time-series analysis."
-        # And "Volume/Count: Apply np.log1p".
-        # Let's compute rolling stats on the *input* X. Since X already contains Log Prices and Log Volumes,
-        # Rolling Mean of Log Price is not Log Return.
-        # We need to transform X to Returns first for price columns.
-        
-        # Strategy: Create a new matrix for rolling stats calculation.
-        # For price-like columns (log prices), compute diff (log return).
-        # For others, keep as is? Or diff them too? 
-        # Usually, rolling mean/std of LEVELS (even log levels) is not scale invariant if the level shifts.
-        # Rolling mean/std of CHANGES (returns) is scale invariant.
-        # So I will apply diff() to ALL columns to get changes, and calculate rolling stats on CHANGES.
+        # Strategy: Apply diff() to ALL columns to get changes, and calculate rolling stats on CHANGES.
         # This aligns with "Scale-Invariance".
         
         # For a single prediction, use provided historical data
@@ -413,42 +402,37 @@ class FeatureEngineer:
             else:
                 combined_data = X
             
-            # Compute changes (diff)
-            # diff[i] = data[i] - data[i-1]
             df = pd.DataFrame(combined_data)
-            diff_df = df.diff().fillna(0) # First row becomes 0 or NaN
+            diff_df = df.diff().fillna(0)
             
-            # Calculate rolling statistics on the DIFF data (Returns/Changes)
-            rolling_stats_df = diff_df.rolling(window=window_size, min_periods=1)
-            rolling_mean = rolling_stats_df.mean().values
-            rolling_std = rolling_stats_df.std().fillna(0).values
-            
-            # Extract the stats for the latest data point
-            latest_rolling_mean = rolling_mean[-1, :].reshape(1, -1)
-            latest_rolling_std = rolling_std[-1, :].reshape(1, -1)
-
-            # Combine original features (Levels) with rolling stats of Changes
-            X_enhanced = np.column_stack([X, latest_rolling_mean, latest_rolling_std])
+            X_enhanced = X
+            for w in windows:
+                rolling_stats_df = diff_df.rolling(window=w, min_periods=1)
+                latest_rolling_mean = rolling_stats_df.mean().values[-1, :].reshape(1, -1)
+                latest_rolling_std = rolling_stats_df.std().fillna(0).values[-1, :].reshape(1, -1)
+                X_enhanced = np.column_stack([X_enhanced, latest_rolling_mean, latest_rolling_std])
 
         # For batch processing
         else:
             df = pd.DataFrame(X)
             diff_df = df.diff().fillna(0)
             
-            rolling_mean = diff_df.rolling(window=window_size, min_periods=1).mean().values
-            rolling_std = diff_df.rolling(window=window_size, min_periods=1).std().fillna(0).values
-            
-            X_enhanced = np.column_stack([X, rolling_mean, rolling_std])
+            X_enhanced = X
+            for w in windows:
+                rolling_mean = diff_df.rolling(window=w, min_periods=1).mean().values
+                rolling_std = diff_df.rolling(window=w, min_periods=1).std().fillna(0).values
+                X_enhanced = np.column_stack([X_enhanced, rolling_mean, rolling_std])
 
-        logger.info(f"Enhanced features with time series (rolling stats on changes): {X_enhanced.shape}")
+        logger.info(f"Enhanced features with multi-horizon time series: {X_enhanced.shape}")
         return X_enhanced
 
-    def create_time_series_features_incremental(self, X: np.ndarray, window_size: int = 5, 
+    def create_time_series_features_incremental(self, X: np.ndarray, windows: List[int] = [5, 10, 20, 50, 90, 200], 
                                               previous_window: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Create time series features for a batch, using previous window for continuity.
+        Create multi-horizon time series features for a batch, using previous window for continuity.
         Returns (enhanced_features, last_window_of_this_batch).
         """
+        max_window = max(windows)
         # Combine with previous window if available
         if previous_window is not None and previous_window.size > 0:
             combined_data = np.vstack([previous_window, X])
@@ -457,18 +441,17 @@ class FeatureEngineer:
             combined_data = X
             start_idx = 0
             
-        # Calculate rolling stats
-        rolling_mean = pd.DataFrame(combined_data).rolling(window=window_size, min_periods=1).mean().values
-        rolling_std = pd.DataFrame(combined_data).rolling(window=window_size, min_periods=1).std().fillna(0).values
+        df = pd.DataFrame(combined_data)
+        diff_df = df.diff().fillna(0)
         
-        # Slice back to the original batch size
-        batch_rolling_mean = rolling_mean[start_idx:]
-        batch_rolling_std = rolling_std[start_idx:]
+        X_enhanced = X
+        for w in windows:
+            rolling_mean = diff_df.rolling(window=w, min_periods=1).mean().values[start_idx:]
+            rolling_std = diff_df.rolling(window=w, min_periods=1).std().fillna(0).values[start_idx:]
+            X_enhanced = np.column_stack([X_enhanced, rolling_mean, rolling_std])
         
-        X_enhanced = np.column_stack([X, batch_rolling_mean, batch_rolling_std])
-        
-        # Save the last window for the next batch
-        last_window = combined_data[-window_size:] if len(combined_data) >= window_size else combined_data
+        # Save the last window for the next batch (need enough for max window)
+        last_window = combined_data[-max_window:] if len(combined_data) >= max_window else combined_data
         
         return X_enhanced, last_window
 

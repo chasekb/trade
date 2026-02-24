@@ -1,0 +1,13 @@
+{
+    "name": "trading-bot-cpp",
+    "version": "1.0.0",
+    "dependencies": [
+        "drogon",
+        "nlohmann-json",
+        "libpqxx",
+        "redis-plus-plus",
+        "spdlog",
+        "onnxruntime",
+        "xtensor"
+    ]
+}
