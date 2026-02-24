@@ -1,1 +1,5 @@
-{"active_model": "trading_optimizer:v20251210_143024"}
+{
+  "active_model": "trading_optimizer:v20260220_013321",
+  "new_data_threshold": 64,
+  "continuous_training_enabled": true
+}

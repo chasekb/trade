@@ -19,12 +19,12 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 # Copy pyproject.toml and install dependencies
-COPY config/pyproject.toml ./
+COPY legacy_python/config/pyproject.toml ./
 RUN pip install --no-cache-dir -e .
 
 # Copy source code, excluding unnecessary files
-COPY app.py .
-COPY src ./src
+COPY legacy_python/app.py .
+COPY legacy_python/src ./src
 
 # Create data directories
 RUN mkdir -p data/databases outputs logs

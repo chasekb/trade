@@ -7,3 +7,6 @@ pandas
 requests
 psycopg[binary]
 aiohttp
+skl2onnx
+onnx
+onnxruntime
