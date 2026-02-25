@@ -5,9 +5,11 @@
         "drogon",
         "nlohmann-json",
         "libpqxx",
+        "hiredis",
         "redis-plus-plus",
         "spdlog",
         "onnxruntime",
+        "xtl",
         "xtensor"
     ]
 }
