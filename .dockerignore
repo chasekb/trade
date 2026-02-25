@@ -1,0 +1,11 @@
+build/
+vcpkg_installed/
+.git/
+.github/
+.vscode/
+*.swp
+*.bak
+.env
+.env.test
+node_modules/
+__pycache__/

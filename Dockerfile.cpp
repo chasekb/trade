@@ -10,6 +10,8 @@ RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg \
 
 # Provide the project code
 WORKDIR /app
+
+# Copy ONLY vcpkg.json first to cache dependencies
 COPY vcpkg.json ./
 
 # Install dependencies using vcpkg manifest mode
@@ -18,10 +20,10 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
-    vcpkg install --triplet $TRIPLET && \
-    cp -r vcpkg_installed /tmp/vcpkg_installed_cache
+    vcpkg install --triplet $TRIPLET
 
 # Copy the rest of the source
+# (.dockerignore ensures we don't overwrite vcpkg_installed)
 COPY . .
 
 # Final build
