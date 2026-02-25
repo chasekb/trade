@@ -10,17 +10,29 @@ RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg \
 
 # Provide the project code
 WORKDIR /app
-COPY vcpkg.json CMakeLists.txt ./
+COPY vcpkg.json ./
 
-# Build dependencies separately to leverage Docker cache
-# We use the toolchain file to trigger manifest mode
-RUN cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release || true
+# Install dependencies using vcpkg manifest mode
+# This layer will be cached unless vcpkg.json changes
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
+    elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
+    else TRIPLET="x64-linux"; fi && \
+    vcpkg install --triplet $TRIPLET && \
+    cp -r vcpkg_installed /tmp/vcpkg_installed_cache
 
 # Copy the rest of the source
-COPY src/cpp_backend src/cpp_backend
+COPY . .
 
 # Final build
-RUN cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release
-RUN cmake --build build -j$(nproc)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
+    elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
+    else TRIPLET="x64-linux"; fi && \
+    cmake -S . -B build \
+    -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=$TRIPLET \
+    -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build -j$(nproc)
 
 CMD ["./build/trading_bot_cpp"]

@@ -36,8 +36,8 @@ target_link_libraries(trading_bot_cpp PRIVATE
     libpqxx::pqxx
     redis++::redis++_static
     spdlog::spdlog
-    onnxruntime::onnxruntime
-    xtensor::xtensor
+    onnxruntime
+    xtensor
 )
 
 # Test executable
@@ -49,5 +49,5 @@ target_include_directories(test_feature_engineer PRIVATE src/cpp_backend/include
 target_link_libraries(test_feature_engineer PRIVATE
     nlohmann_json::nlohmann_json
     spdlog::spdlog
-    xtensor::xtensor
+    xtensor
 )
