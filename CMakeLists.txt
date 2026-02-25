@@ -11,7 +11,6 @@ find_package(hiredis CONFIG REQUIRED)
 find_package(redis++ CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
-find_package(xtl CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 
 # Collect all source files
@@ -38,10 +37,7 @@ target_link_libraries(trading_bot_cpp PRIVATE
     redis++::redis++_static
     spdlog::spdlog
     onnxruntime
-    xtl::xtl
     xtensor
-    xtensor::optimize
-    xtensor::use_xsimd
 )
 
 # Test executable
@@ -53,8 +49,5 @@ target_include_directories(test_feature_engineer PRIVATE src/cpp_backend/include
 target_link_libraries(test_feature_engineer PRIVATE
     nlohmann_json::nlohmann_json
     spdlog::spdlog
-    xtl::xtl
     xtensor
-    xtensor::optimize
-    xtensor::use_xsimd
 )
