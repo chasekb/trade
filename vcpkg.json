@@ -10,6 +10,7 @@
         "spdlog",
         "onnxruntime",
         "xtl",
+        "xsimd",
         "xtensor"
     ]
 }
