@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-cpp:
-    name: Build C++ Backend (${{ matrix.platform }})
+    name: Build C++ Backend (${{ matrix.suffix }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -76,8 +76,8 @@ jobs:
             ghcr.io/${{ github.repository }}/cpp-backend:latest-amd64 \
             ghcr.io/${{ github.repository }}/cpp-backend:latest-arm64
 
-  build-python:
-    name: Build Python Backend (${{ matrix.platform }})
+  build-frontend:
+    name: Build Frontend (${{ matrix.suffix }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -108,21 +108,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Python Backend (${{ matrix.suffix }})
+      - name: Build and push Frontend (${{ matrix.suffix }})
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./frontend
+          file: ./frontend/Dockerfile
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ghcr.io/${{ github.repository }}/backend:latest-${{ matrix.suffix }}
-          cache-from: type=gha,scope=python-${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=python-${{ matrix.suffix }}
+            ghcr.io/${{ github.repository }}/frontend:latest-${{ matrix.suffix }}
+          cache-from: type=gha,scope=frontend-${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=frontend-${{ matrix.suffix }}
 
-  merge-python-manifest:
-    name: Merge Python Backend Manifest
-    needs: build-python
+  merge-frontend-manifest:
+    name: Merge Frontend Manifest
+    needs: build-frontend
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -137,10 +137,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create and push multi-arch manifest for Python Backend
+      - name: Create and push multi-arch manifest for Frontend
         run: |
           docker buildx imagetools create \
-            --tag ghcr.io/${{ github.repository }}/backend:latest \
-            --tag ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }} \
-            ghcr.io/${{ github.repository }}/backend:latest-amd64 \
-            ghcr.io/${{ github.repository }}/backend:latest-arm64
+            --tag ghcr.io/${{ github.repository }}/frontend:latest \
+            --tag ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }} \
+            ghcr.io/${{ github.repository }}/frontend:latest-amd64 \
+            ghcr.io/${{ github.repository }}/frontend:latest-arm64
