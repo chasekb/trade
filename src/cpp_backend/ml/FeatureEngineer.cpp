@@ -5,9 +5,9 @@
 #include <fstream>
 #include <numeric>
 #include <spdlog/spdlog.h>
-#include <xtensor/xadapt.hpp>
+#include <xtensor/adaptors/xadapt.hpp>
+#include <xtensor/views/xview.hpp>
 #include <xtensor/xmath.hpp>
-#include <xtensor/xview.hpp>
 
 namespace ml {
 
