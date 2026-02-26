@@ -31,9 +31,12 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
-    echo "Checking vcpkg_installed content:" && \
-    ls -F /app/vcpkg_installed/ && \
-    ls -R /app/vcpkg_installed/x64-linux/include/xtensor/ && \
+    echo "Finding xtensor headers:" && \
+    find /app/vcpkg_installed/ -name xarray.hpp && \
+    find /app/vcpkg_installed/ -name xvector.hpp && \
+    find /app/vcpkg_installed/ -name xadapt.hpp && \
+    find /app/vcpkg_installed/ -name xmath.hpp && \
+    find /app/vcpkg_installed/ -name xview.hpp && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
