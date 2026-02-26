@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 #include <xtensor/containers/xarray.hpp>
-#include <xtensor/containers/xvector.hpp>
 
 namespace ml {
 

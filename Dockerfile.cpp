@@ -31,8 +31,6 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
-    echo "Listing all xtensor headers:" && \
-    ls -R /app/vcpkg_installed/x64-linux/include/xtensor/ && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
