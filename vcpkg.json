@@ -12,5 +12,19 @@
         "xtl",
         "xsimd",
         "xtensor"
+    ],
+    "overrides": [
+        {
+            "name": "xtensor",
+            "version": "0.24.7"
+        },
+        {
+            "name": "xtl",
+            "version": "0.7.7"
+        },
+        {
+            "name": "xsimd",
+            "version": "11.1.0"
+        }
     ]
 }
