@@ -1,7 +1,6 @@
 {
     "name": "trading-bot-cpp",
     "version": "1.0.0",
-    "builtin-baseline": "82f3841f4f91e8389b7c7ddf61e6733683b2f67b",
     "dependencies": [
         "drogon",
         "nlohmann-json",
@@ -13,19 +12,5 @@
         "xtl",
         "xsimd",
         "xtensor"
-    ],
-    "overrides": [
-        {
-            "name": "xtensor",
-            "version": "0.24.7"
-        },
-        {
-            "name": "xtl",
-            "version": "0.7.7"
-        },
-        {
-            "name": "xsimd",
-            "version": "11.1.0"
-        }
     ]
 }

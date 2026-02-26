@@ -6,8 +6,8 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
-#include <xtensor/xarray.hpp>
-#include <xtensor/xvector.hpp>
+#include <xtensor/containers/xarray.hpp>
+#include <xtensor/containers/xvector.hpp>
 
 namespace ml {
 
