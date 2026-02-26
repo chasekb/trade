@@ -34,11 +34,15 @@ target_link_libraries(trading_bot_cpp PRIVATE
     Drogon::Drogon
     nlohmann_json::nlohmann_json
     libpqxx::pqxx
+    hiredis::hiredis
     redis++::redis++_static
     spdlog::spdlog
-    onnxruntime
+    onnxruntime::onnxruntime
     xtensor
 )
+if(xtensor_INCLUDE_DIRS)
+    target_include_directories(trading_bot_cpp PRIVATE ${xtensor_INCLUDE_DIRS})
+endif()
 
 # Test executable
 add_executable(test_feature_engineer 
@@ -51,3 +55,6 @@ target_link_libraries(test_feature_engineer PRIVATE
     spdlog::spdlog
     xtensor
 )
+if(xtensor_INCLUDE_DIRS)
+    target_include_directories(test_feature_engineer PRIVATE ${xtensor_INCLUDE_DIRS})
+endif()
