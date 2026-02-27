@@ -31,6 +31,8 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
+    echo "Finding onnxruntime header:" && \
+    find /app/vcpkg_installed/ -name onnxruntime_cxx_api.h && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
