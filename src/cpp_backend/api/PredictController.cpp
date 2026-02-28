@@ -15,12 +15,13 @@ void PredictController::init(const std::string &param_path,
                              const std::string &model_dir) {
   feature_engineer_ = std::make_unique<ml::FeatureEngineer>();
   if (!feature_engineer_->load_parameters(param_path)) {
-    LOG_ERROR("Failed to load feature engineer parameters from {}", param_path);
+    TR_LOG_ERROR("Failed to load feature engineer parameters from {}",
+                 param_path);
   }
 
   model_manager_ = std::make_unique<ml::ONNXModelManager>();
   if (!model_manager_->load_models(model_dir)) {
-    LOG_ERROR("Failed to load ONNX models from {}", model_dir);
+    TR_LOG_ERROR("Failed to load ONNX models from {}", model_dir);
   }
 }
 
@@ -76,7 +77,7 @@ void PredictController::predict(
     callback(HttpResponse::newHttpJsonResponse(result));
 
   } catch (const std::exception &e) {
-    LOG_ERROR("Prediction error: {}", e.what());
+    TR_LOG_ERROR("Prediction error: {}", e.what());
     Json::Value err;
     err["error"] = e.what();
     auto resp = HttpResponse::newHttpJsonResponse(err);
