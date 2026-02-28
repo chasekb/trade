@@ -69,6 +69,7 @@ services:
 
   # Frontend Service (Next.js TypeScript)
   frontend:
+    image: ghcr.io/chasekb/trade/frontend:${TAG:-latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -93,6 +94,7 @@ services:
 
   # Vector Database for ML Features
   qdrant:
+    image: ghcr.io/chasekb/trade/qdrant:${TAG:-latest}
     build:
       context: .
       dockerfile: qdrant.Dockerfile
@@ -149,6 +151,7 @@ services:
 
   # ML Model Server
   ml-server:
+    image: ghcr.io/chasekb/trade/ml-server:${TAG:-latest}
     build:
       context: .
       dockerfile: legacy_python/src/trade_bot/ml/Dockerfile
