@@ -15,10 +15,10 @@ bool CacheManager::init() {
     redis_ = std::make_unique<sw::redis::Redis>(redis_url);
     // Ping to test connection
     redis_->ping();
-    LOG_INFO("Successfully connected to Redis at {}", redis_url);
+    TR_LOG_INFO("Successfully connected to Redis at {}", redis_url);
     return true;
   } catch (const sw::redis::Error &e) {
-    LOG_ERROR("Redis connection error: {}", e.what());
+    TR_LOG_ERROR("Redis connection error: {}", e.what());
     redis_.reset();
     return false;
   }
@@ -37,7 +37,7 @@ bool CacheManager::set(const std::string &key, const std::string &value,
     }
     return true;
   } catch (const sw::redis::Error &e) {
-    LOG_ERROR("Redis SET error: {}", e.what());
+    TR_LOG_ERROR("Redis SET error: {}", e.what());
     return false;
   }
 }
@@ -47,9 +47,13 @@ std::optional<std::string> CacheManager::get(const std::string &key) {
     return std::nullopt;
 
   try {
-    return redis_->get(key);
+    auto val = redis_->get(key);
+    if (val) {
+      return *val;
+    }
+    return std::nullopt;
   } catch (const sw::redis::Error &e) {
-    LOG_ERROR("Redis GET error: {}", e.what());
+    TR_LOG_ERROR("Redis GET error: {}", e.what());
     return std::nullopt;
   }
 }
@@ -61,7 +65,7 @@ bool CacheManager::del(const std::string &key) {
   try {
     return redis_->del(key) > 0;
   } catch (const sw::redis::Error &e) {
-    LOG_ERROR("Redis DEL error: {}", e.what());
+    TR_LOG_ERROR("Redis DEL error: {}", e.what());
     return false;
   }
 }

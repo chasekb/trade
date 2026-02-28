@@ -4,6 +4,7 @@
 #include "include/db/DatabaseManager.hpp"
 #include "include/utils/Logger.hpp"
 #include <drogon/drogon.h>
+#include <functional>
 #include <string>
 
 int main() {
@@ -13,17 +14,17 @@ int main() {
 
   // 2. Initialize logger
   Logger::init(config.get("LOG_LEVEL", "info"));
-  LOG_INFO("Trading Bot C++ Backend starting...");
+  TR_LOG_INFO("Trading Bot C++ Backend starting...");
 
   // 3. Initialize database
   if (!DatabaseManager::getInstance().init()) {
-    LOG_WARN(
+    TR_LOG_WARN(
         "Could not connect to PostgreSQL database. Continuing without DB.");
   }
 
   // 4. Initialize Redis cache
   if (!CacheManager::getInstance().init()) {
-    LOG_WARN("Could not connect to Redis. Continuing without cache.");
+    TR_LOG_WARN("Could not connect to Redis. Continuing without cache.");
   }
 
   // 5. Initialize ML Services
@@ -46,7 +47,7 @@ int main() {
       {drogon::Get});
 
   int port = Config::getInstance().getInt("PORT", 8080);
-  LOG_INFO("Server listening on port {}", port);
+  TR_LOG_INFO("Server listening on port {}", port);
 
   drogon::app().addListener("0.0.0.0", port).setThreadNum(4).run();
 

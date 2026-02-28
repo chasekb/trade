@@ -12,7 +12,7 @@ bool DatabaseManager::init() {
   std::string db_url = config.get("DATABASE_URL");
 
   if (db_url.empty()) {
-    LOG_ERROR("DATABASE_URL is missing from configuration.");
+    TR_LOG_ERROR("DATABASE_URL is missing from configuration.");
     return false;
   }
 
@@ -20,15 +20,15 @@ bool DatabaseManager::init() {
     // Just establish a connection to test
     conn_ = std::make_unique<pqxx::connection>(db_url);
     if (conn_->is_open()) {
-      LOG_INFO("Successfully connected to PostgreSQL database: {}",
-               conn_->dbname());
+      TR_LOG_INFO("Successfully connected to PostgreSQL database: {}",
+                  conn_->dbname());
       return true;
     } else {
-      LOG_ERROR("Failed to open the database: {}", conn_->dbname());
+      TR_LOG_ERROR("Failed to open the database: {}", conn_->dbname());
       return false;
     }
   } catch (const std::exception &e) {
-    LOG_ERROR("Database connection error: {}", e.what());
+    TR_LOG_ERROR("Database connection error: {}", e.what());
     return false;
   }
 }
@@ -48,7 +48,7 @@ pqxx::result DatabaseManager::query(const std::string &sql) {
       W.commit();
       return R;
     } catch (const std::exception &e) {
-      LOG_ERROR("Database query failed: {}", e.what());
+      TR_LOG_ERROR("Database query failed: {}", e.what());
     }
   }
   return pqxx::result{};
