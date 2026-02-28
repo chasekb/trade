@@ -4,7 +4,7 @@ A comprehensive trading bot system with web dashboard, backtesting, live trading
 
 ## 🏗️ Project Structure
 
-```
+```text
 trade/
 ├── app.py                      # FastAPI backend server (Docker deployment)
 ├── docker-compose.yml          # Docker Compose deployment configuration
@@ -127,7 +127,7 @@ pip install scikit-learn pandas numpy joblib requests
 
 **⚠️ Never commit your `.env` file or expose your API credentials!**
 
-```
+```text
 
 ### Running the Application
 
@@ -156,16 +156,16 @@ The system uses **GitHub Actions** for remote multi-platform builds. Images are 
 # Pull branch-specific images from GHCR
 TAG=dev podman-compose pull
 
-# Run using the dev branch images
-TAG=dev podman-compose up
+# Run using the dev branch images (force remote build usage)
+TAG=dev podman-compose up --no-build
 ```
 
 **To run the production (`main`) images:**
 
 ```bash
 # Defaults to :latest (linked to main)
-podman-compose pull
-podman-compose up
+TAG=main podman-compose pull
+TAG=main podman-compose up --no-build
 ```
 
 #### 🧪 Running C++ Tests
@@ -271,7 +271,7 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 
 ### ML System Architecture
 
-```
+```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Trading Bot   │    │  ML Optimizer   │    │ Vector Database │
 │                 │    │                 │    │                 │
