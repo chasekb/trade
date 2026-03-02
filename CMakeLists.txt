@@ -14,8 +14,8 @@ find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 
 # New ML dependencies
+# New ML dependencies
 find_package(mlpack CONFIG REQUIRED)
-find_package(xgboost CONFIG REQUIRED)
 # Note: Torch usually requires a path or is installed via LibTorch
 # find_package(Torch REQUIRED)
 
@@ -50,7 +50,6 @@ target_link_libraries(trading_bot_cpp PRIVATE
     onnxruntime::onnxruntime
     xtensor
     mlpack::mlpack
-    xgboost::xgboost
     # ${TORCH_LIBRARIES}
 )
 
