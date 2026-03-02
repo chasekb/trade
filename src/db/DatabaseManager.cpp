@@ -1,6 +1,6 @@
-#include "../include/db/DatabaseManager.hpp"
-#include "../include/config/Config.hpp"
-#include "../include/utils/Logger.hpp"
+#include "db/DatabaseManager.hpp"
+#include "config/Config.hpp"
+#include "utils/Logger.hpp"
 
 DatabaseManager &DatabaseManager::getInstance() {
   static DatabaseManager instance;

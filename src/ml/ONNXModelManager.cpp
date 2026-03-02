@@ -15,6 +15,7 @@ ONNXModelManager::ONNXModelManager()
 }
 
 bool ONNXModelManager::load_models(const std::string &model_dir) {
+  model_dir_ = model_dir;
   try {
     std::filesystem::path dir(model_dir);
     std::string reg_path = (dir / "regressor.onnx").string();
@@ -218,3 +219,8 @@ ONNXModelManager::run_inference(Ort::Session &session,
 }
 
 } // namespace ml
+
+bool ONNXModelManager::reload_models() {
+  if (model_dir_.empty()) return false;
+  return load_models(model_dir_);
+}

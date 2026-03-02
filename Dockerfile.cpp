@@ -1,32 +1,29 @@
-FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04
+# --- STAGE 1: Build ---
+FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev autoconf automake libtool linux-libc-dev && rm -rf /var/lib/apt/lists/*
+# Install build dependencies and cleanup in one layer
+RUN apt-get update && apt-get install -y \
+    cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
+    autoconf automake libtool linux-libc-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Clone and setup vcpkg
-RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg \
-    && /opt/vcpkg/bootstrap-vcpkg.sh \
-    && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg
+# Clone vcpkg with minimal depth
+RUN git clone --depth=1 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
+    && /opt/vcpkg/bootstrap-vcpkg.sh
 
-# Provide the project code
-WORKDIR /app
-
-# Copy ONLY vcpkg.json first to cache dependencies
+WORKDIR /build
 COPY vcpkg.json ./
 
-# Install dependencies using vcpkg manifest mode
-# This layer will be cached unless vcpkg.json changes
+# Install dependencies and clean up vcpkg metadata immediately to save space
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
-    vcpkg install --triplet $TRIPLET
+    /opt/vcpkg/vcpkg install --triplet $TRIPLET && \
+    rm -rf /opt/vcpkg/buildtrees /opt/vcpkg/downloads
 
-# Copy the rest of the source
-# (.dockerignore ensures we don't overwrite vcpkg_installed)
+# Copy source and build
 COPY . .
-
-# Final build
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
@@ -34,8 +31,25 @@ RUN ARCH=$(uname -m) && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
-    -DVCPKG_INSTALLED_DIR=/app/vcpkg_installed \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j$(nproc)
 
-CMD ["./build/trading_bot_cpp"]
+# --- STAGE 2: Runtime ---
+FROM ubuntu:22.04
+
+# Install only runtime essentials
+RUN apt-get update && apt-get install -y \
+    libssl3 libuuid1 libc-ares2 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the compiled binary from the builder stage
+COPY --from=builder /build/build/trading_bot_cpp .
+# Copy only the necessary vcpkg-installed libraries
+COPY --from=builder /build/vcpkg_installed/ /app/vcpkg_installed/
+
+# Ensure the app can find the vcpkg libraries at runtime
+ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux/lib:/app/vcpkg_installed/x64-linux/lib:$LD_LIBRARY_PATH
+
+CMD ["./trading_bot_cpp"]

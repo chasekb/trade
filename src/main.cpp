@@ -1,8 +1,8 @@
-#include "include/api/PredictController.hpp"
-#include "include/cache/CacheManager.hpp"
-#include "include/config/Config.hpp"
-#include "include/db/DatabaseManager.hpp"
-#include "include/utils/Logger.hpp"
+#include "api/PredictController.hpp"
+#include "cache/CacheManager.hpp"
+#include "config/Config.hpp"
+#include "db/DatabaseManager.hpp"
+#include "utils/Logger.hpp"
 #include <drogon/drogon.h>
 #include <functional>
 #include <string>

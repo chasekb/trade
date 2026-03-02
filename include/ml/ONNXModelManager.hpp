@@ -14,6 +14,7 @@ public:
 
   // Load models from directory
   bool load_models(const std::string &model_dir);
+  bool reload_models(); // Reload from the same directory
 
   // Predict PnL (Regression)
   double predict_pnl(const std::vector<double> &features);
@@ -43,9 +44,8 @@ private:
   std::vector<std::string> output_node_names_;
 
   // Feature dimensions expected by the model
-  size_t input_dim_ = 0;
-  size_t transformer_lookback_ = 0;
   size_t transformer_features_ = 0;
+  std::string model_dir_;
 };
 
 } // namespace ml
