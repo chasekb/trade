@@ -1,5 +1,6 @@
 #include "ml/Metrics.hpp"
 #include <algorithm>
+#include <nlohmann/json.hpp>
 #include <numeric>
 
 namespace trade {
@@ -153,8 +154,6 @@ double Metrics::calculate_profit_factor(const std::vector<double> &pnl) {
   return gross_profit / gross_loss;
 }
 
-} // namespace ml
-
 // JSON Serialization for ModelMetrics
 void to_json(nlohmann::json &j, const ml::ModelMetrics &m) {
   j = nlohmann::json{{"accuracy", m.accuracy},
@@ -176,4 +175,5 @@ void from_json(const nlohmann::json &j, ml::ModelMetrics &m) {
   j.at("profit_factor").get_to(m.profit_factor);
 }
 
+} // namespace ml
 } // namespace trade
