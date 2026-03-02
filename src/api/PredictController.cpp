@@ -1,8 +1,11 @@
 
 #include "api/PredictController.hpp"
+#include "cache/CacheManager.hpp"
 #include "ml/Types.hpp"
 #include "utils/Logger.hpp"
+#include <chrono>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 namespace api {
 
@@ -84,6 +87,79 @@ void PredictController::predict(
     resp->setStatusCode(k500InternalServerError);
     callback(resp);
   }
+}
+
+void PredictController::train(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  if (!json_req) {
+    Json::Value err;
+    err["error"] = "Invalid JSON";
+    callback(HttpResponse::newHttpJsonResponse(err));
+    return;
+  }
+
+  // Phase 3 Orchestration: Trigger training in a background thread
+  std::thread training_thread([]() {
+    auto &cache = CacheManager::getInstance();
+    cache.set_training_status("training", 10); // Started
+
+    try {
+      // In a real scenario, we'd use a ModelTrainer instance here
+      // auto trainer = std::make_unique<ml::ModelTrainer>(...);
+      // trainer->train(config);
+
+      // For now, simulate training
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+      cache.set_training_status("training", 50); // Mid-way
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+
+      // Reload models once training is done
+      if (model_manager_) {
+        model_manager_->reload_models();
+      }
+
+      cache.set_training_status("completed", 100);
+    } catch (const std::exception &e) {
+      TR_LOG_ERROR("Training failed: {}", e.what());
+      cache.set_training_status("failed", 0);
+    }
+  });
+  training_thread.detach();
+
+  Json::Value resp;
+  resp["status"] = "Started training process in background";
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::status(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto [status, progress] = CacheManager::getInstance().get_training_status();
+
+  Json::Value resp;
+  resp["status"] = status;
+  resp["progress"] = progress;
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::performance(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+
+  ml::ModelMetrics metrics = CacheManager::getInstance().get_last_metrics();
+
+  // Create a JSON response for the metrics
+  nlohmann::json j;
+  ml::to_json(j, metrics);
+
+  // Convert nlohmann::json to Json::Value for Drogon
+  Json::Value resp;
+  Json::Reader reader;
+  reader.parse(j.dump(), resp);
+
+  callback(HttpResponse::newHttpJsonResponse(resp));
 }
 
 } // namespace api

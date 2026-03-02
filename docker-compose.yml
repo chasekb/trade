@@ -28,45 +28,6 @@ services:
       retries: 3
       start_period: 60s
 
-  # Backend API Service (Python FastAPI)
-  backend:
-    image: ghcr.io/chasekb/trade/backend:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    volumes:
-      # Mount source code for development
-      - .:/app
-      # Persist database files
-      - ./data:/app/data
-      # Mount logs
-      - ./outputs:/app/outputs
-      - ./logs:/app/logs
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=redis://redis:6379
-      - QDRANT_URL=http://qdrant:6333
-      - ML_SERVER_URL=http://ml-server:8002
-      - ENV=production
-      - PORT=8000
-      - PYTHONPATH=/app/legacy_python/src
-    depends_on:
-      - db
-      - redis
-      - qdrant
-    networks:
-      - trading-network
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    command: [ "python", "legacy_python/app.py" ]
-
   # Frontend Service (Next.js TypeScript)
   frontend:
     image: ghcr.io/chasekb/trade/frontend:${TAG:-latest}
@@ -76,12 +37,12 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-      - NEXT_PUBLIC_WS_URL=ws://backend:8000
+      - NEXT_PUBLIC_API_URL=http://cpp-backend:8080
+      - NEXT_PUBLIC_WS_URL=ws://cpp-backend:8080
       - NEXT_PUBLIC_NODE_ENV=production
       - NEXT_PUBLIC_APP_VERSION=1.0.0
     depends_on:
-      - backend
+      - cpp-backend
     networks:
       - trading-network
     restart: unless-stopped
@@ -148,33 +109,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # ML Model Server
-  ml-server:
-    image: ghcr.io/chasekb/trade/ml-server:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: legacy_python/src/trade_bot/ml/Dockerfile
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./data:/app/data
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-    depends_on:
-      - db
-      - qdrant
-    networks:
-      - trading-network
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://ml-server:8002/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
 volumes:
   postgres_data:

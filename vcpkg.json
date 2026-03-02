@@ -11,6 +11,8 @@
         "onnxruntime",
         "xtl",
         "xsimd",
-        "xtensor"
+        "xtensor",
+        "mlpack",
+        "xgboost"
     ]
 }

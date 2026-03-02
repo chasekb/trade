@@ -13,22 +13,32 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 
+# New ML dependencies
+find_package(mlpack CONFIG REQUIRED)
+find_package(xgboost CONFIG REQUIRED)
+# Note: Torch usually requires a path or is installed via LibTorch
+# find_package(Torch REQUIRED)
+
 # Collect all source files
 set(SOURCES
-    src/cpp_backend/main.cpp
-    src/cpp_backend/config/Config.cpp
-    src/cpp_backend/utils/Logger.cpp
-    src/cpp_backend/db/DatabaseManager.cpp
-    src/cpp_backend/cache/CacheManager.cpp
-    src/cpp_backend/ml/FeatureEngineer.cpp
-    src/cpp_backend/ml/ONNXModelManager.cpp
-    src/cpp_backend/ml/Types.cpp
-    src/cpp_backend/api/PredictController.cpp
+    src/main.cpp
+    src/config/Config.cpp
+    src/utils/Logger.cpp
+    src/db/DatabaseManager.cpp
+    src/cache/CacheManager.cpp
+    src/ml/FeatureEngineer.cpp
+    src/ml/Metrics.cpp
+    src/ml/ONNXModelManager.cpp
+    src/ml/Types.cpp
+    src/ml/DataCollector.cpp
+    src/ml/TransformerModel.cpp
+    src/ml/ModelTrainer.cpp
+    src/api/PredictController.cpp
 )
 
 add_executable(trading_bot_cpp ${SOURCES})
 
-target_include_directories(trading_bot_cpp PRIVATE src/cpp_backend/include)
+target_include_directories(trading_bot_cpp PRIVATE include)
 
 target_link_libraries(trading_bot_cpp PRIVATE
     Drogon::Drogon
@@ -39,17 +49,21 @@ target_link_libraries(trading_bot_cpp PRIVATE
     spdlog::spdlog
     onnxruntime::onnxruntime
     xtensor
+    mlpack::mlpack
+    xgboost::xgboost
+    # ${TORCH_LIBRARIES}
 )
+
 if(xtensor_INCLUDE_DIRS)
     target_include_directories(trading_bot_cpp PRIVATE ${xtensor_INCLUDE_DIRS})
 endif()
 
 # Test executable
 add_executable(test_feature_engineer 
-    src/cpp_backend/tests/test_feature_engineer.cpp
-    src/cpp_backend/ml/FeatureEngineer.cpp
+    src/tests/test_feature_engineer.cpp
+    src/ml/FeatureEngineer.cpp
 )
-target_include_directories(test_feature_engineer PRIVATE src/cpp_backend/include)
+target_include_directories(test_feature_engineer PRIVATE include)
 target_link_libraries(test_feature_engineer PRIVATE
     nlohmann_json::nlohmann_json
     spdlog::spdlog
