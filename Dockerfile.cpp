@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y \
     autoconf automake libtool linux-libc-dev gfortran pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone vcpkg with minimal depth
-RUN git clone --depth=1 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
+# Clone vcpkg from a stable release tag to avoid transient master breakages
+RUN git clone --depth=1 -b 2026.01.16 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 
 WORKDIR /build
@@ -31,7 +31,6 @@ RUN ARCH=$(uname -m) && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
-    -DVCPKG_MANIFEST_INSTALL_DIR=/app/vcpkg_installed \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j$(nproc)
 
