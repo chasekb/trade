@@ -12,9 +12,11 @@ RUN git clone --depth=1 -b 2026.01.16 https://github.com/microsoft/vcpkg.git /op
     && /opt/vcpkg/bootstrap-vcpkg.sh
 
 WORKDIR /build
-COPY vcpkg.json ./
 
-# Install dependencies and clean up vcpkg metadata immediately to save space
+# Copy everything first so vcpkg install runs with the full manifest in place
+COPY . .
+
+# Install dependencies - vcpkg in manifest mode will install to /build/vcpkg_installed
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
@@ -22,8 +24,7 @@ RUN ARCH=$(uname -m) && \
     /opt/vcpkg/vcpkg install --triplet $TRIPLET && \
     rm -rf /opt/vcpkg/buildtrees /opt/vcpkg/downloads
 
-# Copy source and build
-COPY . .
+# Build the application
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
