@@ -13,11 +13,14 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 
-# New ML dependencies
-# New ML dependencies
-find_package(mlpack CONFIG REQUIRED)
-# Note: Torch usually requires a path or is installed via LibTorch
-# find_package(Torch REQUIRED)
+# mlpack is header-only – use find_path instead of find_package
+find_path(MLPACK_INCLUDE_DIR NAMES mlpack.hpp mlpack/core.hpp
+    HINTS ${CMAKE_PREFIX_PATH}/include
+    PATH_SUFFIXES mlpack
+)
+if(NOT MLPACK_INCLUDE_DIR)
+    message(FATAL_ERROR "mlpack headers not found. Ensure vcpkg installed mlpack.")
+endif()
 
 # Collect all source files
 set(SOURCES
@@ -38,7 +41,7 @@ set(SOURCES
 
 add_executable(trading_bot_cpp ${SOURCES})
 
-target_include_directories(trading_bot_cpp PRIVATE include)
+target_include_directories(trading_bot_cpp PRIVATE include ${MLPACK_INCLUDE_DIR})
 
 target_link_libraries(trading_bot_cpp PRIVATE
     Drogon::Drogon
@@ -49,8 +52,7 @@ target_link_libraries(trading_bot_cpp PRIVATE
     spdlog::spdlog
     onnxruntime::onnxruntime
     xtensor
-    mlpack::mlpack
-    # ${TORCH_LIBRARIES}
+    # mlpack is header-only, linked via include dirs above
 )
 
 if(xtensor_INCLUDE_DIRS)
