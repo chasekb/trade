@@ -32,6 +32,7 @@ RUN ARCH=$(uname -m) && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
+    -DCMAKE_PREFIX_PATH=/build/vcpkg_installed/$TRIPLET \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j$(nproc)
 
