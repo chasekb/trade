@@ -16,12 +16,15 @@ WORKDIR /build
 # Copy everything first so vcpkg install runs with the full manifest in place
 COPY . .
 
-# Install dependencies - vcpkg in manifest mode will install to /build/vcpkg_installed
+# Install dependencies with retry logic to handle transient network issues
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
-    /opt/vcpkg/vcpkg install --triplet $TRIPLET && \
+    for i in 1 2 3; do \
+    /opt/vcpkg/vcpkg install --triplet $TRIPLET && break || \
+    (echo "vcpkg install attempt $i failed, retrying in 10s..." && sleep 10); \
+    done && \
     rm -rf /opt/vcpkg/buildtrees /opt/vcpkg/downloads
 
 # Build the application
