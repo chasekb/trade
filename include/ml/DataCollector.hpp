@@ -5,7 +5,7 @@
 #include <pqxx/pqxx>
 #include <string>
 #include <vector>
-#include <xtensor/xarray.hpp>
+#include <xtensor/containers/xarray.hpp>
 
 namespace trade {
 namespace ml {
