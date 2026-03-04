@@ -1,6 +1,8 @@
 #include "cache/CacheManager.hpp"
 #include "config/Config.hpp"
+#include "ml/ModelTrainer.hpp"
 #include "utils/Logger.hpp"
+#include <nlohmann/json.hpp>
 
 CacheManager &CacheManager::getInstance() {
   static CacheManager instance;
