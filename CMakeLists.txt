@@ -14,13 +14,24 @@ find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 
 # mlpack is header-only – use find_path instead of find_package
-find_path(MLPACK_INCLUDE_DIR NAMES mlpack.hpp mlpack/core.hpp
-    HINTS ${CMAKE_PREFIX_PATH}/include
-    PATH_SUFFIXES mlpack
-)
-if(NOT MLPACK_INCLUDE_DIR)
-    message(FATAL_ERROR "mlpack headers not found. Ensure vcpkg installed mlpack.")
+# Auto-detect the vcpkg installed include directory (handles any triplet name)
+file(GLOB VCPKG_INSTALLED_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/*/include")
+if(VCPKG_INSTALLED_DIRS)
+    list(GET VCPKG_INSTALLED_DIRS 0 VCPKG_INCLUDE_DIR)
+    message(STATUS "Found vcpkg installed include dir: ${VCPKG_INCLUDE_DIR}")
+    include_directories(BEFORE SYSTEM ${VCPKG_INCLUDE_DIR})
+else()
+    message(WARNING "vcpkg installed include dir not found, using VCPKG_TRIPLET_INCLUDE_DIR hint")
+    if(VCPKG_TRIPLET_INCLUDE_DIR)
+        include_directories(BEFORE SYSTEM ${VCPKG_TRIPLET_INCLUDE_DIR})
+    endif()
 endif()
+
+find_path(MLPACK_INCLUDE_DIR NAMES mlpack.hpp mlpack/core.hpp)
+if(NOT MLPACK_INCLUDE_DIR)
+    message(WARNING "mlpack headers not found explicitly, relying on global include dirs")
+endif()
+
 
 # Collect all source files
 set(SOURCES
