@@ -41,7 +41,9 @@ set(SOURCES
 
 add_executable(trading_bot_cpp ${SOURCES})
 
-target_include_directories(trading_bot_cpp PRIVATE include ${MLPACK_INCLUDE_DIR})
+# Add vcpkg installed headers explicitly so header-only libs (xtensor, mlpack, etc.) are always found
+set(VCPKG_INSTALLED_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include")
+target_include_directories(trading_bot_cpp PRIVATE include ${MLPACK_INCLUDE_DIR} ${VCPKG_INSTALLED_INCLUDE})
 
 target_link_libraries(trading_bot_cpp PRIVATE
     Drogon::Drogon
