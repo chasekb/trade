@@ -1,10 +1,7 @@
 # --- STAGE 1: Build ---
 FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 
-# Install build dependencies and cleanup in one layer
 
-
-# Clone vcpkg from a stable release tag to avoid transient master breakages
 RUN git clone --depth=1 -b 2026.01.16 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 
