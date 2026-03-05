@@ -1,7 +1,15 @@
 # --- STAGE 1: Build ---
 FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 
+# Install build dependencies and cleanup in one layer
+RUN apt-get update && apt-get install -y \
+    cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
+    autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
+    libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
+    libdbus-1-dev libglib2.0-dev libxi-dev libxtst-dev \
+    && rm -rf /var/lib/apt/lists/*
 
+# Clone vcpkg from a stable release tag to avoid transient master breakages
 RUN git clone --depth=1 -b 2026.01.16 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 
