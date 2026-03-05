@@ -4,7 +4,7 @@ FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 # Install build dependencies and cleanup in one layer
 RUN apt-get update && apt-get install -y \
     cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
-    autoconf automake libtool linux-libc-dev gfortran pkg-config \
+    autoconf automake libtool linux-libc-dev gfortran pkg-config gperf \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone vcpkg from a stable release tag to avoid transient master breakages
@@ -21,10 +21,12 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
+    SUCCESS=0 && \
     for i in 1 2 3; do \
-    /opt/vcpkg/vcpkg install --triplet $TRIPLET && break || \
+    /opt/vcpkg/vcpkg install --triplet $TRIPLET && SUCCESS=1 && break || \
     (echo "vcpkg install attempt $i failed, retrying in 10s..." && sleep 10); \
     done && \
+    if [ $SUCCESS -eq 0 ]; then echo "vcpkg install failed" && exit 1; fi && \
     rm -rf /opt/vcpkg/buildtrees /opt/vcpkg/downloads
 
 # Build the application
