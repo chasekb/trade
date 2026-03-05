@@ -4,7 +4,7 @@ FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 # Install build dependencies and cleanup in one layer
 RUN apt-get update && apt-get install -y \
     cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
-    autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive \
+    autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone vcpkg from a stable release tag to avoid transient master breakages
