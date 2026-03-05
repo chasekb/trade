@@ -12,6 +12,7 @@
         "xtl",
         "xsimd",
         "xtensor",
-        "mlpack"
+        "mlpack",
+        "libtorch"
     ]
 }
