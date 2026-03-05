@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y \
     autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
     libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
     libdbus-1-dev libglib2.0-dev libxi-dev libxtst-dev \
+    libxrandr-dev libxinerama-dev libxcursor-dev libxdamage-dev libxcomposite-dev \
+    libatk1.0-dev libatk-bridge2.0-dev libpango1.0-dev libgdk-pixbuf2.0-dev libxkbcommon-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone vcpkg from a stable release tag to avoid transient master breakages
