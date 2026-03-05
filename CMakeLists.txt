@@ -27,6 +27,7 @@ find_package(redis++ CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
+find_package(Torch CONFIG REQUIRED)
 
 # mlpack is header-only – no find_package needed, headers already in include_directories above
 find_path(MLPACK_INCLUDE_DIR NAMES mlpack.hpp mlpack/core.hpp)
@@ -68,6 +69,7 @@ target_link_libraries(trading_bot_cpp PRIVATE
     spdlog::spdlog
     onnxruntime::onnxruntime
     xtensor
+    torch
     # mlpack is header-only, linked via include dirs above
 )
 
