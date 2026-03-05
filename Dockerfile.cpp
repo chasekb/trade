@@ -5,6 +5,7 @@ FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 RUN apt-get update && apt-get install -y \
     cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
     autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
+    libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone vcpkg from a stable release tag to avoid transient master breakages
