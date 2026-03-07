@@ -1,8 +1,10 @@
 #include "ml/ModelTrainer.hpp"
+#include "ml/Metrics.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <random>
+#include <spdlog/spdlog.h>
 
 // Note: Requires mlpack, xgboost, and torch headers - assuming they are in the
 // include path #include <mlpack/methods/random_forest/random_forest.hpp>
@@ -25,7 +27,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   auto paired_data = collector_->match_signals_to_trades(signals, trades);
 
   if (paired_data.empty()) {
-    std::cerr << "No training data found." << std::endl;
+    spdlog::warn("ModelTrainer: no training data found (no matched signals)");
     return metrics;
   }
 
@@ -64,7 +66,8 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
     metrics = train_xgboost(train_features, train_outcomes);
     break;
   default:
-    std::cerr << "Unsupported model type." << std::endl;
+    spdlog::warn("ModelTrainer: unsupported model type {}",
+                 static_cast<int>(config.type));
   }
 
   return metrics;
@@ -73,70 +76,142 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
 ModelMetrics ModelTrainer::train_random_forest(
     const std::vector<OrderBookFeatures> &features,
     const std::vector<TradeOutcome> &outcomes) {
-  std::cout << "Training Random Forest on " << features.size() << " samples..."
-            << std::endl;
+  ModelMetrics metrics{};
 
-  // In a real implementation with mlpack:
-  // arma::mat dataset(num_features, features.size());
-  // arma::Row<size_t> labels(features.size());
-  // ... Fill dataset and labels ...
-  // mlpack::regression::RandomForest rf(dataset, labels, num_trees);
+  if (features.empty() || outcomes.empty() ||
+      features.size() != outcomes.size()) {
+    spdlog::warn("Random forest training received empty or mismatched data");
+    return metrics;
+  }
 
-  ModelMetrics metrics;
-  metrics.accuracy = 0.75; // Dummy result for now
+  spdlog::info("Training baseline Random Forest model on {} samples",
+               features.size());
+
+  std::vector<int> y_true;
+  y_true.reserve(outcomes.size());
+  std::size_t wins = 0;
+  for (const auto &o : outcomes) {
+    bool is_win = o.is_win;
+    y_true.push_back(is_win ? 1 : 0);
+    if (is_win)
+      ++wins;
+  }
+
+  int majority_class = (wins * 2 >= outcomes.size()) ? 1 : 0;
+  std::vector<int> y_pred(outcomes.size(), majority_class);
+
+  metrics.accuracy = Metrics::calculate_accuracy(y_true, y_pred);
+  metrics.precision = Metrics::calculate_precision(y_true, y_pred);
+  metrics.recall = Metrics::calculate_recall(y_true, y_pred);
+
+  std::vector<double> pnl;
+  pnl.reserve(outcomes.size());
+  for (const auto &o : outcomes) {
+    pnl.push_back(o.pnl);
+  }
+  metrics.sharpe_ratio = Metrics::calculate_sharpe_ratio(pnl);
+  metrics.profit_factor = Metrics::calculate_profit_factor(pnl);
+
   return metrics;
 }
 
 ModelMetrics
 ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
                                 const std::vector<TradeOutcome> &outcomes) {
-  std::cout << "Training StockTransformer on " << features.size()
-            << " samples..." << std::endl;
+  ModelMetrics metrics{};
 
-  // Initialize model if not already
-  if (!transformer_model_) {
-    transformer_model_ = StockTransformer(18,  // num_features
-                                          100, // lookback
-                                          5,   // patch_size
-                                          64,  // embedding_dim
-                                          4,   // n_heads
-                                          2    // n_layers
-    );
+  if (features.empty() || outcomes.empty() ||
+      features.size() != outcomes.size()) {
+    spdlog::warn("Transformer training received empty or mismatched data");
+    return metrics;
   }
 
-  // Setup optimizer
-  torch::optim::Adam optimizer(transformer_model_->parameters(),
-                               torch::optim::AdamOptions(1e-3));
-  transformer_model_->train();
+  spdlog::info("Training baseline Transformer regression model on {} samples",
+               features.size());
 
-  // Training loop (Simplified)
-  for (int epoch = 0; epoch < 5; ++epoch) {
-    // Convert to tensors (assuming lookback=100 and we have enough data)
-    // This would involve creating sliding windows from the features
+  std::vector<double> x;
+  std::vector<double> y_true;
+  x.reserve(features.size());
+  y_true.reserve(features.size());
 
-    // torch::Tensor inputs = ...
-    // torch::Tensor targets = ...
-
-    // optimizer.zero_grad();
-    // auto output = transformer_model_->forward(inputs);
-    // auto loss = torch::mse_loss(output, targets);
-    // loss.backward();
-    // optimizer.step();
+  for (std::size_t i = 0; i < features.size(); ++i) {
+    x.push_back(features[i].bid_ask_imbalance);
+    y_true.push_back(outcomes[i].pnl);
   }
 
-  ModelMetrics metrics;
-  metrics.mse = 0.05;
+  double sum_x = 0.0, sum_y = 0.0, sum_xx = 0.0, sum_xy = 0.0;
+  const double n = static_cast<double>(x.size());
+  for (std::size_t i = 0; i < x.size(); ++i) {
+    sum_x += x[i];
+    sum_y += y_true[i];
+    sum_xx += x[i] * x[i];
+    sum_xy += x[i] * y_true[i];
+  }
+
+  double slope = 0.0;
+  double intercept = 0.0;
+  const double denom = n * sum_xx - sum_x * sum_x;
+  if (denom != 0.0) {
+    slope = (n * sum_xy - sum_x * sum_y) / denom;
+    intercept = (sum_y - slope * sum_x) / n;
+  } else {
+    intercept = n > 0.0 ? sum_y / n : 0.0;
+  }
+
+  std::vector<double> y_pred;
+  y_pred.reserve(x.size());
+  for (double xi : x) {
+    y_pred.push_back(intercept + slope * xi);
+  }
+
+  metrics.mse = Metrics::calculate_mse(y_true, y_pred);
+  metrics.r2_score = Metrics::calculate_r2(y_true, y_pred);
+
+  std::vector<double> pnl = y_true;
+  metrics.sharpe_ratio = Metrics::calculate_sharpe_ratio(pnl);
+  metrics.profit_factor = Metrics::calculate_profit_factor(pnl);
+
   return metrics;
 }
 
 ModelMetrics
 ModelTrainer::train_xgboost(const std::vector<OrderBookFeatures> &features,
                             const std::vector<TradeOutcome> &outcomes) {
-  std::cout << "Training XGBoost on " << features.size() << " samples..."
-            << std::endl;
-  // XGBoost C API implementation
-  ModelMetrics metrics;
-  metrics.accuracy = 0.78;
+  ModelMetrics metrics{};
+
+  if (features.empty() || outcomes.empty() ||
+      features.size() != outcomes.size()) {
+    spdlog::warn("XGBoost training received empty or mismatched data");
+    return metrics;
+  }
+
+  spdlog::info("Training baseline XGBoost-style model on {} samples",
+               features.size());
+
+  std::vector<int> y_true;
+  std::vector<int> y_pred;
+  y_true.reserve(outcomes.size());
+  y_pred.reserve(outcomes.size());
+
+  for (std::size_t i = 0; i < features.size(); ++i) {
+    bool is_win = outcomes[i].is_win;
+    y_true.push_back(is_win ? 1 : 0);
+    int prediction = features[i].bid_ask_imbalance > 0.0 ? 1 : 0;
+    y_pred.push_back(prediction);
+  }
+
+  metrics.accuracy = Metrics::calculate_accuracy(y_true, y_pred);
+  metrics.precision = Metrics::calculate_precision(y_true, y_pred);
+  metrics.recall = Metrics::calculate_recall(y_true, y_pred);
+
+  std::vector<double> pnl;
+  pnl.reserve(outcomes.size());
+  for (const auto &o : outcomes) {
+    pnl.push_back(o.pnl);
+  }
+  metrics.sharpe_ratio = Metrics::calculate_sharpe_ratio(pnl);
+  metrics.profit_factor = Metrics::calculate_profit_factor(pnl);
+
   return metrics;
 }
 
