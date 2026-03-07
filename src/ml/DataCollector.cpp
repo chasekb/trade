@@ -1,5 +1,6 @@
 #include "ml/DataCollector.hpp"
 #include <chrono>
+#include <nlohmann/json.hpp>
 #include <pqxx/pqxx>
 #include <spdlog/spdlog.h>
 
@@ -36,12 +37,11 @@ std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
       signal.bid_ask_imbalance = row["strength"].as<double>();
       signal.mid_price = row["price"].as<double>();
 
-      // Note: In a real implementation, we'd parse the signal_data JSON.
-      // For now, we use defaults for the secondary features.
+      // Parse signal_data JSON when available to populate secondary features.
       signal.spread_percent = 0.001;
-      signal.bid_volume = 1.0;
-      signal.ask_volume = 1.0;
-      signal.order_book_depth = 2;
+      signal.bid_volume = 0.0;
+      signal.ask_volume = 0.0;
+      signal.order_book_depth = 0;
       signal.large_bid_wall = false;
       signal.large_ask_wall = false;
       signal.wall_size = 0.0;
@@ -52,6 +52,113 @@ std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
       signal.prev_win_probability = 0.5;
       signal.prev_expected_return = 0.0;
       signal.prev_confidence = 0.0;
+
+      try {
+        if (!row["signal_data"].is_null()) {
+          const char *raw = row["signal_data"].c_str();
+          if (raw && raw[0] == '{') {
+            nlohmann::json j = nlohmann::json::parse(raw, nullptr, false);
+            if (j.is_object()) {
+              // Spread and best bid/ask derived from JSON when present
+              double best_bid = j.value("best_bid", signal.mid_price * 0.999);
+              double best_ask = j.value("best_ask", signal.mid_price * 1.001);
+              if (best_bid > 0.0 && best_ask > best_bid) {
+                signal.spread_percent =
+                    (best_ask - best_bid) / ((best_ask + best_bid) / 2.0);
+              }
+
+              // Orderbook bids/asks for depth and volumes
+              const auto &bids = j.value("bids", nlohmann::json::array());
+              const auto &asks = j.value("asks", nlohmann::json::array());
+
+              auto sum_top_levels = [](const nlohmann::json &levels,
+                                       std::size_t max_levels) {
+                double total = 0.0;
+                std::size_t count = 0;
+                for (const auto &lvl : levels) {
+                  if (!lvl.is_array() || lvl.size() < 2)
+                    continue;
+                  total += lvl[1].get<double>();
+                  if (++count >= max_levels)
+                    break;
+                }
+                return total;
+              };
+
+              signal.bid_volume = sum_top_levels(bids, 5);
+              signal.ask_volume = sum_top_levels(asks, 5);
+
+              signal.order_book_depth =
+                  static_cast<int>(std::max(bids.size(), asks.size()));
+
+              auto detect_large_wall = [](const nlohmann::json &levels,
+                                          double threshold) {
+                for (const auto &lvl : levels) {
+                  if (!lvl.is_array() || lvl.size() < 2)
+                    continue;
+                  if (lvl[1].get<double>() > threshold)
+                    return true;
+                }
+                return false;
+              };
+
+              signal.large_bid_wall = detect_large_wall(bids, 1000.0);
+              signal.large_ask_wall = detect_large_wall(asks, 1000.0);
+
+              auto max_volume = [](const nlohmann::json &levels) {
+                double max_v = 0.0;
+                for (const auto &lvl : levels) {
+                  if (!lvl.is_array() || lvl.size() < 2)
+                    continue;
+                  max_v = std::max(max_v, lvl[1].get<double>());
+                }
+                return max_v;
+              };
+
+              double max_bid_v = max_volume(bids);
+              double max_ask_v = max_volume(asks);
+              signal.wall_size = std::max(max_bid_v, max_ask_v);
+
+              // VWAP from top-of-book when possible
+              double vwap = 0.0;
+              double total_vol = 0.0;
+              auto accumulate_vwap = [&](const nlohmann::json &levels) {
+                for (const auto &lvl : levels) {
+                  if (!lvl.is_array() || lvl.size() < 2)
+                    continue;
+                  double price = lvl[0].get<double>();
+                  double vol = lvl[1].get<double>();
+                  vwap += price * vol;
+                  total_vol += vol;
+                }
+              };
+              accumulate_vwap(bids);
+              accumulate_vwap(asks);
+              if (total_vol > 0.0) {
+                signal.volume_weighted_price = vwap / total_vol;
+              }
+
+              // Optional meta fields if present
+              signal.volume_24h = j.value("volume_24h", signal.volume_24h);
+
+              const auto &ml_analysis =
+                  j.value("ml_analysis", nlohmann::json::object());
+              if (ml_analysis.is_object()) {
+                signal.prev_win_probability =
+                    ml_analysis.value("win_probability",
+                                      signal.prev_win_probability);
+                signal.prev_expected_return =
+                    ml_analysis.value("expected_return",
+                                      signal.prev_expected_return);
+                signal.prev_confidence =
+                    ml_analysis.value("confidence", signal.prev_confidence);
+              }
+            }
+          }
+        }
+      } catch (const std::exception &e) {
+        spdlog::warn("Failed to parse signal_data JSON: {}", e.what());
+      }
 
       signals.push_back(signal);
     }
