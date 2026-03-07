@@ -22,8 +22,8 @@ public:
   std::pair<std::string, int> get_training_status();
 
   // ML metrics persistence
-  void set_last_metrics(const ml::ModelMetrics &metrics);
-  ml::ModelMetrics get_last_metrics();
+  void set_last_metrics(const trade::ml::ModelMetrics &metrics);
+  trade::ml::ModelMetrics get_last_metrics();
 
 private:
   CacheManager() = default;

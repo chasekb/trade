@@ -1,9 +1,13 @@
 
 #include "api/PredictController.hpp"
 #include "cache/CacheManager.hpp"
+#include "config/Config.hpp"
+#include "ml/ModelTrainer.hpp"
 #include "ml/Types.hpp"
 #include "utils/Logger.hpp"
 #include <chrono>
+#include <algorithm>
+#include <cctype>
 #include <nlohmann/json.hpp>
 #include <thread>
 
@@ -100,20 +104,69 @@ void PredictController::train(
     return;
   }
 
-  // Phase 3 Orchestration: Trigger training in a background thread
-  std::thread training_thread([]() {
+  nlohmann::json payload;
+  try {
+    Json::StreamWriterBuilder builder;
+    payload = nlohmann::json::parse(Json::writeString(builder, *json_req));
+  } catch (const std::exception &) {
+    Json::Value err;
+    err["error"] = "Invalid JSON payload";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  trade::ml::TrainingConfig config;
+  config.epochs = payload.value("epochs", config.epochs);
+  config.learning_rate = payload.value("learning_rate", config.learning_rate);
+  config.batch_size = payload.value("batch_size", config.batch_size);
+  config.test_split = payload.value("test_split", config.test_split);
+  config.model_name = payload.value("model_name", config.model_name);
+
+  std::string model_type = payload.value("model_type", "random_forest");
+  std::transform(model_type.begin(), model_type.end(), model_type.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+  if (model_type == "random_forest") {
+    config.type = trade::ml::ModelType::RANDOM_FOREST;
+  } else if (model_type == "gradient_boosting" || model_type == "xgboost") {
+    config.type = trade::ml::ModelType::GRADIENT_BOOSTING;
+  } else if (model_type == "transformer") {
+    config.type = trade::ml::ModelType::TRANSFORMER;
+  } else {
+    Json::Value err;
+    err["error"] = "Unsupported model_type. Use random_forest, gradient_boosting, or transformer.";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  auto &cfg = Config::getInstance();
+  std::string db_url = cfg.get("DATABASE_URL");
+  if (db_url.empty()) {
+    Json::Value err;
+    err["error"] = "DATABASE_URL is not configured";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k500InternalServerError);
+    callback(resp);
+    return;
+  }
+
+  // Trigger real training in a background thread
+  std::thread training_thread([config, db_url]() {
     auto &cache = CacheManager::getInstance();
     cache.set_training_status("training", 10); // Started
 
     try {
-      // In a real scenario, we'd use a ModelTrainer instance here
-      // auto trainer = std::make_unique<ml::ModelTrainer>(...);
-      // trainer->train(config);
+      auto collector = std::make_shared<trade::ml::DataCollector>(db_url);
+      trade::ml::ModelTrainer trainer(collector);
 
-      // For now, simulate training
-      std::this_thread::sleep_for(std::chrono::seconds(5));
       cache.set_training_status("training", 50); // Mid-way
-      std::this_thread::sleep_for(std::chrono::seconds(5));
+      trade::ml::ModelMetrics metrics = trainer.train(config);
+      cache.set_last_metrics(metrics);
+      cache.set_training_status("training", 90);
 
       // Reload models once training is done
       if (model_manager_) {
@@ -148,11 +201,11 @@ void PredictController::performance(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
 
-  ml::ModelMetrics metrics = CacheManager::getInstance().get_last_metrics();
+  trade::ml::ModelMetrics metrics = CacheManager::getInstance().get_last_metrics();
 
   // Create a JSON response for the metrics
   nlohmann::json j;
-  ml::to_json(j, metrics);
+  trade::ml::to_json(j, metrics);
 
   // Convert nlohmann::json to Json::Value for Drogon
   Json::Value resp;
