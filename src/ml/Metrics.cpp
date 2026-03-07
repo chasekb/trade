@@ -1,4 +1,5 @@
 #include "ml/Metrics.hpp"
+#include "ml/ModelTrainer.hpp"
 #include <algorithm>
 #include <nlohmann/json.hpp>
 #include <numeric>

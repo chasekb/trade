@@ -1,7 +1,7 @@
 #include "ml/DataCollector.hpp"
 #include <chrono>
-#include <iostream>
 #include <pqxx/pqxx>
+#include <spdlog/spdlog.h>
 
 namespace trade {
 namespace ml {
@@ -36,8 +36,8 @@ std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
       signal.bid_ask_imbalance = row["strength"].as<double>();
       signal.mid_price = row["price"].as<double>();
 
-      // Note: In a real implementation, we'd parse the signal_data JSON
-      // For now, we use defaults for the secondary features
+      // Note: In a real implementation, we'd parse the signal_data JSON.
+      // For now, we use defaults for the secondary features.
       signal.spread_percent = 0.001;
       signal.bid_volume = 1.0;
       signal.ask_volume = 1.0;
@@ -56,7 +56,7 @@ std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
       signals.push_back(signal);
     }
   } catch (const std::exception &e) {
-    std::cerr << "Database error in extract_signals: " << e.what() << std::endl;
+    spdlog::error("Database error in extract_signals: {}", e.what());
   }
   return signals;
 }
@@ -97,7 +97,7 @@ std::vector<TradeOutcome> DataCollector::extract_trades(int days_back) {
       trades.push_back(trade);
     }
   } catch (const std::exception &e) {
-    std::cerr << "Database error in extract_trades: " << e.what() << std::endl;
+    spdlog::error("Database error in extract_trades: {}", e.what());
   }
   return trades;
 }
@@ -108,9 +108,8 @@ DataCollector::match_signals_to_trades(
     const std::vector<TradeOutcome> &trades) {
   std::vector<std::pair<OrderBookFeatures, TradeOutcome>> pairs;
 
-  // Sort trades by timestamp if not already
   // Match each signal with the NEXT trade for that symbol within 5 minutes
-  // (300s)
+  // (300s). Assumes trades are already sorted by timestamp.
   for (const auto &signal : signals) {
     for (const auto &trade : trades) {
       if (trade.symbol == signal.symbol &&

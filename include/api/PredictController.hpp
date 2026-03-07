@@ -3,7 +3,6 @@
 #include "ml/ONNXModelManager.hpp"
 #include <drogon/HttpController.h>
 #include <memory>
-#include <torch/torch.h>
 
 using namespace drogon;
 

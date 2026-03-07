@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ml/ModelTrainer.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <vector>

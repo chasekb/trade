@@ -40,10 +40,9 @@ private:
   std::unique_ptr<Ort::Session> classifier_session_;
   std::unique_ptr<Ort::Session> transformer_session_;
 
-  std::vector<std::string> input_node_names_;
-  std::vector<std::string> output_node_names_;
-
   // Feature dimensions expected by the model
+  size_t input_dim_ = 0;
+  size_t transformer_lookback_ = 0;
   size_t transformer_features_ = 0;
   std::string model_dir_;
 };
