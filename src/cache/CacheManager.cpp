@@ -100,20 +100,20 @@ std::pair<std::string, int> CacheManager::get_training_status() {
   }
 }
 
-void CacheManager::set_last_metrics(const ml::ModelMetrics &metrics) {
+void CacheManager::set_last_metrics(const trade::ml::ModelMetrics &metrics) {
   if (!redis_)
     return;
   try {
     nlohmann::json j;
-    ml::to_json(j, metrics);
+    trade::ml::to_json(j, metrics);
     redis_->set("ml_last_metrics", j.dump());
   } catch (const std::exception &e) {
     TR_LOG_ERROR("Failed to set metrics in Redis: {}", e.what());
   }
 }
 
-ml::ModelMetrics CacheManager::get_last_metrics() {
-  ml::ModelMetrics metrics; // Returns defaults (0.0) if not found
+trade::ml::ModelMetrics CacheManager::get_last_metrics() {
+  trade::ml::ModelMetrics metrics; // Returns defaults (0.0) if not found
   if (!redis_)
     return metrics;
 
@@ -121,7 +121,7 @@ ml::ModelMetrics CacheManager::get_last_metrics() {
     auto val = redis_->get("ml_last_metrics");
     if (val) {
       auto j = nlohmann::json::parse(*val);
-      ml::from_json(j, metrics);
+      trade::ml::from_json(j, metrics);
     }
   } catch (const std::exception &e) {
     TR_LOG_ERROR("Failed to get metrics from Redis: {}", e.what());
