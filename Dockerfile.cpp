@@ -17,8 +17,8 @@ RUN git clone --depth=1 -b 2026.01.16 https://github.com/microsoft/vcpkg.git /op
 
 WORKDIR /build
 
-# Copy everything first so vcpkg install runs with the full manifest in place
-COPY . .
+# Copy manifest first so vcpkg install can be cached separately
+COPY vcpkg.json .
 
 # Install dependencies with retry logic to handle transient network issues
 RUN ARCH=$(uname -m) && \
@@ -33,6 +33,9 @@ RUN ARCH=$(uname -m) && \
     if [ $SUCCESS -eq 0 ]; then echo "vcpkg install failed" && exit 1; fi && \
     rm -rf /opt/vcpkg/buildtrees /opt/vcpkg/downloads
 
+# Copy the rest of the source after dependencies for better Docker layer caching
+COPY . .
+
 # Build the application
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
@@ -41,8 +44,6 @@ RUN ARCH=$(uname -m) && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
-    -DCMAKE_PREFIX_PATH=/build/vcpkg_installed/$TRIPLET \
-    -DVCPKG_TRIPLET_INCLUDE_DIR=/build/vcpkg_installed/$TRIPLET/include \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j$(nproc)
 
@@ -59,7 +60,7 @@ WORKDIR /app
 # Copy the compiled binary from the builder stage
 COPY --from=builder /build/build/trading_bot_cpp .
 # Copy only the necessary vcpkg-installed libraries
-COPY --from=builder /build/vcpkg_installed/ /app/vcpkg_installed/
+COPY --from=builder /build/build/vcpkg_installed/ /app/vcpkg_installed/
 
 # Ensure the app can find the vcpkg libraries at runtime
 ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux/lib:/app/vcpkg_installed/x64-linux/lib:$LD_LIBRARY_PATH

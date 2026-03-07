@@ -6,7 +6,6 @@
 #include <drogon/drogon.h>
 #include <functional>
 #include <string>
-#include <torch/torch.h>
 
 int main() {
   // 1. Load configuration from .env

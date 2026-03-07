@@ -220,7 +220,12 @@ ONNXModelManager::run_inference(Ort::Session &session,
 
 } // namespace ml
 
+namespace ml {
+
 bool ONNXModelManager::reload_models() {
-  if (model_dir_.empty()) return false;
+  if (model_dir_.empty())
+    return false;
   return load_models(model_dir_);
 }
+
+} // namespace ml
