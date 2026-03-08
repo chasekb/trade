@@ -30,12 +30,12 @@ torch::Tensor PatchEmbeddingImpl::forward(torch::Tensor x) {
 
 CausalSelfAttentionImpl::CausalSelfAttentionImpl(int64_t embedding_dim,
                                                  int64_t n_heads,
-                                                 double dropout)
+                                                 double dropout_rate)
     : n_heads_(n_heads), embedding_dim_(embedding_dim),
       qkv(torch::nn::Linear(embedding_dim, embedding_dim * 3)),
       proj(torch::nn::Linear(embedding_dim, embedding_dim)),
-      attn_dropout(torch::nn::Dropout(dropout)),
-      res_dropout(torch::nn::Dropout(dropout)) {
+      attn_dropout(torch::nn::Dropout(dropout_rate)),
+      res_dropout(torch::nn::Dropout(dropout_rate)) {
   register_module("qkv", qkv);
   register_module("proj", proj);
   register_module("attn_dropout", attn_dropout);
@@ -66,15 +66,16 @@ torch::Tensor CausalSelfAttentionImpl::forward(torch::Tensor x) {
 }
 
 TransformerBlockImpl::TransformerBlockImpl(int64_t embedding_dim,
-                                           int64_t n_heads, double dropout)
+                                           int64_t n_heads,
+                                           double dropout_rate)
     : ln1(torch::nn::LayerNorm(torch::nn::LayerNormOptions({embedding_dim}))),
       ln2(torch::nn::LayerNorm(torch::nn::LayerNormOptions({embedding_dim}))),
-      attn(CausalSelfAttention(embedding_dim, n_heads, dropout)),
+      attn(CausalSelfAttention(embedding_dim, n_heads, dropout_rate)),
       mlp(torch::nn::Sequential(
           torch::nn::Linear(embedding_dim, 4 * embedding_dim),
           torch::nn::GELU(),
           torch::nn::Linear(4 * embedding_dim, embedding_dim),
-          torch::nn::Dropout(dropout))) {
+          torch::nn::Dropout(dropout_rate))) {
   register_module("ln1", ln1);
   register_module("ln2", ln2);
   register_module("attn", attn);
@@ -91,10 +92,11 @@ StockTransformerImpl::StockTransformerImpl(int64_t n_features, int64_t lookback,
                                            int64_t patch_size,
                                            int64_t embedding_dim,
                                            int64_t n_heads, int64_t n_layers,
-                                           double dropout)
+                                           double dropout_rate)
     : lookback_(lookback), patch_size_(patch_size),
       patch_embed(PatchEmbedding(n_features, patch_size, embedding_dim)),
-      dropout(torch::nn::Dropout(dropout)),
+      dropout(torch::nn::Dropout(dropout_rate)),
+      blocks(torch::nn::ModuleList()),
       ln_f(torch::nn::LayerNorm(torch::nn::LayerNormOptions({embedding_dim}))),
       head(torch::nn::Linear(embedding_dim, 1)) {
 
@@ -103,7 +105,7 @@ StockTransformerImpl::StockTransformerImpl(int64_t n_features, int64_t lookback,
                                  torch::zeros({1, num_patches, embedding_dim}));
 
   for (int64_t i = 0; i < n_layers; ++i) {
-    blocks->push_back(TransformerBlock(embedding_dim, n_heads, dropout));
+    blocks->push_back(TransformerBlock(embedding_dim, n_heads, dropout_rate));
   }
 
   register_module("patch_embed", patch_embed);
@@ -120,7 +122,7 @@ torch::Tensor StockTransformerImpl::forward(torch::Tensor x) {
   x = dropout->forward(x);
 
   for (auto &block : *blocks) {
-    x = block.as<TransformerBlock>()->forward(x);
+    x = block->as<TransformerBlock>()->forward(x);
   }
 
   x = ln_f->forward(x);
