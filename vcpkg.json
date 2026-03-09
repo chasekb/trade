@@ -13,6 +13,7 @@
         "xsimd",
         "xtensor",
         "mlpack",
-        "libtorch"
+        "libtorch",
+        "sleef"
     ]
 }
