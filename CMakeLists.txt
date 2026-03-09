@@ -13,6 +13,8 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 find_package(Torch CONFIG REQUIRED)
+# Workaround for arm64 libtorch_cpu unresolved SLEEF symbols in some vcpkg builds
+find_package(sleef CONFIG QUIET)
 
 # mlpack is header-only – no find_package needed, headers already in include_directories above
 # Collect all source files
@@ -50,6 +52,16 @@ target_link_libraries(trading_bot_cpp PRIVATE
     torch
     # mlpack is header-only, linked via include dirs above
 )
+
+# vcpkg/libtorch on arm64 can miss transitive SLEEF linkage from torch target.
+# Link it explicitly when available.
+if(TARGET sleef)
+    target_link_libraries(trading_bot_cpp PRIVATE sleef)
+elseif(TARGET sleef::sleef)
+    target_link_libraries(trading_bot_cpp PRIVATE sleef::sleef)
+elseif(TARGET SLEEF::sleef)
+    target_link_libraries(trading_bot_cpp PRIVATE SLEEF::sleef)
+endif()
 
 if(xtensor_INCLUDE_DIRS)
     target_include_directories(trading_bot_cpp PRIVATE ${xtensor_INCLUDE_DIRS})
