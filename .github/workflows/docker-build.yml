@@ -33,12 +33,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
+            echo "GHCR login attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "GHCR login failed after retries"
+          exit 1
 
       - name: Build and push C++ Backend (${{ matrix.suffix }})
         uses: docker/build-push-action@v5
@@ -62,12 +67,17 @@ jobs:
       packages: write
 
     steps:
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
+            echo "GHCR login attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "GHCR login failed after retries"
+          exit 1
 
       - name: Create and push multi-arch manifest for C++ Backend
         run: |
@@ -102,12 +112,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
+            echo "GHCR login attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "GHCR login failed after retries"
+          exit 1
 
       - name: Build and push Frontend (${{ matrix.suffix }})
         uses: docker/build-push-action@v5
@@ -131,12 +146,17 @@ jobs:
       packages: write
 
     steps:
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
+            echo "GHCR login attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "GHCR login failed after retries"
+          exit 1
 
       - name: Create and push multi-arch manifest for Frontend
         run: |
@@ -169,12 +189,17 @@ jobs:
         uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
+            echo "GHCR login attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "GHCR login failed after retries"
+          exit 1
       - name: Build and push Qdrant (${{ matrix.suffix }})
         uses: docker/build-push-action@v5
         with:
@@ -196,12 +221,17 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
+            echo "GHCR login attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "GHCR login failed after retries"
+          exit 1
       - name: Create and push multi-arch manifest for Qdrant
         run: |
           docker buildx imagetools create \
