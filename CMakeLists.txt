@@ -15,6 +15,7 @@ find_package(xtensor CONFIG REQUIRED)
 find_package(Torch CONFIG REQUIRED)
 # Workaround for arm64 libtorch_cpu unresolved SLEEF symbols in some vcpkg builds
 find_package(sleef CONFIG QUIET)
+find_package(SLEEF CONFIG QUIET)
 
 # mlpack is header-only – no find_package needed, headers already in include_directories above
 # Collect all source files
@@ -54,13 +55,40 @@ target_link_libraries(trading_bot_cpp PRIVATE
 )
 
 # vcpkg/libtorch on arm64 can miss transitive SLEEF linkage from torch target.
-# Link it explicitly when available.
-if(TARGET sleef)
-    target_link_libraries(trading_bot_cpp PRIVATE sleef)
-elseif(TARGET sleef::sleef)
-    target_link_libraries(trading_bot_cpp PRIVATE sleef::sleef)
+# Link SLEEF explicitly with robust target/library fallbacks.
+set(SLEEF_LINK_LIBS "")
+if(TARGET sleef::sleef)
+    list(APPEND SLEEF_LINK_LIBS sleef::sleef)
 elseif(TARGET SLEEF::sleef)
-    target_link_libraries(trading_bot_cpp PRIVATE SLEEF::sleef)
+    list(APPEND SLEEF_LINK_LIBS SLEEF::sleef)
+elseif(TARGET sleef)
+    list(APPEND SLEEF_LINK_LIBS sleef)
+endif()
+
+# Some vcpkg/sleef configs expose raw libraries without imported targets.
+if(NOT SLEEF_LINK_LIBS)
+    find_library(SLEEF_LIBRARY
+        NAMES sleef libsleef
+        PATH_SUFFIXES lib
+    )
+    find_library(SLEEF_GNUABI_LIBRARY
+        NAMES sleefgnuabi libsleefgnuabi
+        PATH_SUFFIXES lib
+    )
+
+    if(SLEEF_LIBRARY)
+        list(APPEND SLEEF_LINK_LIBS ${SLEEF_LIBRARY})
+    endif()
+    if(SLEEF_GNUABI_LIBRARY)
+        list(APPEND SLEEF_LINK_LIBS ${SLEEF_GNUABI_LIBRARY})
+    endif()
+endif()
+
+if(SLEEF_LINK_LIBS)
+    message(STATUS "Linking SLEEF explicitly: ${SLEEF_LINK_LIBS}")
+    target_link_libraries(trading_bot_cpp PRIVATE ${SLEEF_LINK_LIBS})
+else()
+    message(STATUS "SLEEF libraries not found; proceeding without explicit SLEEF linkage")
 endif()
 
 if(xtensor_INCLUDE_DIRS)
