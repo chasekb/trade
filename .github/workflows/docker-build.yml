@@ -1,4 +1,4 @@
-name: Docker Build and Push
+name: Docker Build Validation
 
 on:
   push:
@@ -24,7 +24,6 @@ jobs:
 
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout repository
@@ -33,59 +32,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry (retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in 1 2 3 4 5; do
-            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
-            echo "GHCR login attempt $i failed; retrying in 10s..."
-            sleep 10
-          done
-          echo "GHCR login failed after retries"
-          exit 1
-
-      - name: Build and push C++ Backend (${{ matrix.suffix }})
+      - name: Build C++ Backend (${{ matrix.suffix }})
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.cpp
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ghcr.io/${{ github.repository }}/cpp-backend:latest-${{ matrix.suffix }}
+          push: false
           cache-from: type=gha,scope=cpp-${{ matrix.suffix }}
           cache-to: type=gha,mode=max,scope=cpp-${{ matrix.suffix }}
-
-  merge-cpp-manifest:
-    name: Merge C++ Backend Manifest
-    needs: build-cpp
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Log in to GitHub Container Registry (retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in 1 2 3 4 5; do
-            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
-            echo "GHCR login attempt $i failed; retrying in 10s..."
-            sleep 10
-          done
-          echo "GHCR login failed after retries"
-          exit 1
-
-      - name: Create and push multi-arch manifest for C++ Backend
-        run: |
-          docker buildx imagetools create \
-            --tag ghcr.io/${{ github.repository }}/cpp-backend:latest \
-            --tag ghcr.io/${{ github.repository }}/cpp-backend:${{ github.ref_name }} \
-            ghcr.io/${{ github.repository }}/cpp-backend:latest-amd64 \
-            ghcr.io/${{ github.repository }}/cpp-backend:latest-arm64
 
   build-frontend:
     name: Build Frontend (${{ matrix.suffix }})
@@ -103,7 +58,6 @@ jobs:
 
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout repository
@@ -112,59 +66,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry (retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in 1 2 3 4 5; do
-            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
-            echo "GHCR login attempt $i failed; retrying in 10s..."
-            sleep 10
-          done
-          echo "GHCR login failed after retries"
-          exit 1
-
-      - name: Build and push Frontend (${{ matrix.suffix }})
+      - name: Build Frontend (${{ matrix.suffix }})
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ghcr.io/${{ github.repository }}/frontend:latest-${{ matrix.suffix }}
+          push: false
           cache-from: type=gha,scope=frontend-${{ matrix.suffix }}
           cache-to: type=gha,mode=max,scope=frontend-${{ matrix.suffix }}
-
-  merge-frontend-manifest:
-    name: Merge Frontend Manifest
-    needs: build-frontend
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Log in to GitHub Container Registry (retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in 1 2 3 4 5; do
-            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
-            echo "GHCR login attempt $i failed; retrying in 10s..."
-            sleep 10
-          done
-          echo "GHCR login failed after retries"
-          exit 1
-
-      - name: Create and push multi-arch manifest for Frontend
-        run: |
-          docker buildx imagetools create \
-            --tag ghcr.io/${{ github.repository }}/frontend:latest \
-            --tag ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }} \
-            ghcr.io/${{ github.repository }}/frontend:latest-amd64 \
-            ghcr.io/${{ github.repository }}/frontend:latest-arm64
 
 
 
@@ -183,61 +93,19 @@ jobs:
             suffix: arm64
     permissions:
       contents: read
-      packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Log in to GitHub Container Registry (retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in 1 2 3 4 5; do
-            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
-            echo "GHCR login attempt $i failed; retrying in 10s..."
-            sleep 10
-          done
-          echo "GHCR login failed after retries"
-          exit 1
-      - name: Build and push Qdrant (${{ matrix.suffix }})
+      - name: Build Qdrant (${{ matrix.suffix }})
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./qdrant.Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ghcr.io/${{ github.repository }}/qdrant:latest-${{ matrix.suffix }}
+          push: false
           cache-from: type=gha,scope=qdrant-${{ matrix.suffix }}
           cache-to: type=gha,mode=max,scope=qdrant-${{ matrix.suffix }}
-
-  merge-qdrant-manifest:
-    name: Merge Qdrant Manifest
-    needs: build-qdrant
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Log in to GitHub Container Registry (retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in 1 2 3 4 5; do
-            printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin && exit 0
-            echo "GHCR login attempt $i failed; retrying in 10s..."
-            sleep 10
-          done
-          echo "GHCR login failed after retries"
-          exit 1
-      - name: Create and push multi-arch manifest for Qdrant
-        run: |
-          docker buildx imagetools create \
-            --tag ghcr.io/${{ github.repository }}/qdrant:latest \
-            --tag ghcr.io/${{ github.repository }}/qdrant:${{ github.ref_name }} \
-            ghcr.io/${{ github.repository }}/qdrant:latest-amd64 \
-            ghcr.io/${{ github.repository }}/qdrant:latest-arm64
 
 
