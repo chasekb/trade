@@ -147,8 +147,11 @@ services:
 
 volumes:
   postgres_data:
+    name: trade_postgres_data
   redis_data:
+    name: trade_redis_data
   qdrant_storage:
+    name: trade_qdrant_storage
 
 networks:
   trading-network:
