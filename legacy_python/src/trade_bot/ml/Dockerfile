@@ -6,14 +6,14 @@ RUN apt-get update && apt-get install -y procps curl && rm -rf /var/lib/apt/list
 # Set the working directory for installation
 WORKDIR /app
 
-# Copy requirements from the correct location relative to build context (root)
-COPY legacy_python/src/trade_bot/ml/requirements.txt .
+# Copy requirements from the current legacy_python build context
+COPY src/trade_bot/ml/requirements.txt .
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the source code
-COPY legacy_python/src /app/src
+COPY src /app/src
 
 # Set PYTHONPATH to include src so trade_bot package can be found
 ENV PYTHONPATH=/app/src
