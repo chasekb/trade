@@ -113,6 +113,14 @@ list(REMOVE_DUPLICATES SLEEF_LINK_LIBS)
 
 if(SLEEF_LINK_LIBS)
     message(STATUS "Linking SLEEF explicitly: ${SLEEF_LINK_LIBS}")
+    # On Linux, the linker may enable --as-needed by default. In that mode,
+    # explicitly listed SLEEF shared libraries can still be dropped even though
+    # libtorch_cpu.so needs them, which leaves arm64/SVE symbols unresolved in
+    # GitHub Actions. Disable as-needed for this target so the explicit SLEEF
+    # linkage is retained.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_options(trading_bot_cpp PRIVATE "-Wl,--no-as-needed")
+    endif()
     target_link_libraries(trading_bot_cpp PRIVATE ${SLEEF_LINK_LIBS})
 else()
     message(STATUS "SLEEF libraries not found; proceeding without explicit SLEEF linkage")
