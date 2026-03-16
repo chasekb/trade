@@ -65,6 +65,24 @@ elseif(TARGET sleef)
     list(APPEND SLEEF_LINK_LIBS sleef)
 endif()
 
+# arm64 libtorch can also require additional SLEEF companion libraries for
+# GNU ABI / vectorized symbols that are not always propagated transitively.
+if(TARGET sleef::sleefgnuabi)
+    list(APPEND SLEEF_LINK_LIBS sleef::sleefgnuabi)
+elseif(TARGET SLEEF::sleefgnuabi)
+    list(APPEND SLEEF_LINK_LIBS SLEEF::sleefgnuabi)
+elseif(TARGET sleefgnuabi)
+    list(APPEND SLEEF_LINK_LIBS sleefgnuabi)
+endif()
+
+if(TARGET sleef::sleefquad)
+    list(APPEND SLEEF_LINK_LIBS sleef::sleefquad)
+elseif(TARGET SLEEF::sleefquad)
+    list(APPEND SLEEF_LINK_LIBS SLEEF::sleefquad)
+elseif(TARGET sleefquad)
+    list(APPEND SLEEF_LINK_LIBS sleefquad)
+endif()
+
 # Some vcpkg/sleef configs expose raw libraries without imported targets.
 if(NOT SLEEF_LINK_LIBS)
     find_library(SLEEF_LIBRARY
@@ -75,6 +93,10 @@ if(NOT SLEEF_LINK_LIBS)
         NAMES sleefgnuabi libsleefgnuabi
         PATH_SUFFIXES lib
     )
+    find_library(SLEEF_QUAD_LIBRARY
+        NAMES sleefquad libsleefquad
+        PATH_SUFFIXES lib
+    )
 
     if(SLEEF_LIBRARY)
         list(APPEND SLEEF_LINK_LIBS ${SLEEF_LIBRARY})
@@ -82,7 +104,12 @@ if(NOT SLEEF_LINK_LIBS)
     if(SLEEF_GNUABI_LIBRARY)
         list(APPEND SLEEF_LINK_LIBS ${SLEEF_GNUABI_LIBRARY})
     endif()
+    if(SLEEF_QUAD_LIBRARY)
+        list(APPEND SLEEF_LINK_LIBS ${SLEEF_QUAD_LIBRARY})
+    endif()
 endif()
+
+list(REMOVE_DUPLICATES SLEEF_LINK_LIBS)
 
 if(SLEEF_LINK_LIBS)
     message(STATUS "Linking SLEEF explicitly: ${SLEEF_LINK_LIBS}")
