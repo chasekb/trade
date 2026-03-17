@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+const backendBaseUrl =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:8000';
+
 const nextConfig: NextConfig = {
   serverExternalPackages: ['ws', 'bufferutil', 'utf-8-validate'],
   experimental: {
@@ -18,11 +23,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://backend:8000/api/:path*' // Use internal docker network
+        destination: `${backendBaseUrl}/api/:path*`
       },
       {
         source: '/ws',
-        destination: 'http://backend:8000/ws' // WebSocket proxy
+        destination: `${backendBaseUrl}/ws`
       }
     ];
   },
