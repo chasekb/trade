@@ -1,7 +1,9 @@
 // API client for trading dashboard
 import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParams, OrderBookSignal } from '@/types/trading';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Always use same-origin requests from the browser and let Next.js rewrites
+// proxy to the appropriate backend target for the current environment.
+const API_BASE_URL = '';
 
 class ApiClient {
   private async request<T>(

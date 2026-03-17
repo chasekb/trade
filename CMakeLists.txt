@@ -32,6 +32,7 @@ set(SOURCES
     src/ml/DataCollector.cpp
     src/ml/TransformerModel.cpp
     src/ml/ModelTrainer.cpp
+    src/trading/TradingStatsService.cpp
     src/api/PredictController.cpp
 )
 

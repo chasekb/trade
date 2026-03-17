@@ -4,6 +4,7 @@
 #include "config/Config.hpp"
 #include "ml/ModelTrainer.hpp"
 #include "ml/Types.hpp"
+#include "trading/TradingStatsService.hpp"
 #include "utils/Logger.hpp"
 #include <chrono>
 #include <algorithm>
@@ -91,6 +92,38 @@ void PredictController::predict(
     resp->setStatusCode(k500InternalServerError);
     callback(resp);
   }
+}
+
+void PredictController::tradingStats(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+
+  const auto stats = trade::trading::TradingStatsService().getTradingStats();
+
+  Json::Value result;
+  result["total_pnl"] = stats.total_pnl;
+  result["total_fees"] = stats.total_fees;
+  result["net_pnl"] = stats.net_pnl;
+  result["win_rate"] = stats.win_rate;
+  result["total_trades"] = stats.total_trades;
+  result["winning_trades"] = stats.winning_trades;
+  result["losing_trades"] = stats.losing_trades;
+  result["avg_win"] = stats.avg_win;
+  result["avg_loss"] = stats.avg_loss;
+  result["best_trade"] = stats.best_trade;
+  result["worst_trade"] = stats.worst_trade;
+  result["profit_factor"] = stats.profit_factor;
+  result["sharpe_ratio"] = stats.sharpe_ratio;
+  result["max_drawdown"] = stats.max_drawdown;
+  result["total_volume"] = stats.total_volume;
+  result["avg_trade_size"] = stats.avg_trade_size;
+  result["trades_today"] = stats.trades_today;
+  if (!stats.last_trade_time.empty()) {
+    result["last_trade_time"] = stats.last_trade_time;
+  }
+
+  callback(HttpResponse::newHttpJsonResponse(result));
 }
 
 void PredictController::train(
