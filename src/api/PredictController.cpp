@@ -9,6 +9,8 @@
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <ctime>
+#include <filesystem>
 #include <nlohmann/json.hpp>
 #include <thread>
 
@@ -18,9 +20,11 @@ std::unique_ptr<ml::FeatureEngineer> PredictController::feature_engineer_ =
     nullptr;
 std::unique_ptr<ml::ONNXModelManager> PredictController::model_manager_ =
     nullptr;
+std::string PredictController::model_dir_;
 
 void PredictController::init(const std::string &param_path,
                              const std::string &model_dir) {
+  model_dir_ = model_dir;
   feature_engineer_ = std::make_unique<ml::FeatureEngineer>();
   if (!feature_engineer_->load_parameters(param_path)) {
     TR_LOG_ERROR("Failed to load feature engineer parameters from {}",
@@ -130,24 +134,20 @@ void PredictController::train(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
   auto json_req = req->getJsonObject();
-  if (!json_req) {
-    Json::Value err;
-    err["error"] = "Invalid JSON";
-    callback(HttpResponse::newHttpJsonResponse(err));
-    return;
-  }
 
-  nlohmann::json payload;
-  try {
-    Json::StreamWriterBuilder builder;
-    payload = nlohmann::json::parse(Json::writeString(builder, *json_req));
-  } catch (const std::exception &) {
-    Json::Value err;
-    err["error"] = "Invalid JSON payload";
-    auto resp = HttpResponse::newHttpJsonResponse(err);
-    resp->setStatusCode(k400BadRequest);
-    callback(resp);
-    return;
+  nlohmann::json payload = nlohmann::json::object();
+  if (json_req) {
+    try {
+      Json::StreamWriterBuilder builder;
+      payload = nlohmann::json::parse(Json::writeString(builder, *json_req));
+    } catch (const std::exception &) {
+      Json::Value err;
+      err["error"] = "Invalid JSON payload";
+      auto resp = HttpResponse::newHttpJsonResponse(err);
+      resp->setStatusCode(k400BadRequest);
+      callback(resp);
+      return;
+    }
   }
 
   trade::ml::TrainingConfig config;
@@ -246,6 +246,64 @@ void PredictController::performance(
   reader.parse(j.dump(), resp);
 
   callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::availableModels(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+
+  Json::Value result(Json::arrayValue);
+
+  try {
+    if (!model_dir_.empty()) {
+      namespace fs = std::filesystem;
+      fs::path dir(model_dir_);
+
+      auto appendModelIfExists = [&](const std::string &file_name,
+                                     const std::string &model_id,
+                                     const std::string &display_name,
+                                     const std::string &type) {
+        fs::path file_path = dir / file_name;
+        if (!fs::exists(file_path)) {
+          return;
+        }
+
+        Json::Value model;
+        model["model_id"] = model_id;
+        model["model_name"] = display_name;
+        model["type"] = type;
+
+        try {
+          auto write_time = fs::last_write_time(file_path);
+          auto sys_time = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+              write_time - fs::file_time_type::clock::now() +
+              std::chrono::system_clock::now());
+          std::time_t cftime = std::chrono::system_clock::to_time_t(sys_time);
+          std::string ts = std::ctime(&cftime);
+          ts.erase(std::remove(ts.begin(), ts.end(), '\n'), ts.end());
+          model["trained_at"] = ts;
+        } catch (const std::exception &) {
+          model["trained_at"] = "unknown";
+        }
+
+        result.append(model);
+      };
+
+      appendModelIfExists("regressor.onnx", "regressor", "Regressor", "regression");
+      appendModelIfExists("classifier.onnx", "classifier", "Classifier", "classification");
+      appendModelIfExists("transformer.onnx", "transformer", "Transformer", "sequence");
+    }
+
+    callback(HttpResponse::newHttpJsonResponse(result));
+  } catch (const std::exception &e) {
+    TR_LOG_ERROR("Failed to list available models: {}", e.what());
+    Json::Value err;
+    err["error"] = e.what();
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k500InternalServerError);
+    callback(resp);
+  }
 }
 
 } // namespace api
