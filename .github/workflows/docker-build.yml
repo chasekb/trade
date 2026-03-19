@@ -9,25 +9,24 @@ on:
 
 jobs:
   build-cpp:
-    name: Build C++ Backend (${{ matrix.suffix }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
+    name: Build C++ Backend
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
+      packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -37,75 +36,84 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.cpp
-          platforms: ${{ matrix.platform }}
-          push: false
-          cache-from: type=gha,scope=cpp-${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=cpp-${{ matrix.suffix }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/chasekb/trade/cpp-backend:${{ github.ref_name }}
+            ghcr.io/chasekb/trade/cpp-backend:sha-${{ github.sha }}
+          cache-from: type=gha,scope=cpp
+          cache-to: type=gha,mode=max,scope=cpp
 
   build-frontend:
-    name: Build Frontend (${{ matrix.suffix }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
+    name: Build Frontend
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
+      packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Frontend (${{ matrix.suffix }})
+      - name: Build Frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
-          platforms: ${{ matrix.platform }}
-          push: false
-          cache-from: type=gha,scope=frontend-${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=frontend-${{ matrix.suffix }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/chasekb/trade/frontend:${{ github.ref_name }}
+            ghcr.io/chasekb/trade/frontend:sha-${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
 
 
   build-qdrant:
-    name: Build Qdrant (${{ matrix.suffix }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
+    name: Build Qdrant
+    runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build Qdrant (${{ matrix.suffix }})
+
+      - name: Build Qdrant
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./qdrant.Dockerfile
-          platforms: ${{ matrix.platform }}
-          push: false
-          cache-from: type=gha,scope=qdrant-${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=qdrant-${{ matrix.suffix }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/chasekb/trade/qdrant:${{ github.ref_name }}
+            ghcr.io/chasekb/trade/qdrant:sha-${{ github.sha }}
+          cache-from: type=gha,scope=qdrant
+          cache-to: type=gha,mode=max,scope=qdrant
 
 
