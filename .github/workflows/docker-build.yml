@@ -50,11 +50,7 @@ jobs:
           context: .
           file: ./Dockerfile.cpp
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
           outputs: type=image,name=${{ env.REGISTRY }}/cpp-backend,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.REGISTRY }}/cpp-backend:${{ github.ref_name }}-${{ matrix.arch }}
-            ${{ env.REGISTRY }}/cpp-backend:sha-${{ github.sha }}-${{ matrix.arch }}
           cache-from: type=gha,scope=cpp-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=cpp-${{ matrix.arch }}
 
@@ -147,11 +143,7 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
           outputs: type=image,name=${{ env.REGISTRY }}/frontend,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.REGISTRY }}/frontend:${{ github.ref_name }}-${{ matrix.arch }}
-            ${{ env.REGISTRY }}/frontend:sha-${{ github.sha }}-${{ matrix.arch }}
           cache-from: type=gha,scope=frontend-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=frontend-${{ matrix.arch }}
 
@@ -244,11 +236,7 @@ jobs:
           context: .
           file: ./qdrant.Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
           outputs: type=image,name=${{ env.REGISTRY }}/qdrant,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.REGISTRY }}/qdrant:${{ github.ref_name }}-${{ matrix.arch }}
-            ${{ env.REGISTRY }}/qdrant:sha-${{ github.sha }}-${{ matrix.arch }}
           cache-from: type=gha,scope=qdrant-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=qdrant-${{ matrix.arch }}
 
