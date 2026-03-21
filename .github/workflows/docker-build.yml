@@ -17,11 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: linux/amd64
-            arch: amd64
-          - platform: linux/arm64
-            arch: arm64
+        include: ${{ fromJSON((github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && '[{"platform":"linux/amd64","arch":"amd64"},{"platform":"linux/arm64","arch":"arm64"}]' || '[{"platform":"linux/amd64","arch":"amd64"}]') }}
     permissions:
       contents: read
       packages: write
