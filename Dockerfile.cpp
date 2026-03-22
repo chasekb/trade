@@ -33,6 +33,43 @@ portfile.write_text(text.replace(old, ''))
 print('Patched sleef portfile to keep SVE enabled for arm64 libtorch linkage')
 PY
 
+# LMDB upstream GitLab endpoint has intermittently served an expired cert in CI.
+# Patch the lmdb port to use the GitHub mirror tarball for the same LMDB_0.9.33
+# tag so vcpkg installs stay deterministic and reliable in GitHub Actions.
+RUN python3 - <<'PY'
+from pathlib import Path
+
+portfile = Path('/opt/vcpkg/ports/lmdb/portfile.cmake')
+text = portfile.read_text()
+
+old = '''vcpkg_from_gitlab(
+    OUT_SOURCE_PATH SOURCE_PATH
+    GITLAB_URL https://git.openldap.org
+    REPO openldap/openldap
+    REF "LMDB_${VERSION}"
+    SHA512 57404b35adb5136fcdf60552c2dd2626b9753868f2707d3279725e08145cee3be0d311189b2c6ef6879f25cf09962e6b423c70c8a2e09ef1b368948e873d92b5
+    HEAD_REF master
+    PATCHES
+        getopt-win32.diff
+)'''
+
+new = '''vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO LMDB/lmdb
+    REF "LMDB_${VERSION}"
+    SHA512 5c769936372cf3c9ce3a555a19506e8bd0567f2f3fc8e2b199e0404904c34ad2baac273a21b547d2049d99873ab6319baafb34bd5dd4fe3c48129e993d774f64
+    HEAD_REF mdb.master
+    PATCHES
+        getopt-win32.diff
+)'''
+
+if old not in text:
+    raise SystemExit('Expected lmdb source block was not found in lmdb portfile')
+
+portfile.write_text(text.replace(old, new))
+print('Patched lmdb portfile to fetch LMDB from GitHub mirror')
+PY
+
 WORKDIR /build
 
 # Copy manifest first so vcpkg install can be cached separately
@@ -81,6 +118,6 @@ COPY --from=builder /build/build/trading_bot_cpp .
 COPY --from=builder /build/build/vcpkg_installed/ /app/vcpkg_installed/
 
 # Ensure the app can find the vcpkg libraries at runtime
-ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux/lib:/app/vcpkg_installed/x64-linux/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux/lib:/app/vcpkg_installed/x64-linux/lib
 
 CMD ["./trading_bot_cpp"]
