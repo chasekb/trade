@@ -107,7 +107,7 @@ FROM ubuntu:22.04
 
 # Install only runtime essentials
 RUN apt-get update && apt-get install -y \
-    libssl3 libuuid1 libc-ares2 ca-certificates \
+    libssl3 libuuid1 libc-ares2 ca-certificates libgfortran5 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

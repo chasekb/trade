@@ -3,12 +3,13 @@ version: '3.8'
 services:
   # C++ Backend Service (New)
   cpp-backend:
-    image: ghcr.io/chasekb/trade/cpp-backend:${TAG:-latest}
+    image: ${CPP_BACKEND_IMAGE:-ghcr.io/chasekb/trade/cpp-backend:dev}
+    platform: ${CPP_BACKEND_PLATFORM:-linux/amd64}
     build:
       context: .
       dockerfile: Dockerfile.cpp
     ports:
-      - "8080:8080"
+      - "${CPP_BACKEND_HOST_PORT:-8081}:8080"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379
@@ -22,7 +23,11 @@ services:
       - trading-network
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      test:
+        [
+          "CMD-SHELL",
+          "(command -v curl >/dev/null 2>&1 && curl -fsS http://localhost:8080/health >/dev/null) || (command -v wget >/dev/null 2>&1 && wget -q -O- http://localhost:8080/health >/dev/null)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -47,7 +52,11 @@ services:
       - trading-network
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
+      test:
+        [
+          "CMD-SHELL",
+          "(command -v curl >/dev/null 2>&1 && curl -fsS http://localhost:3000/api/health >/dev/null) || (command -v wget >/dev/null 2>&1 && wget -q -O- http://localhost:3000/api/health >/dev/null)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
