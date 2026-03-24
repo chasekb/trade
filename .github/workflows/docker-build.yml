@@ -13,11 +13,11 @@ env:
 jobs:
   build-cpp:
     name: Build C++ Backend (${{ matrix.arch }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64"}]' || '[{"platform":"linux/amd64","arch":"amd64"},{"platform":"linux/arm64","arch":"arm64"}]') }}
+        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"self-hosted-arm64"}]') }}
     permissions:
       contents: read
       packages: write
@@ -34,6 +34,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
+        if: matrix.runs_on == 'ubuntu-latest'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -102,15 +103,17 @@ jobs:
 
   build-frontend:
     name: Build Frontend (${{ matrix.arch }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: linux/amd64
             arch: amd64
+            runs_on: ubuntu-latest
           - platform: linux/arm64
             arch: arm64
+            runs_on: self-hosted-arm64
     permissions:
       contents: read
       packages: write
@@ -127,6 +130,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
+        if: matrix.runs_on == 'ubuntu-latest'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -195,15 +199,17 @@ jobs:
 
   build-qdrant:
     name: Build Qdrant (${{ matrix.arch }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: linux/amd64
             arch: amd64
+            runs_on: ubuntu-latest
           - platform: linux/arm64
             arch: arm64
+            runs_on: self-hosted-arm64
     permissions:
       contents: read
       packages: write
@@ -220,6 +226,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
+        if: matrix.runs_on == 'ubuntu-latest'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
