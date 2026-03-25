@@ -103,12 +103,9 @@ RUN ARCH=$(uname -m) && \
     cmake --build build -j$(nproc)
 
 # --- STAGE 2: Runtime ---
-FROM ubuntu:22.04
-
-# Install only runtime essentials
-RUN apt-get update && apt-get install -y \
-    libssl3 libuuid1 libc-ares2 ca-certificates libgfortran5 \
-    && rm -rf /var/lib/apt/lists/*
+# Use the devcontainers C++ image directly for runtime to avoid apt/dpkg
+# libc-bin postinst crashes observed in emulated arm64 builds on GitHub Actions.
+FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS runtime
 
 WORKDIR /app
 
