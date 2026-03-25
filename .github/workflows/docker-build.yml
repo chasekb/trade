@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"self-hosted-arm64"}]') }}
+        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"ubuntu-latest"}]') }}
     permissions:
       contents: read
       packages: write
@@ -107,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"self-hosted-arm64"}]') }}
+        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"ubuntu-latest"}]') }}
     permissions:
       contents: read
       packages: write
@@ -197,7 +197,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"self-hosted-arm64"}]') }}
+        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"ubuntu-latest"}]') }}
     permissions:
       contents: read
       packages: write
