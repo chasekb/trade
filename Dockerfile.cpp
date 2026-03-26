@@ -109,6 +109,11 @@ FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS runtime
 
 WORKDIR /app
 
+# Runtime dependency for libtorch/openblas stack used by trading_bot_cpp
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgfortran5 libquadmath0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy the compiled binary from the builder stage
 COPY --from=builder /build/build/trading_bot_cpp .
 # Copy only the necessary vcpkg-installed libraries
