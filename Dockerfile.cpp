@@ -111,7 +111,7 @@ WORKDIR /app
 
 # Runtime dependency for libtorch/openblas stack used by trading_bot_cpp
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgfortran5 libquadmath0 \
+    libgfortran5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder stage
