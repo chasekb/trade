@@ -69,8 +69,8 @@ services:
       context: .
       dockerfile: qdrant.Dockerfile
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "${QDRANT_HOST_PORT:-16333}:6333"
+      - "${QDRANT_GRPC_HOST_PORT:-16334}:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
     networks:

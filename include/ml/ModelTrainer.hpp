@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ml/DataCollector.hpp"
-#include "ml/TransformerModel.hpp"
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -62,7 +61,6 @@ private:
                                  const std::vector<TradeOutcome> &outcomes);
 
   std::shared_ptr<DataCollector> collector_;
-  StockTransformer transformer_model_{nullptr};
 };
 
 } // namespace ml

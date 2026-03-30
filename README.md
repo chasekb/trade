@@ -142,7 +142,7 @@ This single command starts:
 - **C++ Backend**: High-performance ML inference at `http://localhost:8080`
 - **Frontend**: Next.js React dashboard on `http://localhost:3000`
 - **Backend**: FastAPI server on `http://localhost:8000` (Legacy/Integration)
-- Qdrant vector database on `http://localhost:6333`
+- Qdrant vector database on `http://localhost:16333`
 - Redis cache on `localhost:6379`
 - PostgreSQL database on `localhost:5432`
 
@@ -304,7 +304,7 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 
 ### ML Services (Automatically Started with Docker Compose)
 
-- **Qdrant Vector DB**: `http://localhost:6333` - Feature vector storage
+- **Qdrant Vector DB**: `http://localhost:16333` - Feature vector storage
 - **Redis Cache**: `localhost:6379` - High-performance caching
 - **PostgreSQL DB**: `localhost:5432` - Main database
 - **Backend API**: `http://localhost:8000` - FastAPI backend server
@@ -349,13 +349,13 @@ sudo apt-get install qdrant redis-server
 
 #### Port Conflicts
 
-If ports 3000, 8000, 6333, 6379, or 5432 are already in use:
+If ports 3000, 8000, 16333, 6379, or 5432 are already in use:
 
 ```bash
 # Check what's using the ports
 lsof -i :3000  # Frontend
 lsof -i :8000  # Backend
-lsof -i :6333  # Qdrant
+lsof -i :16333 # Qdrant
 lsof -i :6379  # Redis
 lsof -i :5432  # PostgreSQL
 
@@ -376,7 +376,7 @@ docker-compose up
 
 ```bash
 # Check service status
-curl http://localhost:6333/health        # Qdrant
+curl http://localhost:16333/health       # Qdrant
 redis-cli -p 6379 ping                  # Redis
 curl http://localhost:8000/health       # Backend API
 curl http://localhost:3000/api/health   # Frontend API
