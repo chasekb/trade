@@ -133,6 +133,11 @@ COPY --from=builder /build/build/trading_bot_cpp .
 # Copy only the necessary vcpkg-installed libraries
 COPY --from=builder /build/build/vcpkg_installed/ /app/vcpkg_installed/
 
+# Avoid loading onnxruntime provider shim shared library when the backend is
+# linked against static ORT/ONNX archives. Keeping this .so alongside the
+# static link can trigger duplicate ONNX schema registration at startup.
+RUN find /app/vcpkg_installed -type f -name 'libonnxruntime_providers_shared.so' -delete
+
 # Ensure the app can find the vcpkg libraries at runtime
 ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux/lib:/app/vcpkg_installed/x64-linux/lib
 

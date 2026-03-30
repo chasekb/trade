@@ -18,6 +18,14 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 
+# Build-time API endpoint values for Next.js rewrites/output.
+ARG BACKEND_URL=http://cpp-backend:8080
+ARG NEXT_PUBLIC_API_URL=http://cpp-backend:8080
+ARG NEXT_PUBLIC_WS_URL=ws://cpp-backend:8080
+ENV BACKEND_URL=${BACKEND_URL}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+
 # Install all dependencies in builder stage
 COPY package.json package-lock.json* ./
 RUN npm ci
