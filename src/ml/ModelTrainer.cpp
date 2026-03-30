@@ -216,17 +216,13 @@ ModelTrainer::train_xgboost(const std::vector<OrderBookFeatures> &features,
 }
 
 void ModelTrainer::save_model(const std::string &path) {
-  if (transformer_model_) {
-    torch::save(transformer_model_, path + ".pt");
-    std::cout << "Saved Transformer model to " << path << ".pt" << std::endl;
-  }
+  (void)path;
+  spdlog::warn("save_model is not implemented in the lightweight trainer build");
 }
 
 void ModelTrainer::load_model(const std::string &path) {
-  if (transformer_model_) {
-    torch::load(transformer_model_, path + ".pt");
-    std::cout << "Loaded Transformer model from " << path << ".pt" << std::endl;
-  }
+  (void)path;
+  spdlog::warn("load_model is not implemented in the lightweight trainer build");
 }
 
 } // namespace ml

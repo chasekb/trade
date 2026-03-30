@@ -8,11 +8,12 @@
         "hiredis",
         "redis-plus-plus",
         "spdlog",
-        "onnxruntime",
+        {
+            "name": "onnxruntime",
+            "default-features": false
+        },
         "xtl",
         "xsimd",
-        "xtensor",
-        "libtorch",
-        "sleef"
+        "xtensor"
     ]
 }

@@ -1,15 +1,22 @@
 # --- STAGE 1: Build ---
 FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 
-# Install build dependencies and cleanup in one layer
-RUN apt-get update && apt-get install -y \
-    cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
-    autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
-    libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
-    libdbus-1-dev libglib2.0-dev libxi-dev libxtst-dev \
-    libxrandr-dev libxinerama-dev libxcursor-dev libxdamage-dev libxcomposite-dev \
-    libatk1.0-dev libatk-bridge2.0-dev libpango1.0-dev libgdk-pixbuf2.0-dev libxkbcommon-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Install build dependencies with retry logic for transient mirror/network failures
+RUN set -eux; \
+    for i in 1 2 3 4 5; do \
+      apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update && \
+      apt-get install -y --no-install-recommends --fix-missing \
+        cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
+        autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
+        libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
+        libdbus-1-dev libglib2.0-dev libxi-dev libxtst-dev \
+        libxrandr-dev libxinerama-dev libxcursor-dev libxdamage-dev libxcomposite-dev \
+        libatk1.0-dev libatk-bridge2.0-dev libpango1.0-dev libgdk-pixbuf2.0-dev libxkbcommon-dev \
+      && break; \
+      echo "apt install attempt ${i} failed, retrying in 15s..."; \
+      sleep 15; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 # Clone vcpkg from a stable release tag to avoid transient master breakages
 RUN git clone --depth=1 -b 2026.01.16 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
@@ -80,9 +87,10 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
+    export VCPKG_DISABLE_METRICS=1 && \
     SUCCESS=0 && \
     for i in 1 2 3; do \
-    /opt/vcpkg/vcpkg install --triplet $TRIPLET && SUCCESS=1 && break || \
+    timeout 45m /opt/vcpkg/vcpkg install --triplet $TRIPLET && SUCCESS=1 && break || \
     (echo "vcpkg install attempt $i failed, retrying in 10s..." && sleep 10); \
     done && \
     if [ $SUCCESS -eq 0 ]; then echo "vcpkg install failed" && exit 1; fi && \
@@ -109,10 +117,16 @@ FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS runtime
 
 WORKDIR /app
 
-# Runtime dependency for libtorch/openblas stack used by trading_bot_cpp
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgfortran5 \
-    && rm -rf /var/lib/apt/lists/*
+# Runtime dependency for ONNX/OpenBLAS stack used by trading_bot_cpp
+RUN set -eux; \
+    for i in 1 2 3 4 5; do \
+      apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update && \
+      apt-get install -y --no-install-recommends --fix-missing libgfortran5 \
+      && break; \
+      echo "runtime apt install attempt ${i} failed, retrying in 15s..."; \
+      sleep 15; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder stage
 COPY --from=builder /build/build/trading_bot_cpp .
