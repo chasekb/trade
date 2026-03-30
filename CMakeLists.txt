@@ -33,6 +33,12 @@ set(SOURCES
 
 add_executable(trading_bot_cpp ${SOURCES})
 
+# Prevent duplicate ONNX schema registration when linking static ONNX/ORT
+# archives in the backend image.
+target_compile_definitions(trading_bot_cpp PRIVATE
+    __ONNX_DISABLE_STATIC_REGISTRATION
+)
+
 target_include_directories(trading_bot_cpp PRIVATE
     include
 )
