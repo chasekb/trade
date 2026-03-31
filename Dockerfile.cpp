@@ -79,23 +79,20 @@ PY
 
 WORKDIR /build
 
-# Copy manifest first so vcpkg install can be cached separately
+# Copy manifest + custom triplets first so dependency cache keys include
+# ONNX static-registration policy.
 COPY vcpkg.json .
+COPY vcpkg-triplets ./vcpkg-triplets
 
 # Install dependencies with retry logic to handle transient network issues
 RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
-    elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
-    else TRIPLET="x64-linux"; fi && \
+    if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux-onnxstaticoff"; \
+    elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux-onnxstaticoff"; \
+    else TRIPLET="x64-linux-onnxstaticoff"; fi && \
     export VCPKG_DISABLE_METRICS=1 && \
-    # Build ONNX/ORT dependencies with static ONNX schema registration disabled.
-    # Defining this only on the app target is insufficient because the duplicate
-    # registration originates inside prebuilt ONNX archives from vcpkg.
-    export VCPKG_C_FLAGS="-D__ONNX_DISABLE_STATIC_REGISTRATION" && \
-    export VCPKG_CXX_FLAGS="-D__ONNX_DISABLE_STATIC_REGISTRATION" && \
     SUCCESS=0 && \
     for i in 1 2 3; do \
-    timeout 45m /opt/vcpkg/vcpkg install --triplet $TRIPLET && SUCCESS=1 && break || \
+    timeout 45m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \
     (echo "vcpkg install attempt $i failed, retrying in 10s..." && sleep 10); \
     done && \
     if [ $SUCCESS -eq 0 ]; then echo "vcpkg install failed" && exit 1; fi && \
@@ -106,11 +103,12 @@ COPY . .
 
 # Build the application
 RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux"; \
-    elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
-    else TRIPLET="x64-linux"; fi && \
+    if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux-onnxstaticoff"; \
+    elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux-onnxstaticoff"; \
+    else TRIPLET="x64-linux-onnxstaticoff"; fi && \
     cmake -S . -B build \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_OVERLAY_TRIPLETS=/build/vcpkg-triplets \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j$(nproc)
