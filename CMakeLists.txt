@@ -13,19 +13,6 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 
-# vcpkg's onnxruntime imported interface links both ONNX::onnx and the ORT
-# static libs. ORT's session archive already carries ONNX registration paths;
-# linking ONNX::onnx concurrently causes duplicate static schema registration
-# at process startup (611 duplicate schema errors in runtime logs).
-#
-# Remove ONNX::onnx from the interface list so only the ORT-internal ONNX path
-# remains active. Keep ONNX::onnx_proto for model proto types.
-get_target_property(ORT_INTERFACE_LIBS onnxruntime::onnxruntime INTERFACE_LINK_LIBRARIES)
-if(ORT_INTERFACE_LIBS)
-    list(REMOVE_ITEM ORT_INTERFACE_LIBS ONNX::onnx)
-    set_property(TARGET onnxruntime::onnxruntime PROPERTY INTERFACE_LINK_LIBRARIES "${ORT_INTERFACE_LIBS}")
-endif()
-
 # mlpack is header-only – no find_package needed, headers already in include_directories above
 # Collect all source files
 set(SOURCES
