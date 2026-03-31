@@ -88,6 +88,11 @@ RUN ARCH=$(uname -m) && \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux"; \
     else TRIPLET="x64-linux"; fi && \
     export VCPKG_DISABLE_METRICS=1 && \
+    # Build ONNX/ORT dependencies with static ONNX schema registration disabled.
+    # Defining this only on the app target is insufficient because the duplicate
+    # registration originates inside prebuilt ONNX archives from vcpkg.
+    export VCPKG_C_FLAGS="-D__ONNX_DISABLE_STATIC_REGISTRATION" && \
+    export VCPKG_CXX_FLAGS="-D__ONNX_DISABLE_STATIC_REGISTRATION" && \
     SUCCESS=0 && \
     for i in 1 2 3; do \
     timeout 45m /opt/vcpkg/vcpkg install --triplet $TRIPLET && SUCCESS=1 && break || \
