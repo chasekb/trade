@@ -280,7 +280,69 @@ class ApiClient {
 
   // ML Analytics
   async getMLDashboard(): Promise<ApiResponse<import('@/types/trading').MLDashboardData>> {
-    return this.request('/api/ml/dashboard');
+    try {
+      const dashboardResponse = await fetch(`${API_BASE_URL}/api/ml/dashboard`, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Preferred endpoint exists
+      if (dashboardResponse.ok) {
+        const data = await dashboardResponse.json();
+        return {
+          status: 'success',
+          data,
+          timestamp: new Date().toISOString(),
+        };
+      }
+
+      // Backward-compatible fallback for backends without /api/ml/dashboard
+      if (dashboardResponse.status === 404) {
+        const [statusResp, performanceResp] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/ml/status`, {
+            headers: { 'Content-Type': 'application/json' },
+          }),
+          fetch(`${API_BASE_URL}/api/ml/performance`, {
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ]);
+
+        if (!statusResp.ok || !performanceResp.ok) {
+          throw new Error(`HTTP error! status: ${!statusResp.ok ? statusResp.status : performanceResp.status}`);
+        }
+
+        const statusData = await statusResp.json();
+        const performanceData = await performanceResp.json();
+
+        const trainingStatus = typeof statusData?.status === 'string' ? statusData.status : '';
+        const isTraining = trainingStatus === 'training';
+        const isTrained = trainingStatus === 'completed';
+
+        return {
+          status: 'success',
+          data: {
+            status: {
+              is_training: isTraining,
+              is_trained: isTrained,
+              error: trainingStatus === 'failed' ? 'Model training failed' : undefined,
+            },
+            performance: performanceData || {},
+            feature_importance: performanceData?.feature_importance || {},
+          },
+          timestamp: new Date().toISOString(),
+        };
+      }
+
+      throw new Error(`HTTP error! status: ${dashboardResponse.status}`);
+    } catch (error) {
+      console.error('API request failed for /api/ml/dashboard:', error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+    }
   }
 
   async trainMLModel(batchTraining?: boolean): Promise<ApiResponse<import('@/types/trading').MLTrainingResponse>> {
