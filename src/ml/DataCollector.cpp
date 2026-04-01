@@ -15,18 +15,21 @@ std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
     pqxx::connection conn(db_url_);
     pqxx::work txn(conn);
 
-    // Calculate timestamp threshold
-    auto now = std::chrono::system_clock::now();
-    auto threshold = now - std::chrono::hours(24 * days_back);
-    long long threshold_ts = std::chrono::duration_cast<std::chrono::seconds>(
-                                 threshold.time_since_epoch())
-                                 .count();
-
     std::string query = "SELECT signal_id, symbol, signal_type, strength, "
                         "price, timestamp, signal_data "
-                        "FROM order_book_signals WHERE timestamp >= " +
-                        std::to_string(threshold_ts) +
-                        " ORDER BY timestamp ASC";
+                        "FROM order_book_signals";
+
+    if (days_back > 0) {
+      // Calculate timestamp threshold
+      auto now = std::chrono::system_clock::now();
+      auto threshold = now - std::chrono::hours(24 * days_back);
+      long long threshold_ts = std::chrono::duration_cast<std::chrono::seconds>(
+                                   threshold.time_since_epoch())
+                                   .count();
+      query += " WHERE timestamp >= " + std::to_string(threshold_ts);
+    }
+
+    query += " ORDER BY timestamp ASC";
 
     pqxx::result res = txn.exec(query);
 
@@ -174,16 +177,20 @@ std::vector<TradeOutcome> DataCollector::extract_trades(int days_back) {
     pqxx::connection conn(db_url_);
     pqxx::work txn(conn);
 
-    auto now = std::chrono::system_clock::now();
-    auto threshold = now - std::chrono::hours(24 * days_back);
-    long long threshold_ts = std::chrono::duration_cast<std::chrono::seconds>(
-                                 threshold.time_since_epoch())
-                                 .count();
-
     std::string query =
         "SELECT trade_id, symbol, side, size, price, timestamp, pnl, fees "
-        "FROM individual_trades WHERE timestamp >= " +
-        std::to_string(threshold_ts) + " ORDER BY timestamp ASC";
+        "FROM individual_trades";
+
+    if (days_back > 0) {
+      auto now = std::chrono::system_clock::now();
+      auto threshold = now - std::chrono::hours(24 * days_back);
+      long long threshold_ts = std::chrono::duration_cast<std::chrono::seconds>(
+                                   threshold.time_since_epoch())
+                                   .count();
+      query += " WHERE timestamp >= " + std::to_string(threshold_ts);
+    }
+
+    query += " ORDER BY timestamp ASC";
 
     pqxx::result res = txn.exec(query);
 
