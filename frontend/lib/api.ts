@@ -318,15 +318,16 @@ class ApiClient {
         const trainingStatus = typeof statusData?.status === 'string' ? statusData.status : '';
         const isTraining = trainingStatus === 'training';
         const isTrained = trainingStatus === 'completed';
+        const modelStatus: import('@/types/trading').MLModelStatus = {
+          is_training: isTraining,
+          is_trained: isTrained,
+          ...(trainingStatus === 'failed' ? { error: 'Model training failed' } : {}),
+        };
 
         return {
           status: 'success',
           data: {
-            status: {
-              is_training: isTraining,
-              is_trained: isTrained,
-              error: trainingStatus === 'failed' ? 'Model training failed' : undefined,
-            },
+            status: modelStatus,
             performance: performanceData || {},
             feature_importance: performanceData?.feature_importance || {},
           },
