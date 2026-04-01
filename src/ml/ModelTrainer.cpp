@@ -19,9 +19,21 @@ ModelTrainer::ModelTrainer(std::shared_ptr<DataCollector> collector)
 ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   ModelMetrics metrics;
 
+  const int extraction_limit =
+      config.batch_training ? config.max_training_rows : 0;
+
+  if (extraction_limit > 0) {
+    spdlog::info(
+        "ModelTrainer: batch_training enabled, limiting extracted rows to {} per dataset",
+        extraction_limit);
+  }
+
   // 1. Fetch data
-  auto signals = collector_->extract_signals(config.days_back);
-  auto trades = collector_->extract_trades(config.days_back);
+  auto signals = collector_->extract_signals(config.days_back, extraction_limit);
+  auto trades = collector_->extract_trades(config.days_back, extraction_limit);
+
+  spdlog::info("ModelTrainer: extracted {} signals and {} trades",
+               signals.size(), trades.size());
 
   // 2. Match signals to outcomes
   auto paired_data = collector_->match_signals_to_trades(signals, trades);

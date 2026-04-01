@@ -154,8 +154,11 @@ void PredictController::train(
   config.epochs = payload.value("epochs", config.epochs);
   config.learning_rate = payload.value("learning_rate", config.learning_rate);
   config.batch_size = payload.value("batch_size", config.batch_size);
+  config.batch_training = payload.value("batch_training", config.batch_training);
   config.test_split = payload.value("test_split", config.test_split);
   config.days_back = payload.value("days_back", config.days_back);
+  config.max_training_rows =
+      payload.value("max_training_rows", config.max_training_rows);
   if (config.days_back <= 0) {
     // default to all data unless explicitly constrained
     config.days_back = 0;
@@ -195,8 +198,9 @@ void PredictController::train(
   // Trigger real training in a background thread
   std::thread training_thread([config, db_url]() {
     auto &cache = CacheManager::getInstance();
-    TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, test_split={}, days_back={}",
+    TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, batch_training={}, max_training_rows={}, test_split={}, days_back={}",
                 config.model_name, config.epochs, config.batch_size,
+                config.batch_training, config.max_training_rows,
                 config.test_split, config.days_back);
 
     cache.set_training_status("training", 10); // Started
