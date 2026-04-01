@@ -20,8 +20,8 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   ModelMetrics metrics;
 
   // 1. Fetch data
-  auto signals = collector_->extract_signals(30); // 30 days
-  auto trades = collector_->extract_trades(30);
+  auto signals = collector_->extract_signals(config.days_back);
+  auto trades = collector_->extract_trades(config.days_back);
 
   // 2. Match signals to outcomes
   auto paired_data = collector_->match_signals_to_trades(signals, trades);

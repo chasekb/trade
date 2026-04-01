@@ -24,6 +24,8 @@ struct TrainingConfig {
   double learning_rate = 0.001;
   int batch_size = 32;
   double test_split = 0.2;
+  // <= 0 means use all available data
+  int days_back = 0;
   std::string model_name = "default_model";
 };
 

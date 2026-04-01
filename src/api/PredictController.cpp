@@ -155,6 +155,11 @@ void PredictController::train(
   config.learning_rate = payload.value("learning_rate", config.learning_rate);
   config.batch_size = payload.value("batch_size", config.batch_size);
   config.test_split = payload.value("test_split", config.test_split);
+  config.days_back = payload.value("days_back", config.days_back);
+  if (config.days_back <= 0) {
+    // default to all data unless explicitly constrained
+    config.days_back = 0;
+  }
   config.model_name = payload.value("model_name", config.model_name);
 
   std::string model_type = payload.value("model_type", "random_forest");
@@ -190,16 +195,24 @@ void PredictController::train(
   // Trigger real training in a background thread
   std::thread training_thread([config, db_url]() {
     auto &cache = CacheManager::getInstance();
+    TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, test_split={}, days_back={}",
+                config.model_name, config.epochs, config.batch_size,
+                config.test_split, config.days_back);
+
     cache.set_training_status("training", 10); // Started
+    TR_LOG_INFO("ML training progress: 10% (initialization)");
 
     try {
       auto collector = std::make_shared<trade::ml::DataCollector>(db_url);
       trade::ml::ModelTrainer trainer(collector);
 
       cache.set_training_status("training", 50); // Mid-way
+      TR_LOG_INFO("ML training progress: 50% (data loaded, training phase)");
+
       trade::ml::ModelMetrics metrics = trainer.train(config);
       cache.set_last_metrics(metrics);
       cache.set_training_status("training", 90);
+      TR_LOG_INFO("ML training progress: 90% (training completed, reloading models)");
 
       // Reload models once training is done
       if (model_manager_) {
@@ -207,15 +220,18 @@ void PredictController::train(
       }
 
       cache.set_training_status("completed", 100);
+      TR_LOG_INFO("ML training progress: 100% (completed)");
     } catch (const std::exception &e) {
       TR_LOG_ERROR("Training failed: {}", e.what());
       cache.set_training_status("failed", 0);
+      TR_LOG_ERROR("ML training progress: failed");
     }
   });
   training_thread.detach();
 
   Json::Value resp;
-  resp["status"] = "Started training process in background";
+  resp["status"] = "training_started";
+  resp["message"] = "Started training process in background";
   callback(HttpResponse::newHttpJsonResponse(resp));
 }
 
