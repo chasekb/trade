@@ -16,6 +16,37 @@
 
 namespace api {
 
+namespace {
+bool parse_bool_param(const std::string &raw, bool default_value) {
+  if (raw.empty()) {
+    return default_value;
+  }
+
+  std::string value = raw;
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+  if (value == "1" || value == "true" || value == "yes" || value == "on") {
+    return true;
+  }
+  if (value == "0" || value == "false" || value == "no" || value == "off") {
+    return false;
+  }
+  return default_value;
+}
+
+int parse_int_param(const std::string &raw, int default_value) {
+  if (raw.empty()) {
+    return default_value;
+  }
+  try {
+    return std::stoi(raw);
+  } catch (const std::exception &) {
+    return default_value;
+  }
+}
+} // namespace
+
 std::unique_ptr<ml::FeatureEngineer> PredictController::feature_engineer_ =
     nullptr;
 std::unique_ptr<ml::ONNXModelManager> PredictController::model_manager_ =
@@ -159,9 +190,19 @@ void PredictController::train(
   config.days_back = payload.value("days_back", config.days_back);
   config.max_training_rows =
       payload.value("max_training_rows", config.max_training_rows);
+
+  // Support frontend query-parameter contract: /api/ml/train?batch_training=true
+  config.batch_training = parse_bool_param(req->getParameter("batch_training"),
+                                           config.batch_training);
+  config.max_training_rows = parse_int_param(req->getParameter("max_training_rows"),
+                                             config.max_training_rows);
+
   if (config.days_back <= 0) {
     // default to all data unless explicitly constrained
     config.days_back = 0;
+  }
+  if (config.max_training_rows < 0) {
+    config.max_training_rows = 0;
   }
   config.model_name = payload.value("model_name", config.model_name);
 
