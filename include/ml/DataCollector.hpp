@@ -52,8 +52,9 @@ class DataCollector {
 public:
   explicit DataCollector(const std::string &db_url);
 
-  std::vector<OrderBookFeatures> extract_signals(int days_back);
-  std::vector<TradeOutcome> extract_trades(int days_back);
+  std::vector<OrderBookFeatures> extract_signals(int days_back,
+                                                 int limit = 0);
+  std::vector<TradeOutcome> extract_trades(int days_back, int limit = 0);
 
   std::vector<std::pair<OrderBookFeatures, TradeOutcome>>
   match_signals_to_trades(const std::vector<OrderBookFeatures> &signals,

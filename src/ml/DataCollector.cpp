@@ -9,7 +9,8 @@ namespace ml {
 
 DataCollector::DataCollector(const std::string &db_url) : db_url_(db_url) {}
 
-std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
+std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back,
+                                                              int limit) {
   std::vector<OrderBookFeatures> signals;
   try {
     pqxx::connection conn(db_url_);
@@ -30,6 +31,10 @@ std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
     }
 
     query += " ORDER BY timestamp ASC";
+
+    if (limit > 0) {
+      query += " LIMIT " + std::to_string(limit);
+    }
 
     pqxx::result res = txn.exec(query);
 
@@ -171,7 +176,8 @@ std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back) {
   return signals;
 }
 
-std::vector<TradeOutcome> DataCollector::extract_trades(int days_back) {
+std::vector<TradeOutcome> DataCollector::extract_trades(int days_back,
+                                                        int limit) {
   std::vector<TradeOutcome> trades;
   try {
     pqxx::connection conn(db_url_);
@@ -191,6 +197,10 @@ std::vector<TradeOutcome> DataCollector::extract_trades(int days_back) {
     }
 
     query += " ORDER BY timestamp ASC";
+
+    if (limit > 0) {
+      query += " LIMIT " + std::to_string(limit);
+    }
 
     pqxx::result res = txn.exec(query);
 
