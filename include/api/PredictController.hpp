@@ -21,6 +21,7 @@ public:
   ADD_METHOD_TO(PredictController::performance, "/ml/performance", Get);
   ADD_METHOD_TO(PredictController::performance, "/api/ml/performance", Get);
   ADD_METHOD_TO(PredictController::availableModels, "/api/ml/models", Get);
+  ADD_METHOD_TO(PredictController::setActiveModel, "/api/ml/models/set_active", Post);
   METHOD_LIST_END
 
   void predict(const HttpRequestPtr &req,
@@ -40,6 +41,9 @@ public:
 
   void availableModels(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
+
+  void setActiveModel(const HttpRequestPtr &req,
+                      std::function<void(const HttpResponsePtr &)> &&callback);
 
   static void init(const std::string &param_path, const std::string &model_dir);
 

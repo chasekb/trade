@@ -21,9 +21,54 @@ export function useModelTraining() {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
 
+  const watchTrainingCompletion = () => {
+    let attempts = 0;
+    const maxAttempts = 120; // ~4 minutes at 2s interval
+    const intervalId = setInterval(async () => {
+      attempts += 1;
+      try {
+        const statusResp = await apiClient.getMLStatus();
+        if (statusResp.status === 'error' || !statusResp.data) {
+          if (attempts >= maxAttempts) {
+            clearInterval(intervalId);
+          }
+          return;
+        }
+
+        const status = statusResp.data.status;
+        if (status === 'completed') {
+          clearInterval(intervalId);
+          queryClient.invalidateQueries({ queryKey: ['ml', 'models'] });
+          queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+          return;
+        }
+
+        if (status === 'failed') {
+          clearInterval(intervalId);
+          queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+          showError('Model training failed');
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(intervalId);
+        }
+      } catch {
+        if (attempts >= maxAttempts) {
+          clearInterval(intervalId);
+        }
+      }
+    }, 2000);
+  };
+
   const trainMutation = useMutation({
-    mutationFn: async (batchTraining?: boolean): Promise<MLTrainingResponse> => {
-      const response = await apiClient.trainMLModel(batchTraining);
+    mutationFn: async (
+      input?: boolean | { batchTraining?: boolean; autoSetActive?: boolean }
+    ): Promise<MLTrainingResponse> => {
+      const batchTraining = typeof input === 'boolean' ? input : input?.batchTraining;
+      const autoSetActive = typeof input === 'boolean' ? undefined : input?.autoSetActive;
+
+      const response = await apiClient.trainMLModel(batchTraining, autoSetActive);
       if (response.status === 'error' || !response.data) {
         throw new Error(response.error || 'Failed to train model');
       }
@@ -34,6 +79,7 @@ export function useModelTraining() {
         showSuccess(data.message || 'Model training completed successfully');
         // Refetch ML dashboard data
         queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+        watchTrainingCompletion();
       } else {
         showError(data.error || 'Model training failed');
       }

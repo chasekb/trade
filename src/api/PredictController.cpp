@@ -11,6 +11,8 @@
 #include <cctype>
 #include <ctime>
 #include <filesystem>
+#include <iomanip>
+#include <sstream>
 #include <nlohmann/json.hpp>
 #include <thread>
 
@@ -44,6 +46,33 @@ int parse_int_param(const std::string &raw, int default_value) {
   } catch (const std::exception &) {
     return default_value;
   }
+}
+
+std::string model_type_to_string(const trade::ml::ModelType type) {
+  switch (type) {
+  case trade::ml::ModelType::RANDOM_FOREST:
+    return "regression";
+  case trade::ml::ModelType::GRADIENT_BOOSTING:
+    return "classification";
+  case trade::ml::ModelType::TRANSFORMER:
+    return "sequence";
+  default:
+    return "unknown";
+  }
+}
+
+std::string now_iso_utc() {
+  const auto now = std::chrono::system_clock::now();
+  const auto t = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+#ifdef _WIN32
+  gmtime_s(&tm, &t);
+#else
+  gmtime_r(&t, &tm);
+#endif
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+  return oss.str();
 }
 } // namespace
 
@@ -190,6 +219,9 @@ void PredictController::train(
   config.days_back = payload.value("days_back", config.days_back);
   config.max_training_rows =
       payload.value("max_training_rows", config.max_training_rows);
+  const bool auto_set_active =
+      parse_bool_param(req->getParameter("auto_set_active"),
+                       payload.value("auto_set_active", false));
 
   // Support frontend query-parameter contract: /api/ml/train?batch_training=true
   config.batch_training = parse_bool_param(req->getParameter("batch_training"),
@@ -237,7 +269,7 @@ void PredictController::train(
   }
 
   // Trigger real training in a background thread
-  std::thread training_thread([config, db_url]() {
+  std::thread training_thread([config, db_url, auto_set_active]() {
     auto &cache = CacheManager::getInstance();
     TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, batch_training={}, max_training_rows={}, test_split={}, days_back={}",
                 config.model_name, config.epochs, config.batch_size,
@@ -256,6 +288,38 @@ void PredictController::train(
 
       trade::ml::ModelMetrics metrics = trainer.train(config);
       cache.set_last_metrics(metrics);
+
+      const std::string trained_at = now_iso_utc();
+      const std::string version_id = std::to_string(std::time(nullptr));
+      const std::string model_id = config.model_name + ":" + version_id;
+
+      nlohmann::json models = nlohmann::json::array();
+      if (const auto existing = cache.get("ml_available_models")) {
+        try {
+          models = nlohmann::json::parse(*existing);
+          if (!models.is_array()) {
+            models = nlohmann::json::array();
+          }
+        } catch (const std::exception &) {
+          models = nlohmann::json::array();
+        }
+      }
+
+      models.push_back({
+          {"model_id", model_id},
+          {"model_name", config.model_name},
+          {"version_id", version_id},
+          {"type", model_type_to_string(config.type)},
+          {"trained_at", trained_at},
+          {"is_virtual", true}});
+      cache.set("ml_available_models", models.dump());
+
+      if (auto_set_active) {
+        cache.set("ml_active_model_id", model_id);
+        cache.set("ml_active_model_name", config.model_name);
+        cache.set("ml_active_model_version", version_id);
+      }
+
       cache.set_training_status("training", 90);
       TR_LOG_INFO("ML training progress: 90% (training completed, reloading models)");
 
@@ -283,11 +347,22 @@ void PredictController::train(
 void PredictController::status(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+
   auto [status, progress] = CacheManager::getInstance().get_training_status();
+  auto &cache = CacheManager::getInstance();
 
   Json::Value resp;
   resp["status"] = status;
   resp["progress"] = progress;
+
+  if (const auto model_name = cache.get("ml_active_model_name")) {
+    Json::Value current;
+    current["model_name"] = *model_name;
+    current["version_id"] = cache.get("ml_active_model_version").value_or("");
+    resp["current_model"] = current;
+  }
+
   callback(HttpResponse::newHttpJsonResponse(resp));
 }
 
@@ -317,6 +392,7 @@ void PredictController::availableModels(
   Json::Value result(Json::arrayValue);
 
   try {
+    auto &cache = CacheManager::getInstance();
     if (!model_dir_.empty()) {
       namespace fs = std::filesystem;
       fs::path dir(model_dir_);
@@ -356,6 +432,28 @@ void PredictController::availableModels(
       appendModelIfExists("transformer.onnx", "transformer", "Transformer", "sequence");
     }
 
+    if (const auto cached = cache.get("ml_available_models")) {
+      try {
+        const auto j = nlohmann::json::parse(*cached);
+        if (j.is_array()) {
+          for (const auto &entry : j) {
+            if (!entry.is_object()) {
+              continue;
+            }
+            Json::Value model;
+            model["model_id"] = entry.value("model_id", "");
+            model["model_name"] = entry.value("model_name", "");
+            model["version_id"] = entry.value("version_id", "");
+            model["type"] = entry.value("type", "");
+            model["trained_at"] = entry.value("trained_at", "");
+            result.append(model);
+          }
+        }
+      } catch (const std::exception &) {
+        // ignore malformed cache payload
+      }
+    }
+
     callback(HttpResponse::newHttpJsonResponse(result));
   } catch (const std::exception &e) {
     TR_LOG_ERROR("Failed to list available models: {}", e.what());
@@ -365,6 +463,53 @@ void PredictController::availableModels(
     resp->setStatusCode(k500InternalServerError);
     callback(resp);
   }
+}
+
+void PredictController::setActiveModel(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  const std::string model_name = req->getParameter("model_name");
+  if (model_name.empty()) {
+    Json::Value err;
+    err["error"] = "model_name is required";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  auto &cache = CacheManager::getInstance();
+  std::string selected_name = model_name;
+  std::string selected_version;
+
+  if (const auto cached = cache.get("ml_available_models")) {
+    try {
+      const auto j = nlohmann::json::parse(*cached);
+      if (j.is_array()) {
+        for (const auto &entry : j) {
+          const std::string id = entry.value("model_id", "");
+          const std::string name = entry.value("model_name", "");
+          if (model_name == id || model_name == name) {
+            selected_name = name.empty() ? model_name : name;
+            selected_version = entry.value("version_id", "");
+            break;
+          }
+        }
+      }
+    } catch (const std::exception &) {
+    }
+  }
+
+  cache.set("ml_active_model_id", model_name);
+  cache.set("ml_active_model_name", selected_name);
+  cache.set("ml_active_model_version", selected_version);
+
+  Json::Value resp;
+  resp["status"] = "success";
+  resp["message"] = "Active model updated";
+  resp["model_name"] = selected_name;
+  resp["version_id"] = selected_version;
+  callback(HttpResponse::newHttpJsonResponse(resp));
 }
 
 } // namespace api

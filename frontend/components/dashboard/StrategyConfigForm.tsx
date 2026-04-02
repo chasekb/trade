@@ -40,7 +40,7 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
     const handleTrainModel = () => {
         setTrainingFeedback(null);
         const batchTraining = config.use_batch_training !== false; // Default to true
-        trainModel(batchTraining, {
+        trainModel({ batchTraining, autoSetActive: true }, {
             onSuccess: (data: any) => {
                 setTrainingFeedback({ type: 'success', message: data.message || 'Model training started successfully' });
             },
