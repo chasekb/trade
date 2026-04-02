@@ -51,6 +51,7 @@ private:
   static std::unique_ptr<ml::FeatureEngineer> feature_engineer_;
   static std::unique_ptr<ml::ONNXModelManager> model_manager_;
   static std::string model_dir_;
+  static std::string trained_models_dir_;
 };
 
 } // namespace api

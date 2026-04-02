@@ -27,9 +27,10 @@ struct TrainingConfig {
   double test_split = 0.2;
   // <= 0 means use all available data
   int days_back = 0;
-  // Safety guard for in-memory training extraction when using all-data mode.
+  // Safety guard for non-batch training extraction.
+  // batch_training mode streams in batches and ignores this cap.
   // 0 means unlimited.
-  int max_training_rows = 50000;
+  int max_training_rows = 0;
   std::string model_name = "default_model";
 };
 

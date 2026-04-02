@@ -15,10 +15,12 @@ services:
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
       - ENV=development
+      - TRAINED_MODELS_DIR=/app/data/trained_models
     volumes:
       - ./.env:/app/.env:ro
       - ./data/cpp_assets:/app/data/cpp_assets:ro
       - ./data/onnx:/app/data/onnx:ro
+      - ./data/trained_models:/app/data/trained_models
     depends_on:
       - db
       - redis

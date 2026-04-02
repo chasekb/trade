@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <cmath>
 #include <random>
 #include <spdlog/spdlog.h>
 
@@ -19,12 +20,236 @@ ModelTrainer::ModelTrainer(std::shared_ptr<DataCollector> collector)
 ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   ModelMetrics metrics;
 
+  if (config.batch_training) {
+    const int batch_rows = std::max(1, config.batch_size);
+    spdlog::info(
+        "ModelTrainer: batch_training enabled, streaming unlimited rows in batches of {}",
+        batch_rows);
+
+    struct PnlStats {
+      std::size_t count = 0;
+      double sum = 0.0;
+      double sum_sq = 0.0;
+      double gross_profit = 0.0;
+      double gross_loss = 0.0;
+    };
+
+    auto update_pnl_stats = [](PnlStats &stats, double pnl) {
+      ++stats.count;
+      stats.sum += pnl;
+      stats.sum_sq += pnl * pnl;
+      if (pnl > 0.0) {
+        stats.gross_profit += pnl;
+      } else if (pnl < 0.0) {
+        stats.gross_loss += std::abs(pnl);
+      }
+    };
+
+    auto finalize_trading_metrics = [&](const PnlStats &stats) {
+      if (stats.count == 0) {
+        return;
+      }
+
+      const double n = static_cast<double>(stats.count);
+      const double mean = stats.sum / n;
+      const double variance = std::max(0.0, (stats.sum_sq / n) - (mean * mean));
+      const double std_dev = std::sqrt(variance);
+      metrics.sharpe_ratio =
+          std_dev > 0.0 ? (mean / std_dev) * std::sqrt(252.0) : 0.0;
+
+      if (stats.gross_loss == 0.0) {
+        metrics.profit_factor = stats.gross_profit > 0.0 ? 999.0 : 0.0;
+      } else {
+        metrics.profit_factor = stats.gross_profit / stats.gross_loss;
+      }
+    };
+
+    switch (config.type) {
+    case ModelType::RANDOM_FOREST: {
+      std::size_t total = 0;
+      std::size_t wins = 0;
+      PnlStats pnl_stats;
+
+      for (int offset = 0;; offset += batch_rows) {
+        auto batch =
+            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
+                                                     offset);
+        if (batch.empty()) {
+          break;
+        }
+
+        for (const auto &sample : batch) {
+          ++total;
+          if (sample.second.is_win) {
+            ++wins;
+          }
+          update_pnl_stats(pnl_stats, sample.second.pnl);
+        }
+      }
+
+      if (total == 0) {
+        spdlog::warn("ModelTrainer: no training data found (no matched signals)");
+        return metrics;
+      }
+
+      const int majority_class = (wins * 2 >= total) ? 1 : 0;
+      const double total_d = static_cast<double>(total);
+      const double wins_d = static_cast<double>(wins);
+      const double losses_d = static_cast<double>(total - wins);
+
+      if (majority_class == 1) {
+        metrics.accuracy = wins_d / total_d;
+        metrics.precision = wins_d / total_d;
+        metrics.recall = wins > 0 ? 1.0 : 0.0;
+      } else {
+        metrics.accuracy = losses_d / total_d;
+        metrics.precision = 0.0;
+        metrics.recall = 0.0;
+      }
+
+      finalize_trading_metrics(pnl_stats);
+      return metrics;
+    }
+    case ModelType::GRADIENT_BOOSTING: {
+      std::size_t total = 0;
+      std::size_t true_positives = 0;
+      std::size_t predicted_positives = 0;
+      std::size_t actual_positives = 0;
+      std::size_t correct = 0;
+      PnlStats pnl_stats;
+
+      for (int offset = 0;; offset += batch_rows) {
+        auto batch =
+            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
+                                                     offset);
+        if (batch.empty()) {
+          break;
+        }
+
+        for (const auto &sample : batch) {
+          const bool actual = sample.second.is_win;
+          const bool predicted = sample.first.bid_ask_imbalance > 0.0;
+
+          ++total;
+          if (actual)
+            ++actual_positives;
+          if (predicted)
+            ++predicted_positives;
+          if (actual && predicted)
+            ++true_positives;
+          if (actual == predicted)
+            ++correct;
+
+          update_pnl_stats(pnl_stats, sample.second.pnl);
+        }
+      }
+
+      if (total == 0) {
+        spdlog::warn("ModelTrainer: no training data found (no matched signals)");
+        return metrics;
+      }
+
+      metrics.accuracy = static_cast<double>(correct) / static_cast<double>(total);
+      metrics.precision =
+          predicted_positives > 0
+              ? static_cast<double>(true_positives) /
+                    static_cast<double>(predicted_positives)
+              : 0.0;
+      metrics.recall =
+          actual_positives > 0
+              ? static_cast<double>(true_positives) /
+                    static_cast<double>(actual_positives)
+              : 0.0;
+
+      finalize_trading_metrics(pnl_stats);
+      return metrics;
+    }
+    case ModelType::TRANSFORMER: {
+      std::size_t count = 0;
+      double sum_x = 0.0;
+      double sum_y = 0.0;
+      double sum_xx = 0.0;
+      double sum_xy = 0.0;
+      PnlStats pnl_stats;
+
+      for (int offset = 0;; offset += batch_rows) {
+        auto batch =
+            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
+                                                     offset);
+        if (batch.empty()) {
+          break;
+        }
+
+        for (const auto &sample : batch) {
+          const double x = sample.first.bid_ask_imbalance;
+          const double y = sample.second.pnl;
+          ++count;
+          sum_x += x;
+          sum_y += y;
+          sum_xx += x * x;
+          sum_xy += x * y;
+          update_pnl_stats(pnl_stats, y);
+        }
+      }
+
+      if (count == 0) {
+        spdlog::warn("ModelTrainer: no training data found (no matched signals)");
+        return metrics;
+      }
+
+      const double n = static_cast<double>(count);
+      double slope = 0.0;
+      double intercept = 0.0;
+      const double denom = n * sum_xx - sum_x * sum_x;
+      if (denom != 0.0) {
+        slope = (n * sum_xy - sum_x * sum_y) / denom;
+        intercept = (sum_y - slope * sum_x) / n;
+      } else {
+        intercept = sum_y / n;
+      }
+
+      const double mean_y = sum_y / n;
+      double ss_res = 0.0;
+      double ss_tot = 0.0;
+
+      for (int offset = 0;; offset += batch_rows) {
+        auto batch =
+            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
+                                                     offset);
+        if (batch.empty()) {
+          break;
+        }
+
+        for (const auto &sample : batch) {
+          const double x = sample.first.bid_ask_imbalance;
+          const double y = sample.second.pnl;
+          const double pred = intercept + slope * x;
+          const double diff_res = y - pred;
+          const double diff_tot = y - mean_y;
+          ss_res += diff_res * diff_res;
+          ss_tot += diff_tot * diff_tot;
+        }
+      }
+
+      metrics.mse = ss_res / n;
+      metrics.r2_score = ss_tot == 0.0 ? 0.0 : 1.0 - (ss_res / ss_tot);
+
+      finalize_trading_metrics(pnl_stats);
+      return metrics;
+    }
+    default:
+      spdlog::warn("ModelTrainer: unsupported model type {}",
+                   static_cast<int>(config.type));
+      return metrics;
+    }
+  }
+
   const int extraction_limit =
-      config.batch_training ? config.max_training_rows : 0;
+      config.max_training_rows;
 
   if (extraction_limit > 0) {
     spdlog::info(
-        "ModelTrainer: batch_training enabled, limiting extracted rows to {} per dataset",
+        "ModelTrainer: non-batch training extraction limit set to {} per dataset",
         extraction_limit);
   }
 
