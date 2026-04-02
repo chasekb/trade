@@ -346,10 +346,13 @@ class ApiClient {
     }
   }
 
-  async trainMLModel(batchTraining?: boolean): Promise<ApiResponse<import('@/types/trading').MLTrainingResponse>> {
+  async trainMLModel(batchTraining?: boolean, autoSetActive?: boolean): Promise<ApiResponse<import('@/types/trading').MLTrainingResponse>> {
     const queryParams = new URLSearchParams();
     if (batchTraining !== undefined) {
       queryParams.append('batch_training', batchTraining.toString());
+    }
+    if (autoSetActive !== undefined) {
+      queryParams.append('auto_set_active', autoSetActive.toString());
     }
     const query = queryParams.toString();
 
@@ -373,6 +376,10 @@ class ApiClient {
       error: error.message,
       timestamp: new Date().toISOString(),
     }));
+  }
+
+  async getMLStatus(): Promise<ApiResponse<any>> {
+    return this.request('/api/ml/status');
   }
 
 
