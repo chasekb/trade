@@ -97,10 +97,37 @@ std::unique_ptr<ml::FeatureEngineer> PredictController::feature_engineer_ =
 std::unique_ptr<ml::ONNXModelManager> PredictController::model_manager_ =
     nullptr;
 std::string PredictController::model_dir_;
+std::string PredictController::trained_models_dir_;
 
 void PredictController::init(const std::string &param_path,
                              const std::string &model_dir) {
   model_dir_ = model_dir;
+  {
+    namespace fs = std::filesystem;
+    auto &cfg = Config::getInstance();
+    trained_models_dir_ = cfg.get("TRAINED_MODELS_DIR", "");
+
+    if (trained_models_dir_.empty()) {
+      trained_models_dir_ = (fs::path(model_dir_) / "trained").string();
+    }
+
+    std::error_code ec;
+    fs::create_directories(fs::path(trained_models_dir_), ec);
+    if (ec) {
+      const fs::path fallback("/tmp/trade_trained_models");
+      ec.clear();
+      fs::create_directories(fallback, ec);
+      if (!ec) {
+        trained_models_dir_ = fallback.string();
+        TR_LOG_WARN("Configured trained-model path unavailable; falling back to {}",
+                    trained_models_dir_);
+      } else {
+        TR_LOG_ERROR("Unable to create trained model directory at '{}' and fallback '{}': {}",
+                     trained_models_dir_, fallback.string(), ec.message());
+      }
+    }
+  }
+
   feature_engineer_ = std::make_unique<ml::FeatureEngineer>();
   if (!feature_engineer_->load_parameters(param_path)) {
     TR_LOG_ERROR("Failed to load feature engineer parameters from {}",
@@ -310,7 +337,11 @@ void PredictController::train(
       const std::string model_id = config.model_name + ":" + version_id;
 
       const std::filesystem::path model_root(PredictController::model_dir_);
-      const std::filesystem::path package_dir = model_root / "trained" / model_id;
+      const std::filesystem::path trained_root(PredictController::trained_models_dir_);
+      if (trained_root.empty()) {
+        throw std::runtime_error("trained models directory is not configured");
+      }
+      const std::filesystem::path package_dir = trained_root / model_id;
       std::filesystem::create_directories(package_dir);
 
       const bool has_regressor = copy_if_exists(model_root / "regressor.onnx",
@@ -335,6 +366,9 @@ void PredictController::train(
       meta_file.close();
 
       if (auto_set_active) {
+        if (model_manager_) {
+          model_manager_->load_models(package_dir.string());
+        }
         cache.set("ml_active_model_id", model_id);
         cache.set("ml_active_model_name", config.model_name);
         cache.set("ml_active_model_version", version_id);
@@ -452,9 +486,9 @@ void PredictController::availableModels(
       appendModelIfExists("transformer.onnx", "transformer", "Transformer", "sequence");
     }
 
-    if (!model_dir_.empty()) {
+    if (!trained_models_dir_.empty()) {
       namespace fs = std::filesystem;
-      fs::path trained_dir = fs::path(model_dir_) / "trained";
+      fs::path trained_dir = fs::path(trained_models_dir_);
       if (fs::exists(trained_dir) && fs::is_directory(trained_dir)) {
         for (const auto &entry : fs::directory_iterator(trained_dir)) {
           if (!entry.is_directory()) {
@@ -515,14 +549,10 @@ void PredictController::setActiveModel(
 
   try {
     namespace fs = std::filesystem;
-    if (!model_dir_.empty()) {
+    if (!trained_models_dir_.empty()) {
       const fs::path model_root(model_dir_);
-      const fs::path package_dir = model_root / "trained" / model_name;
+      const fs::path package_dir = fs::path(trained_models_dir_) / model_name;
       if (fs::exists(package_dir) && fs::is_directory(package_dir)) {
-        copy_if_exists(package_dir / "regressor.onnx", model_root / "regressor.onnx");
-        copy_if_exists(package_dir / "classifier.onnx", model_root / "classifier.onnx");
-        copy_if_exists(package_dir / "transformer.onnx", model_root / "transformer.onnx");
-
         const fs::path meta_path = package_dir / "metadata.json";
         if (fs::exists(meta_path)) {
           std::ifstream in(meta_path);
@@ -530,14 +560,20 @@ void PredictController::setActiveModel(
           selected_name = meta.value("model_name", selected_name);
           selected_version = meta.value("version_id", selected_version);
         }
+
+        if (model_manager_) {
+          model_manager_->load_models(package_dir.string());
+        }
+      } else if (model_name == "regressor" || model_name == "classifier" ||
+                 model_name == "transformer") {
+        if (model_manager_) {
+          model_manager_->load_models(model_root.string());
+        }
+        selected_version.clear();
       }
     }
   } catch (const std::exception &e) {
     TR_LOG_ERROR("Failed to switch model package '{}': {}", model_name, e.what());
-  }
-
-  if (model_manager_) {
-    model_manager_->reload_models();
   }
 
   cache.set("ml_active_model_id", model_name);

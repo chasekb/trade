@@ -60,6 +60,11 @@ public:
   match_signals_to_trades(const std::vector<OrderBookFeatures> &signals,
                           const std::vector<TradeOutcome> &trades);
 
+  // Batch-oriented extraction of already-matched training pairs.
+  // Uses LIMIT/OFFSET to keep memory bounded for batch training.
+  std::vector<std::pair<OrderBookFeatures, TradeOutcome>>
+  extract_training_pairs_batch(int days_back, int limit, int offset);
+
 private:
   std::string db_url_;
 };
