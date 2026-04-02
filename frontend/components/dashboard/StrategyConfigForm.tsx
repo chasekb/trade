@@ -40,7 +40,12 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
     const handleTrainModel = () => {
         setTrainingFeedback(null);
         const batchTraining = config.use_batch_training !== false; // Default to true
-        trainModel({ batchTraining, autoSetActive: true }, {
+        trainModel({
+            batchTraining,
+            autoSetActive: true,
+            modelType: config.training_model_type || 'random_forest',
+            modelName: config.training_model_name || 'default_model',
+        }, {
             onSuccess: (data: any) => {
                 setTrainingFeedback({ type: 'success', message: data.message || 'Model training started successfully' });
             },
@@ -114,6 +119,29 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
                             <label className="block text-sm font-medium text-gray-700">Model Training</label>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Model Type</label>
+                                <select
+                                    value={config.training_model_type || 'random_forest'}
+                                    onChange={(e) => handleParameterChange('training_model_type', e.target.value)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                                >
+                                    <option value="random_forest">Random Forest</option>
+                                    <option value="gradient_boosting">Gradient Boosting</option>
+                                    <option value="transformer">Transformer</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Model Name</label>
+                                <Input
+                                    type="text"
+                                    value={config.training_model_name || 'default_model'}
+                                    onChange={(e) => handleParameterChange('training_model_name', e.target.value)}
+                                    className="w-full"
+                                />
+                            </div>
                         </div>
                         <div className="flex items-center space-x-2 mb-2">
                             <input

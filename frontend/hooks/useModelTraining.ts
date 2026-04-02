@@ -63,12 +63,18 @@ export function useModelTraining() {
 
   const trainMutation = useMutation({
     mutationFn: async (
-      input?: boolean | { batchTraining?: boolean; autoSetActive?: boolean }
+      input?: boolean | {
+        batchTraining?: boolean;
+        autoSetActive?: boolean;
+        modelType?: 'random_forest' | 'gradient_boosting' | 'transformer';
+        modelName?: string;
+      }
     ): Promise<MLTrainingResponse> => {
-      const batchTraining = typeof input === 'boolean' ? input : input?.batchTraining;
-      const autoSetActive = typeof input === 'boolean' ? undefined : input?.autoSetActive;
+      const options = typeof input === 'boolean'
+        ? { batchTraining: input }
+        : input;
 
-      const response = await apiClient.trainMLModel(batchTraining, autoSetActive);
+      const response = await apiClient.trainMLModel(options);
       if (response.status === 'error' || !response.data) {
         throw new Error(response.error || 'Failed to train model');
       }
