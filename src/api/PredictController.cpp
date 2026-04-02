@@ -253,7 +253,11 @@ void PredictController::train(
     }
   }
 
+  auto &cfg = Config::getInstance();
+
   trade::ml::TrainingConfig config;
+  config.batch_size =
+      cfg.getInt("ML_TRAINING_BATCH_SIZE", config.batch_size);
   config.epochs = payload.value("epochs", config.epochs);
   config.learning_rate = payload.value("learning_rate", config.learning_rate);
   config.batch_size = payload.value("batch_size", config.batch_size);
@@ -269,6 +273,8 @@ void PredictController::train(
   // Support frontend query-parameter contract: /api/ml/train?batch_training=true
   config.batch_training = parse_bool_param(req->getParameter("batch_training"),
                                            config.batch_training);
+  config.batch_size =
+      parse_int_param(req->getParameter("batch_size"), config.batch_size);
   config.max_training_rows = parse_int_param(req->getParameter("max_training_rows"),
                                              config.max_training_rows);
 
@@ -278,6 +284,9 @@ void PredictController::train(
   }
   if (config.max_training_rows < 0) {
     config.max_training_rows = 0;
+  }
+  if (config.batch_size <= 0) {
+    config.batch_size = 1;
   }
   config.model_name = payload.value("model_name", config.model_name);
 
@@ -300,7 +309,6 @@ void PredictController::train(
     return;
   }
 
-  auto &cfg = Config::getInstance();
   std::string db_url = cfg.get("DATABASE_URL");
   if (db_url.empty()) {
     Json::Value err;
