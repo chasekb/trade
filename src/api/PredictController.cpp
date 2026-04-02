@@ -11,6 +11,7 @@
 #include <cctype>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <nlohmann/json.hpp>
@@ -73,6 +74,21 @@ std::string now_iso_utc() {
   std::ostringstream oss;
   oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
   return oss.str();
+}
+
+bool copy_if_exists(const std::filesystem::path &src,
+                    const std::filesystem::path &dst) {
+  try {
+    if (!std::filesystem::exists(src)) {
+      return false;
+    }
+    std::filesystem::create_directories(dst.parent_path());
+    std::filesystem::copy_file(src, dst,
+                               std::filesystem::copy_options::overwrite_existing);
+    return true;
+  } catch (const std::exception &) {
+    return false;
+  }
 }
 } // namespace
 
@@ -293,26 +309,30 @@ void PredictController::train(
       const std::string version_id = std::to_string(std::time(nullptr));
       const std::string model_id = config.model_name + ":" + version_id;
 
-      nlohmann::json models = nlohmann::json::array();
-      if (const auto existing = cache.get("ml_available_models")) {
-        try {
-          models = nlohmann::json::parse(*existing);
-          if (!models.is_array()) {
-            models = nlohmann::json::array();
-          }
-        } catch (const std::exception &) {
-          models = nlohmann::json::array();
-        }
-      }
+      const std::filesystem::path model_root(PredictController::model_dir_);
+      const std::filesystem::path package_dir = model_root / "trained" / model_id;
+      std::filesystem::create_directories(package_dir);
 
-      models.push_back({
+      const bool has_regressor = copy_if_exists(model_root / "regressor.onnx",
+                                                package_dir / "regressor.onnx");
+      const bool has_classifier = copy_if_exists(model_root / "classifier.onnx",
+                                                 package_dir / "classifier.onnx");
+      const bool has_transformer = copy_if_exists(model_root / "transformer.onnx",
+                                                  package_dir / "transformer.onnx");
+
+      nlohmann::json metadata = {
           {"model_id", model_id},
           {"model_name", config.model_name},
           {"version_id", version_id},
           {"type", model_type_to_string(config.type)},
           {"trained_at", trained_at},
-          {"is_virtual", true}});
-      cache.set("ml_available_models", models.dump());
+          {"artifacts", {{"regressor", has_regressor},
+                           {"classifier", has_classifier},
+                           {"transformer", has_transformer}}}};
+
+      std::ofstream meta_file(package_dir / "metadata.json");
+      meta_file << metadata.dump(2);
+      meta_file.close();
 
       if (auto_set_active) {
         cache.set("ml_active_model_id", model_id);
@@ -432,25 +452,36 @@ void PredictController::availableModels(
       appendModelIfExists("transformer.onnx", "transformer", "Transformer", "sequence");
     }
 
-    if (const auto cached = cache.get("ml_available_models")) {
-      try {
-        const auto j = nlohmann::json::parse(*cached);
-        if (j.is_array()) {
-          for (const auto &entry : j) {
-            if (!entry.is_object()) {
+    if (!model_dir_.empty()) {
+      namespace fs = std::filesystem;
+      fs::path trained_dir = fs::path(model_dir_) / "trained";
+      if (fs::exists(trained_dir) && fs::is_directory(trained_dir)) {
+        for (const auto &entry : fs::directory_iterator(trained_dir)) {
+          if (!entry.is_directory()) {
+            continue;
+          }
+          const fs::path meta_path = entry.path() / "metadata.json";
+          if (!fs::exists(meta_path)) {
+            continue;
+          }
+
+          try {
+            std::ifstream in(meta_path);
+            nlohmann::json meta = nlohmann::json::parse(in, nullptr, true, true);
+            if (!meta.is_object()) {
               continue;
             }
+
             Json::Value model;
-            model["model_id"] = entry.value("model_id", "");
-            model["model_name"] = entry.value("model_name", "");
-            model["version_id"] = entry.value("version_id", "");
-            model["type"] = entry.value("type", "");
-            model["trained_at"] = entry.value("trained_at", "");
+            model["model_id"] = meta.value("model_id", entry.path().filename().string());
+            model["model_name"] = meta.value("model_name", "Trained Model");
+            model["version_id"] = meta.value("version_id", "");
+            model["type"] = meta.value("type", "unknown");
+            model["trained_at"] = meta.value("trained_at", "");
             result.append(model);
+          } catch (const std::exception &) {
           }
         }
-      } catch (const std::exception &) {
-        // ignore malformed cache payload
       }
     }
 
@@ -482,22 +513,31 @@ void PredictController::setActiveModel(
   std::string selected_name = model_name;
   std::string selected_version;
 
-  if (const auto cached = cache.get("ml_available_models")) {
-    try {
-      const auto j = nlohmann::json::parse(*cached);
-      if (j.is_array()) {
-        for (const auto &entry : j) {
-          const std::string id = entry.value("model_id", "");
-          const std::string name = entry.value("model_name", "");
-          if (model_name == id || model_name == name) {
-            selected_name = name.empty() ? model_name : name;
-            selected_version = entry.value("version_id", "");
-            break;
-          }
+  try {
+    namespace fs = std::filesystem;
+    if (!model_dir_.empty()) {
+      const fs::path model_root(model_dir_);
+      const fs::path package_dir = model_root / "trained" / model_name;
+      if (fs::exists(package_dir) && fs::is_directory(package_dir)) {
+        copy_if_exists(package_dir / "regressor.onnx", model_root / "regressor.onnx");
+        copy_if_exists(package_dir / "classifier.onnx", model_root / "classifier.onnx");
+        copy_if_exists(package_dir / "transformer.onnx", model_root / "transformer.onnx");
+
+        const fs::path meta_path = package_dir / "metadata.json";
+        if (fs::exists(meta_path)) {
+          std::ifstream in(meta_path);
+          nlohmann::json meta = nlohmann::json::parse(in, nullptr, true, true);
+          selected_name = meta.value("model_name", selected_name);
+          selected_version = meta.value("version_id", selected_version);
         }
       }
-    } catch (const std::exception &) {
     }
+  } catch (const std::exception &e) {
+    TR_LOG_ERROR("Failed to switch model package '{}': {}", model_name, e.what());
+  }
+
+  if (model_manager_) {
+    model_manager_->reload_models();
   }
 
   cache.set("ml_active_model_id", model_name);

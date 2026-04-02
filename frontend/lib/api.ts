@@ -346,13 +346,18 @@ class ApiClient {
     }
   }
 
-  async trainMLModel(batchTraining?: boolean, autoSetActive?: boolean): Promise<ApiResponse<import('@/types/trading').MLTrainingResponse>> {
+  async trainMLModel(options?: {
+    batchTraining?: boolean;
+    autoSetActive?: boolean;
+    modelType?: 'random_forest' | 'gradient_boosting' | 'transformer';
+    modelName?: string;
+  }): Promise<ApiResponse<import('@/types/trading').MLTrainingResponse>> {
     const queryParams = new URLSearchParams();
-    if (batchTraining !== undefined) {
-      queryParams.append('batch_training', batchTraining.toString());
+    if (options?.batchTraining !== undefined) {
+      queryParams.append('batch_training', options.batchTraining.toString());
     }
-    if (autoSetActive !== undefined) {
-      queryParams.append('auto_set_active', autoSetActive.toString());
+    if (options?.autoSetActive !== undefined) {
+      queryParams.append('auto_set_active', options.autoSetActive.toString());
     }
     const query = queryParams.toString();
 
@@ -361,6 +366,10 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        ...(options?.modelType ? { model_type: options.modelType } : {}),
+        ...(options?.modelName ? { model_name: options.modelName } : {}),
+      }),
     }).then(async (response) => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -442,7 +451,7 @@ class ApiClient {
   }
 
   async setActiveModel(modelName: string): Promise<ApiResponse<any>> {
-    return this.request(`/api/ml/models/set_active?model_name=${modelName}`, {
+    return this.request(`/api/ml/models/set_active?model_name=${encodeURIComponent(modelName)}`, {
       method: 'POST',
     });
   }
