@@ -85,6 +85,19 @@ bool copy_if_exists(const std::filesystem::path &src,
     std::filesystem::create_directories(dst.parent_path());
     std::filesystem::copy_file(src, dst,
                                std::filesystem::copy_options::overwrite_existing);
+
+    std::error_code perm_ec;
+    std::filesystem::permissions(
+        dst,
+        std::filesystem::perms::owner_read |
+            std::filesystem::perms::owner_write |
+            std::filesystem::perms::group_read |
+            std::filesystem::perms::others_read,
+        std::filesystem::perm_options::replace, perm_ec);
+    if (perm_ec) {
+      TR_LOG_WARN("Failed to normalize permissions on '{}': {}", dst.string(),
+                  perm_ec.message());
+    }
     return true;
   } catch (const std::exception &) {
     return false;
@@ -374,12 +387,20 @@ void PredictController::train(
       meta_file.close();
 
       if (auto_set_active) {
-        if (model_manager_) {
-          model_manager_->load_models(package_dir.string());
+        bool activated = false;
+        if (has_regressor && has_classifier && model_manager_) {
+          activated = model_manager_->load_models(package_dir.string());
+          if (!activated) {
+            TR_LOG_WARN("Trained package '{}' created but could not be activated; keeping current active model",
+                        model_id);
+          }
         }
-        cache.set("ml_active_model_id", model_id);
-        cache.set("ml_active_model_name", config.model_name);
-        cache.set("ml_active_model_version", version_id);
+
+        if (activated) {
+          cache.set("ml_active_model_id", model_id);
+          cache.set("ml_active_model_name", config.model_name);
+          cache.set("ml_active_model_version", version_id);
+        }
       }
 
       cache.set_training_status("training", 90);
@@ -520,6 +541,24 @@ void PredictController::availableModels(
             model["version_id"] = meta.value("version_id", "");
             model["type"] = meta.value("type", "unknown");
             model["trained_at"] = meta.value("trained_at", "");
+
+            const fs::path reg = entry.path() / "regressor.onnx";
+            const fs::path cls = entry.path() / "classifier.onnx";
+            if (!fs::exists(reg) || !fs::exists(cls) || !fs::is_regular_file(reg) ||
+                !fs::is_regular_file(cls)) {
+              continue;
+            }
+
+            std::error_code size_ec;
+            const auto reg_size = fs::file_size(reg, size_ec);
+            if (size_ec || reg_size == 0) {
+              continue;
+            }
+            const auto cls_size = fs::file_size(cls, size_ec);
+            if (size_ec || cls_size == 0) {
+              continue;
+            }
+
             result.append(model);
           } catch (const std::exception &) {
           }
@@ -569,8 +608,18 @@ void PredictController::setActiveModel(
           selected_version = meta.value("version_id", selected_version);
         }
 
+        bool switched = false;
         if (model_manager_) {
-          model_manager_->load_models(package_dir.string());
+          switched = model_manager_->load_models(package_dir.string());
+        }
+
+        if (!switched) {
+          Json::Value err;
+          err["error"] = "Failed to activate selected model package";
+          auto resp = HttpResponse::newHttpJsonResponse(err);
+          resp->setStatusCode(k500InternalServerError);
+          callback(resp);
+          return;
         }
       } else if (model_name == "regressor" || model_name == "classifier" ||
                  model_name == "transformer") {
