@@ -4,7 +4,7 @@ FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
 # Install build dependencies with retry logic for transient mirror/network failures
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
-      apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update && \
+      apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update && \
       apt-get install -y --no-install-recommends --fix-missing \
         cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
         autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
@@ -123,7 +123,7 @@ WORKDIR /app
 # Runtime dependency for ONNX/OpenBLAS stack used by trading_bot_cpp
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
-      apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update && \
+      apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update && \
       apt-get install -y --no-install-recommends --fix-missing libgfortran5 \
       && break; \
       echo "runtime apt install attempt ${i} failed, retrying in 15s..."; \

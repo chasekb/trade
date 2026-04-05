@@ -52,6 +52,16 @@ class DataCollector {
 public:
   explicit DataCollector(const std::string &db_url);
 
+  // Ensure persisted ML training-input cache table/indexes exist.
+  bool ensure_training_inputs_table();
+
+  // Incrementally persist matched signal/trade training inputs.
+  // Returns number of newly inserted rows.
+  std::size_t sync_training_inputs(int days_back, int batch_size = 5000);
+
+  // Count persisted training-input rows available for training.
+  std::size_t count_training_inputs(int days_back = 0);
+
   std::vector<OrderBookFeatures> extract_signals(int days_back,
                                                  int limit = 0);
   std::vector<TradeOutcome> extract_trades(int days_back, int limit = 0);

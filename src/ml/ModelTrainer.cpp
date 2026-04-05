@@ -20,7 +20,36 @@ ModelTrainer::ModelTrainer(std::shared_ptr<DataCollector> collector)
 ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   ModelMetrics metrics;
 
-  if (config.batch_training) {
+  if (!collector_) {
+    spdlog::error("ModelTrainer: data collector is not configured");
+    return metrics;
+  }
+
+  const int sync_batch_size = std::max(1000, config.batch_size);
+  const std::size_t synced =
+      collector_->sync_training_inputs(config.days_back, sync_batch_size);
+  const std::size_t available = collector_->count_training_inputs(config.days_back);
+
+  spdlog::info(
+      "ModelTrainer: training-input sync inserted={} available={} days_back={}"
+      " batch_size={}",
+      synced, available, config.days_back, sync_batch_size);
+
+  if (available == 0) {
+    spdlog::warn("ModelTrainer: no persisted training inputs available");
+    return metrics;
+  }
+
+  bool use_batch = config.batch_training;
+  if (use_batch && available <= 20000) {
+    spdlog::info(
+        "ModelTrainer: disabling batch mode for {} samples (<= 20000); using"
+        " single-load path",
+        available);
+    use_batch = false;
+  }
+
+  if (use_batch) {
     const int batch_rows = std::max(1, config.batch_size);
     spdlog::info(
         "ModelTrainer: batch_training enabled, streaming unlimited rows in batches of {}",
@@ -69,6 +98,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       std::size_t total = 0;
       std::size_t wins = 0;
       PnlStats pnl_stats;
+      int batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
         auto batch =
@@ -77,6 +107,11 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
         if (batch.empty()) {
           break;
         }
+
+        ++batch_index;
+        spdlog::info(
+            "ModelTrainer: [RF batch {}] offset={} rows={} processed_before={}",
+            batch_index, offset, batch.size(), total);
 
         for (const auto &sample : batch) {
           ++total;
@@ -117,6 +152,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       std::size_t actual_positives = 0;
       std::size_t correct = 0;
       PnlStats pnl_stats;
+      int batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
         auto batch =
@@ -125,6 +161,11 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
         if (batch.empty()) {
           break;
         }
+
+        ++batch_index;
+        spdlog::info(
+            "ModelTrainer: [GB batch {}] offset={} rows={} processed_before={}",
+            batch_index, offset, batch.size(), total);
 
         for (const auto &sample : batch) {
           const bool actual = sample.second.is_win;
@@ -171,6 +212,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       double sum_xx = 0.0;
       double sum_xy = 0.0;
       PnlStats pnl_stats;
+      int pass1_batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
         auto batch =
@@ -179,6 +221,11 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
         if (batch.empty()) {
           break;
         }
+
+        ++pass1_batch_index;
+        spdlog::info(
+            "ModelTrainer: [TF pass1 batch {}] offset={} rows={} processed_before={}",
+            pass1_batch_index, offset, batch.size(), count);
 
         for (const auto &sample : batch) {
           const double x = sample.first.bid_ask_imbalance;
@@ -211,6 +258,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       const double mean_y = sum_y / n;
       double ss_res = 0.0;
       double ss_tot = 0.0;
+      int pass2_batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
         auto batch =
@@ -219,6 +267,11 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
         if (batch.empty()) {
           break;
         }
+
+        ++pass2_batch_index;
+        spdlog::info(
+            "ModelTrainer: [TF pass2 batch {}] offset={} rows={}",
+            pass2_batch_index, offset, batch.size());
 
         for (const auto &sample : batch) {
           const double x = sample.first.bid_ask_imbalance;
@@ -244,27 +297,23 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
     }
   }
 
-  const int extraction_limit =
-      config.max_training_rows;
-
-  if (extraction_limit > 0) {
+  int extraction_limit = static_cast<int>(available);
+  if (config.max_training_rows > 0) {
+    extraction_limit = std::min(extraction_limit, config.max_training_rows);
     spdlog::info(
         "ModelTrainer: non-batch training extraction limit set to {} per dataset",
         extraction_limit);
   }
 
-  // 1. Fetch data
-  auto signals = collector_->extract_signals(config.days_back, extraction_limit);
-  auto trades = collector_->extract_trades(config.days_back, extraction_limit);
+  // 1. Fetch already persisted/matched training inputs from cache table
+  auto paired_data =
+      collector_->extract_training_pairs_batch(config.days_back, extraction_limit, 0);
 
-  spdlog::info("ModelTrainer: extracted {} signals and {} trades",
-               signals.size(), trades.size());
-
-  // 2. Match signals to outcomes
-  auto paired_data = collector_->match_signals_to_trades(signals, trades);
+  spdlog::info("ModelTrainer: loaded {} persisted training pairs",
+               paired_data.size());
 
   if (paired_data.empty()) {
-    spdlog::warn("ModelTrainer: no training data found (no matched signals)");
+    spdlog::warn("ModelTrainer: no persisted training pairs found");
     return metrics;
   }
 

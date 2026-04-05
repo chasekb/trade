@@ -23,7 +23,7 @@ struct TrainingConfig {
   int epochs = 10;
   double learning_rate = 0.001;
   int batch_size = 32;
-  bool batch_training = true;
+  bool batch_training = false;
   double test_split = 0.2;
   // <= 0 means use all available data
   int days_back = 0;

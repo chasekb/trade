@@ -10,3 +10,7 @@ vcpkg_installed/
 node_modules/
 __pycache__/
 legacy_python/
+data/trained_models/
+logs/
+outputs/
+test_outputs/
