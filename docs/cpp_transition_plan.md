@@ -137,3 +137,41 @@ The goal is to replace the current Python/FastAPI/Uvicorn stack with a C++ micro
 1. Set up the C++ project skeleton with CMake.
 2. Write the `skl2onnx` conversion script for existing models.
 3. Implement the C++ `FeatureEngineer` and verify against Python outputs.
+
+## 7. Trained Model Packaging Remediation Plan
+
+### Problem Statement
+
+`POST /api/ml/train` can report `completed` even when the trained-model package is invalid. In the current C++ transition state, `ModelTrainer` computes metrics but does not emit new ONNX artifacts. The packaging step in `PredictController` snapshots the currently loaded ONNX assets into `data/trained_models/<model_id>/`, but copy failures can leave zero-byte files behind. Those packages are then filtered out by `GET /api/ml/models`, and `auto_set_active` silently does not occur.
+
+### Success Criteria
+
+* A completed training run creates a package with validated, non-zero ONNX artifacts.
+* `GET /api/ml/models` returns the new package.
+* `auto_set_active=true` activates the newly packaged model when validation succeeds.
+* Packaging failure causes training to report `failed`, not `completed`.
+
+### Implementation Plan
+
+1. **Harden packaging in `PredictController`**
+   * Replace permissive `copy_if_exists()` logic with a strict, verified copy routine.
+   * Validate source existence before copy.
+   * Validate destination existence and non-zero byte size after copy.
+   * Log source, destination, and byte counts for every artifact.
+
+2. **Fail fast on invalid packages**
+   * Treat regressor/classifier artifacts as required for the currently supported C++ inference path.
+   * Throw and mark training status as `failed` if required artifacts are missing or zero-byte.
+   * Only mark training `completed` after packaging and optional activation succeed.
+
+3. **Snapshot current validated ONNX assets during transition**
+   * Until native C++ training/export is implemented, the C++ backend will package the currently validated ONNX assets from `data/onnx/` as the versioned trained-model artifact set.
+   * This preserves current behavior expectations for listing and activation without misreporting broken packages as usable.
+
+4. **Keep model discovery consistent**
+   * Continue filtering packages in `GET /api/ml/models` using non-zero artifact validation.
+   * Ensure packaged artifacts satisfy the same validation contract expected by `ONNXModelManager::load_models()`.
+
+5. **Future follow-up**
+   * Implement real model export/staging from training output instead of snapshotting existing ONNX assets.
+   * Evolve package validation to be metadata-driven by model type when transformer-only packages become first-class deployable artifacts.
