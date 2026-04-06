@@ -76,32 +76,68 @@ std::string now_iso_utc() {
   return oss.str();
 }
 
-bool copy_if_exists(const std::filesystem::path &src,
-                    const std::filesystem::path &dst) {
-  try {
-    if (!std::filesystem::exists(src)) {
-      return false;
-    }
-    std::filesystem::create_directories(dst.parent_path());
-    std::filesystem::copy_file(src, dst,
-                               std::filesystem::copy_options::overwrite_existing);
-
-    std::error_code perm_ec;
-    std::filesystem::permissions(
-        dst,
-        std::filesystem::perms::owner_read |
-            std::filesystem::perms::owner_write |
-            std::filesystem::perms::group_read |
-            std::filesystem::perms::others_read,
-        std::filesystem::perm_options::replace, perm_ec);
-    if (perm_ec) {
-      TR_LOG_WARN("Failed to normalize permissions on '{}': {}", dst.string(),
-                  perm_ec.message());
-    }
-    return true;
-  } catch (const std::exception &) {
-    return false;
+std::uintmax_t validated_file_size(const std::filesystem::path &path) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec) || ec) {
+    return 0;
   }
+  if (!std::filesystem::is_regular_file(path, ec) || ec) {
+    return 0;
+  }
+  const auto size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    return 0;
+  }
+  return size;
+}
+
+std::uintmax_t copy_required_artifact(const std::filesystem::path &src,
+                                      const std::filesystem::path &dst) {
+  std::error_code ec;
+  const auto src_size = validated_file_size(src);
+  if (src_size == 0) {
+    throw std::runtime_error("Required model artifact is missing or empty: " +
+                             src.string());
+  }
+
+  std::filesystem::create_directories(dst.parent_path(), ec);
+  if (ec) {
+    throw std::runtime_error("Failed to create artifact directory '" +
+                             dst.parent_path().string() + "': " + ec.message());
+  }
+
+  std::filesystem::remove(dst, ec);
+  ec.clear();
+  std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
+  if (ec) {
+    throw std::runtime_error("Failed to copy artifact from '" + src.string() +
+                             "' to '" + dst.string() + "': " + ec.message());
+  }
+
+  std::filesystem::permissions(
+      dst,
+      std::filesystem::perms::owner_read |
+          std::filesystem::perms::owner_write |
+          std::filesystem::perms::group_read |
+          std::filesystem::perms::others_read,
+      std::filesystem::perm_options::replace, ec);
+  if (ec) {
+    TR_LOG_WARN("Failed to normalize permissions on '{}': {}", dst.string(),
+                ec.message());
+  }
+
+  const auto dst_size = validated_file_size(dst);
+  if (dst_size == 0) {
+    throw std::runtime_error("Copied artifact is empty: " + dst.string());
+  }
+
+  TR_LOG_INFO("Packaged model artifact '{}' -> '{}' ({} bytes)", src.string(),
+              dst.string(), dst_size);
+  return dst_size;
+}
+
+bool optional_artifact_available(const std::filesystem::path &path) {
+  return validated_file_size(path) > 0;
 }
 } // namespace
 
@@ -365,12 +401,20 @@ void PredictController::train(
       const std::filesystem::path package_dir = trained_root / model_id;
       std::filesystem::create_directories(package_dir);
 
-      const bool has_regressor = copy_if_exists(model_root / "regressor.onnx",
-                                                package_dir / "regressor.onnx");
-      const bool has_classifier = copy_if_exists(model_root / "classifier.onnx",
-                                                 package_dir / "classifier.onnx");
-      const bool has_transformer = copy_if_exists(model_root / "transformer.onnx",
+      const auto regressor_size = copy_required_artifact(model_root / "regressor.onnx",
+                                                         package_dir / "regressor.onnx");
+      const auto classifier_size = copy_required_artifact(model_root / "classifier.onnx",
+                                                          package_dir / "classifier.onnx");
+
+      std::uintmax_t transformer_size = 0;
+      if (optional_artifact_available(model_root / "transformer.onnx")) {
+        transformer_size = copy_required_artifact(model_root / "transformer.onnx",
                                                   package_dir / "transformer.onnx");
+      }
+
+      const bool has_regressor = regressor_size > 0;
+      const bool has_classifier = classifier_size > 0;
+      const bool has_transformer = transformer_size > 0;
 
       nlohmann::json metadata = {
           {"model_id", model_id},
@@ -378,11 +422,20 @@ void PredictController::train(
           {"version_id", version_id},
           {"type", model_type_to_string(config.type)},
           {"trained_at", trained_at},
+          {"artifacts_valid", has_regressor && has_classifier},
           {"artifacts", {{"regressor", has_regressor},
                            {"classifier", has_classifier},
-                           {"transformer", has_transformer}}}};
+                           {"transformer", has_transformer}}},
+          {"artifact_sizes",
+           {{"regressor", regressor_size},
+            {"classifier", classifier_size},
+            {"transformer", transformer_size}}}};
 
       std::ofstream meta_file(package_dir / "metadata.json");
+      if (!meta_file.is_open()) {
+        throw std::runtime_error("Failed to write metadata for trained package: " +
+                                 package_dir.string());
+      }
       meta_file << metadata.dump(2);
       meta_file.close();
 
@@ -404,7 +457,7 @@ void PredictController::train(
       }
 
       cache.set_training_status("training", 90);
-      TR_LOG_INFO("ML training progress: 90% (training completed, reloading models)");
+      TR_LOG_INFO("ML training progress: 90% (packaging completed, reloading models)");
 
       // Reload models once training is done
       if (model_manager_) {
