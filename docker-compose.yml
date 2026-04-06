@@ -13,18 +13,17 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379
-      - QDRANT_URL=http://qdrant:6333
       - ENV=development
       - TRAINED_MODELS_DIR=/app/data/trained_models
+    user: "0:0"
     volumes:
-      - ./.env:/app/.env:ro
-      - ./data/cpp_assets:/app/data/cpp_assets:ro
-      - ./data/onnx:/app/data/onnx:ro
-      - ./data/trained_models:/app/data/trained_models
+      - ./.env:/app/.env:ro,Z
+      - ./data/cpp_assets:/app/data/cpp_assets:ro,Z
+      - ./data/onnx:/app/data/onnx:ro,Z
+      - ./data/trained_models:/app/data/trained_models:Z
     depends_on:
       - db
       - redis
-      - qdrant
     networks:
       - trading-network
     restart: unless-stopped
@@ -69,27 +68,6 @@ services:
       retries: 3
       start_period: 60s
 
-  # Vector Database for ML Features
-  qdrant:
-    image: ghcr.io/chasekb/trade/qdrant:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: qdrant.Dockerfile
-    ports:
-      - "${QDRANT_HOST_PORT:-16333}:6333"
-      - "${QDRANT_GRPC_HOST_PORT:-16334}:6334"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    networks:
-      - trading-network
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   # Main Database
   db:
     image: postgres:15-alpine
@@ -129,7 +107,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  qdrant_storage:
 
 
 networks:
