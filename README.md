@@ -69,7 +69,7 @@ trade/
 ### 🎯 **Integrated ML Trading System**
 
 - **One Command Setup**: `docker-compose up` starts everything
-- **Automatic Service Management**: Vector database and ML services start automatically
+- **Automatic Service Management**: Backend support services start automatically
 - **Seamless Trading Integration**: ML predictions available for simulated and live trading
 - **Real-time ML Dashboard**: Built-in ML management interface at `http://localhost:3000`
 - **Health Monitoring**: Automatic service health checks and status monitoring
@@ -79,7 +79,6 @@ trade/
 
 - **Microservices Design**: Modular, scalable component architecture
 - **Async/Await**: High-performance asynchronous Python
-- **Vector Database**: Qdrant for ML pattern matching and similarity search
 - **Caching Layer**: Redis for high-performance data caching
 - **WebSocket Integration**: Real-time data streaming
 - **RESTful API**: FastAPI with automatic OpenAPI documentation
@@ -91,7 +90,6 @@ trade/
 - Python 3.11+
 - Node.js 18+
 - UV package manager
-- Qdrant (for ML vector database)
 - Redis (for ML caching)
 
 ### Installation
@@ -142,7 +140,6 @@ This single command starts:
 - **C++ Backend**: High-performance ML inference at `http://localhost:8080`
 - **Frontend**: Next.js React dashboard on `http://localhost:3000`
 - **Backend**: FastAPI server on `http://localhost:8000` (Legacy/Integration)
-- Qdrant vector database on `http://localhost:16333`
 - Redis cache on `localhost:6379`
 - PostgreSQL database on `localhost:5432`
 
@@ -187,7 +184,7 @@ docker-compose up backend
 cd frontend && npm run dev
 
 # Start databases only
-docker-compose up db redis qdrant
+docker-compose up db redis
 ```
 
 #### Previous CLI Commands (Archived)
@@ -205,7 +202,6 @@ The previous CLI interface using `main.py` has been archived. If you need to res
 - **Database Storage**: SQLite for persistent data storage
 - **🤖 Machine Learning Trading Optimization**:
   - **ML-Enhanced Order Book Strategy**: Real-time ML predictions for trading signals
-  - **Vector Database**: Qdrant vector database for pattern matching and similarity search
   - **Ensemble Models**: Random Forest, Gradient Boosting, Neural Networks
   - **Feature Engineering**: Advanced order book feature extraction
   - **Model Management**: Versioning, hot-swapping, and rollback capabilities
@@ -220,7 +216,6 @@ Configuration files are located in the `config/` directory:
 - `requirements.txt`: Python dependencies
 - `package.json`: Node.js dependencies
 - `playwright.config.ts`: E2E testing configuration
-- `vector-db-config.yaml`: Vector database configuration for ML system
 
 ## 🧪 Testing
 
@@ -262,7 +257,7 @@ Features:
   - Model control interface (train, update, rollback)
   - Real-time ML system monitoring
   - ML vs baseline strategy comparison
-  - **Automatic ML Service Management**: Vector database and ML services start automatically
+  - **Automatic ML Service Management**: Backend support services start automatically
   - **Trading Integration**: ML predictions available for simulated and live trading
 
 ## 🤖 Machine Learning Trading Optimization
@@ -273,17 +268,17 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 
 ```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Trading Bot   │    │  ML Optimizer   │    │ Vector Database │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │ Order Book  │ │───▶│ │ Data        │ │───▶│ │ Qdrant      │ │
-│ │ Strategy    │ │    │ │ Collector   │ │    │ │ Vector DB   │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │ ML Enhanced │ │◀───│ │ Model       │ │◀───│ │ Redis       │ │
-│ │ Strategy    │ │    │ │ Manager     │ │    │ │ Cache       │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
+│   Trading Bot   │    │  ML Optimizer   │    │ Support Svcs   │
+│                 │    │                 │    │                │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌────────────┐ │
+│ │ Order Book  │ │───▶│ │ Data        │ │───▶│ │ Postgres   │ │
+│ │ Strategy    │ │    │ │ Collector   │ │    │ │ + Redis    │ │
+│ └─────────────┘ │    │ └─────────────┘ │    │ └────────────┘ │
+│                 │    │                 │    │                │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌────────────┐ │
+│ │ ML Enhanced │ │◀───│ │ Model       │ │◀───│ │ ONNX       │ │
+│ │ Strategy    │ │    │ │ Manager     │ │    │ │ Artifacts  │ │
+│ └─────────────┘ │    │ └─────────────┘ │    │ └────────────┘ │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │
                                 ▼
@@ -298,13 +293,11 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 - **Data Collection**: Extract order book signals and trade outcomes
 - **Feature Engineering**: Transform raw data into ML-ready features
 - **Model Training**: Ensemble models (RF, GB, NN, Linear)
-- **Vector Database**: Qdrant for pattern matching and similarity search
 - **Model Management**: Versioning, deployment, and rollback
 - **Real-time Inference**: Sub-second ML predictions during trading
 
 ### ML Services (Automatically Started with Docker Compose)
 
-- **Qdrant Vector DB**: `http://localhost:16333` - Feature vector storage
 - **Redis Cache**: `localhost:6379` - High-performance caching
 - **PostgreSQL DB**: `localhost:5432` - Main database
 - **Backend API**: `http://localhost:8000` - FastAPI backend server
@@ -326,7 +319,6 @@ Detailed documentation is available in the `docs/` directory:
 - [WebSocket Subscriptions](docs/WEBSOCKET_SUBSCRIPTIONS.md)
 - [Test Results](docs/TEST_RESULTS.md)
 - [🤖 ML Trading Optimization](docs/ML_TRADING_OPTIMIZATION.md) - Complete ML system documentation
-- [Vector Database Service](docs/VECTOR_DATABASE_SERVICE.md) - Integrated service management
 
 ## 🔧 Troubleshooting
 
@@ -335,27 +327,25 @@ Detailed documentation is available in the `docs/` directory:
 #### ML Services Not Starting
 
 ```bash
-# Check if Qdrant and Redis are installed
-which qdrant
+# Check if Redis is installed
 which redis-server
 
 # Install missing services
 # For macOS with Homebrew:
-brew install qdrant redis
+brew install redis
 
 # For Ubuntu/Debian:
-sudo apt-get install qdrant redis-server
+sudo apt-get install redis-server
 ```
 
 #### Port Conflicts
 
-If ports 3000, 8000, 16333, 6379, or 5432 are already in use:
+If ports 3000, 8000, 6379, or 5432 are already in use:
 
 ```bash
 # Check what's using the ports
 lsof -i :3000  # Frontend
 lsof -i :8000  # Backend
-lsof -i :16333 # Qdrant
 lsof -i :6379  # Redis
 lsof -i :5432  # PostgreSQL
 
@@ -376,7 +366,6 @@ docker-compose up
 
 ```bash
 # Check service status
-curl http://localhost:16333/health       # Qdrant
 redis-cli -p 6379 ping                  # Redis
 curl http://localhost:8000/health       # Backend API
 curl http://localhost:3000/api/health   # Frontend API
