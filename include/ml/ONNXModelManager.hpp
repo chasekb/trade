@@ -26,12 +26,18 @@ public:
   double predict_transformer(const std::vector<std::vector<double>> &sequence);
 
   bool is_ready() const {
-    return regressor_session_ != nullptr && classifier_session_ != nullptr;
+    return regressor_session_ != nullptr || classifier_session_ != nullptr ||
+           transformer_session_ != nullptr;
   }
+
+  bool has_regressor() const { return regressor_session_ != nullptr; }
+  bool has_classifier() const { return classifier_session_ != nullptr; }
+  bool has_transformer() const { return transformer_session_ != nullptr; }
 
 private:
   std::vector<float> run_inference(Ort::Session &session,
                                    const std::vector<double> &features);
+  void reset_sessions();
 
   Ort::Env env_;
   Ort::SessionOptions session_options_;

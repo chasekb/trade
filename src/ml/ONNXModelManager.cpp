@@ -7,6 +7,15 @@
 
 namespace ml {
 
+void ONNXModelManager::reset_sessions() {
+  regressor_session_.reset();
+  classifier_session_.reset();
+  transformer_session_.reset();
+  input_dim_ = 0;
+  transformer_lookback_ = 0;
+  transformer_features_ = 0;
+}
+
 ONNXModelManager::ONNXModelManager()
     : env_(ORT_LOGGING_LEVEL_WARNING, "ONNXModelManager"), session_options_() {
   session_options_.SetIntraOpNumThreads(1);
@@ -17,6 +26,7 @@ ONNXModelManager::ONNXModelManager()
 bool ONNXModelManager::load_models(const std::string &model_dir) {
   model_dir_ = model_dir;
   try {
+    reset_sessions();
     std::filesystem::path dir(model_dir);
     std::string reg_path = (dir / "regressor.onnx").string();
     std::string cls_path = (dir / "classifier.onnx").string();
@@ -43,46 +53,56 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
                    transformer_lookback_, transformer_features_);
     }
 
-    if (!std::filesystem::exists(reg_path) ||
-        !std::filesystem::exists(cls_path)) {
-      spdlog::error("ONNX models not found in {}", model_dir);
+    const bool has_regressor = std::filesystem::exists(reg_path);
+    const bool has_classifier = std::filesystem::exists(cls_path);
+    const bool has_transformer = std::filesystem::exists(trans_path);
+
+    if (!has_regressor && !has_classifier && !has_transformer) {
+      spdlog::error("No ONNX models found in {}", model_dir);
       return false;
     }
 
-    // Load Regressor
+    if (has_regressor) {
+      // Load Regressor
 #ifdef _WIN32
-    std::wstring w_reg_path(reg_path.begin(), reg_path.end());
-    regressor_session_ = std::make_unique<Ort::Session>(
-        env_, w_reg_path.c_str(), session_options_);
+      std::wstring w_reg_path(reg_path.begin(), reg_path.end());
+      regressor_session_ = std::make_unique<Ort::Session>(
+          env_, w_reg_path.c_str(), session_options_);
 #else
-    regressor_session_ = std::make_unique<Ort::Session>(env_, reg_path.c_str(),
-                                                        session_options_);
+      regressor_session_ = std::make_unique<Ort::Session>(env_, reg_path.c_str(),
+                                                          session_options_);
 #endif
-
-    // Load Classifier
-#ifdef _WIN32
-    std::wstring w_cls_path(cls_path.begin(), cls_path.end());
-    classifier_session_ = std::make_unique<Ort::Session>(
-        env_, w_cls_path.c_str(), session_options_);
-#else
-    classifier_session_ = std::make_unique<Ort::Session>(env_, cls_path.c_str(),
-                                                         session_options_);
-#endif
-
-    // Get info from regressor session (assuming both have same input shape)
-    Ort::TypeInfo type_info = regressor_session_->GetInputTypeInfo(0);
-    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-    auto input_shape = tensor_info.GetShape();
-
-    // input_shape is something like [-1, 10] or [1, 10]
-    if (input_shape.size() >= 2) {
-      input_dim_ = input_shape[1];
-    } else {
-      input_dim_ = input_shape[0];
     }
 
-    spdlog::info("Loaded ONNX models from {}. Expected input dimension: {}",
-                 model_dir, input_dim_);
+    if (has_classifier) {
+      // Load Classifier
+#ifdef _WIN32
+      std::wstring w_cls_path(cls_path.begin(), cls_path.end());
+      classifier_session_ = std::make_unique<Ort::Session>(
+          env_, w_cls_path.c_str(), session_options_);
+#else
+      classifier_session_ = std::make_unique<Ort::Session>(env_, cls_path.c_str(),
+                                                           session_options_);
+#endif
+    }
+
+    Ort::Session *shape_session = regressor_session_ ? regressor_session_.get()
+                                                     : classifier_session_.get();
+    if (shape_session != nullptr) {
+      Ort::TypeInfo type_info = shape_session->GetInputTypeInfo(0);
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      auto input_shape = tensor_info.GetShape();
+
+      if (input_shape.size() >= 2) {
+        input_dim_ = input_shape[1];
+      } else {
+        input_dim_ = input_shape[0];
+      }
+    }
+
+    spdlog::info(
+        "Loaded ONNX models from {}. Capabilities: regressor={}, classifier={}, transformer={}, expected input dimension: {}",
+        model_dir, has_regressor, has_classifier, has_transformer, input_dim_);
     return true;
   } catch (const std::exception &e) {
     spdlog::error("Failed to load ONNX models: {}", e.what());
