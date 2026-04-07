@@ -62,6 +62,42 @@ std::string model_type_to_string(const trade::ml::ModelType type) {
   }
 }
 
+trade::ml::ModelType model_type_from_string(const std::string &raw_type) {
+  std::string value = raw_type;
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+  if (value == "regression" || value == "random_forest") {
+    return trade::ml::ModelType::RANDOM_FOREST;
+  }
+  if (value == "classification" || value == "gradient_boosting" ||
+      value == "xgboost") {
+    return trade::ml::ModelType::GRADIENT_BOOSTING;
+  }
+  if (value == "sequence" || value == "transformer") {
+    return trade::ml::ModelType::TRANSFORMER;
+  }
+  return trade::ml::ModelType::RANDOM_FOREST;
+}
+
+std::vector<std::string> required_artifacts_for(const trade::ml::ModelType type) {
+  switch (type) {
+  case trade::ml::ModelType::RANDOM_FOREST:
+    return {"regressor.onnx"};
+  case trade::ml::ModelType::GRADIENT_BOOSTING:
+    return {"classifier.onnx"};
+  case trade::ml::ModelType::TRANSFORMER:
+    return {"transformer.onnx"};
+  default:
+    return {};
+  }
+}
+
+std::vector<std::string> optional_artifacts_for(const trade::ml::ModelType type) {
+  (void)type;
+  return {};
+}
+
 std::string now_iso_utc() {
   const auto now = std::chrono::system_clock::now();
   const auto t = std::chrono::system_clock::to_time_t(now);
@@ -129,6 +165,75 @@ std::uintmax_t copy_required_artifact(const std::filesystem::path &src,
   const auto dst_size = validated_file_size(dst);
   if (dst_size == 0) {
     throw std::runtime_error("Copied artifact is empty: " + dst.string());
+  }
+
+  TR_LOG_INFO("Packaged model artifact '{}' -> '{}' ({} bytes)", src.string(),
+              dst.string(), dst_size);
+  return dst_size;
+}
+
+std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
+                                          const std::filesystem::path &dst,
+                                          bool required) {
+  const auto src_size = validated_file_size(src);
+  if (src_size == 0) {
+    if (required) {
+      throw std::runtime_error("Required model artifact is missing or empty: " +
+                               src.string());
+    }
+    return 0;
+  }
+
+  const auto tmp_dst = dst.string() + ".tmp";
+  const std::filesystem::path tmp_path(tmp_dst);
+  std::error_code ec;
+  std::filesystem::create_directories(dst.parent_path(), ec);
+  if (ec) {
+    throw std::runtime_error("Failed to create artifact directory '" +
+                             dst.parent_path().string() + "': " + ec.message());
+  }
+
+  std::filesystem::remove(tmp_path, ec);
+  ec.clear();
+  std::filesystem::copy_file(src, tmp_path,
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  if (ec) {
+    throw std::runtime_error("Failed to copy artifact from '" + src.string() +
+                             "' to temp path '" + tmp_path.string() + "': " +
+                             ec.message());
+  }
+
+  const auto tmp_size = validated_file_size(tmp_path);
+  if (tmp_size == 0) {
+    std::filesystem::remove(tmp_path, ec);
+    throw std::runtime_error("Copied temp artifact is empty: " + tmp_path.string());
+  }
+
+  std::filesystem::remove(dst, ec);
+  ec.clear();
+  std::filesystem::rename(tmp_path, dst, ec);
+  if (ec) {
+    std::filesystem::remove(tmp_path, ec);
+    throw std::runtime_error("Failed to promote temp artifact from '" +
+                             tmp_path.string() + "' to '" + dst.string() + "': " +
+                             ec.message());
+  }
+
+  std::filesystem::permissions(
+      dst,
+      std::filesystem::perms::owner_read |
+          std::filesystem::perms::owner_write |
+          std::filesystem::perms::group_read |
+          std::filesystem::perms::others_read,
+      std::filesystem::perm_options::replace, ec);
+  if (ec) {
+    TR_LOG_WARN("Failed to normalize permissions on '{}': {}", dst.string(),
+                ec.message());
+  }
+
+  const auto dst_size = validated_file_size(dst);
+  if (dst_size == 0) {
+    throw std::runtime_error("Final artifact is empty: " + dst.string());
   }
 
   TR_LOG_INFO("Packaged model artifact '{}' -> '{}' ({} bytes)", src.string(),
@@ -401,20 +506,46 @@ void PredictController::train(
       const std::filesystem::path package_dir = trained_root / model_id;
       std::filesystem::create_directories(package_dir);
 
-      const auto regressor_size = copy_required_artifact(model_root / "regressor.onnx",
-                                                         package_dir / "regressor.onnx");
-      const auto classifier_size = copy_required_artifact(model_root / "classifier.onnx",
-                                                          package_dir / "classifier.onnx");
+      const auto required_artifacts = required_artifacts_for(config.type);
+      const auto optional_artifacts = optional_artifacts_for(config.type);
 
+      std::uintmax_t regressor_size = 0;
+      std::uintmax_t classifier_size = 0;
       std::uintmax_t transformer_size = 0;
-      if (optional_artifact_available(model_root / "transformer.onnx")) {
-        transformer_size = copy_required_artifact(model_root / "transformer.onnx",
-                                                  package_dir / "transformer.onnx");
+
+      auto package_artifact = [&](const std::string &artifact_name, bool required) {
+        const auto artifact_size = copy_artifact_via_temp_file(
+            model_root / artifact_name, package_dir / artifact_name, required);
+        if (artifact_name == "regressor.onnx") {
+          regressor_size = artifact_size;
+        } else if (artifact_name == "classifier.onnx") {
+          classifier_size = artifact_size;
+        } else if (artifact_name == "transformer.onnx") {
+          transformer_size = artifact_size;
+        }
+      };
+
+      for (const auto &artifact_name : required_artifacts) {
+        package_artifact(artifact_name, true);
+      }
+      for (const auto &artifact_name : optional_artifacts) {
+        package_artifact(artifact_name, false);
       }
 
       const bool has_regressor = regressor_size > 0;
       const bool has_classifier = classifier_size > 0;
       const bool has_transformer = transformer_size > 0;
+      const bool artifacts_valid = std::all_of(
+          required_artifacts.begin(), required_artifacts.end(),
+          [&](const std::string &artifact_name) {
+            if (artifact_name == "regressor.onnx")
+              return has_regressor;
+            if (artifact_name == "classifier.onnx")
+              return has_classifier;
+            if (artifact_name == "transformer.onnx")
+              return has_transformer;
+            return false;
+          });
 
       nlohmann::json metadata = {
           {"model_id", model_id},
@@ -422,7 +553,8 @@ void PredictController::train(
           {"version_id", version_id},
           {"type", model_type_to_string(config.type)},
           {"trained_at", trained_at},
-          {"artifacts_valid", has_regressor && has_classifier},
+          {"artifacts_valid", artifacts_valid},
+          {"required_artifacts", required_artifacts},
           {"artifacts", {{"regressor", has_regressor},
                            {"classifier", has_classifier},
                            {"transformer", has_transformer}}},
@@ -441,7 +573,7 @@ void PredictController::train(
 
       if (auto_set_active) {
         bool activated = false;
-        if (has_regressor && has_classifier && model_manager_) {
+        if (artifacts_valid && model_manager_) {
           activated = model_manager_->load_models(package_dir.string());
           if (!activated) {
             TR_LOG_WARN("Trained package '{}' created but could not be activated; keeping current active model",
@@ -595,20 +727,29 @@ void PredictController::availableModels(
             model["type"] = meta.value("type", "unknown");
             model["trained_at"] = meta.value("trained_at", "");
 
-            const fs::path reg = entry.path() / "regressor.onnx";
-            const fs::path cls = entry.path() / "classifier.onnx";
-            if (!fs::exists(reg) || !fs::exists(cls) || !fs::is_regular_file(reg) ||
-                !fs::is_regular_file(cls)) {
-              continue;
+            const auto package_type =
+                model_type_from_string(meta.value("type", "unknown"));
+            auto required_artifacts =
+                required_artifacts_for(package_type);
+            if (meta.contains("required_artifacts") &&
+                meta["required_artifacts"].is_array()) {
+              required_artifacts.clear();
+              for (const auto &artifact : meta["required_artifacts"]) {
+                if (artifact.is_string()) {
+                  required_artifacts.push_back(artifact.get<std::string>());
+                }
+              }
             }
 
-            std::error_code size_ec;
-            const auto reg_size = fs::file_size(reg, size_ec);
-            if (size_ec || reg_size == 0) {
-              continue;
+            bool valid = !required_artifacts.empty();
+            for (const auto &artifact_name : required_artifacts) {
+              const fs::path artifact_path = entry.path() / artifact_name;
+              if (validated_file_size(artifact_path) == 0) {
+                valid = false;
+                break;
+              }
             }
-            const auto cls_size = fs::file_size(cls, size_ec);
-            if (size_ec || cls_size == 0) {
+            if (!valid) {
               continue;
             }
 
