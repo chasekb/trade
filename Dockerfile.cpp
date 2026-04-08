@@ -136,10 +136,30 @@ COPY --from=builder /build/build/trading_bot_cpp .
 # Copy only the necessary vcpkg-installed libraries
 COPY --from=builder /build/build/vcpkg_installed/ /app/vcpkg_installed/
 
-# Avoid loading onnxruntime provider shim shared library when the backend is
-# linked against static ORT/ONNX archives. Keeping this .so alongside the
-# static link can trigger duplicate ONNX schema registration at startup.
-RUN find /app/vcpkg_installed -type f -name 'libonnxruntime_providers_shared.so' -delete
+# Strip symbols from the shipped binary and trim vcpkg to runtime-only assets.
+# The builder stage still needs headers and static libs, but the final image
+# only needs shared libraries and their runtime data.
+RUN set -eux; \
+    if command -v strip >/dev/null 2>&1; then \
+      strip --strip-unneeded /app/trading_bot_cpp || true; \
+      find /app/vcpkg_installed -type f -name '*.so*' -exec sh -c 'strip --strip-unneeded "$1" >/dev/null 2>&1 || true' sh {} \; \
+    fi; \
+    find /app/vcpkg_installed -type d \( \
+        -name include -o \
+        -name pkgconfig -o \
+        -name cmake -o \
+        -name debug -o \
+        -name doc -o \
+        -name man \
+      \) -prune -exec rm -rf '{}' +; \
+    find /app/vcpkg_installed -type f \( \
+        -name '*.a' -o \
+        -name '*.la' -o \
+        -name '*.o' -o \
+        -name '*.pc' -o \
+        -name '*.cmake' \
+      \) -delete; \
+    find /app/vcpkg_installed -type f -name 'libonnxruntime_providers_shared.so' -delete
 
 # Ensure the app can find the vcpkg libraries at runtime
 ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux/lib:/app/vcpkg_installed/x64-linux/lib
