@@ -144,21 +144,12 @@ RUN set -eux; \
       strip --strip-unneeded /app/trading_bot_cpp || true; \
       find /app/vcpkg_installed -type f -name '*.so*' -exec sh -c 'strip --strip-unneeded "$1" >/dev/null 2>&1 || true' sh {} \; \
     fi; \
-    find /app/vcpkg_installed -type d \( \
-        -name include -o \
-        -name pkgconfig -o \
-        -name cmake -o \
-        -name debug -o \
-        -name doc -o \
-        -name man \
-      \) -prune -exec rm -rf '{}' +; \
-    find /app/vcpkg_installed -type f \( \
-        -name '*.a' -o \
-        -name '*.la' -o \
-        -name '*.o' -o \
-        -name '*.pc' -o \
-        -name '*.cmake' \
-      \) -delete; \
+    for dir in include pkgconfig cmake debug doc man; do \
+      find /app/vcpkg_installed -type d -name "$dir" -prune -exec rm -rf '{}' +; \
+    done; \
+    for pattern in '*.a' '*.la' '*.o' '*.pc' '*.cmake'; do \
+      find /app/vcpkg_installed -type f -name "$pattern" -delete; \
+    done; \
     find /app/vcpkg_installed -type f -name 'libonnxruntime_providers_shared.so' -delete
 
 # Ensure the app can find the vcpkg libraries at runtime
