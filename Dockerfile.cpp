@@ -1,13 +1,14 @@
 # --- STAGE 1: Build ---
-FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS builder
+FROM ubuntu:22.04 AS builder
 
 # Install build dependencies with retry logic for transient mirror/network failures
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
       apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update && \
       apt-get install -y --no-install-recommends --fix-missing \
-        cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
+        ca-certificates curl cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
         autoconf automake libtool linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
+        unzip zip \
         libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
         libdbus-1-dev libglib2.0-dev libxi-dev libxtst-dev \
         libxrandr-dev libxinerama-dev libxcursor-dev libxdamage-dev libxcomposite-dev \
@@ -114,9 +115,8 @@ RUN ARCH=$(uname -m) && \
     cmake --build build -j$(nproc)
 
 # --- STAGE 2: Runtime ---
-# Use the devcontainers C++ image directly for runtime to avoid apt/dpkg
-# libc-bin postinst crashes observed in emulated arm64 builds on GitHub Actions.
-FROM mcr.microsoft.com/devcontainers/cpp:1-ubuntu-22.04 AS runtime
+# Use a plain Ubuntu runtime image so CI does not depend on MCR availability.
+FROM ubuntu:22.04 AS runtime
 
 WORKDIR /app
 
