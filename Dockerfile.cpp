@@ -140,10 +140,10 @@ COPY --from=builder /build/build/vcpkg_installed/ /app/vcpkg_installed/
 # The builder stage still needs headers and static libs, but the final image
 # only needs shared libraries and their runtime data.
 RUN set -eux; \
-    if command -v strip >/dev/null 2>&1; then \
-      strip --strip-unneeded /app/trading_bot_cpp || true; \
-      find /app/vcpkg_installed -type f -name '*.so*' -exec sh -c 'strip --strip-unneeded "$1" >/dev/null 2>&1 || true' sh {} \; \
-    fi; \
+    strip --strip-unneeded /app/trading_bot_cpp 2>/dev/null || true; \
+    find /app/vcpkg_installed -type f -name '*.so*' -exec sh -c 'strip --strip-unneeded "$1" >/dev/null 2>&1 || true' sh {} \;
+
+RUN set -eux; \
     for dir in include pkgconfig cmake debug doc man; do \
       find /app/vcpkg_installed -type d -name "$dir" -prune -exec rm -rf '{}' +; \
     done; \
