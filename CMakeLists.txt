@@ -12,6 +12,9 @@ find_package(redis++ CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
+find_package(Torch REQUIRED)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 # mlpack is header-only – no find_package needed, headers already in include_directories above
 # Collect all source files
@@ -27,6 +30,7 @@ set(SOURCES
     src/ml/Types.cpp
     src/ml/DataCollector.cpp
     src/ml/ModelTrainer.cpp
+    src/ml/TransformerModel.cpp
     src/trading/TradingStatsService.cpp
     src/api/PredictController.cpp
 )
@@ -41,6 +45,7 @@ target_compile_definitions(trading_bot_cpp PRIVATE
 
 target_include_directories(trading_bot_cpp PRIVATE
     include
+    ${TORCH_INCLUDE_DIRS}
 )
 
 target_link_libraries(trading_bot_cpp PRIVATE
@@ -52,6 +57,7 @@ target_link_libraries(trading_bot_cpp PRIVATE
     spdlog::spdlog
     onnxruntime::onnxruntime
     xtensor
+    ${TORCH_LIBRARIES}
     # mlpack is header-only, linked via include dirs above
 )
 

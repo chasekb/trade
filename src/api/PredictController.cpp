@@ -94,8 +94,12 @@ std::vector<std::string> required_artifacts_for(const trade::ml::ModelType type)
 }
 
 std::vector<std::string> optional_artifacts_for(const trade::ml::ModelType type) {
-  (void)type;
-  return {};
+  switch (type) {
+  case trade::ml::ModelType::TRANSFORMER:
+    return {"transformer_config.json"};
+  default:
+    return {};
+  }
 }
 
 std::string now_iso_utc() {
@@ -505,6 +509,10 @@ void PredictController::train(
       }
       const std::filesystem::path package_dir = trained_root / model_id;
       std::filesystem::create_directories(package_dir);
+
+      if (config.type == trade::ml::ModelType::TRANSFORMER) {
+        trainer.export_transformer_artifact(model_root / "transformer.onnx");
+      }
 
       const auto required_artifacts = required_artifacts_for(config.type);
       const auto optional_artifacts = optional_artifacts_for(config.type);
