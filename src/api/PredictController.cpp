@@ -511,7 +511,12 @@ void PredictController::train(
       std::filesystem::create_directories(package_dir);
 
       if (config.type == trade::ml::ModelType::TRANSFORMER) {
-        trainer.export_transformer_artifact(model_root / "transformer.onnx");
+        const auto transformer_features = feature_engineer_
+                                              ? static_cast<int64_t>(
+                                                    feature_engineer_->transformer_feature_dim())
+                                              : 0;
+        trainer.export_transformer_artifact(model_root / "transformer.onnx",
+                                            transformer_features);
       }
 
       const auto required_artifacts = required_artifacts_for(config.type);
