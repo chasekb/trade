@@ -1,15 +1,123 @@
 #include "ml/ModelTrainer.hpp"
 #include "ml/Metrics.hpp"
+#include "ml/TransformerModel.hpp"
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <cmath>
 #include <random>
+#include <stdexcept>
 #include <spdlog/spdlog.h>
+#include <utility>
+#include <tuple>
+#include <torch/csrc/jit/frontend/tracer.h>
+#include <torch/csrc/jit/passes/onnx.h>
 
 // Note: Requires mlpack, xgboost, and torch headers - assuming they are in the
 // include path #include <mlpack/methods/random_forest/random_forest.hpp>
 // #include <xgboost/c_api.h>
+
+namespace {
+constexpr int64_t kTransformerInputFeatures = 26;
+constexpr int64_t kTransformerLookback = 60;
+constexpr int64_t kTransformerPatchSize = 5;
+constexpr int64_t kTransformerEmbeddingDim = 64;
+constexpr int64_t kTransformerHeads = 4;
+constexpr int64_t kTransformerLayers = 3;
+constexpr double kTransformerDropout = 0.1;
+constexpr int kTransformerOpsetVersion = 17;
+
+void write_transformer_config(const std::filesystem::path &config_path) {
+  nlohmann::json config = {
+      {"n_features", kTransformerInputFeatures},
+      {"lookback", kTransformerLookback},
+      {"patch_size", kTransformerPatchSize},
+      {"embedding_dim", kTransformerEmbeddingDim},
+      {"n_heads", kTransformerHeads},
+      {"n_layers", kTransformerLayers},
+      {"dropout", kTransformerDropout},
+      {"opset_version", kTransformerOpsetVersion}};
+
+  if (!config_path.parent_path().empty()) {
+    std::filesystem::create_directories(config_path.parent_path());
+  }
+  std::ofstream out(config_path);
+  if (!out.is_open()) {
+    throw std::runtime_error("Failed to open transformer config path: " +
+                             config_path.string());
+  }
+  out << config.dump(2);
+}
+
+std::shared_ptr<onnx::ModelProto>
+export_transformer_to_onnx(const std::filesystem::path &output_path) {
+  auto model = trade::ml::StockTransformer(
+      kTransformerInputFeatures, kTransformerLookback, kTransformerPatchSize,
+      kTransformerEmbeddingDim, kTransformerHeads, kTransformerLayers,
+      kTransformerDropout);
+  model->eval();
+
+  torch::NoGradGuard no_grad;
+  auto sample = torch::zeros(
+      {1, kTransformerLookback, kTransformerInputFeatures},
+      torch::TensorOptions().dtype(torch::kFloat32));
+
+  torch::jit::Stack inputs;
+  inputs.emplace_back(sample);
+
+  auto traced = torch::jit::tracer::trace(
+      std::move(inputs),
+      [model](torch::jit::Stack stack) -> torch::jit::Stack {
+        auto input = stack.at(0).toTensor();
+        auto output = model->forward(input);
+        return {output};
+      },
+      [](const at::Tensor &) { return std::string("sequence_input"); },
+      false,
+      false,
+      nullptr,
+      {"sequence_input"});
+
+  auto graph = traced.first->graph;
+  auto export_result = torch::jit::export_onnx(
+      graph, {}, kTransformerOpsetVersion, {}, false,
+      torch::onnx::OperatorExportTypes::ONNX, true, true, {}, true, false,
+      std::string());
+
+  auto model_proto = std::get<0>(export_result);
+  if (model_proto == nullptr) {
+    throw std::runtime_error("Failed to create transformer ONNX model proto");
+  }
+
+  if (!output_path.parent_path().empty()) {
+    std::filesystem::create_directories(output_path.parent_path());
+  }
+  std::ofstream out(output_path, std::ios::binary);
+  if (!out.is_open()) {
+    throw std::runtime_error("Failed to open transformer ONNX output path: " +
+                             output_path.string());
+  }
+
+  if (!model_proto->SerializeToOstream(&out)) {
+    throw std::runtime_error("Failed to serialize transformer ONNX model to " +
+                             output_path.string());
+  }
+
+  out.close();
+
+  const auto file_size = std::filesystem::file_size(output_path);
+  if (file_size == 0) {
+    throw std::runtime_error("Serialized transformer ONNX model is empty: " +
+                             output_path.string());
+  }
+
+  spdlog::info("Exported transformer ONNX artifact to {} ({} bytes)",
+               output_path.string(), file_size);
+  return model_proto;
+}
+} // namespace
 
 namespace trade {
 namespace ml {
@@ -458,6 +566,18 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
   metrics.profit_factor = Metrics::calculate_profit_factor(pnl);
 
   return metrics;
+}
+
+void ModelTrainer::export_transformer_artifact(
+    const std::filesystem::path &output_path) const {
+  const auto onnx_path = output_path;
+  const auto config_path = onnx_path.parent_path() / "transformer_config.json";
+
+  export_transformer_to_onnx(onnx_path);
+  write_transformer_config(config_path);
+
+  spdlog::info("Transformer model package prepared at {}",
+               onnx_path.parent_path().string());
 }
 
 ModelMetrics

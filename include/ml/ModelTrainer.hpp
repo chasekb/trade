@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ml/DataCollector.hpp"
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -53,6 +54,7 @@ public:
   explicit ModelTrainer(std::shared_ptr<DataCollector> collector);
 
   ModelMetrics train(const TrainingConfig &config);
+  void export_transformer_artifact(const std::filesystem::path &output_path) const;
   void save_model(const std::string &path);
   void load_model(const std::string &path);
 
