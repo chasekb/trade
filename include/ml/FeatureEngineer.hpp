@@ -20,8 +20,9 @@ public:
   // Core preprocessing: Raw -> Final PCA features
   std::vector<double> preprocess(const OrderBookFeatures &features);
 
-  // Get sequence of base features for transformer (Phase 6)
+  // Get sequence of model-ready PCA features for transformer.
   std::vector<std::vector<double>> get_transformer_sequence();
+  size_t transformer_feature_dim() const { return transformer_feature_dim_; }
 
 private:
   // Internal steps
@@ -43,7 +44,9 @@ private:
 
   // State for rolling stats
   std::deque<std::vector<double>> history_window;
+  std::deque<std::vector<double>> transformer_sequence_window;
   const std::vector<size_t> windows = {5, 10, 20, 50, 90, 200};
+  const size_t transformer_lookback = 60;
   std::mutex history_mutex;
 
   // Parameters
@@ -60,6 +63,8 @@ private:
     xt::xarray<double> components;
     xt::xarray<double> mean;
   } pca_params;
+
+  size_t transformer_feature_dim_ = 0;
 
   bool parameters_loaded = false;
 };

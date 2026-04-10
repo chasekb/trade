@@ -48,6 +48,9 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
     std::vector<double> pc_mean_vec =
         j["pca"]["mean"].get<std::vector<double>>();
     pca_params.mean = xt::adapt(pc_mean_vec, {pc_mean_vec.size()});
+    transformer_feature_dim_ = rows;
+    history_window.clear();
+    transformer_sequence_window.clear();
 
     parameters_loaded = true;
     spdlog::info("Loaded feature parameters from {}. PCA components: {}x{}",
@@ -73,14 +76,22 @@ FeatureEngineer::preprocess(const OrderBookFeatures &features) {
   auto scaled = scale(interactions);
   auto final_pca = apply_pca(scaled);
 
+  {
+    std::lock_guard<std::mutex> lock(history_mutex);
+    transformer_sequence_window.push_back(final_pca);
+    if (transformer_sequence_window.size() > transformer_lookback) {
+      transformer_sequence_window.pop_front();
+    }
+  }
+
   return final_pca;
 }
 
 std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence() {
   std::lock_guard<std::mutex> lock(history_mutex);
   std::vector<std::vector<double>> sequence;
-  sequence.reserve(history_window.size());
-  for (const auto &vec : history_window) {
+  sequence.reserve(transformer_sequence_window.size());
+  for (const auto &vec : transformer_sequence_window) {
     sequence.push_back(vec);
   }
   return sequence;

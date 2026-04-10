@@ -20,7 +20,6 @@
 // #include <xgboost/c_api.h>
 
 namespace {
-constexpr int64_t kTransformerInputFeatures = 26;
 constexpr int64_t kTransformerLookback = 60;
 constexpr int64_t kTransformerPatchSize = 5;
 constexpr int64_t kTransformerEmbeddingDim = 64;
@@ -29,9 +28,10 @@ constexpr int64_t kTransformerLayers = 3;
 constexpr double kTransformerDropout = 0.1;
 constexpr int kTransformerOpsetVersion = 17;
 
-void write_transformer_config(const std::filesystem::path &config_path) {
+void write_transformer_config(const std::filesystem::path &config_path,
+                              int64_t input_features) {
   nlohmann::json config = {
-      {"n_features", kTransformerInputFeatures},
+      {"n_features", input_features},
       {"lookback", kTransformerLookback},
       {"patch_size", kTransformerPatchSize},
       {"embedding_dim", kTransformerEmbeddingDim},
@@ -52,16 +52,21 @@ void write_transformer_config(const std::filesystem::path &config_path) {
 }
 
 std::shared_ptr<onnx::ModelProto>
-export_transformer_to_onnx(const std::filesystem::path &output_path) {
+export_transformer_to_onnx(const std::filesystem::path &output_path,
+                           int64_t input_features) {
+  if (input_features <= 0) {
+    throw std::runtime_error("Transformer input feature dimension must be positive");
+  }
+
   auto model = trade::ml::StockTransformer(
-      kTransformerInputFeatures, kTransformerLookback, kTransformerPatchSize,
+      input_features, kTransformerLookback, kTransformerPatchSize,
       kTransformerEmbeddingDim, kTransformerHeads, kTransformerLayers,
       kTransformerDropout);
   model->eval();
 
   torch::NoGradGuard no_grad;
   auto sample = torch::zeros(
-      {1, kTransformerLookback, kTransformerInputFeatures},
+      {1, kTransformerLookback, input_features},
       torch::TensorOptions().dtype(torch::kFloat32));
 
   torch::jit::Stack inputs;
@@ -569,12 +574,12 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
 }
 
 void ModelTrainer::export_transformer_artifact(
-    const std::filesystem::path &output_path) const {
+    const std::filesystem::path &output_path, int64_t input_features) const {
   const auto onnx_path = output_path;
   const auto config_path = onnx_path.parent_path() / "transformer_config.json";
 
-  export_transformer_to_onnx(onnx_path);
-  write_transformer_config(config_path);
+  export_transformer_to_onnx(onnx_path, input_features);
+  write_transformer_config(config_path, input_features);
 
   spdlog::info("Transformer model package prepared at {}",
                onnx_path.parent_path().string());
