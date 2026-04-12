@@ -7,7 +7,7 @@ RUN set -eux; \
       apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update && \
       apt-get install -y --no-install-recommends --fix-missing \
         ca-certificates curl cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
-        autoconf automake libtool libltdl-dev linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv \
+        autoconf automake libtool libltdl-dev linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv python3-dev \
         unzip zip \
         libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
         libdbus-1-dev libglib2.0-dev libxi-dev libxtst-dev \
