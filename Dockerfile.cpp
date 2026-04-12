@@ -86,7 +86,7 @@ COPY vcpkg.json .
 COPY vcpkg-triplets ./vcpkg-triplets
 
 # Install dependencies with retry logic to handle transient network issues.
-# libtorch/vcpkg can exceed 45 minutes on both arches, so keep the per-attempt
+# libtorch/vcpkg can exceed 90 minutes on both arches, so keep the per-attempt
 # ceiling generous enough for a clean build instead of timing out mid-install.
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux-onnxstaticoff"; \
@@ -95,7 +95,7 @@ RUN ARCH=$(uname -m) && \
     export VCPKG_DISABLE_METRICS=1 && \
     SUCCESS=0 && \
     for i in 1 2 3; do \
-    timeout 90m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \
+    timeout 120m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \
     (echo "vcpkg install attempt $i failed, retrying in 10s..." && sleep 10); \
     done && \
     if [ $SUCCESS -eq 0 ]; then echo "vcpkg install failed" && exit 1; fi && \
