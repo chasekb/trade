@@ -13,7 +13,7 @@
 #include <utility>
 #include <tuple>
 #include <torch/csrc/jit/frontend/tracer.h>
-#include <torch/csrc/jit/passes/onnx.h>
+#include <torch/csrc/jit/serialization/export.h>
 
 // Note: Requires mlpack, xgboost, and torch headers - assuming they are in the
 // include path #include <mlpack/methods/random_forest/random_forest.hpp>
@@ -51,7 +51,7 @@ void write_transformer_config(const std::filesystem::path &config_path,
   out << config.dump(2);
 }
 
-std::shared_ptr<onnx::ModelProto>
+std::shared_ptr<::ONNX_NAMESPACE::ModelProto>
 export_transformer_to_onnx(const std::filesystem::path &output_path,
                            int64_t input_features) {
   if (input_features <= 0) {
@@ -74,7 +74,7 @@ export_transformer_to_onnx(const std::filesystem::path &output_path,
 
   auto traced = torch::jit::tracer::trace(
       std::move(inputs),
-      [model](torch::jit::Stack stack) -> torch::jit::Stack {
+      [model](torch::jit::Stack stack) mutable -> torch::jit::Stack {
         auto input = stack.at(0).toTensor();
         auto output = model->forward(input);
         return {output};
@@ -105,7 +105,9 @@ export_transformer_to_onnx(const std::filesystem::path &output_path,
                              output_path.string());
   }
 
-  if (!model_proto->SerializeToOstream(&out)) {
+  const std::string onnx_bytes =
+      torch::jit::serialize_model_proto_to_string(model_proto);
+  if (!out.write(onnx_bytes.data(), static_cast<std::streamsize>(onnx_bytes.size()))) {
     throw std::runtime_error("Failed to serialize transformer ONNX model to " +
                              output_path.string());
   }
