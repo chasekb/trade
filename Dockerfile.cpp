@@ -155,6 +155,6 @@ RUN set -eux; \
     find /app/vcpkg_installed -type f -name 'libonnxruntime_providers_shared.so' -delete
 
 # Ensure the app can find the vcpkg libraries at runtime
-ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux/lib:/app/vcpkg_installed/x64-linux/lib
+ENV LD_LIBRARY_PATH=/app/vcpkg_installed/arm64-linux-onnxstaticoff/lib:/app/vcpkg_installed/x64-linux-onnxstaticoff/lib
 
 CMD ["./trading_bot_cpp"]
