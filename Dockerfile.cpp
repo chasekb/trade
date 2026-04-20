@@ -122,11 +122,12 @@ FROM ubuntu:22.04 AS runtime
 
 WORKDIR /app
 
-# Runtime dependency for ONNX/OpenBLAS stack used by trading_bot_cpp
+# Runtime dependencies for the ONNX/OpenBLAS stack used by trading_bot_cpp.
+# libgomp1 provides libgomp.so.1, which the binary needs at startup.
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
       apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update && \
-      apt-get install -y --no-install-recommends --fix-missing libgfortran5 \
+      apt-get install -y --no-install-recommends --fix-missing libgfortran5 libgomp1 \
       && break; \
       echo "runtime apt install attempt ${i} failed, retrying in 15s..."; \
       sleep 15; \
