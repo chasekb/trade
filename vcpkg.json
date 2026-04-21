@@ -14,10 +14,7 @@
         },
         {
             "name": "libtorch",
-            "default-features": false,
-            "features": [
-                "core"
-            ]
+            "default-features": false
         },
         "xtl",
         "xsimd",
