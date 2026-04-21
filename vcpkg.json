@@ -12,7 +12,13 @@
             "name": "onnxruntime",
             "default-features": false
         },
-        "libtorch",
+        {
+            "name": "libtorch",
+            "default-features": false,
+            "features": [
+                "core"
+            ]
+        },
         "xtl",
         "xsimd",
         "xtensor"
