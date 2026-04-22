@@ -35,6 +35,11 @@ graph TD
 - **Inference Engine**: Already implemented in C++ using ONNX Runtime for high-speed predictions.
 - **Feature Engineer**: Fully implemented in C++ to ensure consistency between training and inference.
 
+The ONNX inference layer loads each model artifact independently from `data/onnx/`.
+If the backend logs `transformer=false`, that simply means no `transformer.onnx`
+file was available for that run. The loader still supports transformer sessions when
+the artifact exists.
+
 ## Implementation Roadmap
 
 The migration is divided into several high-priority phases:

@@ -12,6 +12,12 @@ Successfully migrated the Python-based Machine Learning and Backend infrastructu
 - **ML Inference**: Implemented `ONNX Runtime` integration for unified model serving (Regressor, Classifier, and Transformer).
 - **Architecture**: Ported Postgres (`libpqxx`) and Redis (`redis-plus-plus`) management with robust connection pooling.
 
+At startup, `ONNXModelManager` logs a per-artifact load summary. A log line such as
+`Capabilities: regressor=true, classifier=true, transformer=false` means the backend
+successfully loaded the regressor and classifier ONNX files, but no transformer ONNX
+artifact was present in `data/onnx/` for that run. It does **not** mean the backend is
+incapable of loading transformer models.
+
 ### 2. Advanced Feature Engineering
 
 - **Multi-Horizon Analysis**: Implemented rolling statistics for windows of `[5, 10, 20, 50, 90, 200]` intervals.

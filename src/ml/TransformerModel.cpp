@@ -101,8 +101,11 @@ StockTransformerImpl::StockTransformerImpl(int64_t n_features, int64_t lookback,
       head(torch::nn::Linear(embedding_dim, 1)) {
 
   int64_t num_patches = std::ceil((double)lookback / patch_size);
-  pos_embed = register_parameter("pos_embed",
-                                 torch::zeros({1, num_patches, embedding_dim}));
+  // Positional embeddings are a fixed architectural constant here, not a
+  // learned weight, so keep them out of the autograd graph and ONNX export
+  // parameter set.
+  pos_embed = torch::zeros({1, num_patches, embedding_dim});
+  register_buffer("pos_embed", pos_embed);
 
   for (int64_t i = 0; i < n_layers; ++i) {
     blocks->push_back(TransformerBlock(embedding_dim, n_heads, dropout_rate));
