@@ -64,6 +64,13 @@ export_transformer_to_onnx(const std::filesystem::path &output_path,
       kTransformerDropout);
   model->eval();
 
+  // ONNX export traces the module and treats captured parameters as
+  // constants, so freeze the model first to keep trainable tensors out of the
+  // traced graph.
+  for (auto &parameter : model->parameters()) {
+    parameter.requires_grad_(false);
+  }
+
   torch::NoGradGuard no_grad;
   auto sample = torch::zeros(
       {1, kTransformerLookback, input_features},
