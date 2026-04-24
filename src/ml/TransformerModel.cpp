@@ -24,7 +24,7 @@ torch::Tensor PatchEmbeddingImpl::forward(torch::Tensor x) {
   }
 
   // Reshape to patches: (B, T/P, P*F)
-  x = x.view({B, T / patch_size_, patch_size_ * F});
+  x = x.reshape({B, T / patch_size_, patch_size_ * F});
   return projection->forward(x);
 }
 
@@ -48,11 +48,11 @@ torch::Tensor CausalSelfAttentionImpl::forward(torch::Tensor x) {
   int64_t D = x.size(2);
 
   auto chunks = qkv->forward(x).chunk(3, -1);
-  auto q = chunks[0].view({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
-  auto k = chunks[1].view({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
-  auto v = chunks[2].view({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
+  auto q = chunks[0].reshape({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
+  auto k = chunks[1].reshape({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
+  auto v = chunks[2].reshape({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
 
-  auto mask = torch::tril(torch::ones({N, N}, x.options())).view({1, 1, N, N});
+  auto mask = torch::tril(torch::ones({N, N}, x.options())).reshape({1, 1, N, N});
 
   auto attn = (q.matmul(k.transpose(-2, -1))) * (1.0 / std::sqrt(k.size(-1)));
   attn = attn.masked_fill(mask == 0, -1e9);
@@ -60,7 +60,7 @@ torch::Tensor CausalSelfAttentionImpl::forward(torch::Tensor x) {
   attn = attn_dropout->forward(attn);
 
   auto y = attn.matmul(v); // (B, H, N, D/H)
-  y = y.transpose(1, 2).contiguous().view({B, N, D});
+  y = y.transpose(1, 2).contiguous().reshape({B, N, D});
 
   return res_dropout->forward(proj->forward(y));
 }
