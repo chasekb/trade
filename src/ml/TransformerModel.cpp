@@ -7,35 +7,36 @@ namespace ml {
 PatchEmbeddingImpl::PatchEmbeddingImpl(int64_t n_features, int64_t patch_size,
                                        int64_t embedding_dim)
     : patch_size_(patch_size),
-      projection(torch::nn::Linear(n_features * patch_size, embedding_dim)) {
+      projection(torch::nn::Conv1d(torch::nn::Conv1dOptions(
+          n_features, embedding_dim, patch_size).stride(patch_size))) {
   register_module("projection", projection);
 }
 
 torch::Tensor PatchEmbeddingImpl::forward(torch::Tensor x) {
   // x shape: (B, T, F)
-  int64_t B = x.size(0);
   int64_t T = x.size(1);
-  int64_t F = x.size(2);
 
   if (T % patch_size_ != 0) {
     int64_t padding = patch_size_ - (T % patch_size_);
     x = torch::constant_pad_nd(x, {0, 0, padding, 0}); // Pad temporal dimension
-    T = x.size(1);
   }
 
-  // Reshape to patches: (B, T/P, P*F)
-  x = x.reshape({B, T / patch_size_, patch_size_ * F});
-  return projection->forward(x);
+  // Project each temporal patch without an explicit reshape op so the ONNX
+  // exporter only sees standard convolution and transpose operators.
+  x = x.transpose(1, 2); // (B, F, T)
+  x = projection->forward(x);
+  return x.transpose(1, 2); // (B, T/P, E)
 }
 
 CausalSelfAttentionImpl::CausalSelfAttentionImpl(int64_t embedding_dim,
                                                  int64_t n_heads,
                                                  double dropout_rate)
-    : n_heads_(n_heads), embedding_dim_(embedding_dim),
+    : embedding_dim_(embedding_dim),
       qkv(torch::nn::Linear(embedding_dim, embedding_dim * 3)),
       proj(torch::nn::Linear(embedding_dim, embedding_dim)),
       attn_dropout(torch::nn::Dropout(dropout_rate)),
       res_dropout(torch::nn::Dropout(dropout_rate)) {
+  (void)n_heads;
   register_module("qkv", qkv);
   register_module("proj", proj);
   register_module("attn_dropout", attn_dropout);
@@ -47,20 +48,20 @@ torch::Tensor CausalSelfAttentionImpl::forward(torch::Tensor x) {
   int64_t N = x.size(1);
   int64_t D = x.size(2);
 
-  auto chunks = qkv->forward(x).chunk(3, -1);
-  auto q = chunks[0].reshape({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
-  auto k = chunks[1].reshape({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
-  auto v = chunks[2].reshape({B, N, n_heads_, D / n_heads_}).transpose(1, 2);
+  auto qkv_out = qkv->forward(x);
+  auto q = qkv_out.slice(-1, 0, D);
+  auto k = qkv_out.slice(-1, D, 2 * D);
+  auto v = qkv_out.slice(-1, 2 * D, 3 * D);
 
-  auto mask = torch::tril(torch::ones({N, N}, x.options())).reshape({1, 1, N, N});
+  auto mask = torch::tril(torch::ones({N, N}, x.options())).unsqueeze(0);
 
-  auto attn = (q.matmul(k.transpose(-2, -1))) * (1.0 / std::sqrt(k.size(-1)));
+  auto attn = q.matmul(k.transpose(-2, -1)) *
+              (1.0 / std::sqrt(static_cast<double>(D)));
   attn = attn.masked_fill(mask == 0, -1e9);
   attn = torch::softmax(attn, -1);
   attn = attn_dropout->forward(attn);
 
-  auto y = attn.matmul(v); // (B, H, N, D/H)
-  y = y.transpose(1, 2).contiguous().reshape({B, N, D});
+  auto y = attn.matmul(v); // (B, N, D)
 
   return res_dropout->forward(proj->forward(y));
 }
