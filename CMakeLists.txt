@@ -31,6 +31,7 @@ set(SOURCES
     src/ml/Types.cpp
     src/ml/DataCollector.cpp
     src/ml/ModelTrainer.cpp
+    src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
     src/trading/TradingStatsService.cpp
     src/api/PredictController.cpp
@@ -82,3 +83,16 @@ target_link_libraries(test_feature_engineer PRIVATE
 if(xtensor_INCLUDE_DIRS)
     target_include_directories(test_feature_engineer PRIVATE ${xtensor_INCLUDE_DIRS})
 endif()
+
+add_executable(test_transformer_onnx_export
+    src/tests/test_transformer_onnx_export.cpp
+    src/ml/TransformerOnnxExport.cpp
+    src/ml/TransformerModel.cpp
+)
+target_include_directories(test_transformer_onnx_export PRIVATE include ${TORCH_INCLUDE_DIRS} ${Python3_INCLUDE_DIRS})
+target_link_libraries(test_transformer_onnx_export PRIVATE
+    spdlog::spdlog
+    onnxruntime::onnxruntime
+    Python3::Python
+    ${TORCH_LIBRARIES}
+)
