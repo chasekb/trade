@@ -4,6 +4,10 @@
 #include <filesystem>
 #include <memory>
 
+namespace ONNX_NAMESPACE {
+class ModelProto;
+}
+
 namespace trade {
 namespace ml {
 
