@@ -14,7 +14,7 @@ struct PatchEmbeddingImpl : torch::nn::Module {
   torch::Tensor forward(torch::Tensor x);
 
   int64_t patch_size_;
-  torch::nn::Conv1d projection;
+  torch::nn::Linear projection;
 };
 TORCH_MODULE(PatchEmbedding);
 
@@ -25,6 +25,7 @@ struct CausalSelfAttentionImpl : torch::nn::Module {
   torch::Tensor forward(torch::Tensor x);
 
   int64_t embedding_dim_;
+  int64_t n_heads_;
   torch::nn::Linear qkv;
   torch::nn::Linear proj;
   torch::nn::Dropout attn_dropout;
