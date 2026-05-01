@@ -14,7 +14,7 @@ struct PatchEmbeddingImpl : torch::nn::Module {
   torch::Tensor forward(torch::Tensor x);
 
   int64_t patch_size_;
-  torch::nn::Linear projection;
+  torch::nn::Conv1d projection;
 };
 TORCH_MODULE(PatchEmbedding);
 
@@ -25,7 +25,6 @@ struct CausalSelfAttentionImpl : torch::nn::Module {
   torch::Tensor forward(torch::Tensor x);
 
   int64_t embedding_dim_;
-  int64_t n_heads_;
   torch::nn::Linear qkv;
   torch::nn::Linear proj;
   torch::nn::Dropout attn_dropout;
@@ -41,7 +40,10 @@ struct TransformerBlockImpl : torch::nn::Module {
 
   torch::nn::LayerNorm ln1, ln2;
   CausalSelfAttention attn;
-  torch::nn::Sequential mlp;
+  torch::nn::Linear mlp_fc1;
+  torch::nn::GELU mlp_act;
+  torch::nn::Linear mlp_fc2;
+  torch::nn::Dropout mlp_dropout;
 };
 TORCH_MODULE(TransformerBlock);
 

@@ -7,7 +7,8 @@ namespace ml {
 PatchEmbeddingImpl::PatchEmbeddingImpl(int64_t n_features, int64_t patch_size,
                                        int64_t embedding_dim)
     : patch_size_(patch_size),
-      projection(torch::nn::Linear(n_features * patch_size, embedding_dim)) {
+      projection(torch::nn::Conv1d(torch::nn::Conv1dOptions(
+          n_features, embedding_dim, patch_size).stride(patch_size))) {
   register_module("projection", projection);
 }
 
@@ -20,21 +21,22 @@ torch::Tensor PatchEmbeddingImpl::forward(torch::Tensor x) {
     x = torch::constant_pad_nd(x, {0, 0, padding, 0}); // Pad temporal dimension
   }
 
-  // Build patch tokens without transpose/view so the export graph stays
-  // compatible with the legacy ONNX tracer.
-  x = x.unfold(1, patch_size_, patch_size_);
-  x = x.flatten(2);
-  return projection->forward(x);
+  // Project each temporal patch without an explicit reshape op so the ONNX
+  // exporter only sees standard convolution and transpose operators.
+  x = x.transpose(1, 2); // (B, F, T)
+  x = projection->forward(x);
+  return x.transpose(1, 2); // (B, T/P, E)
 }
 
 CausalSelfAttentionImpl::CausalSelfAttentionImpl(int64_t embedding_dim,
                                                  int64_t n_heads,
                                                  double dropout_rate)
-    : embedding_dim_(embedding_dim), n_heads_(n_heads),
+    : embedding_dim_(embedding_dim),
       qkv(torch::nn::Linear(embedding_dim, embedding_dim * 3)),
       proj(torch::nn::Linear(embedding_dim, embedding_dim)),
       attn_dropout(torch::nn::Dropout(dropout_rate)),
       res_dropout(torch::nn::Dropout(dropout_rate)) {
+  (void)n_heads;
   register_module("qkv", qkv);
   register_module("proj", proj);
   register_module("attn_dropout", attn_dropout);
@@ -42,25 +44,24 @@ CausalSelfAttentionImpl::CausalSelfAttentionImpl(int64_t embedding_dim,
 }
 
 torch::Tensor CausalSelfAttentionImpl::forward(torch::Tensor x) {
+  int64_t B = x.size(0);
   int64_t N = x.size(1);
   int64_t D = x.size(2);
-  int64_t head_dim = D / n_heads_;
 
-  auto qkv_out = qkv->forward(x).chunk(3, -1);
-  auto q = torch::stack(qkv_out[0].split(head_dim, -1), 2);
-  auto k = torch::stack(qkv_out[1].split(head_dim, -1), 2);
-  auto v = torch::stack(qkv_out[2].split(head_dim, -1), 2);
+  auto qkv_out = qkv->forward(x);
+  auto q = qkv_out.slice(-1, 0, D);
+  auto k = qkv_out.slice(-1, D, 2 * D);
+  auto v = qkv_out.slice(-1, 2 * D, 3 * D);
 
   auto mask = torch::tril(torch::ones({N, N}, x.options())).unsqueeze(0);
 
-  auto attn = torch::einsum("bnhd,bmhd->bhnm", {q, k}) *
-              (1.0 / std::sqrt(static_cast<double>(head_dim)));
+  auto attn = q.matmul(k.transpose(-2, -1)) *
+              (1.0 / std::sqrt(static_cast<double>(D)));
   attn = attn.masked_fill(mask == 0, -1e9);
   attn = torch::softmax(attn, -1);
   attn = attn_dropout->forward(attn);
 
-  auto y = torch::einsum("bhnm,bmhd->bnhd", {attn, v}).contiguous();
-  y = torch::cat(y.unbind(2), -1); // (B, N, D)
+  auto y = attn.matmul(v); // (B, N, D)
 
   return res_dropout->forward(proj->forward(y));
 }
@@ -71,20 +72,26 @@ TransformerBlockImpl::TransformerBlockImpl(int64_t embedding_dim,
     : ln1(torch::nn::LayerNorm(torch::nn::LayerNormOptions({embedding_dim}))),
       ln2(torch::nn::LayerNorm(torch::nn::LayerNormOptions({embedding_dim}))),
       attn(CausalSelfAttention(embedding_dim, n_heads, dropout_rate)),
-      mlp(torch::nn::Sequential(
-          torch::nn::Linear(embedding_dim, 4 * embedding_dim),
-          torch::nn::GELU(),
-          torch::nn::Linear(4 * embedding_dim, embedding_dim),
-          torch::nn::Dropout(dropout_rate))) {
+      mlp_fc1(torch::nn::Linear(embedding_dim, 4 * embedding_dim)),
+      mlp_act(torch::nn::GELU()),
+      mlp_fc2(torch::nn::Linear(4 * embedding_dim, embedding_dim)),
+      mlp_dropout(torch::nn::Dropout(dropout_rate)) {
   register_module("ln1", ln1);
   register_module("ln2", ln2);
   register_module("attn", attn);
-  register_module("mlp", mlp);
+  register_module("mlp_fc1", mlp_fc1);
+  register_module("mlp_act", mlp_act);
+  register_module("mlp_fc2", mlp_fc2);
+  register_module("mlp_dropout", mlp_dropout);
 }
 
 torch::Tensor TransformerBlockImpl::forward(torch::Tensor x) {
   x = x + attn->forward(ln1->forward(x));
-  x = x + mlp->forward(ln2->forward(x));
+  auto y = mlp_fc1->forward(ln2->forward(x));
+  y = mlp_act->forward(y);
+  y = mlp_fc2->forward(y);
+  y = mlp_dropout->forward(y);
+  x = x + y;
   return x;
 }
 
