@@ -168,12 +168,12 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
   ChannelFirstStockTransformerImpl(int64_t n_features, int64_t lookback,
                                    int64_t patch_size, int64_t embedding_dim,
                                    int64_t n_heads, int64_t n_layers,
-                                   double dropout = 0.1)
+                                   double dropout_rate = 0.1)
       : lookback_(lookback),
         patch_size_(patch_size),
         embedding_dim_(embedding_dim),
         patch_embed(ChannelFirstPatchEmbedding(n_features, patch_size, embedding_dim)),
-        dropout(torch::nn::Dropout(dropout)),
+        dropout_layer(torch::nn::Dropout(dropout_rate)),
         blocks(torch::nn::ModuleList()),
         ln_f(ChannelFirstLayerNorm(embedding_dim)),
         head(torch::nn::Linear(embedding_dim, 1)) {
@@ -183,11 +183,11 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
     register_buffer("pos_embed", pos_embed);
 
     for (int64_t i = 0; i < n_layers; ++i) {
-      blocks->push_back(ChannelFirstTransformerBlock(embedding_dim, n_heads, dropout));
+      blocks->push_back(ChannelFirstTransformerBlock(embedding_dim, n_heads, dropout_rate));
     }
 
     register_module("patch_embed", patch_embed);
-    register_module("dropout", dropout);
+    register_module("dropout", dropout_layer);
     register_module("blocks", blocks);
     register_module("ln_f", ln_f);
     register_module("head", head);
@@ -212,14 +212,14 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
   int64_t embedding_dim_;
   ChannelFirstPatchEmbedding patch_embed;
   torch::Tensor pos_embed;
-  torch::nn::Dropout dropout;
+  torch::nn::Dropout dropout_layer;
   torch::nn::ModuleList blocks;
   ChannelFirstLayerNorm ln_f;
   torch::nn::Linear head;
 };
 TORCH_MODULE(ChannelFirstStockTransformer);
 
-void copy_tensor(torch::Tensor &dst, const torch::Tensor &src) {
+void copy_tensor(const torch::Tensor &dst, const torch::Tensor &src) {
   dst.copy_(src);
 }
 
