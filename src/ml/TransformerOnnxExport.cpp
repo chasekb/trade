@@ -196,7 +196,7 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
   torch::Tensor forward(torch::Tensor x) {
     x = patch_embed->forward(x);
     x = x + pos_embed;
-    x = dropout->forward(x);
+    x = dropout_layer->forward(x);
 
     for (auto &block : *blocks) {
       x = block->as<ChannelFirstTransformerBlock>()->forward(x);
