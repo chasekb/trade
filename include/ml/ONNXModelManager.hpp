@@ -50,6 +50,7 @@ private:
   size_t input_dim_ = 0;
   size_t transformer_lookback_ = 0;
   size_t transformer_features_ = 0;
+  bool transformer_channels_first_ = false;
   std::string model_dir_;
 };
 

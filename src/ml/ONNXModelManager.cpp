@@ -1,8 +1,11 @@
 
 #include "ml/ONNXModelManager.hpp"
+#include <array>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <numeric>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 namespace ml {
@@ -14,6 +17,7 @@ void ONNXModelManager::reset_sessions() {
   input_dim_ = 0;
   transformer_lookback_ = 0;
   transformer_features_ = 0;
+  transformer_channels_first_ = false;
 }
 
 ONNXModelManager::ONNXModelManager()
@@ -31,6 +35,17 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     std::string reg_path = (dir / "regressor.onnx").string();
     std::string cls_path = (dir / "classifier.onnx").string();
     std::string trans_path = (dir / "transformer.onnx").string();
+    const std::filesystem::path transformer_config_path =
+        dir / "transformer_config.json";
+
+    if (std::filesystem::exists(transformer_config_path)) {
+      std::ifstream config_stream(transformer_config_path);
+      if (config_stream.is_open()) {
+        auto config = nlohmann::json::parse(config_stream, nullptr, true, true);
+        const std::string layout = config.value("input_layout", "");
+        transformer_channels_first_ = (layout == "channels_first");
+      }
+    }
 
     if (std::filesystem::exists(trans_path)) {
 #ifdef _WIN32
@@ -46,8 +61,13 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
           transformer_session_->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo();
       auto shape = info.GetShape();
       if (shape.size() >= 3) {
-        transformer_lookback_ = shape[1];
-        transformer_features_ = shape[2];
+        if (transformer_channels_first_) {
+          transformer_features_ = shape[1];
+          transformer_lookback_ = shape[2];
+        } else {
+          transformer_lookback_ = shape[1];
+          transformer_features_ = shape[2];
+        }
       }
       spdlog::info("Loaded Transformer model. Lookback: {}, Features: {}",
                    transformer_lookback_, transformer_features_);
@@ -147,22 +167,39 @@ double ONNXModelManager::predict_transformer(
     std::vector<float> input_tensor_values;
     input_tensor_values.reserve(transformer_lookback_ * transformer_features_);
 
-    for (size_t i = 0; i < transformer_lookback_; ++i) {
-      if (i < seq_len) {
-        for (size_t j = 0; j < transformer_features_; ++j) {
-          input_tensor_values.push_back(j < sequence[i].size()
-                                            ? static_cast<float>(sequence[i][j])
-                                            : 0.0f);
+    if (transformer_channels_first_) {
+      for (size_t j = 0; j < transformer_features_; ++j) {
+        for (size_t i = 0; i < transformer_lookback_; ++i) {
+          input_tensor_values.push_back(
+              (i < seq_len && j < sequence[i].size())
+                  ? static_cast<float>(sequence[i][j])
+                  : 0.0f);
         }
-      } else {
-        for (size_t j = 0; j < transformer_features_; ++j)
-          input_tensor_values.push_back(0.0f);
+      }
+    } else {
+      for (size_t i = 0; i < transformer_lookback_; ++i) {
+        if (i < seq_len) {
+          for (size_t j = 0; j < transformer_features_; ++j) {
+            input_tensor_values.push_back(
+                j < sequence[i].size() ? static_cast<float>(sequence[i][j])
+                                       : 0.0f);
+          }
+        } else {
+          for (size_t j = 0; j < transformer_features_; ++j)
+            input_tensor_values.push_back(0.0f);
+        }
       }
     }
 
-    std::array<int64_t, 3> input_shape = {
-        1, static_cast<int64_t>(transformer_lookback_),
-        static_cast<int64_t>(transformer_features_)};
+    std::array<int64_t, 3> input_shape = transformer_channels_first_
+                                             ? std::array<int64_t, 3>{
+                                                   1,
+                                                   static_cast<int64_t>(transformer_features_),
+                                                   static_cast<int64_t>(transformer_lookback_)}
+                                             : std::array<int64_t, 3>{
+                                                   1,
+                                                   static_cast<int64_t>(transformer_lookback_),
+                                                   static_cast<int64_t>(transformer_features_)};
     auto memory_info =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
