@@ -73,12 +73,10 @@ struct ChannelFirstPatchEmbeddingImpl : torch::nn::Module {
     std::vector<torch::Tensor> patches;
     patches.reserve(static_cast<size_t>(num_patches_));
     for (int64_t patch = 0; patch < num_patches_; ++patch) {
-      std::vector<torch::Tensor> values;
-      values.reserve(static_cast<size_t>(patch_size_));
-      for (int64_t offset = 0; offset < patch_size_; ++offset) {
-        values.push_back(x.select(2, patch * patch_size_ + offset));
-      }
-      patches.push_back(projection->forward(torch::cat(values, 1)).unsqueeze(2));
+      const auto patch_view =
+          x.slice(2, patch * patch_size_, patch * patch_size_ + patch_size_);
+      patches.push_back(
+          projection->forward(torch::flatten(patch_view, 1)).unsqueeze(2));
     }
     return torch::cat(patches, 2);
   }
@@ -224,7 +222,7 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
     }
 
     x = ln_f->forward(x);
-    x = x.select(2, -1);
+    x = x.slice(2, x.size(2) - 1, x.size(2)).squeeze(2);
     return head->forward(x);
   }
 
