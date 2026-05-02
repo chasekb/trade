@@ -21,6 +21,24 @@ constexpr double kTransformerDropout = 0.1;
 constexpr int kTransformerOpsetVersion = 17;
 constexpr double kLayerNormEps = 1e-5;
 
+struct ChannelFirstLinearImpl : torch::nn::Module {
+  ChannelFirstLinearImpl(int64_t in_channels, int64_t out_channels)
+      : weight(torch::empty({out_channels, in_channels})),
+        bias(torch::empty({out_channels})) {
+    register_buffer("weight", weight);
+    register_buffer("bias", bias);
+  }
+
+  torch::Tensor forward(const torch::Tensor &x) {
+    auto y = torch::einsum("bcn,oc->bon", {x, weight});
+    return y + bias.unsqueeze(0).unsqueeze(-1);
+  }
+
+  torch::Tensor weight;
+  torch::Tensor bias;
+};
+TORCH_MODULE(ChannelFirstLinear);
+
 struct ChannelFirstLayerNormImpl : torch::nn::Module {
   explicit ChannelFirstLayerNormImpl(int64_t channels)
       : weight(torch::ones({channels})), bias(torch::zeros({channels})) {
@@ -44,24 +62,30 @@ TORCH_MODULE(ChannelFirstLayerNorm);
 
 struct ChannelFirstPatchEmbeddingImpl : torch::nn::Module {
   ChannelFirstPatchEmbeddingImpl(int64_t n_features, int64_t patch_size,
-                                 int64_t embedding_dim)
+                                 int64_t lookback, int64_t embedding_dim)
       : patch_size_(patch_size),
-        projection(torch::nn::Conv1d(torch::nn::Conv1dOptions(
-            n_features, embedding_dim, patch_size).stride(patch_size))) {
+        num_patches_((lookback + patch_size - 1) / patch_size),
+        projection(torch::nn::Linear(n_features * patch_size, embedding_dim)) {
     register_module("projection", projection);
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    int64_t T = x.size(2);
-    if (T % patch_size_ != 0) {
-      const int64_t padding = patch_size_ - (T % patch_size_);
-      x = torch::constant_pad_nd(x, {padding, 0});
+    std::vector<torch::Tensor> patches;
+    patches.reserve(static_cast<size_t>(num_patches_));
+    for (int64_t patch = 0; patch < num_patches_; ++patch) {
+      std::vector<torch::Tensor> values;
+      values.reserve(static_cast<size_t>(patch_size_));
+      for (int64_t offset = 0; offset < patch_size_; ++offset) {
+        values.push_back(x.select(2, patch * patch_size_ + offset));
+      }
+      patches.push_back(projection->forward(torch::cat(values, 1)).unsqueeze(2));
     }
-    return projection->forward(x);
+    return torch::cat(patches, 2);
   }
 
   int64_t patch_size_;
-  torch::nn::Conv1d projection;
+  int64_t num_patches_;
+  torch::nn::Linear projection;
 };
 TORCH_MODULE(ChannelFirstPatchEmbedding);
 
@@ -71,10 +95,8 @@ struct ChannelFirstCausalSelfAttentionImpl : torch::nn::Module {
       : embedding_dim_(embedding_dim),
         n_heads_(n_heads),
         head_dim_(embedding_dim / n_heads),
-        qkv(torch::nn::Conv1d(torch::nn::Conv1dOptions(
-            embedding_dim, embedding_dim * 3, 1))),
-        proj(torch::nn::Conv1d(torch::nn::Conv1dOptions(
-            embedding_dim, embedding_dim, 1))),
+        qkv(ChannelFirstLinear(embedding_dim, embedding_dim * 3)),
+        proj(ChannelFirstLinear(embedding_dim, embedding_dim)),
         attn_dropout(torch::nn::Dropout(dropout)),
         res_dropout(torch::nn::Dropout(dropout)) {
     if (embedding_dim % n_heads != 0) {
@@ -118,8 +140,8 @@ struct ChannelFirstCausalSelfAttentionImpl : torch::nn::Module {
   int64_t embedding_dim_;
   int64_t n_heads_;
   int64_t head_dim_;
-  torch::nn::Conv1d qkv;
-  torch::nn::Conv1d proj;
+  ChannelFirstLinear qkv;
+  ChannelFirstLinear proj;
   torch::nn::Dropout attn_dropout;
   torch::nn::Dropout res_dropout;
 };
@@ -131,11 +153,9 @@ struct ChannelFirstTransformerBlockImpl : torch::nn::Module {
       : ln1(ChannelFirstLayerNorm(embedding_dim)),
         ln2(ChannelFirstLayerNorm(embedding_dim)),
         attn(ChannelFirstCausalSelfAttention(embedding_dim, n_heads, dropout)),
-        mlp_fc1(torch::nn::Conv1d(torch::nn::Conv1dOptions(
-            embedding_dim, 4 * embedding_dim, 1))),
+        mlp_fc1(ChannelFirstLinear(embedding_dim, 4 * embedding_dim)),
         mlp_act(torch::nn::GELU()),
-        mlp_fc2(torch::nn::Conv1d(torch::nn::Conv1dOptions(
-            4 * embedding_dim, embedding_dim, 1))),
+        mlp_fc2(ChannelFirstLinear(4 * embedding_dim, embedding_dim)),
         mlp_dropout(torch::nn::Dropout(dropout)) {
     register_module("ln1", ln1);
     register_module("ln2", ln2);
@@ -157,9 +177,9 @@ struct ChannelFirstTransformerBlockImpl : torch::nn::Module {
 
   ChannelFirstLayerNorm ln1, ln2;
   ChannelFirstCausalSelfAttention attn;
-  torch::nn::Conv1d mlp_fc1;
+  ChannelFirstLinear mlp_fc1;
   torch::nn::GELU mlp_act;
-  torch::nn::Conv1d mlp_fc2;
+  ChannelFirstLinear mlp_fc2;
   torch::nn::Dropout mlp_dropout;
 };
 TORCH_MODULE(ChannelFirstTransformerBlock);
@@ -172,7 +192,8 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
       : lookback_(lookback),
         patch_size_(patch_size),
         embedding_dim_(embedding_dim),
-        patch_embed(ChannelFirstPatchEmbedding(n_features, patch_size, embedding_dim)),
+        patch_embed(ChannelFirstPatchEmbedding(n_features, patch_size, lookback,
+                                               embedding_dim)),
         dropout_layer(torch::nn::Dropout(dropout_rate)),
         blocks(torch::nn::ModuleList()),
         ln_f(ChannelFirstLayerNorm(embedding_dim)),
@@ -223,19 +244,20 @@ void copy_tensor(const torch::Tensor &dst, const torch::Tensor &src) {
   dst.copy_(src);
 }
 
-void copy_conv1d_from_linear(const torch::nn::Conv1d &dst,
-                             const torch::nn::Linear &src) {
-  dst->weight.copy_(src->weight.unsqueeze(-1));
-  dst->bias.copy_(src->bias);
-}
-
 void copy_linear(const torch::nn::Linear &dst, const torch::nn::Linear &src) {
   dst->weight.copy_(src->weight);
   dst->bias.copy_(src->bias);
 }
 
-void copy_conv1d(const torch::nn::Conv1d &dst, const torch::nn::Conv1d &src) {
-  dst->weight.copy_(src->weight);
+void copy_channel_first_linear(const ChannelFirstLinear &dst,
+                               const torch::nn::Linear &src) {
+  copy_tensor(dst->weight, src->weight);
+  copy_tensor(dst->bias, src->bias);
+}
+
+void copy_patch_projection(const torch::nn::Linear &dst,
+                           const torch::nn::Conv1d &src) {
+  dst->weight.copy_(src->weight.permute({0, 2, 1}).contiguous().flatten(1));
   dst->bias.copy_(src->bias);
 }
 
@@ -247,7 +269,8 @@ void copy_layer_norm(const ChannelFirstLayerNorm &dst,
 
 void copy_transformer_weights(const trade::ml::StockTransformer &source,
                               const ChannelFirstStockTransformer &target) {
-  copy_conv1d(target->patch_embed->projection, source->patch_embed->projection);
+  copy_patch_projection(target->patch_embed->projection,
+                        source->patch_embed->projection);
   copy_tensor(target->pos_embed, source->pos_embed.permute({0, 2, 1}).contiguous());
   copy_linear(target->head, source->head);
   copy_layer_norm(target->ln_f, source->ln_f);
@@ -262,10 +285,10 @@ void copy_transformer_weights(const trade::ml::StockTransformer &source,
 
     copy_layer_norm(target_block->ln1, source_block->ln1);
     copy_layer_norm(target_block->ln2, source_block->ln2);
-    copy_conv1d_from_linear(target_block->attn->qkv, source_block->attn->qkv);
-    copy_conv1d_from_linear(target_block->attn->proj, source_block->attn->proj);
-    copy_conv1d_from_linear(target_block->mlp_fc1, source_block->mlp_fc1);
-    copy_conv1d_from_linear(target_block->mlp_fc2, source_block->mlp_fc2);
+    copy_channel_first_linear(target_block->attn->qkv, source_block->attn->qkv);
+    copy_channel_first_linear(target_block->attn->proj, source_block->attn->proj);
+    copy_channel_first_linear(target_block->mlp_fc1, source_block->mlp_fc1);
+    copy_channel_first_linear(target_block->mlp_fc2, source_block->mlp_fc2);
   }
 }
 } // namespace
