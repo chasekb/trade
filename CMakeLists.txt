@@ -84,6 +84,8 @@ if(xtensor_INCLUDE_DIRS)
     target_include_directories(test_feature_engineer PRIVATE ${xtensor_INCLUDE_DIRS})
 endif()
 
+enable_testing()
+
 add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
     src/ml/TransformerOnnxExport.cpp
@@ -96,3 +98,4 @@ target_link_libraries(test_transformer_onnx_export PRIVATE
     Python3::Python
     ${TORCH_LIBRARIES}
 )
+add_test(NAME transformer_onnx_export COMMAND test_transformer_onnx_export)

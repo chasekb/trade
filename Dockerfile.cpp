@@ -114,7 +114,8 @@ RUN ARCH=$(uname -m) && \
     -DVCPKG_OVERLAY_TRIPLETS=/build/vcpkg-triplets \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
     -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build -j$(nproc)
+    cmake --build build -j$(nproc) && \
+    ctest --test-dir build --output-on-failure -R transformer_onnx_export
 
 # --- STAGE 2: Runtime ---
 # Use a plain Ubuntu runtime image so CI does not depend on MCR availability.
