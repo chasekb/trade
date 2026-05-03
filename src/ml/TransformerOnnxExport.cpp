@@ -21,6 +21,10 @@ constexpr double kTransformerDropout = 0.1;
 constexpr int kTransformerOpsetVersion = 17;
 constexpr double kLayerNormEps = 1e-5;
 
+torch::Tensor make_patch_select(int64_t num_patches, int64_t patch_size,
+                                int64_t lookback);
+torch::Tensor make_last_token_select(int64_t num_patches);
+
 struct ChannelFirstLinearImpl : torch::nn::Module {
   ChannelFirstLinearImpl(int64_t in_channels, int64_t out_channels)
       : weight(torch::empty({out_channels, in_channels})),
@@ -65,25 +69,22 @@ struct ChannelFirstPatchEmbeddingImpl : torch::nn::Module {
                                  int64_t lookback, int64_t embedding_dim)
       : patch_size_(patch_size),
         num_patches_((lookback + patch_size - 1) / patch_size),
-        projection(torch::nn::Linear(n_features * patch_size, embedding_dim)) {
+        patch_select(make_patch_select(num_patches_, patch_size, lookback)),
+        projection(ChannelFirstLinear(n_features * patch_size, embedding_dim)) {
+    register_buffer("patch_select", patch_select);
     register_module("projection", projection);
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    std::vector<torch::Tensor> patches;
-    patches.reserve(static_cast<size_t>(num_patches_));
-    for (int64_t patch = 0; patch < num_patches_; ++patch) {
-      const auto patch_view =
-          x.slice(2, patch * patch_size_, patch * patch_size_ + patch_size_);
-      patches.push_back(
-          projection->forward(torch::flatten(patch_view, 1)).unsqueeze(2));
-    }
-    return torch::cat(patches, 2);
+    auto selected = torch::einsum("bft,pst->bfps", {x, patch_select});
+    auto flattened = selected.permute({0, 1, 3, 2}).flatten(1, 2);
+    return projection->forward(flattened);
   }
 
   int64_t patch_size_;
   int64_t num_patches_;
-  torch::nn::Linear projection;
+  torch::Tensor patch_select;
+  ChannelFirstLinear projection;
 };
 TORCH_MODULE(ChannelFirstPatchEmbedding);
 
@@ -111,9 +112,10 @@ struct ChannelFirstCausalSelfAttentionImpl : torch::nn::Module {
     const int64_t N = x.size(2);
 
     const auto qkv_out = qkv->forward(x);
-    const auto q = qkv_out.slice(1, 0, embedding_dim_);
-    const auto k = qkv_out.slice(1, embedding_dim_, 2 * embedding_dim_);
-    const auto v = qkv_out.slice(1, 2 * embedding_dim_, 3 * embedding_dim_);
+    const auto qkv_parts = qkv_out.split(embedding_dim_, 1);
+    const auto q = qkv_parts[0];
+    const auto k = qkv_parts[1];
+    const auto v = qkv_parts[2];
 
     const auto q_heads = torch::stack(q.split(head_dim_, 1), 1);
     const auto k_heads = torch::stack(k.split(head_dim_, 1), 1);
@@ -130,9 +132,8 @@ struct ChannelFirstCausalSelfAttentionImpl : torch::nn::Module {
     attn = attn_dropout->forward(attn);
 
     auto y = torch::einsum("bhnm,bhdm->bhdn", {attn, v_heads});
-    auto y_parts = y.unbind(1);
-    auto y_cat = torch::cat(y_parts, 1);
-    return res_dropout->forward(proj->forward(y_cat));
+    auto y_flat = y.flatten(1, 2);
+    return res_dropout->forward(proj->forward(y_flat));
   }
 
   int64_t embedding_dim_;
@@ -195,11 +196,14 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
         dropout_layer(torch::nn::Dropout(dropout_rate)),
         blocks(torch::nn::ModuleList()),
         ln_f(ChannelFirstLayerNorm(embedding_dim)),
-        head(torch::nn::Linear(embedding_dim, 1)) {
+        head(torch::nn::Linear(embedding_dim, 1)),
+        last_token_select(make_last_token_select((lookback + patch_size - 1) /
+                                                 patch_size)) {
     const int64_t num_patches = std::ceil(static_cast<double>(lookback) /
                                           static_cast<double>(patch_size));
     pos_embed = torch::zeros({1, embedding_dim, num_patches});
     register_buffer("pos_embed", pos_embed);
+    register_buffer("last_token_select", last_token_select);
 
     for (int64_t i = 0; i < n_layers; ++i) {
       blocks->push_back(ChannelFirstTransformerBlock(embedding_dim, n_heads, dropout_rate));
@@ -222,7 +226,7 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
     }
 
     x = ln_f->forward(x);
-    x = x.slice(2, x.size(2) - 1, x.size(2)).squeeze(2);
+    x = torch::einsum("bcp,p->bc", {x, last_token_select});
     return head->forward(x);
   }
 
@@ -231,12 +235,35 @@ struct ChannelFirstStockTransformerImpl : torch::nn::Module {
   int64_t embedding_dim_;
   ChannelFirstPatchEmbedding patch_embed;
   torch::Tensor pos_embed;
+  torch::Tensor last_token_select;
   torch::nn::Dropout dropout_layer;
   torch::nn::ModuleList blocks;
   ChannelFirstLayerNorm ln_f;
   torch::nn::Linear head;
 };
 TORCH_MODULE(ChannelFirstStockTransformer);
+
+torch::Tensor make_patch_select(int64_t num_patches, int64_t patch_size,
+                                int64_t lookback) {
+  auto select = torch::zeros({num_patches, patch_size, lookback},
+                             torch::TensorOptions().dtype(torch::kFloat32));
+  for (int64_t patch = 0; patch < num_patches; ++patch) {
+    for (int64_t offset = 0; offset < patch_size; ++offset) {
+      const int64_t index = patch * patch_size + offset;
+      if (index < lookback) {
+        select.index_put_({patch, offset, index}, 1.0);
+      }
+    }
+  }
+  return select;
+}
+
+torch::Tensor make_last_token_select(int64_t num_patches) {
+  auto select =
+      torch::zeros({num_patches}, torch::TensorOptions().dtype(torch::kFloat32));
+  select.index_put_({num_patches - 1}, 1.0);
+  return select;
+}
 
 void copy_tensor(const torch::Tensor &dst, const torch::Tensor &src) {
   dst.copy_(src);
@@ -253,7 +280,7 @@ void copy_channel_first_linear(const ChannelFirstLinear &dst,
   copy_tensor(dst->bias, src->bias);
 }
 
-void copy_patch_projection(const torch::nn::Linear &dst,
+void copy_patch_projection(const ChannelFirstLinear &dst,
                            const torch::nn::Conv1d &src) {
   dst->weight.copy_(src->weight.permute({0, 2, 1}).contiguous().flatten(1));
   dst->bias.copy_(src->bias);
