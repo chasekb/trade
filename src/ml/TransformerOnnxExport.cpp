@@ -384,8 +384,8 @@ export_transformer_to_onnx(const std::filesystem::path &output_path,
   auto graph = traced.first->graph;
   auto export_result = torch::jit::export_onnx(
       graph, {}, kTransformerOpsetVersion, {}, false,
-      torch::onnx::OperatorExportTypes::ONNX, true, true, {}, true, false,
-      std::string());
+      torch::onnx::OperatorExportTypes::ONNX_ATEN_FALLBACK, true, true, {},
+      true, false, std::string());
 
   auto model_proto = std::get<0>(export_result);
   if (model_proto == nullptr) {
