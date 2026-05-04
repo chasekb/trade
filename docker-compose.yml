@@ -19,7 +19,7 @@ services:
     volumes:
       - ./.env:/app/.env:ro,Z
       - ./data/cpp_assets:/app/data/cpp_assets:ro,Z
-      - ./data/onnx:/app/data/onnx:ro,Z
+      - ./data/onnx:/app/data/onnx:Z
       - ./data/trained_models:/app/data/trained_models:Z
     depends_on:
       - db

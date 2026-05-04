@@ -500,7 +500,8 @@ void PredictController::train(
 
       const std::string trained_at = now_iso_utc();
       const std::string version_id = std::to_string(std::time(nullptr));
-      const std::string model_id = config.model_name + ":" + version_id;
+      // Keep package names filesystem-safe for bind mounts and host volumes.
+      const std::string model_id = config.model_name + "_" + version_id;
 
       const std::filesystem::path model_root(PredictController::model_dir_);
       const std::filesystem::path trained_root(PredictController::trained_models_dir_);
