@@ -25,7 +25,7 @@ constexpr int64_t kTransformerEmbeddingDim = 64;
 constexpr int64_t kTransformerHeads = 4;
 constexpr int64_t kTransformerLayers = 3;
 constexpr double kTransformerDropout = 0.1;
-constexpr int kTransformerOpsetVersion = 17;
+constexpr int kTransformerOpsetVersion = 13;
 
 void write_transformer_config(const std::filesystem::path &config_path,
                               int64_t input_features) {
