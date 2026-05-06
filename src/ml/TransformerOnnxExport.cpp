@@ -88,7 +88,7 @@ std::string make_value_info(const std::string &name,
 std::string make_int_attribute(const std::string &name, int64_t value) {
   std::string attr;
   append_string(attr, 1, name);
-  append_int64(attr, 2, value);
+  append_int64(attr, 3, value);
   append_int32(attr, 20, kAttributeProtoInt);
   return attr;
 }
@@ -98,7 +98,7 @@ std::string make_ints_attribute(const std::string &name,
   std::string attr;
   append_string(attr, 1, name);
   for (const auto value : values) {
-    append_int64(attr, 7, value);
+    append_int64(attr, 8, value);
   }
   append_int32(attr, 20, kAttributeProtoInts);
   return attr;
@@ -129,7 +129,7 @@ std::string make_graph(int64_t input_features) {
       graph, 11,
       make_value_info("sequence_input",
                       {1, input_features, kTransformerLookback}));
-  append_message(graph, 12, make_value_info("variable", {1}));
+  append_message(graph, 12, make_value_info("variable", {}));
   return graph;
 }
 
