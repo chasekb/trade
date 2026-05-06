@@ -47,35 +47,44 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
       }
     }
 
-    if (std::filesystem::exists(trans_path)) {
-#ifdef _WIN32
-      std::wstring w_trans_path(trans_path.begin(), trans_path.end());
-      transformer_session_ = std::make_unique<Ort::Session>(
-          env_, w_trans_path.c_str(), session_options_);
-#else
-      transformer_session_ = std::make_unique<Ort::Session>(
-          env_, trans_path.c_str(), session_options_);
-#endif
-      // Get transformer info
-      auto info =
-          transformer_session_->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo();
-      auto shape = info.GetShape();
-      if (shape.size() >= 3) {
-        if (transformer_channels_first_) {
-          transformer_features_ = shape[1];
-          transformer_lookback_ = shape[2];
-        } else {
-          transformer_lookback_ = shape[1];
-          transformer_features_ = shape[2];
-        }
-      }
-      spdlog::info("Loaded Transformer model. Lookback: {}, Features: {}",
-                   transformer_lookback_, transformer_features_);
-    }
-
     const bool has_regressor = std::filesystem::exists(reg_path);
     const bool has_classifier = std::filesystem::exists(cls_path);
     const bool has_transformer = std::filesystem::exists(trans_path);
+
+    if (std::filesystem::exists(trans_path)) {
+      try {
+#ifdef _WIN32
+        std::wstring w_trans_path(trans_path.begin(), trans_path.end());
+        transformer_session_ = std::make_unique<Ort::Session>(
+            env_, w_trans_path.c_str(), session_options_);
+#else
+        transformer_session_ = std::make_unique<Ort::Session>(
+            env_, trans_path.c_str(), session_options_);
+#endif
+        auto info = transformer_session_->GetInputTypeInfo(0)
+                        .GetTensorTypeAndShapeInfo();
+        auto shape = info.GetShape();
+        if (shape.size() >= 3) {
+          if (transformer_channels_first_) {
+            transformer_features_ = shape[1];
+            transformer_lookback_ = shape[2];
+          } else {
+            transformer_lookback_ = shape[1];
+            transformer_features_ = shape[2];
+          }
+        }
+        spdlog::info("Loaded Transformer model. Lookback: {}, Features: {}",
+                     transformer_lookback_, transformer_features_);
+      } catch (const std::exception &e) {
+        transformer_session_.reset();
+        transformer_lookback_ = 0;
+        transformer_features_ = 0;
+        transformer_channels_first_ = false;
+        spdlog::warn(
+            "Skipping transformer model at {} because it could not be loaded: {}",
+            trans_path, e.what());
+      }
+    }
 
     if (!has_regressor && !has_classifier && !has_transformer) {
       spdlog::error("No ONNX models found in {}", model_dir);
@@ -120,9 +129,16 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
       }
     }
 
+    const bool has_loaded_transformer = transformer_session_ != nullptr;
+    if (!has_regressor && !has_classifier && !has_loaded_transformer) {
+      spdlog::error("No usable ONNX models found in {}", model_dir);
+      return false;
+    }
+
     spdlog::info(
         "Loaded ONNX models from {}. Capabilities: regressor={}, classifier={}, transformer={}, expected input dimension: {}",
-        model_dir, has_regressor, has_classifier, has_transformer, input_dim_);
+        model_dir, has_regressor, has_classifier, has_loaded_transformer,
+        input_dim_);
     return true;
   } catch (const std::exception &e) {
     spdlog::error("Failed to load ONNX models: {}", e.what());

@@ -89,13 +89,9 @@ enable_testing()
 add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
     src/ml/TransformerOnnxExport.cpp
-    src/ml/TransformerModel.cpp
 )
-target_include_directories(test_transformer_onnx_export PRIVATE include ${TORCH_INCLUDE_DIRS} ${Python3_INCLUDE_DIRS})
+target_include_directories(test_transformer_onnx_export PRIVATE include)
 target_link_libraries(test_transformer_onnx_export PRIVATE
-    spdlog::spdlog
     onnxruntime::onnxruntime
-    Python3::Python
-    ${TORCH_LIBRARIES}
 )
 add_test(NAME transformer_onnx_export COMMAND test_transformer_onnx_export)
