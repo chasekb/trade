@@ -129,7 +129,7 @@ std::string make_graph(int64_t input_features) {
       graph, 11,
       make_value_info("sequence_input",
                       {1, input_features, kTransformerLookback}));
-  append_message(graph, 12, make_value_info("variable", {}));
+  append_message(graph, 12, make_value_info("variable", {1}));
   return graph;
 }
 
