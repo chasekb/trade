@@ -54,7 +54,8 @@ int main() {
     auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names,
                                &input_tensor, 1, output_names, 1);
     if (outputs.empty() ||
-        outputs[0].GetTensorTypeAndShapeInfo().GetElementCount() != 1) {
+        outputs[0].GetTensorTypeAndShapeInfo().GetElementCount() !=
+            input.size()) {
       std::cerr << "Transformer ONNX export produced unexpected output"
                 << std::endl;
       return 1;

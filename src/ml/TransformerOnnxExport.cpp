@@ -104,14 +104,12 @@ std::string make_ints_attribute(const std::string &name,
   return attr;
 }
 
-std::string make_reduce_mean_node() {
+std::string make_identity_node() {
   std::string node;
   append_string(node, 1, "sequence_input");
   append_string(node, 2, "variable");
-  append_string(node, 3, "transformer_reduce_mean");
-  append_string(node, 4, "ReduceMean");
-  append_message(node, 5, make_ints_attribute("axes", {1, 2}));
-  append_message(node, 5, make_int_attribute("keepdims", 0));
+  append_string(node, 3, "transformer_identity");
+  append_string(node, 4, "Identity");
   return node;
 }
 
@@ -123,13 +121,15 @@ std::string make_opset_import() {
 
 std::string make_graph(int64_t input_features) {
   std::string graph;
-  append_message(graph, 1, make_reduce_mean_node());
+  append_message(graph, 1, make_identity_node());
   append_string(graph, 2, "trade_transformer_runtime_fallback");
   append_message(
       graph, 11,
       make_value_info("sequence_input",
                       {1, input_features, kTransformerLookback}));
-  append_message(graph, 12, make_value_info("variable", {1}));
+  append_message(
+      graph, 12,
+      make_value_info("variable", {1, input_features, kTransformerLookback}));
   return graph;
 }
 
