@@ -5,15 +5,11 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace {
-constexpr int64_t kTransformerLookback = 60;
 constexpr int kTransformerOpsetVersion = 13;
 constexpr int64_t kOnnxIrVersion = 8;
 constexpr int kTensorProtoFloat = 1;
-constexpr int kAttributeProtoInt = 2;
-constexpr int kAttributeProtoInts = 7;
 
 void append_varint(std::string &out, uint64_t value) {
   while (value >= 0x80) {
@@ -50,58 +46,23 @@ void append_message(std::string &out, int field_number,
   out.append(message);
 }
 
-std::string make_dimension(int64_t value) {
-  std::string dim;
-  append_int64(dim, 1, value);
-  return dim;
-}
-
-std::string make_tensor_shape(const std::vector<int64_t> &dims) {
-  std::string shape;
-  for (const auto dim : dims) {
-    append_message(shape, 1, make_dimension(dim));
-  }
-  return shape;
-}
-
-std::string make_tensor_type(const std::vector<int64_t> &dims) {
+std::string make_tensor_type() {
   std::string tensor_type;
   append_int32(tensor_type, 1, kTensorProtoFloat);
-  append_message(tensor_type, 2, make_tensor_shape(dims));
   return tensor_type;
 }
 
-std::string make_type_proto(const std::vector<int64_t> &dims) {
+std::string make_type_proto() {
   std::string type_proto;
-  append_message(type_proto, 1, make_tensor_type(dims));
+  append_message(type_proto, 1, make_tensor_type());
   return type_proto;
 }
 
-std::string make_value_info(const std::string &name,
-                            const std::vector<int64_t> &dims) {
+std::string make_value_info(const std::string &name) {
   std::string value_info;
   append_string(value_info, 1, name);
-  append_message(value_info, 2, make_type_proto(dims));
+  append_message(value_info, 2, make_type_proto());
   return value_info;
-}
-
-std::string make_int_attribute(const std::string &name, int64_t value) {
-  std::string attr;
-  append_string(attr, 1, name);
-  append_int64(attr, 3, value);
-  append_int32(attr, 20, kAttributeProtoInt);
-  return attr;
-}
-
-std::string make_ints_attribute(const std::string &name,
-                                const std::vector<int64_t> &values) {
-  std::string attr;
-  append_string(attr, 1, name);
-  for (const auto value : values) {
-    append_int64(attr, 8, value);
-  }
-  append_int32(attr, 20, kAttributeProtoInts);
-  return attr;
 }
 
 std::string make_identity_node() {
@@ -119,25 +80,20 @@ std::string make_opset_import() {
   return opset;
 }
 
-std::string make_graph(int64_t input_features) {
+std::string make_graph() {
   std::string graph;
   append_message(graph, 1, make_identity_node());
   append_string(graph, 2, "trade_transformer_runtime_fallback");
-  append_message(
-      graph, 11,
-      make_value_info("sequence_input",
-                      {1, input_features, kTransformerLookback}));
-  append_message(
-      graph, 12,
-      make_value_info("variable", {1, input_features, kTransformerLookback}));
+  append_message(graph, 11, make_value_info("sequence_input"));
+  append_message(graph, 12, make_value_info("variable"));
   return graph;
 }
 
-std::string make_model(int64_t input_features) {
+std::string make_model() {
   std::string model;
   append_int64(model, 1, kOnnxIrVersion);
   append_string(model, 2, "trade-cpp");
-  append_message(model, 7, make_graph(input_features));
+  append_message(model, 7, make_graph());
   append_message(model, 8, make_opset_import());
   return model;
 }
@@ -157,7 +113,7 @@ void export_transformer_to_onnx(const std::filesystem::path &output_path,
     std::filesystem::create_directories(output_path.parent_path());
   }
 
-  const std::string onnx_bytes = make_model(input_features);
+  const std::string onnx_bytes = make_model();
   std::ofstream out(output_path, std::ios::binary);
   if (!out.is_open()) {
     throw std::runtime_error("Failed to open transformer ONNX output path: " +
