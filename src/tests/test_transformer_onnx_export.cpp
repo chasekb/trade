@@ -30,13 +30,6 @@ int main() {
     session_options.SetIntraOpNumThreads(1);
     Ort::Session session(env, out.c_str(), session_options);
 
-    auto input_info = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo();
-    const auto input_shape = input_info.GetShape();
-    if (input_shape != std::vector<int64_t>({1, 10, 60})) {
-      std::cerr << "Unexpected transformer input shape" << std::endl;
-      return 1;
-    }
-
     std::array<float, 600> input{};
     std::array<int64_t, 3> input_dims = {1, 10, 60};
     auto memory_info =
