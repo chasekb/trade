@@ -1,0 +1,11 @@
+{
+  "dropout": 0.1,
+  "embedding_dim": 64,
+  "input_layout": "channels_first",
+  "lookback": 60,
+  "n_features": 10,
+  "n_heads": 4,
+  "n_layers": 3,
+  "opset_version": 13,
+  "patch_size": 5
+}
