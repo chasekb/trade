@@ -6,9 +6,11 @@
 #include "ml/Types.hpp"
 #include "trading/TradingStatsService.hpp"
 #include "utils/Logger.hpp"
+#include <atomic>
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -176,6 +178,16 @@ std::uintmax_t copy_required_artifact(const std::filesystem::path &src,
   return dst_size;
 }
 
+std::filesystem::path unique_temp_artifact_path(
+    const std::filesystem::path &dst) {
+  static std::atomic<std::uint64_t> sequence{0};
+  const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+  return std::filesystem::path(dst.string() + ".tmp." +
+                               std::to_string(now) + "." +
+                               std::to_string(
+                                   sequence.fetch_add(1, std::memory_order_relaxed)));
+}
+
 std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
                                           const std::filesystem::path &dst,
                                           bool required) {
@@ -188,8 +200,8 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
     return 0;
   }
 
-  const auto tmp_dst = dst.string() + ".tmp";
-  const std::filesystem::path tmp_path(tmp_dst);
+  const std::filesystem::path legacy_tmp_path(dst.string() + ".tmp");
+  const std::filesystem::path tmp_path = unique_temp_artifact_path(dst);
   std::error_code ec;
   std::filesystem::create_directories(dst.parent_path(), ec);
   if (ec) {
@@ -197,6 +209,8 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
                              dst.parent_path().string() + "': " + ec.message());
   }
 
+  std::filesystem::remove(legacy_tmp_path, ec);
+  ec.clear();
   std::filesystem::remove(tmp_path, ec);
   ec.clear();
   std::filesystem::copy_file(src, tmp_path,
