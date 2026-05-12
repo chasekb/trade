@@ -178,6 +178,31 @@ std::uintmax_t copy_required_artifact(const std::filesystem::path &src,
   return dst_size;
 }
 
+bool directory_is_writable(const std::filesystem::path &dir) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  if (ec) {
+    return false;
+  }
+
+  const auto probe = dir / ".trade_write_probe";
+  {
+    std::ofstream out(probe, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+      std::filesystem::remove(probe, ec);
+      return false;
+    }
+    out << 'x';
+    if (!out.good()) {
+      std::filesystem::remove(probe, ec);
+      return false;
+    }
+  }
+
+  std::filesystem::remove(probe, ec);
+  return !ec;
+}
+
 std::filesystem::path unique_temp_artifact_path(
     const std::filesystem::path &dst) {
   static std::atomic<std::uint64_t> sequence{0};
@@ -283,19 +308,18 @@ void PredictController::init(const std::string &param_path,
       trained_models_dir_ = (fs::path(model_dir_) / "trained").string();
     }
 
-    std::error_code ec;
-    fs::create_directories(fs::path(trained_models_dir_), ec);
-    if (ec) {
+    const fs::path configured_dir(trained_models_dir_);
+    if (!directory_is_writable(configured_dir)) {
       const fs::path fallback("/tmp/trade_trained_models");
-      ec.clear();
-      fs::create_directories(fallback, ec);
-      if (!ec) {
+      if (directory_is_writable(fallback)) {
         trained_models_dir_ = fallback.string();
-        TR_LOG_WARN("Configured trained-model path unavailable; falling back to {}",
-                    trained_models_dir_);
+        TR_LOG_WARN(
+            "Configured trained-model path unavailable or unwritable; falling back to {}",
+            trained_models_dir_);
       } else {
-        TR_LOG_ERROR("Unable to create trained model directory at '{}' and fallback '{}': {}",
-                     trained_models_dir_, fallback.string(), ec.message());
+        TR_LOG_ERROR(
+            "Unable to create a writable trained model directory at '{}' or fallback '{}'",
+            configured_dir.string(), fallback.string());
       }
     }
   }
