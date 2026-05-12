@@ -20,7 +20,7 @@ services:
       - ./.env:/app/.env:ro,Z
       - ./data/cpp_assets:/app/data/cpp_assets:ro,Z
       - ./data/onnx:/app/data/onnx:Z
-      - ./data/trained_models:/app/data/trained_models:Z
+      - trained_models_data:/app/data/trained_models
     depends_on:
       - db
       - redis
@@ -91,6 +91,8 @@ services:
   # Cache Service
   redis:
     image: redis:7-alpine
+    sysctls:
+      vm.overcommit_memory: "1"
     ports:
       - "6379:6379"
     volumes:
@@ -107,6 +109,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  trained_models_data:
 
 
 networks:
