@@ -119,11 +119,11 @@ std::string make_graph(std::int64_t input_features) {
                            "transformer_output", "Identity"));
   append_string(graph, 2, "trade_transformer_identity");
   append_message(graph, 11,
-                 make_value_info("sequence_input", kBatchSize, kLookback,
-                                 input_features));
+                 make_value_info("sequence_input", kBatchSize, input_features,
+                                 kLookback));
   append_message(graph, 12,
-                 make_value_info("transformer_output", kBatchSize, kLookback,
-                                 input_features));
+                 make_value_info("transformer_output", kBatchSize,
+                                 input_features, kLookback));
   return graph;
 }
 
