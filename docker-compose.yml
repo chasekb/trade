@@ -70,7 +70,7 @@ services:
 
   # Main Database
   db:
-    image: postgres:15-alpine
+    image: docker.io/library/postgres:15-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -90,7 +90,7 @@ services:
 
   # Cache Service
   redis:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     sysctls:
       vm.overcommit_memory: "1"
     ports:
