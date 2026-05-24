@@ -20,7 +20,7 @@ services:
       - ./.env:/app/.env:ro,Z
       - ./data/cpp_assets:/app/data/cpp_assets:ro,Z
       - ./data/onnx:/app/data/onnx:Z
-      - trained_models_data:/app/data/trained_models
+      - ./data/trained_models:/app/data/trained_models:Z
     depends_on:
       - db
       - redis
@@ -76,7 +76,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/databases/postgres:/var/lib/postgresql/data:Z
     ports:
       - "5432:5432"
     networks:
@@ -96,7 +96,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/cache/redis:/data:Z
     networks:
       - trading-network
     restart: unless-stopped
@@ -105,11 +105,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-volumes:
-  postgres_data:
-  redis_data:
-  trained_models_data:
 
 
 networks:

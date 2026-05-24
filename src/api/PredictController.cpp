@@ -203,6 +203,28 @@ bool directory_is_writable(const std::filesystem::path &dir) {
   return !ec;
 }
 
+std::filesystem::path writable_package_dir_for_model(
+    const std::filesystem::path &base_dir, const std::string &model_id) {
+  const auto candidate = base_dir / model_id;
+  if (directory_is_writable(candidate)) {
+    return candidate;
+  }
+
+  const auto fallback_root = std::filesystem::temp_directory_path() /
+                             "trade_trained_models";
+  const auto fallback = fallback_root / model_id;
+  if (directory_is_writable(fallback)) {
+    TR_LOG_WARN(
+        "Configured trained-model package directory '{}' unavailable or unwritable; using '{}' instead",
+        candidate.string(), fallback.string());
+    return fallback;
+  }
+
+  throw std::runtime_error("Unable to create a writable package directory at '" +
+                           candidate.string() + "' or fallback '" +
+                           fallback.string() + "'");
+}
+
 std::filesystem::path unique_temp_artifact_path(
     const std::filesystem::path &dst) {
   static std::atomic<std::uint64_t> sequence{0};
@@ -546,8 +568,8 @@ void PredictController::train(
       if (trained_root.empty()) {
         throw std::runtime_error("trained models directory is not configured");
       }
-      const std::filesystem::path package_dir = trained_root / model_id;
-      std::filesystem::create_directories(package_dir);
+      const std::filesystem::path package_dir =
+          writable_package_dir_for_model(trained_root, model_id);
 
       if (config.type == trade::ml::ModelType::TRANSFORMER) {
         const auto transformer_features = feature_engineer_
