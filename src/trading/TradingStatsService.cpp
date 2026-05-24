@@ -60,6 +60,12 @@ TradingStats TradingStatsService::getTradingStats() const {
   TradingStats stats;
 
   try {
+    auto table_exists = DatabaseManager::getInstance().query(
+        "SELECT to_regclass('public.individual_trades') AS relname");
+    if (table_exists.empty() || table_exists[0]["relname"].is_null()) {
+      return stats;
+    }
+
     auto res = DatabaseManager::getInstance().query(
         "SELECT trade_id, symbol, side, size, price, timestamp, pnl, fees "
         "FROM individual_trades ORDER BY timestamp ASC");

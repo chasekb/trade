@@ -14,7 +14,6 @@ trade/
 ├── frontend/                   # Next.js React/TypeScript frontend
 ├── src/                        # C++ Source code (New)
 │   └── cpp_backend/            # High-performance C++ backend
-├── legacy_python/              # Previous Python system (Archived)
 ├── README.md                   # This file
 │
 ├── archive/                    # Archived unused code (see archive/README.md)

@@ -18,6 +18,34 @@ bool DataCollector::ensure_training_inputs_table() {
     pqxx::work txn(conn);
 
     txn.exec(R"SQL(
+      CREATE TABLE IF NOT EXISTS individual_trades (
+        trade_id TEXT PRIMARY KEY,
+        session_id TEXT,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        size DOUBLE PRECISION,
+        price DOUBLE PRECISION NOT NULL,
+        timestamp BIGINT NOT NULL,
+        strategy_type TEXT,
+        signal_reason TEXT,
+        pnl DOUBLE PRECISION,
+        fees DOUBLE PRECISION,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        win_probability DOUBLE PRECISION,
+        expected_return DOUBLE PRECISION,
+        model_confidence DOUBLE PRECISION,
+        trade_type TEXT DEFAULT 'live'
+      )
+    )SQL");
+
+    txn.exec(
+        "CREATE INDEX IF NOT EXISTS idx_individual_trades_timestamp "
+        "ON individual_trades(timestamp)");
+    txn.exec(
+        "CREATE INDEX IF NOT EXISTS idx_individual_trades_symbol_timestamp "
+        "ON individual_trades(symbol, timestamp)");
+
+    txn.exec(R"SQL(
       CREATE TABLE IF NOT EXISTS ml_training_inputs (
         signal_id TEXT PRIMARY KEY,
         trade_id TEXT NOT NULL,
