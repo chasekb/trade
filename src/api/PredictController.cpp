@@ -256,6 +256,39 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
                              dst.parent_path().string() + "': " + ec.message());
   }
 
+  auto copy_directly = [&]() -> std::uintmax_t {
+    std::filesystem::remove(dst, ec);
+    ec.clear();
+    std::filesystem::copy_file(src, dst,
+                               std::filesystem::copy_options::overwrite_existing,
+                               ec);
+    if (ec) {
+      throw std::runtime_error("Failed to copy artifact from '" + src.string() +
+                               "' to '" + dst.string() + "': " + ec.message());
+    }
+
+    std::filesystem::permissions(
+        dst,
+        std::filesystem::perms::owner_read |
+            std::filesystem::perms::owner_write |
+            std::filesystem::perms::group_read |
+            std::filesystem::perms::others_read,
+        std::filesystem::perm_options::replace, ec);
+    if (ec) {
+      TR_LOG_WARN("Failed to normalize permissions on '{}': {}", dst.string(),
+                  ec.message());
+    }
+
+    const auto dst_size = validated_file_size(dst);
+    if (dst_size == 0) {
+      throw std::runtime_error("Final artifact is empty: " + dst.string());
+    }
+
+    TR_LOG_INFO("Packaged model artifact '{}' -> '{}' ({} bytes)", src.string(),
+                dst.string(), dst_size);
+    return dst_size;
+  };
+
   std::filesystem::remove(legacy_tmp_path, ec);
   ec.clear();
   std::filesystem::remove(tmp_path, ec);
@@ -263,15 +296,18 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
   std::filesystem::copy_file(src, tmp_path,
                              std::filesystem::copy_options::overwrite_existing, ec);
   if (ec) {
-    throw std::runtime_error("Failed to copy artifact from '" + src.string() +
-                             "' to temp path '" + tmp_path.string() + "': " +
-                             ec.message());
+    TR_LOG_WARN(
+        "Failed to copy artifact from '{}' to temp path '{}': {}; retrying direct copy to '{}'",
+        src.string(), tmp_path.string(), ec.message(), dst.string());
+    return copy_directly();
   }
 
   const auto tmp_size = validated_file_size(tmp_path);
   if (tmp_size == 0) {
     std::filesystem::remove(tmp_path, ec);
-    throw std::runtime_error("Copied temp artifact is empty: " + tmp_path.string());
+    TR_LOG_WARN("Copied temp artifact was empty at '{}'; retrying direct copy to '{}'",
+                tmp_path.string(), dst.string());
+    return copy_directly();
   }
 
   std::filesystem::remove(dst, ec);
@@ -279,9 +315,10 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
   std::filesystem::rename(tmp_path, dst, ec);
   if (ec) {
     std::filesystem::remove(tmp_path, ec);
-    throw std::runtime_error("Failed to promote temp artifact from '" +
-                             tmp_path.string() + "' to '" + dst.string() + "': " +
-                             ec.message());
+    TR_LOG_WARN(
+        "Failed to promote temp artifact from '{}' to '{}': {}; retrying direct copy",
+        tmp_path.string(), dst.string(), ec.message());
+    return copy_directly();
   }
 
   std::filesystem::permissions(

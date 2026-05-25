@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <nlohmann/json.hpp>
+#include <string>
 #include <pqxx/pqxx>
 #include <spdlog/spdlog.h>
 #include <utility>
@@ -15,156 +16,176 @@ DataCollector::DataCollector(const std::string &db_url) : db_url_(db_url) {}
 bool DataCollector::ensure_training_inputs_table() {
   try {
     pqxx::connection conn(db_url_);
-    pqxx::work txn(conn);
 
-    txn.exec(R"SQL(
-      CREATE TABLE IF NOT EXISTS individual_trades (
-        trade_id TEXT PRIMARY KEY,
-        session_id TEXT,
-        symbol TEXT NOT NULL,
-        side TEXT NOT NULL,
-        size DOUBLE PRECISION,
-        price DOUBLE PRECISION NOT NULL,
-        timestamp BIGINT NOT NULL,
-        strategy_type TEXT,
-        signal_reason TEXT,
-        pnl DOUBLE PRECISION,
-        fees DOUBLE PRECISION,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        win_probability DOUBLE PRECISION,
-        expected_return DOUBLE PRECISION,
-        model_confidence DOUBLE PRECISION,
-        trade_type TEXT DEFAULT 'live'
-      )
-    )SQL");
+    {
+      pqxx::work txn(conn);
 
-    txn.exec(
-        "CREATE INDEX IF NOT EXISTS idx_individual_trades_timestamp "
-        "ON individual_trades(timestamp)");
-    txn.exec(
-        "CREATE INDEX IF NOT EXISTS idx_individual_trades_symbol_timestamp "
-        "ON individual_trades(symbol, timestamp)");
-
-    txn.exec(R"SQL(
-      CREATE TABLE IF NOT EXISTS ml_training_inputs (
-        signal_id TEXT PRIMARY KEY,
-        trade_id TEXT NOT NULL,
-        symbol TEXT NOT NULL,
-        signal_timestamp BIGINT NOT NULL,
-        trade_timestamp BIGINT NOT NULL,
-        bid_ask_imbalance DOUBLE PRECISION NOT NULL,
-        spread_percent DOUBLE PRECISION NOT NULL DEFAULT 0.001,
-        mid_price DOUBLE PRECISION NOT NULL,
-        bid_volume DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        ask_volume DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        order_book_depth INTEGER NOT NULL DEFAULT 0,
-        large_bid_wall BOOLEAN NOT NULL DEFAULT FALSE,
-        large_ask_wall BOOLEAN NOT NULL DEFAULT FALSE,
-        wall_size DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        volume_weighted_price DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        price_momentum DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        volatility DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        volume_24h DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        prev_win_probability DOUBLE PRECISION NOT NULL DEFAULT 0.5,
-        prev_expected_return DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        prev_confidence DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        side TEXT,
-        trade_size DOUBLE PRECISION,
-        trade_price DOUBLE PRECISION,
-        pnl DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        fees DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    )SQL");
-
-    txn.exec(
-        "CREATE INDEX IF NOT EXISTS idx_ml_training_inputs_signal_ts "
-        "ON ml_training_inputs(signal_timestamp)");
-    txn.exec(
-        "CREATE INDEX IF NOT EXISTS idx_ml_training_inputs_symbol_signal_ts "
-        "ON ml_training_inputs(symbol, signal_timestamp)");
-    txn.exec(
-        "CREATE INDEX IF NOT EXISTS idx_ml_training_inputs_trade_ts "
-        "ON ml_training_inputs(trade_timestamp)");
-
-    txn.exec(R"SQL(
-      CREATE OR REPLACE FUNCTION fn_upsert_ml_training_inputs_from_trade()
-      RETURNS TRIGGER
-      LANGUAGE plpgsql
-      AS $$
-      BEGIN
-        INSERT INTO ml_training_inputs (
-          signal_id,
-          trade_id,
-          symbol,
-          signal_timestamp,
-          trade_timestamp,
-          bid_ask_imbalance,
-          mid_price,
-          volume_weighted_price,
-          side,
-          trade_size,
-          trade_price,
-          pnl,
-          fees,
-          updated_at
+      txn.exec(R"SQL(
+        CREATE TABLE IF NOT EXISTS individual_trades (
+          trade_id TEXT PRIMARY KEY,
+          session_id TEXT,
+          symbol TEXT NOT NULL,
+          side TEXT NOT NULL,
+          size DOUBLE PRECISION,
+          price DOUBLE PRECISION NOT NULL,
+          timestamp BIGINT NOT NULL,
+          strategy_type TEXT,
+          signal_reason TEXT,
+          pnl DOUBLE PRECISION,
+          fees DOUBLE PRECISION,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          win_probability DOUBLE PRECISION,
+          expected_return DOUBLE PRECISION,
+          model_confidence DOUBLE PRECISION,
+          trade_type TEXT DEFAULT 'live'
         )
-        SELECT
-          s.signal_id,
-          NEW.trade_id,
-          NEW.symbol,
-          s.timestamp,
-          NEW.timestamp,
-          s.strength,
-          s.price,
-          s.price,
-          NEW.side,
-          NEW.size,
-          NEW.price,
-          COALESCE(NEW.pnl, 0.0),
-          COALESCE(NEW.fees, 0.0),
-          NOW()
-        FROM order_book_signals s
-        WHERE s.symbol = NEW.symbol
-          AND s.timestamp <= NEW.timestamp
-          AND s.timestamp >= (NEW.timestamp - 300)
-          AND NOT EXISTS (
-            SELECT 1
-            FROM individual_trades t_prev
-            WHERE t_prev.symbol = s.symbol
-              AND t_prev.timestamp >= s.timestamp
-              AND t_prev.timestamp < NEW.timestamp
+      )SQL");
+
+      txn.exec(
+          "CREATE INDEX IF NOT EXISTS idx_individual_trades_timestamp "
+          "ON individual_trades(timestamp)");
+      txn.exec(
+          "CREATE INDEX IF NOT EXISTS idx_individual_trades_symbol_timestamp "
+          "ON individual_trades(symbol, timestamp)");
+
+      txn.exec(R"SQL(
+        CREATE TABLE IF NOT EXISTS ml_training_inputs (
+          signal_id TEXT PRIMARY KEY,
+          trade_id TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          signal_timestamp BIGINT NOT NULL,
+          trade_timestamp BIGINT NOT NULL,
+          bid_ask_imbalance DOUBLE PRECISION NOT NULL,
+          spread_percent DOUBLE PRECISION NOT NULL DEFAULT 0.001,
+          mid_price DOUBLE PRECISION NOT NULL,
+          bid_volume DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          ask_volume DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          order_book_depth INTEGER NOT NULL DEFAULT 0,
+          large_bid_wall BOOLEAN NOT NULL DEFAULT FALSE,
+          large_ask_wall BOOLEAN NOT NULL DEFAULT FALSE,
+          wall_size DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          volume_weighted_price DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          price_momentum DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          volatility DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          volume_24h DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          prev_win_probability DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+          prev_expected_return DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          prev_confidence DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          side TEXT,
+          trade_size DOUBLE PRECISION,
+          trade_price DOUBLE PRECISION,
+          pnl DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          fees DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      )SQL");
+
+      txn.exec(
+          "CREATE INDEX IF NOT EXISTS idx_ml_training_inputs_signal_ts "
+          "ON ml_training_inputs(signal_timestamp)");
+      txn.exec(
+          "CREATE INDEX IF NOT EXISTS idx_ml_training_inputs_symbol_signal_ts "
+          "ON ml_training_inputs(symbol, signal_timestamp)");
+      txn.exec(
+          "CREATE INDEX IF NOT EXISTS idx_ml_training_inputs_trade_ts "
+          "ON ml_training_inputs(trade_timestamp)");
+
+      txn.commit();
+    }
+
+    {
+      pqxx::work txn(conn);
+      const auto relation_exists = txn.exec(
+          "SELECT to_regclass('public.individual_trades') AS relname");
+      const bool has_individual_trades = !relation_exists.empty() &&
+                                         !relation_exists[0]["relname"].is_null();
+      if (!has_individual_trades) {
+        txn.commit();
+        spdlog::warn(
+            "Skipping ml_training_inputs trade trigger setup because individual_trades is unavailable");
+        return true;
+      }
+
+      txn.exec(R"SQL(
+        CREATE OR REPLACE FUNCTION fn_upsert_ml_training_inputs_from_trade()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          INSERT INTO ml_training_inputs (
+            signal_id,
+            trade_id,
+            symbol,
+            signal_timestamp,
+            trade_timestamp,
+            bid_ask_imbalance,
+            mid_price,
+            volume_weighted_price,
+            side,
+            trade_size,
+            trade_price,
+            pnl,
+            fees,
+            updated_at
           )
-        ON CONFLICT (signal_id) DO UPDATE
-          SET
-            trade_id = EXCLUDED.trade_id,
-            symbol = EXCLUDED.symbol,
-            trade_timestamp = EXCLUDED.trade_timestamp,
-            side = EXCLUDED.side,
-            trade_size = EXCLUDED.trade_size,
-            trade_price = EXCLUDED.trade_price,
-            pnl = EXCLUDED.pnl,
-            fees = EXCLUDED.fees,
-            updated_at = NOW()
-          WHERE EXCLUDED.trade_timestamp < ml_training_inputs.trade_timestamp;
+          SELECT
+            s.signal_id,
+            NEW.trade_id,
+            NEW.symbol,
+            s.timestamp,
+            NEW.timestamp,
+            s.strength,
+            s.price,
+            s.price,
+            NEW.side,
+            NEW.size,
+            NEW.price,
+            COALESCE(NEW.pnl, 0.0),
+            COALESCE(NEW.fees, 0.0),
+            NOW()
+          FROM order_book_signals s
+          WHERE s.symbol = NEW.symbol
+            AND s.timestamp <= NEW.timestamp
+            AND s.timestamp >= (NEW.timestamp - 300)
+            AND NOT EXISTS (
+              SELECT 1
+              FROM individual_trades t_prev
+              WHERE t_prev.symbol = s.symbol
+                AND t_prev.timestamp >= s.timestamp
+                AND t_prev.timestamp < NEW.timestamp
+            )
+          ON CONFLICT (signal_id) DO UPDATE
+            SET
+              trade_id = EXCLUDED.trade_id,
+              symbol = EXCLUDED.symbol,
+              trade_timestamp = EXCLUDED.trade_timestamp,
+              side = EXCLUDED.side,
+              trade_size = EXCLUDED.trade_size,
+              trade_price = EXCLUDED.trade_price,
+              pnl = EXCLUDED.pnl,
+              fees = EXCLUDED.fees,
+              updated_at = NOW()
+            WHERE EXCLUDED.trade_timestamp < ml_training_inputs.trade_timestamp;
 
-        RETURN NEW;
-      END;
-      $$
-    )SQL");
+          RETURN NEW;
+        END;
+        $$
+      )SQL");
 
-    txn.exec(
-        "DROP TRIGGER IF EXISTS trg_upsert_ml_training_inputs_from_trade "
-        "ON individual_trades");
-    txn.exec(R"SQL(
-      CREATE TRIGGER trg_upsert_ml_training_inputs_from_trade
-      AFTER INSERT ON individual_trades
-      FOR EACH ROW
-      EXECUTE FUNCTION fn_upsert_ml_training_inputs_from_trade()
-    )SQL");
+      txn.exec(
+          "DROP TRIGGER IF EXISTS trg_upsert_ml_training_inputs_from_trade "
+          "ON individual_trades");
+      txn.exec(R"SQL(
+        CREATE TRIGGER trg_upsert_ml_training_inputs_from_trade
+        AFTER INSERT ON individual_trades
+        FOR EACH ROW
+        EXECUTE FUNCTION fn_upsert_ml_training_inputs_from_trade()
+      )SQL");
 
-    txn.commit();
+      txn.commit();
+    }
+
     return true;
   } catch (const std::exception &e) {
     spdlog::error("Failed to ensure ml_training_inputs table/trigger: {}",
