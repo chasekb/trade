@@ -149,10 +149,17 @@ The system uses **GitHub Actions** for remote multi-platform builds. Images are 
 **To run the latest `dev` branch images locally:**
 
 ```bash
-# Pull branch-specific images from GHCR
+# Pull branch-specific images from GHCR (requires registry access)
 TAG=dev podman-compose pull
 
 # Run using the dev branch images (force remote build usage)
+TAG=dev podman-compose up --no-build
+```
+
+If `podman-compose pull` returns `403 Forbidden`, the machine is not authenticated for GHCR. In that case, build the images locally once:
+
+```bash
+TAG=dev podman-compose build
 TAG=dev podman-compose up --no-build
 ```
 
