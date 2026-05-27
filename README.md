@@ -242,6 +242,9 @@ npx playwright test
 - **Outputs**: Generated files in `data/outputs/`
 - **Cache**: Temporary data in `data/cache/`
 
+Cleanup note:
+- Do not delete `data/cache/` during routine cleanup; it stores local package/cache artifacts used by the dev environment.
+
 ## 🌐 Web Dashboard
 
 Access the web dashboard at `http://localhost:3000` after running:
