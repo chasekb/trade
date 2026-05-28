@@ -19,6 +19,21 @@ RUN set -eux; \
     done; \
     rm -rf /var/lib/apt/lists/*
 
+# Install a vcpkg-compatible CMake so manifest installs do not need to fetch
+# their own bootstrap archive during the build.
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then CMAKE_ARCH="x86_64"; \
+    elif [ "$ARCH" = "aarch64" ]; then CMAKE_ARCH="aarch64"; \
+    else CMAKE_ARCH="x86_64"; fi && \
+    mkdir -p /opt/cmake && \
+    curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+      "https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-linux-${CMAKE_ARCH}.tar.gz" \
+      -o /tmp/cmake-3.31.10.tar.gz && \
+    tar -xzf /tmp/cmake-3.31.10.tar.gz -C /opt/cmake --strip-components=1 && \
+    ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake && \
+    ln -sf /opt/cmake/bin/ctest /usr/local/bin/ctest && \
+    ln -sf /opt/cmake/bin/cpack /usr/local/bin/cpack
+
 # Fetch vcpkg from a reachable mirror at a pinned release tag.
 RUN mkdir -p /opt/vcpkg \
     && curl -fsSL https://gitee.com/mirrors/vcpkg/repository/archive/2026.01.16.tar.gz \
@@ -80,6 +95,74 @@ portfile.write_text(text.replace(old, new))
 print('Patched lmdb portfile to fetch LMDB from GitHub mirror')
 PY
 
+# Use codeload.github.com for vcpkg GitHub archives. The codeload tarballs
+# match the existing vcpkg SHA512s, but they are much more reliable here than
+# github.com/archive downloads from rootless Podman builds.
+RUN python3 - <<'PY'
+from pathlib import Path
+
+script = Path('/opt/vcpkg/scripts/cmake/vcpkg_from_github.cmake')
+text = script.read_text()
+old = '''    if(arg_USE_TARBALL_API)
+        # This alternative endpoint has a better support for GitHub's personal
+        # access tokens (for instance when there is SSO enabled within the
+        # organization).
+        set(download_url
+            "${github_api_url}/repos/${org_name}/${repo_name}/tarball/${ref_to_use}"
+        )
+    else()
+        set(download_url
+            "${github_host}/${org_name}/${repo_name}/archive/${ref_to_use}.tar.gz"
+        )
+    endif()
+
+    # Try to download the file information from github
+    vcpkg_download_distfile(archive
+        URLS "${download_url}"
+        FILENAME "${downloaded_file_name}"
+        ${headers_param}
+        ${sha512_param}
+        ${redownload_param}
+    )
+'''
+new = '''    set(download_urls
+        "https://codeload.github.com/${org_name}/${repo_name}/tar.gz/${ref_to_use}"
+        "${github_host}/${org_name}/${repo_name}/archive/${ref_to_use}.tar.gz"
+    )
+
+    # Try to download the file information from github
+    vcpkg_download_distfile(archive
+        URLS ${download_urls}
+        FILENAME "${downloaded_file_name}"
+        ${headers_param}
+        ${sha512_param}
+        ${redownload_param}
+    )
+'''
+if old not in text:
+    raise SystemExit('Expected GitHub download URL block was not found in vcpkg_from_github.cmake')
+script.write_text(text.replace(old, new))
+print('Patched vcpkg_from_github.cmake to use codeload.github.com with github.com/archive fallback')
+PY
+
+# Seed the known-flaky cpuinfo archive into the vcpkg downloads cache so the
+# manifest install can continue even if GitHub fetches are unreliable inside
+# rootless Podman. The portfile is pinned to this exact commit and SHA512.
+RUN mkdir -p /opt/vcpkg/downloads && \
+    curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+      https://codeload.github.com/pytorch/cpuinfo/tar.gz/877328f188a3c7d1fa855871a278eb48d530c4c0 \
+      -o /opt/vcpkg/downloads/pytorch-cpuinfo-877328f188a3c7d1fa855871a278eb48d530c4c0.tar.gz && \
+    python3 - <<'PY'
+from hashlib import sha512
+from pathlib import Path
+expected = 'b6d5a9ce9996eee3b2f09f39115f7ae178fe4d4814cc35b049a59d04a82228e268aa52d073c307ccb56a427428622940e1c77f004c99851dfca0d3a5d803658b'
+path = Path('/opt/vcpkg/downloads/pytorch-cpuinfo-877328f188a3c7d1fa855871a278eb48d530c4c0.tar.gz')
+actual = sha512(path.read_bytes()).hexdigest()
+if actual != expected:
+    raise SystemExit(f'cpuinfo archive hash mismatch: {actual} != {expected}')
+print('Seeded cpuinfo archive in vcpkg downloads cache')
+PY
+
 WORKDIR /build
 
 # Copy manifest + custom triplets first so dependency cache keys include
@@ -101,7 +184,7 @@ RUN ARCH=$(uname -m) && \
     export VCPKG_MAX_CONCURRENCY=4 && \
     SUCCESS=0 && \
     for i in 1 2 3; do \
-    timeout 120m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \
+    timeout 360m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \
     (echo "vcpkg install attempt $i failed, retrying in 10s..." && sleep 10); \
     done && \
     if [ $SUCCESS -eq 0 ]; then echo "vcpkg install failed" && exit 1; fi && \
