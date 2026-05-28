@@ -146,29 +146,28 @@ This single command starts:
 
 The system uses **GitHub Actions** for remote multi-platform builds. Images are tagged by branch name (e.g., `:dev`, `:main`) ensuring isolation between development and production.
 
-**To run the latest `dev` branch images locally:**
+**To run the dev stack locally:**
 
 ```bash
-# Pull branch-specific images from GHCR (requires registry access)
-TAG=dev podman-compose pull
+# Build the local images once
+podman-compose build
 
-# Run using the dev branch images (force remote build usage)
-TAG=dev podman-compose up --no-build
+# Reuse the locally built images without rebuilding
+podman-compose up --no-build
 ```
 
-If `podman-compose pull` returns `403 Forbidden`, the machine is not authenticated for GHCR. In that case, build the images locally once:
+If you change code or Dockerfiles, rerun `podman-compose build` before starting the stack again.
+
+**If you want to run branch-specific GHCR images instead, override the image names explicitly:**
 
 ```bash
-TAG=dev podman-compose build
-TAG=dev podman-compose up --no-build
-```
+CPP_BACKEND_IMAGE=ghcr.io/chasekb/trade/cpp-backend:main \
+FRONTEND_IMAGE=ghcr.io/chasekb/trade/frontend:main \
+podman-compose pull
 
-**To run the production (`main`) images:**
-
-```bash
-# Defaults to :latest (linked to main)
-TAG=main podman-compose pull
-TAG=main podman-compose up --no-build
+CPP_BACKEND_IMAGE=ghcr.io/chasekb/trade/cpp-backend:main \
+FRONTEND_IMAGE=ghcr.io/chasekb/trade/frontend:main \
+podman-compose up --no-build
 ```
 
 #### 🧪 Running C++ Tests
