@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # C++ Backend Service (New)
   cpp-backend:
-    image: ${CPP_BACKEND_IMAGE:-ghcr.io/chasekb/trade/cpp-backend:dev}
+    image: ${CPP_BACKEND_IMAGE:-localhost/trade-cpp-backend:dev}
     platform: ${CPP_BACKEND_PLATFORM:-linux/amd64}
     build:
       context: .
@@ -40,7 +40,7 @@ services:
 
   # Frontend Service (Next.js TypeScript)
   frontend:
-    image: ghcr.io/chasekb/trade/frontend:${TAG:-latest}
+    image: ${FRONTEND_IMAGE:-localhost/trade-frontend:dev}
     build:
       context: ./frontend
       dockerfile: Dockerfile
