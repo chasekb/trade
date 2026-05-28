@@ -19,8 +19,10 @@ RUN set -eux; \
     done; \
     rm -rf /var/lib/apt/lists/*
 
-# Clone vcpkg from a stable release tag to avoid transient master breakages
-RUN git clone --depth=1 -b 2026.01.16 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
+# Clone vcpkg from a stable release tag using a GitHub mirror that is reachable
+# from the build environment. GitHub itself is blocked here, so use the gitee
+# mirror for the same tagged release.
+RUN git clone --depth=1 -b 2026.01.16 https://gitee.com/mirrors/vcpkg.git /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 
 # The pinned vcpkg sleef port disables SVE on Linux arm64, but the pinned
