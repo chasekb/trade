@@ -179,9 +179,9 @@ RUN ARCH=$(uname -m) && \
     else TRIPLET="x64-linux-onnxstaticoff"; fi && \
     export VCPKG_DISABLE_METRICS=1 && \
     export VCPKG_BINARY_SOURCES=clear && \
-    # protobuf/libtorch are memory-hungry on rootless Podman VMs; cap parallelism
-    # so vcpkg doesn't fail halfway through the dependency graph with BUILD_FAILED.
-    export VCPKG_MAX_CONCURRENCY=4 && \
+    # protobuf/libtorch are memory-hungry on rootless Podman VMs; keep vcpkg
+    # concurrency conservative so the protobuf build doesn't die with BUILD_FAILED.
+    export VCPKG_MAX_CONCURRENCY=2 && \
     SUCCESS=0 && \
     for i in 1 2 3; do \
     timeout 360m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \
