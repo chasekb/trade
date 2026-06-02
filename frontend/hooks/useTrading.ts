@@ -75,13 +75,19 @@ export function useLiveTrading() {
         apiConfig.position_update_interval = config.position_update_interval;
       }
 
-      return apiClient.startTrading(
+      const response = await apiClient.startTrading(
         config.mode,
         config.strategy,
         config.symbols,
         config.parameters,
         apiConfig
       );
+
+      if ((response as any)?.status === 'error') {
+        throw new Error((response as any)?.error || 'Failed to start trading');
+      }
+
+      return response;
     },
     onSuccess: (response, variables) => {
       // The async trading endpoint returns a plain object like:
