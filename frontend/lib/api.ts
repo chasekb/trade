@@ -128,7 +128,7 @@ class ApiClient {
       position_update_interval?: number;
     }
   ): Promise<ApiResponse<{ is_active: boolean; message: string }>> {
-    const url = mode === 'live' ? `${API_BASE_URL}/api/trading/live/start` : `${API_BASE_URL}/api/async-trading/start`;
+    const url = mode === 'live' ? `${API_BASE_URL}/api/trading/live/start` : `${API_BASE_URL}/api/trading/simulated/start`;
     return fetch(url, {
       method: 'POST',
       headers: {

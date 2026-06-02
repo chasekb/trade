@@ -675,6 +675,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     strategy // Include strategy in query key to invalidate cache when strategy changes
   );
   const [configHidden, setConfigHidden] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // The client-side merging logic has been removed.
   // The useOrderBookSignals hook will now refetch from the backend cache when the component mounts.
@@ -699,6 +700,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   const handleStartTrading = async () => {
     try {
+      setActionError(null);
       // Get max_positions from config, defaulting to 100 (max_positions_per_session default)
       const maxPositions = config.max_positions_per_session
         ? Number(config.max_positions_per_session)
@@ -727,6 +729,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
       // Auto-hide strategy configuration when trading starts (like vanilla JS dashboard)
       setConfigHidden(true);
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to start trading';
+      setActionError(message);
       console.error('Failed to start trading:', error);
     }
   };
@@ -798,6 +802,11 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           <CardTitle>Trading Controls</CardTitle>
         </CardHeader>
         <CardContent>
+          {actionError && (
+            <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {actionError}
+            </div>
+          )}
           <TradingControls
             status={status}
             onStart={handleStartTrading}
