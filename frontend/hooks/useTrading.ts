@@ -90,10 +90,18 @@ export function useLiveTrading() {
       return response;
     },
     onSuccess: (response, variables) => {
-      // The async trading endpoint returns a plain object like:
-      // { status: 'started', is_active: true, ... }
-      // Fall back to ApiResponse shape if used in future.
-      const isStarted = (response as any)?.status === 'started' || (response as any)?.is_active === true || (response as any)?.data?.is_active === true;
+      // Accept multiple response shapes from backend variants:
+      // - { status: 'started', is_active: true }
+      // - { status: 'success', session_id: '...' }
+      // - ApiResponse-wrapped payloads with data.is_active/session_id
+      const isStarted =
+        (response as any)?.status === 'started' ||
+        (response as any)?.status === 'success' ||
+        (response as any)?.is_active === true ||
+        (response as any)?.session_id ||
+        (response as any)?.data?.is_active === true ||
+        (response as any)?.data?.session_id;
+
       if (isStarted) {
         setStatus({
           isActive: true,
@@ -165,7 +173,7 @@ export function useOrderBookSignals(
     },
     enabled: isEnabled,
     staleTime: 3000, // Consider data fresh for 3 seconds
-    refetchInterval: false, // Disable auto-refetch to prevent overwriting live WebSocket data
+    refetchInterval: enabled ? 3000 : false, // Keep signals moving in active simulation sessions
     refetchOnWindowFocus: true,
     refetchIntervalInBackground: true,
     refetchOnMount: 'always', // Always refetch when component mounts

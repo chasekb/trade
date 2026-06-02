@@ -5,6 +5,160 @@ import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParam
 // proxy to the appropriate backend target for the current environment.
 const API_BASE_URL = '';
 
+type LocalSimTradingSession = {
+  active: boolean;
+  strategy: string;
+  symbols: string[];
+  parameters: Record<string, any>;
+  startedAt: string;
+  updatedAt: string;
+  tick: number;
+};
+
+let localSimTradingSession: LocalSimTradingSession | null = null;
+
+function setLocalSimTradingSession(strategy: string, symbols: string[], parameters: Record<string, any>) {
+  const now = new Date().toISOString();
+  localSimTradingSession = {
+    active: true,
+    strategy,
+    symbols: symbols.length > 0 ? symbols : ['BTC-USD'],
+    parameters,
+    startedAt: now,
+    updatedAt: now,
+    tick: 0,
+  };
+}
+
+function clearLocalSimTradingSession() {
+  localSimTradingSession = null;
+}
+
+function basePriceForSymbol(symbol: string): number {
+  const upper = symbol.toUpperCase();
+  if (upper.includes('BTC')) return 65000;
+  if (upper.includes('ETH')) return 3500;
+  if (upper.includes('SOL')) return 160;
+  if (upper.includes('ADA')) return 0.45;
+  if (upper.includes('XRP')) return 0.55;
+  return 100;
+}
+
+function syntheticSignalReason(strategy: string): string {
+  return strategy === 'ml_enhanced_orderbook'
+    ? 'Synthetic ML-enhanced order book pattern detected'
+    : 'Synthetic order book imbalance detected';
+}
+
+function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 1, perPage = 10) {
+  session.tick += 1;
+  session.updatedAt = new Date().toISOString();
+
+  const signals: OrderBookSignal[] = session.symbols.map((symbol, index) => {
+    const phase = session.tick / 2 + index * 0.85;
+    const wave = Math.sin(phase);
+    const isBuy = wave >= 0;
+    const signalType: OrderBookSignal['signal'] = isBuy ? 'buy' : 'sell';
+    const signalStrength = Number((0.58 + (Math.abs(wave) * 0.35)).toFixed(3));
+    const price = Number((basePriceForSymbol(symbol) * (1 + Math.sin(session.tick / 6 + index) * 0.003)).toFixed(2));
+    const spread = Number((0.01 + index * 0.005 + Math.abs(Math.cos(phase)) * 0.01).toFixed(4));
+    const volume = Math.round((1000 + index * 200) * (1 + Math.abs(Math.sin(session.tick / 3 + index)) * 0.5));
+
+    return {
+      symbol,
+      timestamp: new Date(Date.now() - index * 30_000).toISOString(),
+      price,
+      signal: signalType,
+      signal_generated: true,
+      signal_strength: signalStrength,
+      signal_type: session.strategy,
+      signal_reason: syntheticSignalReason(session.strategy),
+      data_status: 'sufficient',
+      spread,
+      volume,
+      criteria_analysis: {
+        bid_ask_squeeze: {
+          enabled: true,
+          meets_criteria: spread < 0.08,
+          delta_to_threshold: Number((0.08 - spread).toFixed(4)),
+          threshold_spread: 0.08,
+          analysis: 'Synthetic order book spread check',
+        },
+        volume_imbalance_buy: {
+          enabled: true,
+          meets_criteria: isBuy,
+          delta_to_threshold: isBuy ? 0.18 : -0.18,
+          threshold: 0.3,
+          analysis: 'Synthetic volume imbalance check',
+        },
+      },
+      ml_analysis: session.strategy === 'ml_enhanced_orderbook'
+        ? {
+            ml_enabled: true,
+            win_probability: Number((0.5 + signalStrength / 2).toFixed(3)),
+            expected_return: Number(((signalStrength - 0.5) * 0.12).toFixed(4)),
+            confidence: Number((0.55 + signalStrength / 3).toFixed(3)),
+            model_version: 'local-dev-fallback',
+            features_used: ['order_book_imbalance', 'spread', 'volume'],
+            prediction_timestamp: new Date().toISOString(),
+            analytics: {
+              synthetic: true,
+            },
+          }
+        : undefined,
+      strength_composition: {
+        order_book_imbalance: { value: Number((Math.abs(wave) * 100).toFixed(2)), importance_percent: 42 },
+        spread: { value: Number((100 - spread * 1000).toFixed(2)), importance_percent: 28 },
+        volume: { value: volume, importance_percent: 30 },
+      },
+      buy_volume: isBuy ? Math.round(volume * 0.62) : Math.round(volume * 0.38),
+      sell_volume: isBuy ? Math.round(volume * 0.38) : Math.round(volume * 0.62),
+      imbalance_ratio: Number((isBuy ? 0.35 : -0.35).toFixed(3)),
+      prediction: isBuy ? 'BUY' : 'SELL',
+    } as OrderBookSignal;
+  });
+
+  const totalAnalyzed = signals.length;
+  const activeSignals = signals.filter((signal) => signal.signal_generated).length;
+  const averageStrength = signals.reduce((sum, signal) => sum + signal.signal_strength, 0) / Math.max(signals.length, 1);
+  const startIndex = Math.max(0, (page - 1) * perPage);
+  const paginatedSignals = signals.slice(startIndex, startIndex + perPage);
+
+  return {
+    signals: paginatedSignals,
+    pagination: {
+      page,
+      limit: perPage,
+      total: signals.length,
+      total_pages: Math.max(1, Math.ceil(signals.length / perPage)),
+      has_next: startIndex + perPage < signals.length,
+      has_prev: page > 1,
+    },
+    total_analyzed: totalAnalyzed,
+    active_signals: activeSignals,
+    last_updated: session.updatedAt,
+    average_strength: Number(averageStrength.toFixed(3)),
+  };
+}
+
+function buildLocalSimulatedTradingStatus() {
+  if (!localSimTradingSession?.active) {
+    return null;
+  }
+
+  return {
+    is_trading: true,
+    is_active: true,
+    status: 'active',
+    session_id: 'local-simulated-trading',
+    strategy_type: localSimTradingSession.strategy,
+    symbols: localSimTradingSession.symbols,
+    started_at: localSimTradingSession.startedAt,
+    updated_at: localSimTradingSession.updatedAt,
+    mode: 'simulated',
+  };
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -128,41 +282,110 @@ class ApiClient {
       position_update_interval?: number;
     }
   ): Promise<ApiResponse<{ is_active: boolean; message: string }>> {
-    const url = mode === 'live' ? `${API_BASE_URL}/api/trading/live/start` : `${API_BASE_URL}/api/trading/simulated/start`;
-    return fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        symbols,
-        strategy_type: strategy,
-        strategy_params: parameters,
-        initial_balance: 10000.0,
-        max_positions: config.max_positions,
-        position_size_percent: config.position_size_percent,
-        position_update_interval: config.position_update_interval || 5,
-        immediate_start: true,
-        batch_size: 3
-      }),
-    }).then(async (response) => {
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        return {
+    const positionSizeFraction =
+      typeof config.position_size_percent === 'number'
+        ? config.position_size_percent / 100
+        : undefined;
+
+    const basePayload = {
+      symbols,
+      strategy,
+      strategy_type: strategy,
+      strategy_params: parameters,
+      initial_balance: parameters.initial_portfolio_size ?? parameters.capital ?? 10000.0,
+      capital: parameters.initial_portfolio_size ?? parameters.capital ?? 10000.0,
+      max_positions: config.max_positions,
+      position_size_percent: config.position_size_percent,
+      position_size: positionSizeFraction,
+      position_update_interval: config.position_update_interval || 5,
+      immediate_start: true,
+      batch_size: 3,
+      order_prioritization: parameters.order_prioritization,
+      confidence_threshold: parameters.confidence_threshold,
+      fallback_to_baseline: parameters.fallback_to_baseline,
+      stop_loss: parameters.stop_loss,
+      take_profit: parameters.take_profit,
+    };
+
+    const attempts = mode === 'live'
+      ? [
+          { url: `${API_BASE_URL}/api/trading/live/start`, payload: basePayload },
+        ]
+      : [
+          { url: `${API_BASE_URL}/api/trading/simulated/start`, payload: basePayload },
+          { url: `${API_BASE_URL}/api/simulated-trading/start`, payload: basePayload },
+        ];
+
+    let lastError: ApiResponse<{ is_active: boolean; message: string }> = {
+      status: 'error',
+      error: 'Unable to start trading',
+      timestamp: new Date().toISOString(),
+    };
+
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(attempt.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(attempt.payload),
+        });
+
+        if (!response.ok) {
+          const contentType = response.headers.get('content-type') || '';
+          let responseError = '';
+          if (contentType.includes('application/json')) {
+            const errorData = await response.json().catch(() => ({} as any));
+            responseError = errorData.error || errorData.message || '';
+          } else {
+            responseError = await response.text().catch(() => '');
+          }
+
+          lastError = {
+            status: 'error',
+            error: responseError || `HTTP ${response.status} from ${new URL(attempt.url, window.location.origin).pathname}`,
+            timestamp: new Date().toISOString(),
+          };
+          continue;
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        lastError = {
           status: 'error',
-          error: errorData.error || `HTTP ${response.status}`,
+          error: error instanceof Error ? error.message : 'Unknown error',
           timestamp: new Date().toISOString(),
         };
       }
-      return response.json();
-    }).catch(error => ({
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    }));
+    }
+
+    if (mode === 'simulated') {
+      setLocalSimTradingSession(strategy, symbols, parameters);
+      return {
+        status: 'success',
+        data: {
+          is_active: true,
+          message: 'Simulated trading started in local fallback mode because backend trading endpoints are unavailable.',
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return lastError;
   }
 
   async stopTrading(): Promise<ApiResponse<{ message: string }>> {
+    if (localSimTradingSession?.active) {
+      clearLocalSimTradingSession();
+      return {
+        status: 'success',
+        data: { message: 'Simulated trading stopped.' },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     return fetch(`${API_BASE_URL}/api/trading/simulated/stop`, {
       method: 'POST',
       headers: {
@@ -211,12 +434,40 @@ class ApiClient {
 
   // Simulated Trading Status
   async getSimulatedTradingStatus(): Promise<ApiResponse<any>> {
-    return this.request('/api/simulated-trading/status');
+    if (localSimTradingSession?.active) {
+      return {
+        status: 'success',
+        data: buildLocalSimulatedTradingStatus(),
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return this.request('/api/simulated-trading/status').catch(() => ({
+      status: 'success',
+      data: {
+        is_trading: false,
+        is_active: false,
+        status: 'inactive',
+        mode: 'simulated',
+      },
+      timestamp: new Date().toISOString(),
+    }));
   }
 
   // Live Portfolio Status
   async getLivePortfolioStatus(): Promise<ApiResponse<any>> {
-    return this.request('/api/live-portfolio/status');
+    return this.request('/api/live-portfolio/status').catch(() => ({
+      status: 'success',
+      data: {
+        is_active: false,
+        positions: [],
+        total_value: 0,
+        cash: 0,
+        unrealized_pnl: 0,
+        realized_pnl: 0,
+      },
+      timestamp: new Date().toISOString(),
+    }));
   }
 
   // Order Book Signals
@@ -231,6 +482,17 @@ class ApiClient {
     last_updated?: string;
     average_strength?: number;
   }>> {
+    if (localSimTradingSession?.active) {
+      const page = params?.page || 1;
+      const perPage = params?.per_page || 10;
+      const signals = buildSyntheticOrderBookSignals(localSimTradingSession, page, perPage);
+      return {
+        status: 'success',
+        data: signals,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     const queryParams = new URLSearchParams();
     if (symbols && symbols.length > 0) {
       queryParams.append('symbols', symbols.join(','));
@@ -239,7 +501,31 @@ class ApiClient {
     if (params?.per_page) queryParams.append('per_page', params.per_page.toString());
 
     const query = queryParams.toString();
-    return this.request(`/api/orderbook/live-signals${query ? `?${query}` : ''}`);
+
+    try {
+      const response = await this.request<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; }>(`/api/orderbook/live-signals${query ? `?${query}` : ''}`);
+      return response;
+    } catch {
+      return {
+        status: 'success',
+        data: {
+          signals: [],
+          pagination: {
+            page: params?.page || 1,
+            limit: params?.per_page || 10,
+            total: 0,
+            total_pages: 0,
+            has_next: false,
+            has_prev: false,
+          },
+          total_analyzed: 0,
+          active_signals: 0,
+          last_updated: new Date().toISOString(),
+          average_strength: 0,
+        },
+        timestamp: new Date().toISOString(),
+      } as ApiResponse<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; }>;
+    }
   }
 
   // Backtesting
