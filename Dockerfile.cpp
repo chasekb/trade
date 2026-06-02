@@ -95,6 +95,47 @@ portfile.write_text(text.replace(old, new))
 print('Patched lmdb portfile to fetch LMDB from GitHub mirror')
 PY
 
+# OpenBLAS's native CPU auto-detection can fail on newer x86_64 hosts where
+# getarch selects a CPU name that the container's GCC does not understand.
+# Force a generic x64 target so the build stays portable and avoids the
+# tigerlake/native detection failure during vcpkg install.
+RUN python3 - <<'PY'
+from pathlib import Path
+
+portfile = Path('/opt/vcpkg/ports/openblas/portfile.cmake')
+text = portfile.read_text()
+old = '''vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        ${OPTIONS}
+        "-DCMAKE_PROJECT_INCLUDE=${CURRENT_PORT_DIR}/cmake-project-include.cmake"
+        -DBUILD_TESTING=OFF
+        -DBUILD_WITHOUT_LAPACK=ON
+        -DNOFORTRAN=ON
+    MAYBE_UNUSED_VARIABLES
+        GETARCH_BINARY_DIR
+)'''
+new = '''if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
+    list(APPEND OPTIONS -DTARGET=GENERIC)
+endif()
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        ${OPTIONS}
+        "-DCMAKE_PROJECT_INCLUDE=${CURRENT_PORT_DIR}/cmake-project-include.cmake"
+        -DBUILD_TESTING=OFF
+        -DBUILD_WITHOUT_LAPACK=ON
+        -DNOFORTRAN=ON
+    MAYBE_UNUSED_VARIABLES
+        GETARCH_BINARY_DIR
+)'''
+if old not in text:
+    raise SystemExit('Expected openblas configure block was not found in openblas portfile')
+portfile.write_text(text.replace(old, new))
+print('Patched openblas portfile to use a generic x64 target')
+PY
+
 # Use codeload.github.com for vcpkg GitHub archives. The codeload tarballs
 # match the existing vcpkg SHA512s, but they are much more reliable here than
 # github.com/archive downloads from rootless Podman builds.
@@ -179,9 +220,13 @@ RUN ARCH=$(uname -m) && \
     else TRIPLET="x64-linux-onnxstaticoff"; fi && \
     export VCPKG_DISABLE_METRICS=1 && \
     export VCPKG_BINARY_SOURCES=clear && \
+    export VCPKG_DEFAULT_HOST_TRIPLET=$TRIPLET && \
+    # We only ship a Release backend image, so avoid building vcpkg debug
+    # packages as well; this cuts protobuf/libtorch build time and storage.
+    export VCPKG_BUILD_TYPE=release && \
     # protobuf/libtorch are memory-hungry on rootless Podman VMs; keep vcpkg
-    # concurrency conservative so the protobuf build doesn't die with BUILD_FAILED.
-    export VCPKG_MAX_CONCURRENCY=2 && \
+    # concurrency as low as possible so the protobuf build doesn't die with BUILD_FAILED.
+    export VCPKG_MAX_CONCURRENCY=1 && \
     SUCCESS=0 && \
     for i in 1 2 3; do \
     timeout 360m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \

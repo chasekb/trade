@@ -7,6 +7,7 @@
 #include "trading/TradingStatsService.hpp"
 #include "utils/Logger.hpp"
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <algorithm>
 #include <cctype>
@@ -235,6 +236,45 @@ std::filesystem::path unique_temp_artifact_path(
                                    sequence.fetch_add(1, std::memory_order_relaxed)));
 }
 
+std::uintmax_t copy_file_streaming(const std::filesystem::path &src,
+                                   const std::filesystem::path &dst) {
+  std::ifstream in(src, std::ios::binary);
+  if (!in.is_open()) {
+    throw std::runtime_error("Failed to open source artifact '" + src.string() +
+                             "'");
+  }
+
+  std::ofstream out(dst, std::ios::binary | std::ios::trunc);
+  if (!out.is_open()) {
+    throw std::runtime_error("Failed to open destination artifact '" +
+                             dst.string() + "'");
+  }
+
+  std::array<char, 1 << 20> buffer{};
+  std::uintmax_t total = 0;
+  while (in) {
+    in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const auto bytes_read = in.gcount();
+    if (bytes_read <= 0) {
+      break;
+    }
+    out.write(buffer.data(), bytes_read);
+    if (!out) {
+      throw std::runtime_error("Failed to write artifact chunk from '" +
+                               src.string() + "' to '" + dst.string() + "'");
+    }
+    total += static_cast<std::uintmax_t>(bytes_read);
+  }
+
+  out.flush();
+  if (!out.good()) {
+    throw std::runtime_error("Failed to flush artifact to '" + dst.string() +
+                             "'");
+  }
+
+  return total;
+}
+
 std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
                                           const std::filesystem::path &dst,
                                           bool required) {
@@ -259,12 +299,10 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
   auto copy_directly = [&]() -> std::uintmax_t {
     std::filesystem::remove(dst, ec);
     ec.clear();
-    std::filesystem::copy_file(src, dst,
-                               std::filesystem::copy_options::overwrite_existing,
-                               ec);
-    if (ec) {
+    const auto copied = copy_file_streaming(src, dst);
+    if (copied == 0) {
       throw std::runtime_error("Failed to copy artifact from '" + src.string() +
-                               "' to '" + dst.string() + "': " + ec.message());
+                               "' to '" + dst.string() + "': empty copy");
     }
 
     std::filesystem::permissions(
@@ -289,16 +327,17 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
     return dst_size;
   };
 
+
   std::filesystem::remove(legacy_tmp_path, ec);
   ec.clear();
   std::filesystem::remove(tmp_path, ec);
   ec.clear();
-  std::filesystem::copy_file(src, tmp_path,
-                             std::filesystem::copy_options::overwrite_existing, ec);
-  if (ec) {
+  try {
+    copy_file_streaming(src, tmp_path);
+  } catch (const std::exception &e) {
     TR_LOG_WARN(
         "Failed to copy artifact from '{}' to temp path '{}': {}; retrying direct copy to '{}'",
-        src.string(), tmp_path.string(), ec.message(), dst.string());
+        src.string(), tmp_path.string(), e.what(), dst.string());
     return copy_directly();
   }
 
