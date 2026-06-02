@@ -161,12 +161,12 @@ If you change code or Dockerfiles, rerun `podman-compose build` before starting 
 **If you want to run branch-specific GHCR images instead, override the image names explicitly:**
 
 ```bash
-CPP_BACKEND_IMAGE=ghcr.io/chasekb/trade/cpp-backend:main \
-FRONTEND_IMAGE=ghcr.io/chasekb/trade/frontend:main \
+CPP_BACKEND_IMAGE=ghcr.io/chasekb/trade/cpp-backend:dev \
+FRONTEND_IMAGE=ghcr.io/chasekb/trade/frontend:dev \
 podman-compose pull
 
-CPP_BACKEND_IMAGE=ghcr.io/chasekb/trade/cpp-backend:main \
-FRONTEND_IMAGE=ghcr.io/chasekb/trade/frontend:main \
+CPP_BACKEND_IMAGE=ghcr.io/chasekb/trade/cpp-backend:dev \
+FRONTEND_IMAGE=ghcr.io/chasekb/trade/frontend:dev \
 podman-compose up --no-build
 ```
 

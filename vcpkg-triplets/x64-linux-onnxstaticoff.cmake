@@ -2,6 +2,7 @@ set(VCPKG_TARGET_ARCHITECTURE x64)
 set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)
 set(VCPKG_CMAKE_SYSTEM_NAME Linux)
+set(VCPKG_BUILD_TYPE release)
 
 # Ensure ONNX/ORT ports are compiled with static schema registration disabled.
 set(VCPKG_C_FLAGS "-D__ONNX_DISABLE_STATIC_REGISTRATION")

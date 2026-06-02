@@ -8,6 +8,24 @@
 #include <spdlog/spdlog.h>
 #include <utility>
 
+namespace {
+bool relation_exists(const std::string &db_url, const char *relation_name) {
+  try {
+    pqxx::connection conn(db_url);
+    pqxx::work txn(conn);
+    const auto res = txn.exec_params(
+        "SELECT to_regclass($1) AS relname",
+        std::string("public.") + relation_name);
+    txn.commit();
+    return !res.empty() && !res[0]["relname"].is_null();
+  } catch (const std::exception &e) {
+    spdlog::warn("Unable to check for relation '{}': {}", relation_name,
+                 e.what());
+    return false;
+  }
+}
+} // namespace
+
 namespace trade {
 namespace ml {
 
@@ -96,14 +114,16 @@ bool DataCollector::ensure_training_inputs_table() {
 
     {
       pqxx::work txn(conn);
-      const auto relation_exists = txn.exec(
-          "SELECT to_regclass('public.individual_trades') AS relname");
-      const bool has_individual_trades = !relation_exists.empty() &&
-                                         !relation_exists[0]["relname"].is_null();
-      if (!has_individual_trades) {
+      if (!relation_exists(db_url_, "individual_trades")) {
         txn.commit();
         spdlog::warn(
-            "Skipping ml_training_inputs trade trigger setup because individual_trades is unavailable");
+            "Skipping ml_training_inputs trigger setup because individual_trades is unavailable");
+        return true;
+      }
+      if (!relation_exists(db_url_, "order_book_signals")) {
+        txn.commit();
+        spdlog::warn(
+            "Skipping ml_training_inputs trigger setup because order_book_signals is unavailable");
         return true;
       }
 
@@ -196,6 +216,12 @@ bool DataCollector::ensure_training_inputs_table() {
 
 std::size_t DataCollector::sync_training_inputs(int days_back, int batch_size) {
   if (!ensure_training_inputs_table()) {
+    return 0;
+  }
+
+  if (!relation_exists(db_url_, "order_book_signals")) {
+    spdlog::warn(
+        "Skipping sync_training_inputs because order_book_signals is unavailable");
     return 0;
   }
 
@@ -363,6 +389,11 @@ std::size_t DataCollector::count_training_inputs(int days_back) {
 std::vector<OrderBookFeatures> DataCollector::extract_signals(int days_back,
                                                               int limit) {
   std::vector<OrderBookFeatures> signals;
+  if (!relation_exists(db_url_, "order_book_signals")) {
+    spdlog::warn(
+        "Skipping extract_signals because order_book_signals is unavailable");
+    return signals;
+  }
   try {
     pqxx::connection conn(db_url_);
     pqxx::work txn(conn);
