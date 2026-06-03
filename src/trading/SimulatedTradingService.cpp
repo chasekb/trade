@@ -25,7 +25,7 @@ constexpr std::size_t kMaxRecentTrades = 100;
 constexpr std::size_t kMaxRecentSignals = 250;
 constexpr double kDefaultInitialCapital = 10000.0;
 
-std::string nowIsoUtc() {
+std::string formatNowIsoUtc() {
   const auto now = std::chrono::system_clock::now();
   const auto t = std::chrono::system_clock::to_time_t(now);
   std::tm tm{};
@@ -52,7 +52,7 @@ std::string epochSecondsToIso(long long epoch_seconds) {
   return oss.str();
 }
 
-long long nowEpochSeconds() {
+long long currentEpochSeconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
@@ -92,7 +92,7 @@ Json::Value parseJsonString(const std::string &text) {
 }
 
 std::string makeSessionId() {
-  return "sim_" + std::to_string(nowEpochSeconds());
+  return "sim_" + std::to_string(currentEpochSeconds());
 }
 
 std::string sanitizeSide(const std::string &side) {
@@ -133,9 +133,9 @@ std::string SimulatedTradingService::jsonToString(const Json::Value &value) cons
   return Json::writeString(builder, value);
 }
 
-std::string SimulatedTradingService::nowIsoUtc() const { return ::nowIsoUtc(); }
+std::string SimulatedTradingService::nowIsoUtc() const { return formatNowIsoUtc(); }
 
-long long SimulatedTradingService::nowEpochSeconds() const { return ::nowEpochSeconds(); }
+long long SimulatedTradingService::nowEpochSeconds() const { return currentEpochSeconds(); }
 
 std::string SimulatedTradingService::makeId(const std::string &prefix, long long ts,
                                            const std::string &symbol,
@@ -713,7 +713,7 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   portfolio["net_pnl"] = unrealized_pnl_ + realized_pnl_ - total_fees_;
   portfolio["total_fees"] = total_fees_;
   portfolio["open_positions_count"] = static_cast<int>(positions_.size());
-  portfolio["tick"] = tick_;
+  portfolio["tick"] = static_cast<Json::Int64>(tick_);
 
   Json::Value positions(Json::objectValue);
   for (const auto &[symbol, position] : positions_) {
@@ -1020,13 +1020,13 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
       signal["signal_type"] = row["signal_type"].is_null() ? "hold" : row["signal_type"].c_str();
       signal["signal"] = signal["signal_type"];
       signal["signal_generated"] = signal["signal_type"].asString() != "hold";
-      signal["signal_strength"] = row["strength"].is_null() ? 0.0 : row["strength"].asDouble();
+      signal["signal_strength"] = row["strength"].is_null() ? 0.0 : std::stod(row["strength"].c_str());
       signal["strength"] = signal["signal_strength"];
-      signal["price"] = row["price"].is_null() ? 0.0 : row["price"].asDouble();
+      signal["price"] = row["price"].is_null() ? 0.0 : std::stod(row["price"].c_str());
       signal["timestamp"] = row["timestamp"].is_null() ? "" : epochSecondsToIso(row["timestamp"].as<long long>());
       signal["data_status"] = signal["signal_generated"].asBool() ? "sufficient" : "insufficient";
-      signal["spread"] = row["spread"].is_null() ? 0.0 : row["spread"].asDouble();
-      signal["volume"] = row["volume"].is_null() ? 0.0 : row["volume"].asDouble();
+      signal["spread"] = row["spread"].is_null() ? 0.0 : std::stod(row["spread"].c_str());
+      signal["volume"] = row["volume"].is_null() ? 0.0 : std::stod(row["volume"].c_str());
       signal["active_signals"] = signal["signal_generated"].asBool() ? 1 : 0;
       result["signals"].append(signal);
 
