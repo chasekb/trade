@@ -334,7 +334,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       return;
     }
 
-    const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
+    const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8081';
     const wsUrl = base.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
 
     console.log('🔌 Attempting to connect to WebSocket:', wsUrl);
