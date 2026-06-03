@@ -3,7 +3,50 @@ import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParam
 
 // Always use same-origin requests from the browser and let Next.js rewrites
 // proxy to the appropriate backend target for the current environment.
+const FORCE_LOCAL_SIM_TRADING = process.env.NEXT_PUBLIC_FORCE_LOCAL_SIM_TRADING === 'true' || process.env.NEXT_PUBLIC_FORCE_LOCAL_SIM_TRADING === '1';
 const API_BASE_URL = '';
+
+type LocalSimPosition = {
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  entry_price: number;
+  current_price: number;
+  unrealized_pnl: number;
+  pnl_percentage: number;
+  entry_time: string;
+  status: 'open';
+  age_ticks: number;
+};
+
+type LocalSimTrade = {
+  id: string;
+  trade_id: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  price: number;
+  pnl: number;
+  timestamp: string;
+  fees: number;
+  win_probability: number;
+  expected_return: number;
+  model_confidence: number;
+};
+
+type LocalSimPortfolio = {
+  initial_capital: number;
+  cash_balance: number;
+  total_value: number;
+  total_positions_value: number;
+  unrealized_pnl: number;
+  realized_pnl: number;
+  net_pnl: number;
+  total_fees: number;
+  positions: Record<string, LocalSimPosition>;
+  trades: LocalSimTrade[];
+  recent_trades: LocalSimTrade[];
+};
 
 type LocalSimTradingSession = {
   active: boolean;
@@ -13,12 +56,14 @@ type LocalSimTradingSession = {
   startedAt: string;
   updatedAt: string;
   tick: number;
+  portfolio: LocalSimPortfolio;
 };
 
 let localSimTradingSession: LocalSimTradingSession | null = null;
 
 function setLocalSimTradingSession(strategy: string, symbols: string[], parameters: Record<string, any>) {
   const now = new Date().toISOString();
+  const initialCapital = Number(parameters.initial_portfolio_size ?? parameters.capital ?? 10000);
   localSimTradingSession = {
     active: true,
     strategy,
@@ -27,6 +72,19 @@ function setLocalSimTradingSession(strategy: string, symbols: string[], paramete
     startedAt: now,
     updatedAt: now,
     tick: 0,
+    portfolio: {
+      initial_capital: initialCapital,
+      cash_balance: initialCapital,
+      total_value: initialCapital,
+      total_positions_value: 0,
+      unrealized_pnl: 0,
+      realized_pnl: 0,
+      net_pnl: 0,
+      total_fees: 0,
+      positions: {},
+      trades: [],
+      recent_trades: [],
+    },
   };
 }
 
@@ -50,6 +108,180 @@ function syntheticSignalReason(strategy: string): string {
     : 'Synthetic order book imbalance detected';
 }
 
+function localSignalWinProbability(signal: OrderBookSignal): number {
+  const fromMl = signal.ml_analysis?.win_probability;
+  if (typeof fromMl === 'number' && Number.isFinite(fromMl)) {
+    return fromMl;
+  }
+  const fallback = 0.5 + (signal.signal_strength - 0.5) * 0.35;
+  return Number(Math.max(0.05, Math.min(0.95, fallback)).toFixed(3));
+}
+
+function localSignalComparator(a: OrderBookSignal, b: OrderBookSignal): number {
+  const strengthDelta = (b.signal_strength || 0) - (a.signal_strength || 0);
+  if (Math.abs(strengthDelta) > 1e-9) {
+    return strengthDelta;
+  }
+
+  const winProbDelta = localSignalWinProbability(b) - localSignalWinProbability(a);
+  if (Math.abs(winProbDelta) > 1e-9) {
+    return winProbDelta;
+  }
+
+  return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+}
+
+function localTradeId(symbol: string, tick: number, sequence: number): string {
+  return `local-trade-${symbol}-${tick}-${sequence}`;
+}
+
+function updateLocalPortfolioMarkToMarket(session: LocalSimTradingSession, prices: Record<string, number>) {
+  const portfolio = session.portfolio;
+  let unrealizedPnl = 0;
+  let totalPositionsValue = 0;
+
+  Object.values(portfolio.positions).forEach((position) => {
+    const currentPrice = prices[position.symbol] ?? position.current_price;
+    position.current_price = currentPrice;
+    const direction = position.side === 'buy' ? 1 : -1;
+    position.unrealized_pnl = (currentPrice - position.entry_price) * position.quantity * direction;
+    position.pnl_percentage = position.entry_price > 0
+      ? (position.unrealized_pnl / (position.entry_price * position.quantity)) * 100
+      : 0;
+    position.age_ticks += 1;
+    unrealizedPnl += position.unrealized_pnl;
+    totalPositionsValue += Math.abs(position.quantity * currentPrice);
+  });
+
+  portfolio.unrealized_pnl = unrealizedPnl;
+  portfolio.total_positions_value = totalPositionsValue;
+  portfolio.total_fees = portfolio.total_fees || 0;
+  portfolio.cash_balance = portfolio.initial_capital + portfolio.realized_pnl - portfolio.total_fees;
+  portfolio.total_value = portfolio.cash_balance + totalPositionsValue;
+  portfolio.net_pnl = portfolio.realized_pnl + portfolio.unrealized_pnl - portfolio.total_fees;
+}
+
+function appendLocalTrade(session: LocalSimTradingSession, trade: LocalSimTrade) {
+  const portfolio = session.portfolio;
+  portfolio.trades.push(trade);
+  portfolio.recent_trades.push(trade);
+  const maxTrades = 250;
+  if (portfolio.trades.length > maxTrades) {
+    portfolio.trades.splice(0, portfolio.trades.length - maxTrades);
+  }
+  if (portfolio.recent_trades.length > 50) {
+    portfolio.recent_trades.splice(0, portfolio.recent_trades.length - 50);
+  }
+}
+
+function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSignal) {
+  if (!signal.signal_generated || signal.signal === 'hold') {
+    return;
+  }
+
+  const portfolio = session.portfolio;
+  const existingPosition = portfolio.positions[signal.symbol];
+  const positionSizePercent = Number(session.parameters.position_size_percent ?? 1);
+  const maxPositions = Math.max(1, Number(session.parameters.max_positions ?? session.parameters.max_positions_per_session ?? 100));
+  const holdTicks = Math.max(3, Number(session.parameters.position_update_interval ?? 5) * 2);
+  const allocatedUsd = Math.max(25, portfolio.initial_capital * Math.max(0.01, positionSizePercent) / 100);
+  const quantity = Math.max(0.000001, allocatedUsd / Math.max(0.000001, signal.price));
+  const feeRate = 0.0008;
+  const signalSide = signal.signal;
+  const winProbability = localSignalWinProbability(signal);
+  const expectedReturn = signal.ml_analysis?.expected_return ?? ((signal.signal_strength - 0.5) * 0.05);
+  const modelConfidence = signal.ml_analysis?.confidence ?? signal.signal_strength;
+
+  const openTrade = () => {
+    if (Object.keys(portfolio.positions).length >= maxPositions) {
+      return;
+    }
+
+    portfolio.positions[signal.symbol] = {
+      symbol: signal.symbol,
+      side: signalSide as 'buy' | 'sell',
+      quantity,
+      entry_price: signal.price,
+      current_price: signal.price,
+      unrealized_pnl: 0,
+      pnl_percentage: 0,
+      entry_time: signal.timestamp,
+      status: 'open',
+      age_ticks: 0,
+    };
+
+    const fee = signal.price * quantity * feeRate;
+    portfolio.total_fees += fee;
+    appendLocalTrade(session, {
+      id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),
+      trade_id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),
+      symbol: signal.symbol,
+      side: signalSide as 'buy' | 'sell',
+      quantity,
+      price: signal.price,
+      pnl: 0,
+      timestamp: signal.timestamp,
+      fees: fee,
+      win_probability: winProbability,
+      expected_return: expectedReturn,
+      model_confidence: modelConfidence,
+    });
+  };
+
+  if (!existingPosition) {
+    openTrade();
+    return;
+  }
+
+  existingPosition.current_price = signal.price;
+  existingPosition.age_ticks += 1;
+  const oppositeSignal = existingPosition.side !== signalSide;
+  const agedOut = existingPosition.age_ticks >= holdTicks;
+
+  if (!oppositeSignal && !agedOut) {
+    updateLocalPortfolioMarkToMarket(session, { [signal.symbol]: signal.price });
+    return;
+  }
+
+  const direction = existingPosition.side === 'buy' ? 1 : -1;
+  const exitPrice = signal.price;
+  const grossPnl = (exitPrice - existingPosition.entry_price) * existingPosition.quantity * direction;
+  const exitFee = exitPrice * existingPosition.quantity * feeRate;
+  const netPnl = grossPnl - exitFee;
+  portfolio.realized_pnl += grossPnl;
+  portfolio.total_fees += exitFee;
+  delete portfolio.positions[signal.symbol];
+
+  appendLocalTrade(session, {
+    id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),
+    trade_id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),
+    symbol: signal.symbol,
+    side: existingPosition.side === 'buy' ? 'sell' : 'buy',
+    quantity: existingPosition.quantity,
+    price: exitPrice,
+    pnl: grossPnl,
+    timestamp: signal.timestamp,
+    fees: exitFee,
+    win_probability: netPnl >= 0 ? Math.max(winProbability, 0.65) : Math.min(winProbability, 0.35),
+    expected_return: netPnl / Math.max(1, existingPosition.entry_price * existingPosition.quantity),
+    model_confidence: Math.min(1, Math.abs(netPnl) / Math.max(1, existingPosition.entry_price * existingPosition.quantity)),
+  });
+
+  if (signalSide && Object.keys(portfolio.positions).length < maxPositions) {
+    openTrade();
+  }
+}
+
+function refreshLocalTradingSession(session: LocalSimTradingSession, signals: OrderBookSignal[]) {
+  const priceMap: Record<string, number> = {};
+  signals.forEach((signal) => {
+    priceMap[signal.symbol] = signal.price;
+  });
+  updateLocalPortfolioMarkToMarket(session, priceMap);
+  signals.forEach((signal) => processLocalSignal(session, signal));
+  updateLocalPortfolioMarkToMarket(session, priceMap);
+}
+
 function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 1, perPage = 10) {
   session.tick += 1;
   session.updatedAt = new Date().toISOString();
@@ -63,6 +295,7 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
     const price = Number((basePriceForSymbol(symbol) * (1 + Math.sin(session.tick / 6 + index) * 0.003)).toFixed(2));
     const spread = Number((0.01 + index * 0.005 + Math.abs(Math.cos(phase)) * 0.01).toFixed(4));
     const volume = Math.round((1000 + index * 200) * (1 + Math.abs(Math.sin(session.tick / 3 + index)) * 0.5));
+    const winProbability = Number((0.5 + (signalStrength - 0.5) * 0.45 + (isBuy ? 0.03 : -0.03)).toFixed(3));
 
     return {
       symbol,
@@ -92,20 +325,18 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
           analysis: 'Synthetic volume imbalance check',
         },
       },
-      ml_analysis: session.strategy === 'ml_enhanced_orderbook'
-        ? {
-            ml_enabled: true,
-            win_probability: Number((0.5 + signalStrength / 2).toFixed(3)),
-            expected_return: Number(((signalStrength - 0.5) * 0.12).toFixed(4)),
-            confidence: Number((0.55 + signalStrength / 3).toFixed(3)),
-            model_version: 'local-dev-fallback',
-            features_used: ['order_book_imbalance', 'spread', 'volume'],
-            prediction_timestamp: new Date().toISOString(),
-            analytics: {
-              synthetic: true,
-            },
-          }
-        : undefined,
+      ml_analysis: {
+        ml_enabled: true,
+        win_probability: winProbability,
+        expected_return: Number(((signalStrength - 0.5) * 0.12).toFixed(4)),
+        confidence: Number((0.55 + signalStrength / 3).toFixed(3)),
+        model_version: session.strategy === 'ml_enhanced_orderbook' ? 'local-dev-fallback' : 'local-orderbook-fallback',
+        features_used: ['order_book_imbalance', 'spread', 'volume'],
+        prediction_timestamp: new Date().toISOString(),
+        analytics: {
+          synthetic: true,
+        },
+      },
       strength_composition: {
         order_book_imbalance: { value: Number((Math.abs(wave) * 100).toFixed(2)), importance_percent: 42 },
         spread: { value: Number((100 - spread * 1000).toFixed(2)), importance_percent: 28 },
@@ -118,20 +349,23 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
     } as OrderBookSignal;
   });
 
-  const totalAnalyzed = signals.length;
-  const activeSignals = signals.filter((signal) => signal.signal_generated).length;
-  const averageStrength = signals.reduce((sum, signal) => sum + signal.signal_strength, 0) / Math.max(signals.length, 1);
+  const orderedSignals = [...signals].sort(localSignalComparator);
+  refreshLocalTradingSession(session, orderedSignals);
+
+  const totalAnalyzed = orderedSignals.length;
+  const activeSignals = orderedSignals.filter((signal) => signal.signal_generated).length;
+  const averageStrength = orderedSignals.reduce((sum, signal) => sum + signal.signal_strength, 0) / Math.max(orderedSignals.length, 1);
   const startIndex = Math.max(0, (page - 1) * perPage);
-  const paginatedSignals = signals.slice(startIndex, startIndex + perPage);
+  const paginatedSignals = orderedSignals.slice(startIndex, startIndex + perPage);
 
   return {
     signals: paginatedSignals,
     pagination: {
       page,
       limit: perPage,
-      total: signals.length,
-      total_pages: Math.max(1, Math.ceil(signals.length / perPage)),
-      has_next: startIndex + perPage < signals.length,
+      total: orderedSignals.length,
+      total_pages: Math.max(1, Math.ceil(orderedSignals.length / perPage)),
+      has_next: startIndex + perPage < orderedSignals.length,
       has_prev: page > 1,
     },
     total_analyzed: totalAnalyzed,
@@ -143,9 +377,42 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
 
 function buildLocalSimulatedTradingStatus() {
   if (!localSimTradingSession?.active) {
-    return null;
+    return {
+      is_trading: false,
+      is_active: false,
+      status: 'inactive',
+      session_id: 'local-simulated-trading',
+      strategy_type: null,
+      symbols: [],
+      started_at: null,
+      updated_at: null,
+      mode: 'simulated',
+      portfolio: {
+        initial_capital: 0,
+        cash_balance: 0,
+        total_value: 0,
+        total_positions_value: 0,
+        unrealized_pnl: 0,
+        realized_pnl: 0,
+        net_pnl: 0,
+        total_fees: 0,
+        positions: [],
+        recent_trades: [],
+        trades: [],
+      },
+      stats: {
+        total_trades: 0,
+        open_positions: 0,
+        closed_positions: 0,
+        realized_pnl: 0,
+        unrealized_pnl: 0,
+        total_fees: 0,
+        net_pnl: 0,
+      },
+    };
   }
 
+  const portfolio = localSimTradingSession.portfolio;
   return {
     is_trading: true,
     is_active: true,
@@ -156,6 +423,21 @@ function buildLocalSimulatedTradingStatus() {
     started_at: localSimTradingSession.startedAt,
     updated_at: localSimTradingSession.updatedAt,
     mode: 'simulated',
+    portfolio: {
+      ...portfolio,
+      positions: Object.values(portfolio.positions),
+      recent_trades: [...portfolio.recent_trades],
+      trades: [...portfolio.trades],
+    },
+    stats: {
+      total_trades: portfolio.trades.length,
+      open_positions: Object.keys(portfolio.positions).length,
+      closed_positions: Math.max(0, portfolio.trades.length - Object.keys(portfolio.positions).length),
+      realized_pnl: portfolio.realized_pnl,
+      unrealized_pnl: portfolio.unrealized_pnl,
+      total_fees: portfolio.total_fees,
+      net_pnl: portfolio.net_pnl,
+    },
   };
 }
 
@@ -307,6 +589,18 @@ class ApiClient {
       take_profit: parameters.take_profit,
     };
 
+    if (mode === 'simulated' && FORCE_LOCAL_SIM_TRADING) {
+      setLocalSimTradingSession(strategy, symbols, parameters);
+      return {
+        status: 'success',
+        data: {
+          is_active: true,
+          message: 'Simulated trading started in local simulation mode.',
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     const attempts = mode === 'live'
       ? [
           { url: `${API_BASE_URL}/api/trading/live/start`, payload: basePayload },
@@ -434,7 +728,7 @@ class ApiClient {
 
   // Simulated Trading Status
   async getSimulatedTradingStatus(): Promise<ApiResponse<any>> {
-    if (localSimTradingSession?.active) {
+    if (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active) {
       return {
         status: 'success',
         data: buildLocalSimulatedTradingStatus(),
@@ -454,8 +748,39 @@ class ApiClient {
     }));
   }
 
-  // Live Portfolio Status
   async getLivePortfolioStatus(): Promise<ApiResponse<any>> {
+    if (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active) {
+      const portfolio = localSimTradingSession?.portfolio ?? {
+        initial_capital: 0,
+        cash_balance: 0,
+        total_value: 0,
+        total_positions_value: 0,
+        unrealized_pnl: 0,
+        realized_pnl: 0,
+        net_pnl: 0,
+        total_fees: 0,
+        positions: {},
+        trades: [],
+        recent_trades: [],
+      };
+      return {
+        status: 'success',
+        data: {
+          is_active: true,
+          positions: Object.values(portfolio.positions),
+          total_value: portfolio.total_value,
+          cash: portfolio.cash_balance,
+          unrealized_pnl: portfolio.unrealized_pnl,
+          realized_pnl: portfolio.realized_pnl,
+          net_pnl: portfolio.net_pnl,
+          total_fees: portfolio.total_fees,
+          trades: [...portfolio.trades],
+          recent_trades: [...portfolio.recent_trades],
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     return this.request('/api/live-portfolio/status').catch(() => ({
       status: 'success',
       data: {
@@ -482,10 +807,10 @@ class ApiClient {
     last_updated?: string;
     average_strength?: number;
   }>> {
-    if (localSimTradingSession?.active) {
+    if (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active) {
       const page = params?.page || 1;
       const perPage = params?.per_page || 10;
-      const signals = buildSyntheticOrderBookSignals(localSimTradingSession, page, perPage);
+      const signals = buildSyntheticOrderBookSignals(localSimTradingSession!, page, perPage);
       return {
         status: 'success',
         data: signals,
