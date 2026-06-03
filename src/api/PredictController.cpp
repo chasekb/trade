@@ -615,6 +615,19 @@ void PredictController::train(
     return;
   }
 
+  auto &cache = CacheManager::getInstance();
+  const auto [training_status, training_progress] = cache.get_training_status();
+  if (training_status == "training") {
+    Json::Value err;
+    err["error"] = "A model training job is already running";
+    err["status"] = training_status;
+    err["progress"] = training_progress;
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k409Conflict);
+    callback(resp);
+    return;
+  }
+
   // Trigger real training in a background thread
   std::thread training_thread([config, db_url, auto_set_active]() {
     auto &cache = CacheManager::getInstance();

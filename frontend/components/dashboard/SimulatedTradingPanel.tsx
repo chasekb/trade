@@ -380,15 +380,35 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
     );
   }
 
-  const portfolio = stats.portfolio;
+  const rawStats = stats as any;
+  const portfolio = rawStats.portfolio ?? {
+    ...rawStats,
+    cash_balance: rawStats.current_capital ?? rawStats.cash_balance ?? rawStats.available_balance_usd ?? 0,
+    current_capital: rawStats.current_capital ?? rawStats.cash_balance ?? rawStats.available_balance_usd ?? 0,
+    total_value: rawStats.total_value ?? ((rawStats.current_capital ?? rawStats.cash_balance ?? rawStats.available_balance_usd ?? 0) + Number(rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl ?? 0)),
+    total_positions_value: rawStats.total_positions_value ?? 0,
+    unrealized_pnl: rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl ?? 0,
+    realized_pnl: rawStats.realized_pnl ?? 0,
+    net_pnl: rawStats.net_pnl ?? ((Number(rawStats.realized_pnl ?? 0) + Number(rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl ?? 0)) - Number(rawStats.total_fees ?? 0)),
+    total_fees: rawStats.total_fees ?? 0,
+    positions: rawStats.positions ?? [],
+    recent_trades: rawStats.recent_trades ?? [],
+    trades: rawStats.trades ?? [],
+    open_positions_count: rawStats.open_positions_count ?? rawStats.stats?.open_positions ?? 0,
+  };
   const trades = portfolio.trades || [];
   const positions = portfolio.positions || {};
   // Normalize positions to an array of open positions
   const openPositions = Array.isArray(positions)
     ? positions
     : Object.values(positions).filter((pos: any) => (pos?.status || 'open') === 'open');
-
-  // Calculate derived statistics (similar to vanilla JS implementation)
+  const cashBalance = Number(portfolio.cash_balance ?? portfolio.current_capital ?? portfolio.available_balance_usd ?? 0);
+  const totalValue = Number(portfolio.total_value ?? ((Number(portfolio.current_capital ?? portfolio.cash_balance ?? 0)) + Number(portfolio.unrealized_pnl ?? 0)));
+  const totalPositionsValue = Number(
+    portfolio.total_positions_value ??
+    openPositions.reduce((sum: number, pos: any) => sum + Math.abs(Number(pos?.current_price ?? pos?.price ?? pos?.entry_price ?? 0) * Number(pos?.quantity ?? pos?.size ?? 0)), 0)
+  );
+  const activePositions = Number(portfolio.open_positions_count ?? portfolio.active_positions ?? openPositions.length);
   const winningTrades = trades.filter((trade: any) => trade.pnl > 0);
   const losingTrades = trades.filter((trade: any) => trade.pnl < 0);
   const totalTrades = trades.length;
@@ -411,18 +431,11 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
   const grossProfit = winningTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0);
   const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0));
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
+  const unrealizedPnl = Number(portfolio.unrealized_pnl ?? 0);
+  const realizedPnl = Number(portfolio.realized_pnl ?? 0);
+  const netPnl = Number(portfolio.net_pnl ?? (unrealizedPnl + realizedPnl));
+  const totalFees = Number(portfolio.total_fees ?? 0);
 
-  const cashBalance = portfolio.cash_balance || 0;
-  const totalValue = portfolio.total_value || 0;
-  const totalPositionsValue = portfolio.total_positions_value || 0;
-  const unrealizedPnl = portfolio.unrealized_pnl || 0;
-  const realizedPnl = portfolio.realized_pnl || 0;
-  const netPnl = portfolio.net_pnl || (unrealizedPnl + realizedPnl);
-  const totalFees = portfolio.total_fees || 0;
-
-  const activePositions = openPositions.length;
-
-  const recentTrades = (portfolio.recent_trades || trades).slice(0, 10);
   // Merge and sort recent trades to ensure sells are included and latest first
   const mergedRecentTrades = Array.from(
     new Map(
@@ -465,21 +478,21 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
 
         {/* Portfolio Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Cash Balance</p>
-            <p className="text-lg font-semibold">${cashBalance.toFixed(2)}</p>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+            <p className="text-sm font-medium text-slate-700">Cash Balance</p>
+            <p className="text-lg font-semibold tracking-tight text-slate-900">${cashBalance.toFixed(2)}</p>
           </div>
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Total Value</p>
-            <p className="text-lg font-semibold">${totalValue.toFixed(2)}</p>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+            <p className="text-sm font-medium text-slate-700">Total Value</p>
+            <p className="text-lg font-semibold tracking-tight text-slate-900">${totalValue.toFixed(2)}</p>
           </div>
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Positions Value</p>
-            <p className="text-lg font-semibold">${totalPositionsValue.toFixed(2)}</p>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+            <p className="text-sm font-medium text-slate-700">Positions Value</p>
+            <p className="text-lg font-semibold tracking-tight text-amber-700">${totalPositionsValue.toFixed(2)}</p>
           </div>
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Active Positions</p>
-            <p className="text-lg font-semibold">{activePositions}</p>
+          <div className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+            <p className="text-sm font-medium text-slate-700">Active Positions</p>
+            <p className="text-lg font-semibold tracking-tight text-indigo-700">{activePositions}</p>
           </div>
         </div>
 

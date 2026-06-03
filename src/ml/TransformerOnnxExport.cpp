@@ -1,139 +1,42 @@
 #include "ml/TransformerOnnxExport.hpp"
 
+#include <ATen/ATen.h>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+
+#include <spdlog/spdlog.h>
+#include <torch/csrc/jit/serialization/export.h>
 
 namespace {
 constexpr int kOnnxOpsetVersion = 13;
-constexpr int64_t kOnnxIrVersion = 8;
-constexpr int kTensorProtoFloat = 1;
+constexpr int64_t kLookback = 60;
 
-void append_varint(std::string &out, std::uint64_t value) {
-  while (value >= 0x80) {
-    out.push_back(static_cast<char>((value & 0x7f) | 0x80));
-    value >>= 7;
+std::shared_ptr<torch::jit::Graph>
+make_transformer_export_graph(int64_t input_features) {
+  if (input_features <= 0) {
+    throw std::runtime_error(
+        "Transformer input feature dimension must be positive");
   }
-  out.push_back(static_cast<char>(value));
-}
 
-void append_key(std::string &out, int field_number, int wire_type) {
-  append_varint(out, (static_cast<std::uint64_t>(field_number) << 3) |
-                         static_cast<std::uint64_t>(wire_type));
-}
+  auto graph = std::make_shared<torch::jit::Graph>();
+  auto *input = graph->addInput("sequence_input");
+  input->setType(c10::TensorType::createContiguous(
+      at::kFloat, at::kCPU,
+      {1, static_cast<int64_t>(kLookback), input_features}));
 
-void append_int64(std::string &out, int field_number, std::int64_t value) {
-  append_key(out, field_number, 0);
-  append_varint(out, static_cast<std::uint64_t>(value));
-}
+  auto *identity =
+      graph->create(at::Symbol::fromQualString("onnx::Identity"), {input}, 1);
+  identity->output()->setType(input->type());
+  graph->appendNode(identity);
+  graph->registerOutput(identity->output());
 
-void append_int32(std::string &out, int field_number, int value) {
-  append_int64(out, field_number, value);
-}
-
-void append_string(std::string &out, int field_number,
-                   const std::string &value) {
-  append_key(out, field_number, 2);
-  append_varint(out, value.size());
-  out.append(value);
-}
-
-void append_message(std::string &out, int field_number,
-                    const std::string &message) {
-  append_key(out, field_number, 2);
-  append_varint(out, message.size());
-  out.append(message);
-}
-
-std::string make_tensor_shape(std::int64_t dim_0, std::int64_t dim_1,
-                              std::int64_t dim_2) {
-  std::string shape;
-  {
-    std::string dim;
-    append_int64(dim, 1, dim_0);
-    append_message(shape, 1, dim);
-  }
-  {
-    std::string dim;
-    append_int64(dim, 1, dim_1);
-    append_message(shape, 1, dim);
-  }
-  {
-    std::string dim;
-    append_int64(dim, 1, dim_2);
-    append_message(shape, 1, dim);
-  }
-  return shape;
-}
-
-std::string make_tensor_type(std::int64_t dim_0, std::int64_t dim_1,
-                             std::int64_t dim_2) {
-  std::string tensor_type;
-  append_int32(tensor_type, 1, kTensorProtoFloat);
-  append_message(tensor_type, 2, make_tensor_shape(dim_0, dim_1, dim_2));
-  return tensor_type;
-}
-
-std::string make_type_proto(std::int64_t dim_0, std::int64_t dim_1,
-                            std::int64_t dim_2) {
-  std::string type_proto;
-  append_message(type_proto, 1,
-                 make_tensor_type(dim_0, dim_1, dim_2));
-  return type_proto;
-}
-
-std::string make_value_info(const std::string &name, std::int64_t dim_0,
-                            std::int64_t dim_1, std::int64_t dim_2) {
-  std::string value_info;
-  append_string(value_info, 1, name);
-  append_message(value_info, 2, make_type_proto(dim_0, dim_1, dim_2));
-  return value_info;
-}
-
-std::string make_node(const std::string &name, const std::string &input,
-                      const std::string &output,
-                      const std::string &op_type) {
-  std::string node;
-  append_string(node, 1, input);
-  append_string(node, 2, output);
-  append_string(node, 3, name);
-  append_string(node, 4, op_type);
-  return node;
-}
-
-std::string make_opset_import() {
-  std::string opset;
-  append_string(opset, 1, "");
-  append_int64(opset, 2, kOnnxOpsetVersion);
-  return opset;
-}
-
-std::string make_graph(std::int64_t input_features) {
-  constexpr std::int64_t kBatchSize = 1;
-  constexpr std::int64_t kLookback = 60;
-  std::string graph;
-  append_message(graph, 1,
-                 make_node("transformer_identity", "sequence_input",
-                           "transformer_output", "Identity"));
-  append_string(graph, 2, "trade_transformer_identity");
-  append_message(graph, 11,
-                 make_value_info("sequence_input", kBatchSize, input_features,
-                                 kLookback));
-  append_message(graph, 12,
-                 make_value_info("transformer_output", kBatchSize,
-                                 input_features, kLookback));
   return graph;
-}
-
-std::string make_model(std::int64_t input_features) {
-  std::string model;
-  append_int64(model, 1, kOnnxIrVersion);
-  append_string(model, 2, "trade-cpp");
-  append_message(model, 7, make_graph(input_features));
-  append_message(model, 8, make_opset_import());
-  return model;
 }
 } // namespace
 
@@ -142,16 +45,28 @@ namespace ml {
 
 void export_transformer_to_onnx(const std::filesystem::path &output_path,
                                 int64_t input_features) {
-  if (input_features <= 0) {
-    throw std::runtime_error(
-        "Transformer input feature dimension must be positive");
-  }
-
   if (!output_path.parent_path().empty()) {
     std::filesystem::create_directories(output_path.parent_path());
   }
 
-  const std::string onnx_bytes = make_model(input_features);
+  auto graph = make_transformer_export_graph(input_features);
+  const std::map<std::string, at::Tensor> initializers;
+  const std::unordered_map<std::string, std::unordered_map<int64_t, std::string>>
+      dynamic_axes;
+
+  auto [model_proto, raw_data_export_map, symbol_dim_map, success, node_names] =
+      torch::jit::export_onnx(graph, initializers, kOnnxOpsetVersion,
+                              dynamic_axes);
+
+  (void)raw_data_export_map;
+  (void)symbol_dim_map;
+  (void)success;
+  (void)node_names;
+
+  const std::string onnx_bytes =
+      torch::jit::serialize_model_proto_to_string(model_proto);
+  torch::jit::check_onnx_proto(onnx_bytes);
+
   std::ofstream out(output_path, std::ios::binary | std::ios::trunc);
   if (!out.is_open()) {
     throw std::runtime_error("Failed to open transformer ONNX output path: " +
@@ -169,6 +84,9 @@ void export_transformer_to_onnx(const std::filesystem::path &output_path,
     throw std::runtime_error("Serialized transformer ONNX model is empty: " +
                              output_path.string());
   }
+
+  spdlog::info("Transformer model package prepared at {}",
+               output_path.parent_path().string());
 }
 
 } // namespace ml
