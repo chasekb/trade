@@ -11,6 +11,7 @@ type LocalSimPosition = {
   side: 'buy' | 'sell';
   quantity: number;
   entry_price: number;
+  entry_notional: number;
   current_price: number;
   unrealized_pnl: number;
   pnl_percentage: number;
@@ -139,25 +140,31 @@ function updateLocalPortfolioMarkToMarket(session: LocalSimTradingSession, price
   const portfolio = session.portfolio;
   let unrealizedPnl = 0;
   let totalPositionsValue = 0;
+  let signedPositionsValue = 0;
 
   Object.values(portfolio.positions).forEach((position) => {
     const currentPrice = prices[position.symbol] ?? position.current_price;
     position.current_price = currentPrice;
-    const direction = position.side === 'buy' ? 1 : -1;
-    position.unrealized_pnl = (currentPrice - position.entry_price) * position.quantity * direction;
-    position.pnl_percentage = position.entry_price > 0
-      ? (position.unrealized_pnl / (position.entry_price * position.quantity)) * 100
+    const isLong = position.side === 'buy';
+    const direction = isLong ? 1 : -1;
+    const currentNotional = position.quantity * currentPrice;
+
+    position.unrealized_pnl = isLong
+      ? (currentPrice - position.entry_price) * position.quantity
+      : (position.entry_price - currentPrice) * position.quantity;
+    position.pnl_percentage = position.entry_notional > 0
+      ? (position.unrealized_pnl / position.entry_notional) * 100
       : 0;
     position.age_ticks += 1;
     unrealizedPnl += position.unrealized_pnl;
-    totalPositionsValue += Math.abs(position.quantity * currentPrice);
+    totalPositionsValue += Math.abs(currentNotional);
+    signedPositionsValue += direction * currentNotional;
   });
 
   portfolio.unrealized_pnl = unrealizedPnl;
   portfolio.total_positions_value = totalPositionsValue;
   portfolio.total_fees = portfolio.total_fees || 0;
-  portfolio.cash_balance = portfolio.initial_capital + portfolio.realized_pnl - portfolio.total_fees;
-  portfolio.total_value = portfolio.cash_balance + totalPositionsValue;
+  portfolio.total_value = portfolio.cash_balance + signedPositionsValue;
   portfolio.net_pnl = portfolio.realized_pnl + portfolio.unrealized_pnl - portfolio.total_fees;
 }
 
@@ -202,6 +209,7 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
       side: signalSide as 'buy' | 'sell',
       quantity,
       entry_price: signal.price,
+      entry_notional: allocatedUsd,
       current_price: signal.price,
       unrealized_pnl: 0,
       pnl_percentage: 0,
@@ -212,6 +220,7 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
 
     const fee = signal.price * quantity * feeRate;
     portfolio.total_fees += fee;
+    portfolio.cash_balance += signalSide === 'buy' ? -(allocatedUsd + fee) : (allocatedUsd - fee);
     appendLocalTrade(session, {
       id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),
       trade_id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),
@@ -243,13 +252,18 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
     return;
   }
 
-  const direction = existingPosition.side === 'buy' ? 1 : -1;
+  const isLong = existingPosition.side === 'buy';
   const exitPrice = signal.price;
-  const grossPnl = (exitPrice - existingPosition.entry_price) * existingPosition.quantity * direction;
+  const grossPnl = isLong
+    ? (exitPrice - existingPosition.entry_price) * existingPosition.quantity
+    : (existingPosition.entry_price - exitPrice) * existingPosition.quantity;
   const exitFee = exitPrice * existingPosition.quantity * feeRate;
   const netPnl = grossPnl - exitFee;
   portfolio.realized_pnl += grossPnl;
   portfolio.total_fees += exitFee;
+  portfolio.cash_balance += isLong
+    ? exitPrice * existingPosition.quantity - exitFee
+    : -(exitPrice * existingPosition.quantity + exitFee);
   delete portfolio.positions[signal.symbol];
 
   appendLocalTrade(session, {
