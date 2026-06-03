@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const backendBaseUrl =
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:8000';
+  'http://localhost:8081';
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['ws', 'bufferutil', 'utf-8-validate'],
