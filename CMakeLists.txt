@@ -34,6 +34,7 @@ set(SOURCES
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
     src/trading/TradingStatsService.cpp
+    src/trading/SimulatedTradingService.cpp
     src/api/PredictController.cpp
 )
 
