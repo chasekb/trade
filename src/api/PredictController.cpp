@@ -5,6 +5,7 @@
 #include "ml/ModelTrainer.hpp"
 #include "ml/Types.hpp"
 #include "trading/TradingStatsService.hpp"
+#include "trading/SimulatedTradingService.hpp"
 #include "utils/Logger.hpp"
 #include <atomic>
 #include <array>
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 #include <nlohmann/json.hpp>
 #include <thread>
 
@@ -987,6 +989,124 @@ void PredictController::setActiveModel(
   resp["model_name"] = selected_name;
   resp["version_id"] = selected_version;
   callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::startSimulatedTrading(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  Json::Value payload = json_req ? *json_req : Json::Value(Json::objectValue);
+  if (!payload.isObject()) {
+    payload = Json::Value(Json::objectValue);
+  }
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance()
+                             .startSession(payload, "simulated");
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::stopSimulatedTrading(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance().stopSession();
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::simulatedTradingStatus(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  const std::string session_id = req->getParameter("session_id");
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance().getStatus(session_id);
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::updateSimulatedStrategyParameters(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  Json::Value payload = json_req ? *json_req : Json::Value(Json::objectValue);
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance()
+                             .updateStrategyParameters(payload);
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::liveOrderBookSignals(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  std::vector<std::string> symbols;
+  const std::string symbols_param = req->getParameter("symbols");
+  if (!symbols_param.empty()) {
+    std::stringstream ss(symbols_param);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+      if (!item.empty()) {
+        symbols.push_back(item);
+      }
+    }
+  }
+  const int page = parse_int_param(req->getParameter("page"), 1);
+  const int per_page = parse_int_param(req->getParameter("per_page"), 10);
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance()
+                             .getOrderBookSignals(symbols, page, per_page);
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::livePortfolioStatus(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance().getLivePortfolioStatus();
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::livePortfolioPositions(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance().getOpenPositions();
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::closeLivePosition(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  const std::string symbol = json_req && json_req->isMember("symbol")
+                                 ? (*json_req)["symbol"].asString()
+                                 : req->getParameter("symbol");
+  if (symbol.empty()) {
+    Json::Value err;
+    err["status"] = "error";
+    err["error"] = "symbol is required";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance().closePosition(symbol);
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::startLiveTrading(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  Json::Value payload = json_req ? *json_req : Json::Value(Json::objectValue);
+  if (!payload.isObject()) {
+    payload = Json::Value(Json::objectValue);
+  }
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance()
+                             .startSession(payload, "live");
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::stopLiveTrading(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance().stopSession();
+  callback(HttpResponse::newHttpJsonResponse(response));
 }
 
 } // namespace api

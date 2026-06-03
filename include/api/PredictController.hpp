@@ -22,6 +22,19 @@ public:
   ADD_METHOD_TO(PredictController::performance, "/api/ml/performance", Get);
   ADD_METHOD_TO(PredictController::availableModels, "/api/ml/models", Get);
   ADD_METHOD_TO(PredictController::setActiveModel, "/api/ml/models/set_active", Post);
+  ADD_METHOD_TO(PredictController::startSimulatedTrading, "/api/trading/simulated/start", Post);
+  ADD_METHOD_TO(PredictController::startSimulatedTrading, "/api/simulated-trading/start", Post);
+  ADD_METHOD_TO(PredictController::stopSimulatedTrading, "/api/trading/simulated/stop", Post);
+  ADD_METHOD_TO(PredictController::stopSimulatedTrading, "/api/simulated-trading/stop", Post);
+  ADD_METHOD_TO(PredictController::simulatedTradingStatus, "/api/simulated-trading/status", Get);
+  ADD_METHOD_TO(PredictController::simulatedTradingStatus, "/api/trading/simulated/status", Get);
+  ADD_METHOD_TO(PredictController::updateSimulatedStrategyParameters, "/api/trading/simulated/update-strategy-params", Post);
+  ADD_METHOD_TO(PredictController::liveOrderBookSignals, "/api/orderbook/live-signals", Get);
+  ADD_METHOD_TO(PredictController::livePortfolioStatus, "/api/live-portfolio/status", Get);
+  ADD_METHOD_TO(PredictController::livePortfolioPositions, "/api/trading/live/positions", Get);
+  ADD_METHOD_TO(PredictController::closeLivePosition, "/api/trading/live/close-position", Post);
+  ADD_METHOD_TO(PredictController::startLiveTrading, "/api/trading/live/start", Post);
+  ADD_METHOD_TO(PredictController::stopLiveTrading, "/api/trading/live/stop", Post);
   METHOD_LIST_END
 
   void predict(const HttpRequestPtr &req,
@@ -44,6 +57,27 @@ public:
 
   void setActiveModel(const HttpRequestPtr &req,
                       std::function<void(const HttpResponsePtr &)> &&callback);
+
+  void startSimulatedTrading(const HttpRequestPtr &req,
+                           std::function<void(const HttpResponsePtr &)> &&callback);
+  void stopSimulatedTrading(const HttpRequestPtr &req,
+                          std::function<void(const HttpResponsePtr &)> &&callback);
+  void simulatedTradingStatus(const HttpRequestPtr &req,
+                             std::function<void(const HttpResponsePtr &)> &&callback);
+  void updateSimulatedStrategyParameters(const HttpRequestPtr &req,
+                                         std::function<void(const HttpResponsePtr &)> &&callback);
+  void liveOrderBookSignals(const HttpRequestPtr &req,
+                            std::function<void(const HttpResponsePtr &)> &&callback);
+  void livePortfolioStatus(const HttpRequestPtr &req,
+                           std::function<void(const HttpResponsePtr &)> &&callback);
+  void livePortfolioPositions(const HttpRequestPtr &req,
+                              std::function<void(const HttpResponsePtr &)> &&callback);
+  void closeLivePosition(const HttpRequestPtr &req,
+                         std::function<void(const HttpResponsePtr &)> &&callback);
+  void startLiveTrading(const HttpRequestPtr &req,
+                        std::function<void(const HttpResponsePtr &)> &&callback);
+  void stopLiveTrading(const HttpRequestPtr &req,
+                       std::function<void(const HttpResponsePtr &)> &&callback);
 
   static void init(const std::string &param_path, const std::string &model_dir);
 
