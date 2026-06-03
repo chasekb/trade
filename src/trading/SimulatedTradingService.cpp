@@ -988,7 +988,7 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
     }
 
     auto count_res = DatabaseManager::getInstance().query(
-        "SELECT COUNT(*) AS total_count FROM order_book_signals" + where.str());
+        "SELECT COUNT(DISTINCT symbol) AS total_count FROM order_book_signals" + where.str());
     const int total = (!count_res.empty() && !count_res[0]["total_count"].is_null())
                           ? count_res[0]["total_count"].as<int>()
                           : 0;
@@ -999,10 +999,15 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
     const int total_pages = safe_per_page > 0 ? static_cast<int>(std::ceil(static_cast<double>(total) / safe_per_page)) : 0;
 
     std::ostringstream sql;
-    sql << "SELECT signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
+    sql << "WITH latest_signals AS ("
+        << "SELECT DISTINCT ON (symbol) signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
         << "spread, imbalance, mid_price, best_bid, best_ask, order_book_depth, volume, total_signals "
-        << "FROM order_book_signals" << where.str() << " ORDER BY timestamp DESC LIMIT " << safe_per_page
-        << " OFFSET " << offset;
+        << "FROM order_book_signals" << where.str() << " ORDER BY symbol, timestamp DESC) "
+        << "SELECT signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
+        << "spread, imbalance, mid_price, best_bid, best_ask, order_book_depth, volume, total_signals "
+        << "FROM latest_signals "
+        << "ORDER BY strength DESC, COALESCE((signal_data::jsonb -> 'ml_analysis' ->> 'win_probability')::double precision, 0.5) DESC, timestamp DESC "
+        << "LIMIT " << safe_per_page << " OFFSET " << offset;
 
     auto rows = DatabaseManager::getInstance().query(sql.str());
     double strength_sum = 0.0;
