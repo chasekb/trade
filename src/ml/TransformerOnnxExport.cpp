@@ -28,7 +28,7 @@ make_transformer_export_graph(int64_t input_features) {
   auto *input = graph->addInput("sequence_input");
   input->setType(c10::TensorType::createContiguous(
       at::kFloat, at::kCPU,
-      {1, static_cast<int64_t>(kLookback), input_features}));
+      {1, input_features, static_cast<int64_t>(kLookback)}));
 
   auto *identity =
       graph->create(at::Symbol::fromQualString("onnx::Identity"), {input}, 1);
