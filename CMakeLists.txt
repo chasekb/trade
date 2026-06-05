@@ -90,6 +90,7 @@ enable_testing()
 add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
     src/ml/TransformerOnnxExport.cpp
+    src/ml/TransformerModel.cpp
 )
 target_include_directories(test_transformer_onnx_export PRIVATE
     include
