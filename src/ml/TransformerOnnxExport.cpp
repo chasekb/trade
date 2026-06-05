@@ -30,11 +30,11 @@ make_transformer_export_graph(int64_t input_features) {
       at::kFloat, at::kCPU,
       {1, input_features, static_cast<int64_t>(kLookback)}));
 
-  auto *relu =
-      graph->create(at::Symbol::fromQualString("aten::relu"), {input}, 1);
-  relu->output()->setType(input->type());
-  graph->appendNode(relu);
-  graph->registerOutput(relu->output());
+  auto *identity =
+      graph->create(at::Symbol::fromQualString("onnx::Identity"), {input}, 1);
+  identity->output()->setType(input->type());
+  graph->appendNode(identity);
+  graph->registerOutput(identity->output());
 
   return graph;
 }
