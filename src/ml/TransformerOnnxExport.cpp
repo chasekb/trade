@@ -1,6 +1,7 @@
 #include "ml/TransformerOnnxExport.hpp"
 
-#include <ATen/ATen.h>
+#include "ml/TransformerModel.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -9,35 +10,20 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include <spdlog/spdlog.h>
+#include <torch/csrc/jit/frontend/tracer.h>
 #include <torch/csrc/jit/serialization/export.h>
 
 namespace {
-constexpr int kOnnxOpsetVersion = 13;
-constexpr int64_t kLookback = 60;
-
-std::shared_ptr<torch::jit::Graph>
-make_transformer_export_graph(int64_t input_features) {
-  if (input_features <= 0) {
-    throw std::runtime_error(
-        "Transformer input feature dimension must be positive");
-  }
-
-  auto graph = std::make_shared<torch::jit::Graph>();
-  auto *input = graph->addInput("sequence_input");
-  input->setType(c10::TensorType::createContiguous(
-      at::kFloat, at::kCPU,
-      {1, input_features, static_cast<int64_t>(kLookback)}));
-
-  auto *identity =
-      graph->create(at::Symbol::fromQualString("onnx::Identity"), {input}, 1);
-  identity->output()->setType(input->type());
-  graph->appendNode(identity);
-  graph->registerOutput(identity->output());
-
-  return graph;
-}
+constexpr int64_t kTransformerLookback = 60;
+constexpr int64_t kTransformerPatchSize = 5;
+constexpr int64_t kTransformerEmbeddingDim = 64;
+constexpr int64_t kTransformerHeads = 4;
+constexpr int64_t kTransformerLayers = 3;
+constexpr double kTransformerDropout = 0.1;
+constexpr int kTransformerOpsetVersion = 17;
 } // namespace
 
 namespace trade {
@@ -45,17 +31,49 @@ namespace ml {
 
 void export_transformer_to_onnx(const std::filesystem::path &output_path,
                                 int64_t input_features) {
+  if (input_features <= 0) {
+    throw std::runtime_error(
+        "Transformer input feature dimension must be positive");
+  }
+
   if (!output_path.parent_path().empty()) {
     std::filesystem::create_directories(output_path.parent_path());
   }
 
-  auto graph = make_transformer_export_graph(input_features);
+  auto model = trade::ml::StockTransformer(
+      input_features, kTransformerLookback, kTransformerPatchSize,
+      kTransformerEmbeddingDim, kTransformerHeads, kTransformerLayers,
+      kTransformerDropout);
+  model->eval();
+
+  for (auto &parameter : model->parameters()) {
+    parameter.requires_grad_(false);
+  }
+
+  torch::NoGradGuard no_grad;
+  auto sample = torch::zeros({1, kTransformerLookback, input_features},
+                             torch::TensorOptions().dtype(torch::kFloat32));
+
+  torch::jit::Stack inputs;
+  inputs.emplace_back(sample);
+
+  auto traced = torch::jit::tracer::trace(
+      std::move(inputs),
+      [model](torch::jit::Stack stack) mutable -> torch::jit::Stack {
+        auto input = stack.at(0).toTensor();
+        auto output = model->forward(input);
+        return {output};
+      },
+      [](const at::Tensor &) { return std::string("sequence_input"); }, false,
+      false, nullptr, {"sequence_input"});
+
+  auto graph = traced.first->graph;
   const std::map<std::string, at::Tensor> initializers;
   const std::unordered_map<std::string, std::unordered_map<int64_t, std::string>>
       dynamic_axes;
 
   auto [model_proto, raw_data_export_map, symbol_dim_map, success, node_names] =
-      torch::jit::export_onnx(graph, initializers, kOnnxOpsetVersion,
+      torch::jit::export_onnx(graph, initializers, kTransformerOpsetVersion,
                               dynamic_axes);
 
   (void)raw_data_export_map;
