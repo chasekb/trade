@@ -31,7 +31,7 @@ int main() {
     Ort::Session session(env, out.c_str(), session_options);
 
     std::array<float, 600> input{};
-    std::array<int64_t, 3> input_dims = {1, 10, 60};
+    std::array<int64_t, 3> input_dims = {1, 60, 10};
     auto memory_info =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     auto input_tensor = Ort::Value::CreateTensor<float>(
