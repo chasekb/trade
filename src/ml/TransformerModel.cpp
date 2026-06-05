@@ -21,11 +21,10 @@ torch::Tensor PatchEmbeddingImpl::forward(torch::Tensor x) {
     x = torch::constant_pad_nd(x, {0, 0, padding, 0}); // Pad temporal dimension
   }
 
-  // Project each temporal patch without an explicit reshape op so the ONNX
-  // exporter only sees standard convolution and transpose operators.
-  x = x.transpose(1, 2); // (B, F, T)
+  // Project each temporal patch with ONNX-friendly dimension permutation.
+  x = x.permute({0, 2, 1}); // (B, F, T)
   x = projection->forward(x);
-  return x.transpose(1, 2); // (B, T/P, E)
+  return x.permute({0, 2, 1}); // (B, T/P, E)
 }
 
 CausalSelfAttentionImpl::CausalSelfAttentionImpl(int64_t embedding_dim,
@@ -55,7 +54,7 @@ torch::Tensor CausalSelfAttentionImpl::forward(torch::Tensor x) {
 
   auto mask = torch::tril(torch::ones({N, N}, x.options())).unsqueeze(0);
 
-  auto attn = q.matmul(k.transpose(-2, -1)) *
+  auto attn = q.matmul(k.permute({0, 2, 1})) *
               (1.0 / std::sqrt(static_cast<double>(D)));
   attn = attn.masked_fill(mask == 0, -1e9);
   attn = torch::softmax(attn, -1);
