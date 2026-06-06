@@ -44,6 +44,16 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
         auto config = nlohmann::json::parse(config_stream, nullptr, true, true);
         const std::string layout = config.value("input_layout", "");
         transformer_channels_first_ = (layout == "channels_first");
+        const std::size_t configured_lookback =
+            config.value("lookback", static_cast<std::size_t>(0));
+        const std::size_t configured_features =
+            config.value("n_features", static_cast<std::size_t>(0));
+        if (configured_lookback > 0) {
+          transformer_lookback_ = configured_lookback;
+        }
+        if (configured_features > 0) {
+          transformer_features_ = configured_features;
+        }
       }
     }
 
@@ -61,16 +71,24 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
         transformer_session_ = std::make_unique<Ort::Session>(
             env_, trans_path.c_str(), session_options_);
 #endif
-        auto info = transformer_session_->GetInputTypeInfo(0)
-                        .GetTensorTypeAndShapeInfo();
-        auto shape = info.GetShape();
-        if (shape.size() >= 3) {
-          if (transformer_channels_first_) {
-            transformer_features_ = shape[1];
-            transformer_lookback_ = shape[2];
-          } else {
-            transformer_lookback_ = shape[1];
-            transformer_features_ = shape[2];
+        if (transformer_lookback_ == 0 || transformer_features_ == 0) {
+          try {
+            auto info = transformer_session_->GetInputTypeInfo(0)
+                            .GetTensorTypeAndShapeInfo();
+            auto shape = info.GetShape();
+            if (shape.size() >= 3) {
+              if (transformer_channels_first_) {
+                transformer_features_ = shape[1];
+                transformer_lookback_ = shape[2];
+              } else {
+                transformer_lookback_ = shape[1];
+                transformer_features_ = shape[2];
+              }
+            }
+          } catch (const std::exception &shape_error) {
+            spdlog::warn(
+                "Loaded transformer session at {} but could not read shape metadata: {}",
+                trans_path, shape_error.what());
           }
         }
         spdlog::info("Loaded Transformer model. Lookback: {}, Features: {}",
@@ -168,6 +186,11 @@ double ONNXModelManager::predict_transformer(
     const std::vector<std::vector<double>> &sequence) {
   if (!transformer_session_)
     return 0.0;
+  if (transformer_lookback_ == 0 || transformer_features_ == 0) {
+    spdlog::error(
+        "Transformer model is loaded but input dimensions are unavailable");
+    return 0.0;
+  }
 
   try {
     size_t seq_len = sequence.size();
