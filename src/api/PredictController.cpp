@@ -387,6 +387,21 @@ std::uintmax_t copy_artifact_via_temp_file(const std::filesystem::path &src,
 bool optional_artifact_available(const std::filesystem::path &path) {
   return validated_file_size(path) > 0;
 }
+
+void remove_directory_tree(const std::filesystem::path &path,
+                           const std::string &reason) {
+  std::error_code ec;
+  const auto removed = std::filesystem::remove_all(path, ec);
+  if (ec) {
+    TR_LOG_WARN("Failed to remove {} '{}': {}", reason, path.string(),
+                ec.message());
+    return;
+  }
+  if (removed > 0) {
+    TR_LOG_INFO("Removed {} '{}' ({} entries)", reason, path.string(),
+                removed);
+  }
+}
 } // namespace
 
 std::unique_ptr<ml::FeatureEngineer> PredictController::feature_engineer_ =
@@ -661,22 +676,37 @@ void PredictController::train(
       }
       const std::filesystem::path package_dir =
           writable_package_dir_for_model(trained_root, model_id);
+      remove_directory_tree(package_dir, "stale trained model package");
 
-      if (config.type == trade::ml::ModelType::TRANSFORMER) {
-        const auto transformer_features = feature_engineer_
-                                              ? static_cast<int64_t>(
-                                                    feature_engineer_->transformer_feature_dim())
-                                              : 0;
-        trainer.export_transformer_artifact(model_root / "transformer.onnx",
+      std::error_code package_ec;
+      std::filesystem::create_directories(package_dir, package_ec);
+      if (package_ec) {
+        throw std::runtime_error("Failed to create trained package directory: " +
+                                 package_dir.string() + ": " + package_ec.message());
+      }
+
+      const bool is_transformer =
+          config.type == trade::ml::ModelType::TRANSFORMER;
+      if (is_transformer) {
+        const auto transformer_features =
+            feature_engineer_ ? static_cast<int64_t>(
+                                   feature_engineer_->transformer_feature_dim())
+                             : 0;
+        trainer.export_transformer_artifact(package_dir / "transformer.onnx",
                                             transformer_features);
       }
 
       const auto required_artifacts = required_artifacts_for(config.type);
       const auto optional_artifacts = optional_artifacts_for(config.type);
+      std::vector<std::string> metadata_required_artifacts = required_artifacts;
+      if (is_transformer) {
+        metadata_required_artifacts.push_back("transformer_config.json");
+      }
 
       std::uintmax_t regressor_size = 0;
       std::uintmax_t classifier_size = 0;
       std::uintmax_t transformer_size = 0;
+      std::uintmax_t transformer_config_size = 0;
 
       auto package_artifact = [&](const std::string &artifact_name, bool required) {
         const auto artifact_size = copy_artifact_via_temp_file(
@@ -687,21 +717,32 @@ void PredictController::train(
           classifier_size = artifact_size;
         } else if (artifact_name == "transformer.onnx") {
           transformer_size = artifact_size;
+        } else if (artifact_name == "transformer_config.json") {
+          transformer_config_size = artifact_size;
         }
       };
 
-      for (const auto &artifact_name : required_artifacts) {
-        package_artifact(artifact_name, true);
+      if (!is_transformer) {
+        for (const auto &artifact_name : required_artifacts) {
+          package_artifact(artifact_name, true);
+        }
+        for (const auto &artifact_name : optional_artifacts) {
+          package_artifact(artifact_name, false);
+        }
       }
-      for (const auto &artifact_name : optional_artifacts) {
-        package_artifact(artifact_name, false);
+
+      if (is_transformer) {
+        transformer_size = validated_file_size(package_dir / "transformer.onnx");
+        transformer_config_size =
+            validated_file_size(package_dir / "transformer_config.json");
       }
 
       const bool has_regressor = regressor_size > 0;
       const bool has_classifier = classifier_size > 0;
       const bool has_transformer = transformer_size > 0;
+      const bool has_transformer_config = transformer_config_size > 0;
       const bool artifacts_valid = std::all_of(
-          required_artifacts.begin(), required_artifacts.end(),
+          metadata_required_artifacts.begin(), metadata_required_artifacts.end(),
           [&](const std::string &artifact_name) {
             if (artifact_name == "regressor.onnx")
               return has_regressor;
@@ -709,48 +750,60 @@ void PredictController::train(
               return has_classifier;
             if (artifact_name == "transformer.onnx")
               return has_transformer;
+            if (artifact_name == "transformer_config.json")
+              return has_transformer_config;
             return false;
           });
 
-      nlohmann::json metadata = {
-          {"model_id", model_id},
-          {"model_name", config.model_name},
-          {"version_id", version_id},
-          {"type", model_type_to_string(config.type)},
-          {"trained_at", trained_at},
-          {"artifacts_valid", artifacts_valid},
-          {"required_artifacts", required_artifacts},
-          {"artifacts", {{"regressor", has_regressor},
-                           {"classifier", has_classifier},
-                           {"transformer", has_transformer}}},
-          {"artifact_sizes",
-           {{"regressor", regressor_size},
-            {"classifier", classifier_size},
-            {"transformer", transformer_size}}}};
+      if (artifacts_valid) {
+        nlohmann::json metadata = {
+            {"model_id", model_id},
+            {"model_name", config.model_name},
+            {"version_id", version_id},
+            {"type", model_type_to_string(config.type)},
+            {"trained_at", trained_at},
+            {"artifacts_valid", artifacts_valid},
+            {"required_artifacts", metadata_required_artifacts},
+            {"artifacts", {{"regressor", has_regressor},
+                             {"classifier", has_classifier},
+                             {"transformer", has_transformer},
+                             {"transformer_config", has_transformer_config}}},
+            {"artifact_sizes",
+             {{"regressor", regressor_size},
+              {"classifier", classifier_size},
+              {"transformer", transformer_size},
+              {"transformer_config", transformer_config_size}}}};
 
-      std::ofstream meta_file(package_dir / "metadata.json");
-      if (!meta_file.is_open()) {
-        throw std::runtime_error("Failed to write metadata for trained package: " +
-                                 package_dir.string());
-      }
-      meta_file << metadata.dump(2);
-      meta_file.close();
+        std::ofstream meta_file(package_dir / "metadata.json");
+        if (!meta_file.is_open()) {
+          throw std::runtime_error(
+              "Failed to write metadata for trained package: " +
+              package_dir.string());
+        }
+        meta_file << metadata.dump(2);
+        meta_file.close();
 
-      if (auto_set_active) {
-        bool activated = false;
-        if (artifacts_valid && model_manager_) {
-          activated = model_manager_->load_models(package_dir.string());
-          if (!activated) {
-            TR_LOG_WARN("Trained package '{}' created but could not be activated; keeping current active model",
-                        model_id);
+        if (auto_set_active) {
+          bool activated = false;
+          if (model_manager_) {
+            activated = model_manager_->load_models(package_dir.string());
+            if (!activated) {
+              TR_LOG_WARN("Trained package '{}' created but could not be activated; keeping current active model",
+                          model_id);
+              remove_directory_tree(package_dir, "invalid trained model package");
+            }
+          }
+
+          if (activated) {
+            cache.set("ml_active_model_id", model_id);
+            cache.set("ml_active_model_name", config.model_name);
+            cache.set("ml_active_model_version", version_id);
           }
         }
-
-        if (activated) {
-          cache.set("ml_active_model_id", model_id);
-          cache.set("ml_active_model_name", config.model_name);
-          cache.set("ml_active_model_version", version_id);
-        }
+      } else {
+        TR_LOG_WARN("Trained package '{}' is missing required artifacts; removing invalid package",
+                    model_id);
+        remove_directory_tree(package_dir, "invalid trained model package");
       }
 
       cache.set_training_status("training", 90);

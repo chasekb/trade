@@ -38,7 +38,7 @@ void write_transformer_config(const std::filesystem::path &config_path,
       {"n_layers", kTransformerLayers},
       {"dropout", kTransformerDropout},
       {"opset_version", kTransformerOpsetVersion},
-      {"input_layout", "channels_first"}};
+      {"input_layout", "channels_last"}};
 
   if (!config_path.parent_path().empty()) {
     std::filesystem::create_directories(config_path.parent_path());

@@ -28,22 +28,53 @@ ONNXModelManager::ONNXModelManager()
 }
 
 bool ONNXModelManager::load_models(const std::string &model_dir) {
-  model_dir_ = model_dir;
   try {
-    reset_sessions();
     std::filesystem::path dir(model_dir);
-    std::string reg_path = (dir / "regressor.onnx").string();
-    std::string cls_path = (dir / "classifier.onnx").string();
-    std::string trans_path = (dir / "transformer.onnx").string();
+    const std::string reg_path = (dir / "regressor.onnx").string();
+    const std::string cls_path = (dir / "classifier.onnx").string();
+    const std::string trans_path = (dir / "transformer.onnx").string();
     const std::filesystem::path transformer_config_path =
         dir / "transformer_config.json";
 
+    std::unique_ptr<Ort::Session> new_regressor_session;
+    std::unique_ptr<Ort::Session> new_classifier_session;
+    std::unique_ptr<Ort::Session> new_transformer_session;
+    std::size_t new_input_dim = 0;
+    std::size_t new_transformer_lookback = 0;
+    std::size_t new_transformer_features = 0;
+    bool new_transformer_channels_first = false;
+
     if (std::filesystem::exists(transformer_config_path)) {
-      std::ifstream config_stream(transformer_config_path);
-      if (config_stream.is_open()) {
-        auto config = nlohmann::json::parse(config_stream, nullptr, true, true);
-        const std::string layout = config.value("input_layout", "");
-        transformer_channels_first_ = (layout == "channels_first");
+      try {
+        std::ifstream config_stream(transformer_config_path);
+        if (config_stream.is_open()) {
+          const auto config =
+              nlohmann::json::parse(config_stream, nullptr, true, true);
+          const std::string layout = config.value("input_layout", "channels_last");
+          if (layout == "channels_first") {
+            spdlog::warn(
+                "Transformer config at {} requests unsupported layout '{}'; loading as channels_last to match the exporter contract",
+                transformer_config_path.string(), layout);
+          } else if (layout != "channels_last") {
+            spdlog::warn(
+                "Transformer config at {} has unknown input_layout '{}'; defaulting to channels_last",
+                transformer_config_path.string(), layout);
+          }
+          new_transformer_channels_first = false;
+          const std::size_t configured_lookback =
+              config.value("lookback", static_cast<std::size_t>(0));
+          const std::size_t configured_features =
+              config.value("n_features", static_cast<std::size_t>(0));
+          if (configured_lookback > 0) {
+            new_transformer_lookback = configured_lookback;
+          }
+          if (configured_features > 0) {
+            new_transformer_features = configured_features;
+          }
+        }
+      } catch (const std::exception &e) {
+        spdlog::warn("Ignoring transformer config at {} because it could not be parsed: {}",
+                     transformer_config_path.string(), e.what());
       }
     }
 
@@ -51,94 +82,117 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     const bool has_classifier = std::filesystem::exists(cls_path);
     const bool has_transformer = std::filesystem::exists(trans_path);
 
-    if (std::filesystem::exists(trans_path)) {
+    if (has_regressor) {
+      try {
+#ifdef _WIN32
+        std::wstring w_reg_path(reg_path.begin(), reg_path.end());
+        new_regressor_session = std::make_unique<Ort::Session>(
+            env_, w_reg_path.c_str(), session_options_);
+#else
+        new_regressor_session = std::make_unique<Ort::Session>(
+            env_, reg_path.c_str(), session_options_);
+#endif
+      } catch (const std::exception &e) {
+        spdlog::warn("Skipping regressor model at {} because it could not be loaded: {}",
+                     reg_path, e.what());
+      }
+    }
+
+    if (has_classifier) {
+      try {
+#ifdef _WIN32
+        std::wstring w_cls_path(cls_path.begin(), cls_path.end());
+        new_classifier_session = std::make_unique<Ort::Session>(
+            env_, w_cls_path.c_str(), session_options_);
+#else
+        new_classifier_session = std::make_unique<Ort::Session>(
+            env_, cls_path.c_str(), session_options_);
+#endif
+      } catch (const std::exception &e) {
+        spdlog::warn("Skipping classifier model at {} because it could not be loaded: {}",
+                     cls_path, e.what());
+      }
+    }
+
+    if (has_transformer) {
       try {
 #ifdef _WIN32
         std::wstring w_trans_path(trans_path.begin(), trans_path.end());
-        transformer_session_ = std::make_unique<Ort::Session>(
+        new_transformer_session = std::make_unique<Ort::Session>(
             env_, w_trans_path.c_str(), session_options_);
 #else
-        transformer_session_ = std::make_unique<Ort::Session>(
+        new_transformer_session = std::make_unique<Ort::Session>(
             env_, trans_path.c_str(), session_options_);
 #endif
-        auto info = transformer_session_->GetInputTypeInfo(0)
-                        .GetTensorTypeAndShapeInfo();
-        auto shape = info.GetShape();
-        if (shape.size() >= 3) {
-          if (transformer_channels_first_) {
-            transformer_features_ = shape[1];
-            transformer_lookback_ = shape[2];
-          } else {
-            transformer_lookback_ = shape[1];
-            transformer_features_ = shape[2];
+        if (new_transformer_lookback == 0 || new_transformer_features == 0) {
+          try {
+            auto info = new_transformer_session->GetInputTypeInfo(0)
+                            .GetTensorTypeAndShapeInfo();
+            auto shape = info.GetShape();
+            if (shape.size() >= 3) {
+              if (new_transformer_channels_first) {
+                new_transformer_features = static_cast<std::size_t>(shape[1]);
+                new_transformer_lookback = static_cast<std::size_t>(shape[2]);
+              } else {
+                new_transformer_lookback = static_cast<std::size_t>(shape[1]);
+                new_transformer_features = static_cast<std::size_t>(shape[2]);
+              }
+            }
+          } catch (const std::exception &shape_error) {
+            spdlog::warn(
+                "Loaded transformer session at {} but could not read shape metadata: {}",
+                trans_path, shape_error.what());
           }
         }
         spdlog::info("Loaded Transformer model. Lookback: {}, Features: {}",
-                     transformer_lookback_, transformer_features_);
+                     new_transformer_lookback, new_transformer_features);
       } catch (const std::exception &e) {
-        transformer_session_.reset();
-        transformer_lookback_ = 0;
-        transformer_features_ = 0;
-        transformer_channels_first_ = false;
+        new_transformer_session.reset();
+        new_transformer_lookback = 0;
+        new_transformer_features = 0;
+        new_transformer_channels_first = false;
         spdlog::warn(
             "Skipping transformer model at {} because it could not be loaded: {}",
             trans_path, e.what());
       }
     }
 
-    if (!has_regressor && !has_classifier && !has_transformer) {
-      spdlog::error("No ONNX models found in {}", model_dir);
+    const bool has_loaded_regressor = new_regressor_session != nullptr;
+    const bool has_loaded_classifier = new_classifier_session != nullptr;
+    const bool has_loaded_transformer = new_transformer_session != nullptr;
+
+    if (!has_loaded_regressor && !has_loaded_classifier && !has_loaded_transformer) {
+      spdlog::error("No usable ONNX models found in {}", model_dir);
       return false;
     }
 
-    if (has_regressor) {
-      // Load Regressor
-#ifdef _WIN32
-      std::wstring w_reg_path(reg_path.begin(), reg_path.end());
-      regressor_session_ = std::make_unique<Ort::Session>(
-          env_, w_reg_path.c_str(), session_options_);
-#else
-      regressor_session_ = std::make_unique<Ort::Session>(env_, reg_path.c_str(),
-                                                          session_options_);
-#endif
-    }
-
-    if (has_classifier) {
-      // Load Classifier
-#ifdef _WIN32
-      std::wstring w_cls_path(cls_path.begin(), cls_path.end());
-      classifier_session_ = std::make_unique<Ort::Session>(
-          env_, w_cls_path.c_str(), session_options_);
-#else
-      classifier_session_ = std::make_unique<Ort::Session>(env_, cls_path.c_str(),
-                                                           session_options_);
-#endif
-    }
-
-    Ort::Session *shape_session = regressor_session_ ? regressor_session_.get()
-                                                     : classifier_session_.get();
+    Ort::Session *shape_session = new_regressor_session ? new_regressor_session.get()
+                                                        : new_classifier_session.get();
     if (shape_session != nullptr) {
       Ort::TypeInfo type_info = shape_session->GetInputTypeInfo(0);
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       auto input_shape = tensor_info.GetShape();
 
       if (input_shape.size() >= 2) {
-        input_dim_ = input_shape[1];
-      } else {
-        input_dim_ = input_shape[0];
+        new_input_dim = static_cast<std::size_t>(input_shape[1]);
+      } else if (!input_shape.empty()) {
+        new_input_dim = static_cast<std::size_t>(input_shape[0]);
       }
     }
 
-    const bool has_loaded_transformer = transformer_session_ != nullptr;
-    if (!has_regressor && !has_classifier && !has_loaded_transformer) {
-      spdlog::error("No usable ONNX models found in {}", model_dir);
-      return false;
-    }
+    regressor_session_ = std::move(new_regressor_session);
+    classifier_session_ = std::move(new_classifier_session);
+    transformer_session_ = std::move(new_transformer_session);
+    input_dim_ = new_input_dim;
+    transformer_lookback_ = new_transformer_lookback;
+    transformer_features_ = new_transformer_features;
+    transformer_channels_first_ = new_transformer_channels_first;
+    model_dir_ = model_dir;
 
     spdlog::info(
         "Loaded ONNX models from {}. Capabilities: regressor={}, classifier={}, transformer={}, expected input dimension: {}",
-        model_dir, has_regressor, has_classifier, has_loaded_transformer,
-        input_dim_);
+        model_dir, has_loaded_regressor, has_loaded_classifier,
+        has_loaded_transformer, input_dim_);
     return true;
   } catch (const std::exception &e) {
     spdlog::error("Failed to load ONNX models: {}", e.what());
@@ -168,6 +222,11 @@ double ONNXModelManager::predict_transformer(
     const std::vector<std::vector<double>> &sequence) {
   if (!transformer_session_)
     return 0.0;
+  if (transformer_lookback_ == 0 || transformer_features_ == 0) {
+    spdlog::error(
+        "Transformer model is loaded but input dimensions are unavailable");
+    return 0.0;
+  }
 
   try {
     size_t seq_len = sequence.size();

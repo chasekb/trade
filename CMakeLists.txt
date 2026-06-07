@@ -89,6 +89,9 @@ enable_testing()
 
 add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
+    src/ml/DataCollector.cpp
+    src/ml/Metrics.cpp
+    src/ml/ModelTrainer.cpp
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
 )
@@ -98,6 +101,7 @@ target_include_directories(test_transformer_onnx_export PRIVATE
     ${Python3_INCLUDE_DIRS}
 )
 target_link_libraries(test_transformer_onnx_export PRIVATE
+    libpqxx::pqxx
     onnxruntime::onnxruntime
     spdlog::spdlog
     Python3::Python

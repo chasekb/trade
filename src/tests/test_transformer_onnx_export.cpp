@@ -1,9 +1,13 @@
+#include "ml/ModelTrainer.hpp"
 #include "ml/TransformerOnnxExport.hpp"
 
 #include <array>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
+#include <string>
 #include <onnxruntime/onnxruntime_cxx_api.h>
 #include <vector>
 
@@ -12,7 +16,8 @@ int main() {
                    "trade_transformer_smoke.onnx";
 
   try {
-    trade::ml::export_transformer_to_onnx(out, 10);
+    trade::ml::ModelTrainer trainer(nullptr);
+    trainer.export_transformer_artifact(out, 10);
   } catch (const std::exception &ex) {
     std::cerr << "Transformer ONNX export smoke test failed: " << ex.what()
               << std::endl;
@@ -21,6 +26,23 @@ int main() {
 
   if (!std::filesystem::exists(out) || std::filesystem::file_size(out) == 0) {
     std::cerr << "Transformer ONNX export produced no file" << std::endl;
+    return 1;
+  }
+
+  const auto config_path = out.parent_path() / "transformer_config.json";
+  try {
+    std::ifstream config_stream(config_path);
+    const std::string config_text((std::istreambuf_iterator<char>(config_stream)),
+                                  std::istreambuf_iterator<char>());
+    if (config_text.find("\"input_layout\": \"channels_last\"") ==
+        std::string::npos) {
+      std::cerr << "Transformer ONNX export wrote an unexpected input_layout: "
+                << config_text << std::endl;
+      return 1;
+    }
+  } catch (const std::exception &ex) {
+    std::cerr << "Transformer ONNX export config is not readable: " << ex.what()
+              << std::endl;
     return 1;
   }
 
