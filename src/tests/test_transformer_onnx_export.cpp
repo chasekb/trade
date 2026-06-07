@@ -1,3 +1,4 @@
+#include "ml/ModelTrainer.hpp"
 #include "ml/TransformerOnnxExport.hpp"
 
 #include <array>
@@ -15,7 +16,8 @@ int main() {
                    "trade_transformer_smoke.onnx";
 
   try {
-    trade::ml::export_transformer_to_onnx(out, 10);
+    trade::ml::ModelTrainer trainer(nullptr);
+    trainer.export_transformer_artifact(out, 10);
   } catch (const std::exception &ex) {
     std::cerr << "Transformer ONNX export smoke test failed: " << ex.what()
               << std::endl;
