@@ -50,8 +50,17 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
         if (config_stream.is_open()) {
           const auto config =
               nlohmann::json::parse(config_stream, nullptr, true, true);
-          const std::string layout = config.value("input_layout", "");
-          new_transformer_channels_first = (layout == "channels_first");
+          const std::string layout = config.value("input_layout", "channels_last");
+          if (layout == "channels_first") {
+            spdlog::warn(
+                "Transformer config at {} requests unsupported layout '{}'; loading as channels_last to match the exporter contract",
+                transformer_config_path.string(), layout);
+          } else if (layout != "channels_last") {
+            spdlog::warn(
+                "Transformer config at {} has unknown input_layout '{}'; defaulting to channels_last",
+                transformer_config_path.string(), layout);
+          }
+          new_transformer_channels_first = false;
           const std::size_t configured_lookback =
               config.value("lookback", static_cast<std::size_t>(0));
           const std::size_t configured_features =
