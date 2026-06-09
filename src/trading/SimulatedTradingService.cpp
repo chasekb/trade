@@ -666,13 +666,20 @@ void SimulatedTradingService::generateTickLocked() {
 void SimulatedTradingService::workerLoop() {
   TR_LOG_INFO("Simulated trading worker started for session {}", session_id_);
   while (true) {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (stop_requested_) {
-        break;
+    try {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_requested_) {
+          break;
+        }
+        generateTickLocked();
       }
-      generateTickLocked();
+    } catch (const std::exception &e) {
+      TR_LOG_ERROR("Simulated trading worker tick failed for session {}: {}", session_id_, e.what());
+    } catch (...) {
+      TR_LOG_ERROR("Simulated trading worker tick failed for session {}: unknown exception", session_id_);
     }
+
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 

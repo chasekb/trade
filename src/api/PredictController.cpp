@@ -473,9 +473,9 @@ void PredictController::predict(
     ml::OrderBookFeatures features;
     ml::from_json(j, features);
 
-    if (!feature_engineer_ || !model_manager_ || !model_manager_->is_ready()) {
+    if (!feature_engineer_) {
       Json::Value err;
-      err["error"] = "ML services not initialized";
+      err["error"] = "ML feature engineering is not initialized";
       auto resp = HttpResponse::newHttpJsonResponse(err);
       resp->setStatusCode(k503ServiceUnavailable);
       callback(resp);
@@ -485,13 +485,19 @@ void PredictController::predict(
     // Run Preprocessing
     auto pca_features = feature_engineer_->preprocess(features);
 
-    // Run Inference
-    double pnl = model_manager_->predict_pnl(pca_features);
-    double win_prob = model_manager_->predict_win_prob(pca_features);
+    const bool models_ready = model_manager_ && model_manager_->is_ready();
+    if (!models_ready) {
+      TR_LOG_WARN(
+          "ML model sessions are not ready; returning fallback prediction values instead of failing the request");
+    }
+
+    // Run Inference (or fall back to neutral defaults when the model pack is unavailable)
+    double pnl = models_ready ? model_manager_->predict_pnl(pca_features) : 0.0;
+    double win_prob = models_ready ? model_manager_->predict_win_prob(pca_features) : 0.5;
 
     // Phase 6: Transformer Prediction
     auto sequence = feature_engineer_->get_transformer_sequence();
-    double transformer_pnl = model_manager_->predict_transformer(sequence);
+    double transformer_pnl = models_ready ? model_manager_->predict_transformer(sequence) : 0.0;
 
     Json::Value result;
     result["expected_pnl"] = pnl;
@@ -499,6 +505,10 @@ void PredictController::predict(
     result["win_probability"] = win_prob;
     result["confidence"] = std::abs(win_prob - 0.5) * 2.0;
     result["timestamp"] = (Json::Int64)features.timestamp;
+    result["models_ready"] = models_ready;
+    if (!models_ready) {
+      result["warning"] = "ML models are unavailable; returned fallback prediction values";
+    }
 
     callback(HttpResponse::newHttpJsonResponse(result));
 
@@ -1110,6 +1120,14 @@ void PredictController::liveOrderBookSignals(
       }
     }
   }
+  constexpr std::size_t kMaxSymbolsPerRequest = 100;
+  if (symbols.size() > kMaxSymbolsPerRequest) {
+    TR_LOG_WARN("Trimming live order book symbol filter from {} to {} symbols to avoid oversized requests",
+                symbols.size(),
+                kMaxSymbolsPerRequest);
+    symbols.resize(kMaxSymbolsPerRequest);
+  }
+
   const int page = parse_int_param(req->getParameter("page"), 1);
   const int per_page = parse_int_param(req->getParameter("per_page"), 10);
   Json::Value response = trade::trading::SimulatedTradingService::getInstance()
