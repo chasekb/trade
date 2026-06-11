@@ -17,6 +17,10 @@ bool CacheManager::init() {
     redis_ = std::make_unique<sw::redis::Redis>(redis_url);
     // Ping to test connection
     redis_->ping();
+    // Training jobs are detached in-process threads. If the backend restarts,
+    // any persisted "training" flag is stale and must be cleared so the next
+    // training request can start cleanly.
+    set_training_status("idle", 0);
     TR_LOG_INFO("Successfully connected to Redis at {}", redis_url);
     return true;
   } catch (const sw::redis::Error &e) {
