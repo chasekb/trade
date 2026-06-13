@@ -336,7 +336,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
   const { data: stats, isLoading, error } = useLivePortfolio(true);
 
   const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ['live-portfolio'] });
+    queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
   };
 
   const handleClosePosition = async (symbol: string) => {

@@ -360,7 +360,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
     );
   }
 
-  if (error || !stats?.portfolio) {
+  if (error) {
     return (
       <Card>
         <CardHeader>
@@ -372,8 +372,8 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
           </div>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            <p>No statistics available. Trading may not be active.</p>
+          <div className="text-center py-8 text-red-600">
+            <p>Failed to load statistics.</p>
           </div>
         </CardContent>
       </Card>

@@ -833,8 +833,9 @@ class ApiClient {
     }
 
     const queryParams = new URLSearchParams();
-    if (symbols && symbols.length > 0) {
-      queryParams.append('symbols', symbols.join(','));
+    const requestSymbols = symbols;
+    if (requestSymbols && requestSymbols.length > 0) {
+      queryParams.append('symbols', requestSymbols.join(','));
     }
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.per_page) queryParams.append('per_page', params.per_page.toString());

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
-import { apiClient, queryKeys } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 import {
   TradingMode,
   TradingStrategy,
@@ -41,9 +41,9 @@ export function useLiveTrading() {
   useEffect(() => {
     if (backendStatus) {
       setStatus({
-        isActive: backendStatus.is_trading || false,
+        isActive: backendStatus.isActive ?? backendStatus.is_active ?? backendStatus.is_trading ?? false,
         mode: 'simulated',
-        strategy: backendStatus.strategy_type || 'orderbook',
+        strategy: backendStatus.strategy_type || backendStatus.strategy || 'orderbook',
         symbols: backendStatus.symbols || [],
       });
     }
@@ -90,17 +90,19 @@ export function useLiveTrading() {
       return response;
     },
     onSuccess: (response, variables) => {
+      const responseData = (response as any)?.data ?? response;
       // Accept multiple response shapes from backend variants:
       // - { status: 'started', is_active: true }
       // - { status: 'success', session_id: '...' }
       // - ApiResponse-wrapped payloads with data.is_active/session_id
       const isStarted =
-        (response as any)?.status === 'started' ||
-        (response as any)?.status === 'success' ||
-        (response as any)?.is_active === true ||
-        (response as any)?.session_id ||
-        (response as any)?.data?.is_active === true ||
-        (response as any)?.data?.session_id;
+        (responseData as any)?.status === 'started' ||
+        (responseData as any)?.status === 'success' ||
+        (responseData as any)?.is_active === true ||
+        (responseData as any)?.isActive === true ||
+        (responseData as any)?.session_id ||
+        (responseData as any)?.data?.is_active === true ||
+        (responseData as any)?.data?.session_id;
 
       if (isStarted) {
         setStatus({
@@ -109,6 +111,20 @@ export function useLiveTrading() {
           strategy: variables.strategy,
           symbols: variables.symbols,
         });
+
+        queryClient.setQueryData(['trading-status'], responseData);
+        if (
+          responseData &&
+          typeof responseData === 'object' &&
+          ('portfolio' in responseData || 'stats' in responseData || 'recent_trades' in responseData || 'current_capital' in responseData)
+        ) {
+          queryClient.setQueryData(['simulated-trading-stats'], responseData);
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['trading-status'] });
+        queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+        queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+        queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
       }
     },
   });
@@ -118,6 +134,11 @@ export function useLiveTrading() {
     onSuccess: (response) => {
       if (response.status === 'success') {
         setStatus(prev => ({ ...prev, isActive: false, symbols: [] }));
+        queryClient.setQueryData(['trading-status'], response);
+        queryClient.invalidateQueries({ queryKey: ['trading-status'] });
+        queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+        queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+        queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
       }
     },
   });
@@ -125,7 +146,9 @@ export function useLiveTrading() {
   const updateStrategyParamsMutation = useMutation({
     mutationFn: (params: Record<string, any>) => apiClient.updateStrategyParameters(params),
     onSuccess: () => {
-      // Optionally refetch status or handle success
+      queryClient.invalidateQueries({ queryKey: ['trading-status'] });
+      queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
     },
   });
 
@@ -150,6 +173,84 @@ export function useLiveTrading() {
 }
 
 // Order Book Signals Hook with Pagination Support
+const ORDERBOOK_SYMBOL_CHUNK_SIZE = 100;
+
+function chunkOrderBookSymbols(symbols?: string[]) {
+  if (!symbols || symbols.length === 0) {
+    return [] as string[][];
+  }
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < symbols.length; i += ORDERBOOK_SYMBOL_CHUNK_SIZE) {
+    chunks.push(symbols.slice(i, i + ORDERBOOK_SYMBOL_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function mergeOrderBookSignalResponses(responses: any[], page: number, perPage: number) {
+  const normalizedResponses = responses.filter(Boolean) as Array<any>;
+  const allSignals = normalizedResponses.flatMap((response: any) => response?.signals ?? []);
+  allSignals.sort((left, right) => {
+    const strengthDiff = (right.signal_strength ?? 0) - (left.signal_strength ?? 0);
+    if (strengthDiff !== 0) {
+      return strengthDiff;
+    }
+
+    const timeDiff = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
+    return left.symbol.localeCompare(right.symbol);
+  });
+
+  const total = allSignals.length;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / perPage);
+  const currentPage = Math.max(1, page);
+  const startIndex = (currentPage - 1) * perPage;
+  const pageSignals = allSignals.slice(startIndex, startIndex + perPage);
+
+  const lastUpdated = responses.reduce((latest, response) => {
+    if (!response.last_updated) {
+      return latest;
+    }
+    if (!latest) {
+      return response.last_updated;
+    }
+    return new Date(response.last_updated).getTime() > new Date(latest).getTime()
+      ? response.last_updated
+      : latest;
+  }, '' as string);
+
+  const totalAnalyzed = responses.reduce((sum, response) => sum + (response.total_analyzed ?? response.signals?.length ?? 0), 0);
+  const activeSignals = responses.reduce((sum, response) => {
+    const computedActiveSignals = response.signals?.reduce(
+      (count: number, signal: OrderBookSignal) => count + (signal.signal_generated ? 1 : 0),
+      0
+    );
+    return sum + (response.active_signals ?? computedActiveSignals ?? 0);
+  }, 0);
+  const averageStrength = total === 0
+    ? 0
+    : allSignals.reduce((sum, signal) => sum + (signal.signal_strength ?? 0), 0) / total;
+
+  return {
+    signals: pageSignals,
+    pagination: {
+      page: currentPage,
+      limit: perPage,
+      total,
+      total_pages: totalPages,
+      has_next: currentPage < totalPages,
+      has_prev: currentPage > 1,
+    },
+    total_analyzed: totalAnalyzed,
+    active_signals: activeSignals,
+    last_updated: lastUpdated || new Date().toISOString(),
+    average_strength: averageStrength,
+  };
+}
+
 
 export function useOrderBookSignals(
   symbols?: string[],
@@ -161,11 +262,33 @@ export function useOrderBookSignals(
   // Enable query when trading is active, even if symbols aren't loaded yet
   // This allows WebSocket updates to populate the widget immediately
   const isEnabled = enabled;
+  const requestSymbols = symbols && symbols.length > 0 ? symbols : undefined;
 
   return useQuery({
-    queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy], // Include strategy in key to invalidate cache when strategy changes
+    queryKey: ['orderbook-signals', requestSymbols, enabled, page, perPage, strategy], // Include strategy in key to invalidate cache when strategy changes
     queryFn: async () => {
-      const response = await apiClient.getOrderBookSignals(symbols, { page, per_page: perPage });
+      if (requestSymbols && requestSymbols.length > ORDERBOOK_SYMBOL_CHUNK_SIZE) {
+        const chunks = chunkOrderBookSymbols(requestSymbols);
+        const chunkRequests = chunks.map((chunk) =>
+          apiClient.getOrderBookSignals(chunk, { page: 1, per_page: page * perPage })
+        );
+        const responses = await Promise.all(chunkRequests);
+
+        const firstError = responses.find((response) => response.status === 'error');
+        if (firstError) {
+          throw new Error(firstError.error || 'Failed to fetch order book signals');
+        }
+
+        return mergeOrderBookSignalResponses(
+          responses
+            .map((response) => response.data)
+            .filter((data) => Boolean(data)) as any[],
+          page,
+          perPage
+        );
+      }
+
+      const response = await apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage });
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch order book signals');
       }
