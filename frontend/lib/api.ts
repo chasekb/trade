@@ -750,14 +750,9 @@ class ApiClient {
       };
     }
 
-    return this.request('/api/simulated-trading/status').catch(() => ({
-      status: 'success',
-      data: {
-        is_trading: false,
-        is_active: false,
-        status: 'inactive',
-        mode: 'simulated',
-      },
+    return this.request('/api/simulated-trading/status').catch((error) => ({
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Failed to fetch simulated trading status',
       timestamp: new Date().toISOString(),
     }));
   }

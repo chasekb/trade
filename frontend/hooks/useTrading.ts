@@ -37,16 +37,27 @@ export function useLiveTrading() {
     refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 
-  // Update local status when backend status changes
+  // Update local status when backend status changes.
+  // Preserve an active optimistic session if the backend briefly reports inactive
+  // during startup or while the polling endpoint is warming up.
   useEffect(() => {
-    if (backendStatus) {
-      setStatus({
-        isActive: backendStatus.isActive ?? backendStatus.is_active ?? backendStatus.is_trading ?? false,
+    if (!backendStatus) {
+      return;
+    }
+
+    const backendIsActive = backendStatus.isActive ?? backendStatus.is_active ?? backendStatus.is_trading ?? false;
+    setStatus((prev) => {
+      if (!backendIsActive && prev.isActive) {
+        return prev;
+      }
+
+      return {
+        isActive: backendIsActive,
         mode: 'simulated',
         strategy: backendStatus.strategy_type || backendStatus.strategy || 'orderbook',
         symbols: backendStatus.symbols || [],
-      });
-    }
+      };
+    });
   }, [backendStatus]);
 
   const startTradingMutation = useMutation({

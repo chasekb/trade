@@ -629,8 +629,21 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
 
 export default function SimulatedTradingPanel({ className = '' }: LiveTradingPanelProps) {
   const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading();
+  const queryClient = useQueryClient();
   // Start native WebSocket to receive live updates for stats/signals
   useSimTradingWebSocket(status.isActive);
+
+  useEffect(() => {
+    if (!status.isActive) {
+      return;
+    }
+
+    // Force a fresh pull once the simulated session flips active so the statistics
+    // and order book widgets populate immediately, even if the optimistic start
+    // mutation resolved before the polling queries re-enabled.
+    void queryClient.refetchQueries({ queryKey: ['simulated-trading-stats'] });
+    void queryClient.refetchQueries({ queryKey: ['orderbook-signals'] });
+  }, [queryClient, status.isActive]);
 
   // Use sessionStorage to persist pagination state across tab switches and component remounts
   const getStoredPage = () => {
@@ -651,7 +664,6 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   const [currentPage, setCurrentPage] = useState(getStoredPage);
   const [pageSize, setPageSize] = useState(getStoredPageSize);
-  const queryClient = useQueryClient();
 
   const [strategy, setStrategy] = useState<TradingStrategy>('ml_enhanced_orderbook');
   const [config, setConfig] = useState<Record<string, any>>({
