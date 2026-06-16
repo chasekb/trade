@@ -2,6 +2,7 @@
 
 #include "db/DatabaseManager.hpp"
 #include "trading/TradingStatsService.hpp"
+#include "ml/Metrics.hpp"
 #include "utils/Logger.hpp"
 
 #include <algorithm>
@@ -733,6 +734,7 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
     recent_trades.append(tradeToJson(trade));
   }
   portfolio["recent_trades"] = recent_trades;
+  portfolio["trades"] = recent_trades;
 
   Json::Value recent_signals(Json::arrayValue);
   for (const auto &signal : recent_signals_) {
@@ -756,29 +758,103 @@ Json::Value SimulatedTradingService::buildStatusJson() const {
     status["symbols"].append(symbol);
   }
 
-  trade::trading::TradingStatsService stats_service;
-  const auto stats = stats_service.getTradingStats();
   Json::Value stats_json(Json::objectValue);
-  stats_json["total_pnl"] = stats.total_pnl;
-  stats_json["total_fees"] = stats.total_fees;
-  stats_json["net_pnl"] = stats.net_pnl;
-  stats_json["win_rate"] = stats.win_rate;
-  stats_json["total_trades"] = stats.total_trades;
-  stats_json["winning_trades"] = stats.winning_trades;
-  stats_json["losing_trades"] = stats.losing_trades;
-  stats_json["avg_win"] = stats.avg_win;
-  stats_json["avg_loss"] = stats.avg_loss;
-  stats_json["best_trade"] = stats.best_trade;
-  stats_json["worst_trade"] = stats.worst_trade;
-  stats_json["profit_factor"] = stats.profit_factor;
-  stats_json["sharpe_ratio"] = stats.sharpe_ratio;
-  stats_json["max_drawdown"] = stats.max_drawdown;
-  stats_json["total_volume"] = stats.total_volume;
-  stats_json["avg_trade_size"] = stats.avg_trade_size;
-  stats_json["trades_today"] = stats.trades_today;
-  stats_json["last_trade_time"] = stats.last_trade_time;
-  status["stats"] = stats_json;
+  stats_json["total_pnl"] = 0.0;
+  stats_json["total_fees"] = 0.0;
+  stats_json["net_pnl"] = 0.0;
+  stats_json["win_rate"] = 0.0;
+  stats_json["total_trades"] = 0;
+  stats_json["winning_trades"] = 0;
+  stats_json["losing_trades"] = 0;
+  stats_json["avg_win"] = 0.0;
+  stats_json["avg_loss"] = 0.0;
+  stats_json["best_trade"] = 0.0;
+  stats_json["worst_trade"] = 0.0;
+  stats_json["profit_factor"] = 0.0;
+  stats_json["sharpe_ratio"] = 0.0;
+  stats_json["max_drawdown"] = 0.0;
+  stats_json["total_volume"] = 0.0;
+  stats_json["avg_trade_size"] = 0.0;
+  stats_json["trades_today"] = 0;
+  stats_json["last_trade_time"] = "";
 
+  const std::string today = formatNowIsoUtc().substr(0, 10);
+  std::vector<double> pnl_values;
+  std::vector<double> positive_pnls;
+  std::vector<double> negative_pnls;
+  double cumulative_pnl = 0.0;
+  double peak_pnl = 0.0;
+
+  stats_json["best_trade"] = std::numeric_limits<double>::lowest();
+  stats_json["worst_trade"] = std::numeric_limits<double>::max();
+
+  for (const auto &trade : recent_trades_) {
+    const double pnl = trade.pnl;
+    const double fees = trade.fees;
+    const double volume = trade.quantity * trade.price;
+
+    stats_json["total_pnl"] = stats_json["total_pnl"].asDouble() + pnl;
+    stats_json["total_fees"] = stats_json["total_fees"].asDouble() + fees;
+    stats_json["total_volume"] = stats_json["total_volume"].asDouble() + volume;
+    stats_json["total_trades"] = stats_json["total_trades"].asInt() + 1;
+    stats_json["last_trade_time"] = trade.timestamp_iso;
+
+    pnl_values.push_back(pnl);
+
+    if (pnl > 0.0) {
+      stats_json["winning_trades"] = stats_json["winning_trades"].asInt() + 1;
+      positive_pnls.push_back(pnl);
+    } else if (pnl < 0.0) {
+      stats_json["losing_trades"] = stats_json["losing_trades"].asInt() + 1;
+      negative_pnls.push_back(pnl);
+    }
+
+    stats_json["best_trade"] = std::max(stats_json["best_trade"].asDouble(), pnl);
+    stats_json["worst_trade"] = std::min(stats_json["worst_trade"].asDouble(), pnl);
+
+    cumulative_pnl += pnl;
+    peak_pnl = std::max(peak_pnl, cumulative_pnl);
+    stats_json["max_drawdown"] = std::max(stats_json["max_drawdown"].asDouble(), peak_pnl - cumulative_pnl);
+
+    if (!trade.timestamp_iso.empty() && trade.timestamp_iso.rfind(today, 0) == 0) {
+      stats_json["trades_today"] = stats_json["trades_today"].asInt() + 1;
+    }
+  }
+
+  if (stats_json["total_trades"].asInt() > 0) {
+    const double total_trades = static_cast<double>(stats_json["total_trades"].asInt());
+    stats_json["win_rate"] = static_cast<double>(stats_json["winning_trades"].asInt()) / total_trades * 100.0;
+    stats_json["avg_trade_size"] = stats_json["total_volume"].asDouble() / total_trades;
+    stats_json["net_pnl"] = stats_json["total_pnl"].asDouble() - stats_json["total_fees"].asDouble();
+
+    if (!positive_pnls.empty()) {
+      double gross_wins = 0.0;
+      for (double value : positive_pnls) {
+        gross_wins += value;
+      }
+      stats_json["avg_win"] = gross_wins / static_cast<double>(positive_pnls.size());
+    }
+
+    if (!negative_pnls.empty()) {
+      double gross_losses = 0.0;
+      for (double value : negative_pnls) {
+        gross_losses += value;
+      }
+      stats_json["avg_loss"] = gross_losses / static_cast<double>(negative_pnls.size());
+    }
+
+    stats_json["profit_factor"] = trade::ml::Metrics::calculate_profit_factor(pnl_values);
+    stats_json["sharpe_ratio"] = trade::ml::Metrics::calculate_sharpe_ratio(pnl_values);
+  }
+
+  if (stats_json["best_trade"].asDouble() == std::numeric_limits<double>::lowest()) {
+    stats_json["best_trade"] = 0.0;
+  }
+  if (stats_json["worst_trade"].asDouble() == std::numeric_limits<double>::max()) {
+    stats_json["worst_trade"] = 0.0;
+  }
+
+  status["stats"] = stats_json;
   return status;
 }
 
@@ -974,6 +1050,72 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
   result["pagination"]["has_prev"] = false;
 
   try {
+    if (active_ || !recent_signals_.empty()) {
+      std::map<std::string, SignalRecord> latest_by_symbol;
+      for (const auto &signal : recent_signals_) {
+        if (!symbols.empty() && std::find(symbols.begin(), symbols.end(), signal.symbol) == symbols.end()) {
+          continue;
+        }
+
+        auto it = latest_by_symbol.find(signal.symbol);
+        if (it == latest_by_symbol.end() || signal.timestamp > it->second.timestamp) {
+          latest_by_symbol[signal.symbol] = signal;
+        }
+      }
+
+      std::vector<SignalRecord> filtered;
+      filtered.reserve(latest_by_symbol.size());
+      for (const auto &entry : latest_by_symbol) {
+        filtered.push_back(entry.second);
+      }
+
+      std::sort(filtered.begin(), filtered.end(), [](const SignalRecord &left, const SignalRecord &right) {
+        if (left.strength != right.strength) {
+          return left.strength > right.strength;
+        }
+        if (left.timestamp != right.timestamp) {
+          return left.timestamp > right.timestamp;
+        }
+        return left.symbol < right.symbol;
+      });
+
+      const int total = static_cast<int>(filtered.size());
+      const int safe_page = std::max(1, page);
+      const int safe_per_page = std::max(1, per_page);
+      const int offset = (safe_page - 1) * safe_per_page;
+      const int total_pages = safe_per_page > 0 ? static_cast<int>(std::ceil(static_cast<double>(total) / safe_per_page)) : 0;
+
+      result["pagination"]["page"] = safe_page;
+      result["pagination"]["per_page"] = safe_per_page;
+      result["pagination"]["total_signals"] = total;
+      result["pagination"]["total_pages"] = total_pages;
+      result["pagination"]["has_next"] = safe_page < total_pages;
+      result["pagination"]["has_prev"] = safe_page > 1;
+
+      double strength_sum = 0.0;
+      int active_count = 0;
+      long long latest_ts = 0;
+
+      for (int i = offset; i < std::min(offset + safe_per_page, total); ++i) {
+        const auto &signal = filtered[static_cast<std::size_t>(i)];
+        Json::Value signal_json = signalToJson(signal);
+        result["signals"].append(signal_json);
+        strength_sum += signal_json["signal_strength"].asDouble();
+        if (signal_json["signal_generated"].asBool()) {
+          ++active_count;
+        }
+        latest_ts = std::max(latest_ts, signal.timestamp);
+      }
+
+      result["total_analyzed"] = total;
+      result["active_signals"] = active_count;
+      result["average_strength"] = result["signals"].size() > 0 ? strength_sum / static_cast<double>(result["signals"].size()) : 0.0;
+      if (latest_ts > 0) {
+        result["last_updated"] = epochSecondsToIso(latest_ts);
+      }
+      return result;
+    }
+
     auto exists = DatabaseManager::getInstance().query(
         "SELECT to_regclass('public.order_book_signals') AS relname");
     if (exists.empty() || exists[0]["relname"].is_null()) {

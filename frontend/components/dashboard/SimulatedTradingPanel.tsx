@@ -396,7 +396,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
     trades: rawStats.trades ?? [],
     open_positions_count: rawStats.open_positions_count ?? rawStats.stats?.open_positions ?? 0,
   };
-  const trades = portfolio.trades || [];
+  const trades = portfolio.trades || portfolio.recent_trades || [];
   const positions = portfolio.positions || {};
   // Normalize positions to an array of open positions
   const openPositions = Array.isArray(positions)
