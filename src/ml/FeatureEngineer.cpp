@@ -13,12 +13,39 @@ namespace ml {
 
 FeatureEngineer::FeatureEngineer() {}
 
+void FeatureEngineer::initialize_default_parameters() {
+  // Raw feature pipeline dimensions:
+  // - 26 base features
+  // - 6 rolling windows x (mean + std) for each base feature = 312
+  // - 15 pairwise interactions from the first 5 features
+  // Total = 353.
+  constexpr std::size_t kFallbackFeatureDim = 353;
+
+  imputer_params.statistics.assign(kFallbackFeatureDim, 0.0);
+  scaler_params.mean.assign(kFallbackFeatureDim, 0.0);
+  scaler_params.scale.assign(kFallbackFeatureDim, 1.0);
+
+  pca_params.mean = xt::zeros<double>({kFallbackFeatureDim});
+  pca_params.components = xt::zeros<double>({kFallbackFeatureDim, kFallbackFeatureDim});
+  for (std::size_t i = 0; i < kFallbackFeatureDim; ++i) {
+    pca_params.components(i, i) = 1.0;
+  }
+
+  transformer_feature_dim_ = kFallbackFeatureDim;
+  history_window.clear();
+  transformer_sequence_window.clear();
+  parameters_loaded = true;
+}
+
 bool FeatureEngineer::load_parameters(const std::string &filepath) {
   try {
     std::ifstream file(filepath);
     if (!file.is_open()) {
-      spdlog::error("Could not open feature parameters file: {}", filepath);
-      return false;
+      spdlog::warn(
+          "Could not open feature parameters file: {}; using built-in fallback parameters",
+          filepath);
+      initialize_default_parameters();
+      return true;
     }
 
     nlohmann::json j;
@@ -57,8 +84,11 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
                  filepath, rows, cols);
     return true;
   } catch (const std::exception &e) {
-    spdlog::error("Error loading feature parameters: {}", e.what());
-    return false;
+    spdlog::warn(
+        "Error loading feature parameters from {}; using built-in fallback parameters: {}",
+        filepath, e.what());
+    initialize_default_parameters();
+    return true;
   }
 }
 

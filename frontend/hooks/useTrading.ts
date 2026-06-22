@@ -184,7 +184,7 @@ export function useLiveTrading() {
 }
 
 // Order Book Signals Hook with Pagination Support
-const ORDERBOOK_SYMBOL_CHUNK_SIZE = 100;
+const ORDERBOOK_SYMBOL_CHUNK_SIZE = 50;
 
 function chunkOrderBookSymbols(symbols?: string[]) {
   if (!symbols || symbols.length === 0) {

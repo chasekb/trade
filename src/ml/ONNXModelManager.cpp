@@ -162,7 +162,8 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     const bool has_loaded_transformer = new_transformer_session != nullptr;
 
     if (!has_loaded_regressor && !has_loaded_classifier && !has_loaded_transformer) {
-      spdlog::error("No usable ONNX models found in {}", model_dir);
+      spdlog::warn("No usable ONNX models found in {}; using neutral fallbacks",
+                   model_dir);
       return false;
     }
 

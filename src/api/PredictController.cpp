@@ -441,13 +441,14 @@ void PredictController::init(const std::string &param_path,
 
   feature_engineer_ = std::make_unique<ml::FeatureEngineer>();
   if (!feature_engineer_->load_parameters(param_path)) {
-    TR_LOG_ERROR("Failed to load feature engineer parameters from {}",
-                 param_path);
+    TR_LOG_WARN("Feature engineer parameters from {} unavailable; continuing with built-in fallback parameters",
+                param_path);
   }
 
   model_manager_ = std::make_unique<ml::ONNXModelManager>();
   if (!model_manager_->load_models(model_dir)) {
-    TR_LOG_ERROR("Failed to load ONNX models from {}", model_dir);
+    TR_LOG_WARN("No usable ONNX models loaded from {}; continuing with neutral prediction fallbacks",
+                model_dir);
   }
 }
 

@@ -25,6 +25,8 @@ public:
   size_t transformer_feature_dim() const { return transformer_feature_dim_; }
 
 private:
+  void initialize_default_parameters();
+
   // Internal steps
   std::vector<double> extract_base_features(const OrderBookFeatures &f);
   std::vector<double> impute(const std::vector<double> &base);
