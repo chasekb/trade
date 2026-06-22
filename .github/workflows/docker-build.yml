@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: docker-build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io/chasekb/trade
