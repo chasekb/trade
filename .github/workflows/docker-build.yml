@@ -185,8 +185,11 @@ jobs:
           file: ./frontend/Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/frontend,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=frontend-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=frontend-${{ matrix.arch }}
+          # Frontend build cache has been intermittently failing on GH Actions
+          # with missing blob errors during the final image assembly step.
+          # Disable gha cache import/export here so the image build stays
+          # deterministic and does not depend on the external cache blob store.
+          no-cache: true
 
       - name: Export digest
         if: github.event_name != 'pull_request'
