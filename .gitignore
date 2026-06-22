@@ -51,6 +51,8 @@ Thumbs.db
 secrets.txt
 rules/
 
+data/
+
 # Logs
 *.log
 logs/
