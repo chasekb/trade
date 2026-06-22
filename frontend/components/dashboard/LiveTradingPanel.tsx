@@ -19,6 +19,40 @@ import { OrderBookSignalsTable } from './OrderBookSignalsTable';
 import { ManualTradeSection } from './ManualTradeSection';
 import { BotActivityLog } from './BotActivityLog';
 
+type TradingConfigState = {
+  position_size_mode: 'percent' | 'dollar' | string;
+  position_size_value: number;
+  initial_portfolio_size: number;
+  max_positions_per_session?: number | string;
+  [key: string]: string | number | boolean | undefined;
+};
+
+type CoinbaseProduct = {
+  status?: string;
+  trading_disabled?: boolean;
+  id?: string;
+};
+
+type TradeLike = {
+  id?: string;
+  trade_id?: string;
+  symbol?: string;
+  side?: string;
+  quantity?: number;
+  price?: number;
+  fee?: number;
+  pnl?: number;
+  timestamp?: string | number;
+};
+
+type PositionLike = {
+  status?: string;
+  asset?: string;
+  balance_crypto?: number;
+  balance_fiat?: number;
+  unrealized_pnl?: number;
+};
+
 // Trading Configuration Section
 function TradingConfiguration({
   strategy,
@@ -33,13 +67,13 @@ function TradingConfiguration({
 }: {
   strategy: TradingStrategy;
   onStrategyChange: (strategy: TradingStrategy) => void;
-  config: Record<string, any>;
-  onConfigChange: (config: Record<string, any>) => void;
+  config: TradingConfigState;
+  onConfigChange: React.Dispatch<React.SetStateAction<TradingConfigState>>;
   symbols: string[];
   onSymbolsChange: (symbols: string[]) => void;
   onHide?: () => void;
   status: { isActive: boolean };
-  updateStrategyParameters: (params: Record<string, any>) => void;
+  updateStrategyParameters: (params: Record<string, string | number | boolean | undefined>) => void;
 }) {
   const { data: products } = useProducts();
   const [symbolMode, setSymbolMode] = useState<'single' | 'universe'>('single');
@@ -83,10 +117,11 @@ function TradingConfiguration({
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      const products = await response.json();
+      const products: CoinbaseProduct[] = await response.json();
       const symbols = products
-        .filter((product: any) => product.status === 'online' && !product.trading_disabled)
-        .map((product: any) => product.id)
+        .filter((product) => product.status === 'online' && !product.trading_disabled && typeof product.id === 'string')
+        .map((product) => product.id)
+        .filter((id): id is string => Boolean(id))
         .sort();
       console.log(`Fetched ${symbols.length} symbols from Coinbase`);
       return symbols;
@@ -415,48 +450,48 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
   const positions = portfolio.positions || portfolio.active_positions_data || {};
   
   // Normalize positions to an array of open positions
-  let openPositions = Array.isArray(positions)
+  let openPositions: PositionLike[] = Array.isArray(positions)
     ? positions
-    : Object.values(positions).filter((pos: any) => (pos?.status || 'open') === 'open');
+    : Object.values(positions as Record<string, PositionLike>).filter((pos): pos is PositionLike => (pos?.status || 'open') === 'open');
 
   // If using Coinbase data format, normalize to standard Position format
   if (openPositions.length > 0 && 'asset' in openPositions[0]) {
-    openPositions = openPositions.map((pos: any) => ({
-      symbol: pos.asset,
-      quantity: pos.balance_crypto,
+    openPositions = openPositions.map((pos) => ({
+      symbol: pos.asset || '-',
+      quantity: pos.balance_crypto || 0,
       // Calculate implied price if quantity > 0
-      current_price: pos.balance_crypto ? (pos.balance_fiat / pos.balance_crypto) : 0,
+      current_price: pos.balance_crypto ? (pos.balance_fiat || 0) / pos.balance_crypto : 0,
       entry_price: 0, // Entry price not available in portfolio summary
-      unrealized_pnl: pos.unrealized_pnl,
+      unrealized_pnl: pos.unrealized_pnl || 0,
       pnl_percent: 0, // Needs entry price
       side: 'LONG', // Spot holdings are effectively long
       status: 'open',
       timestamp: new Date().toISOString() // Placeholder
-    }));
+    })) as unknown as typeof openPositions;
   }
 
   // Calculate derived statistics (similar to vanilla JS implementation)
-  const winningTrades = trades.filter((trade: any) => trade.pnl > 0);
-  const losingTrades = trades.filter((trade: any) => trade.pnl < 0);
+  const winningTrades = trades.filter((trade: TradeLike) => (trade.pnl || 0) > 0);
+  const losingTrades = trades.filter((trade: TradeLike) => (trade.pnl || 0) < 0);
   const totalTrades = trades.length;
   const winningTradesCount = winningTrades.length;
   const losingTradesCount = losingTrades.length;
 
-  const completedTradesCount = trades.filter((t: any) => (t.side || '').toLowerCase() === 'sell').length;
+  const completedTradesCount = trades.filter((t: TradeLike) => (t.side || '').toLowerCase() === 'sell').length;
   const denom = completedTradesCount || totalTrades;
   const winRate = denom > 0 ? (winningTradesCount / denom) * 100 : 0;
 
-  const totalVolume = trades.reduce((sum: number, trade: any) => sum + (trade.quantity * trade.price), 0);
+  const totalVolume = trades.reduce((sum: number, trade: TradeLike) => sum + ((trade.quantity || 0) * (trade.price || 0)), 0);
   const avgTradeSize = totalTrades > 0 ? totalVolume / totalTrades : 0;
 
-  const bestTrade = trades.length > 0 ? Math.max(...trades.map((t: any) => t.pnl || 0)) : 0;
-  const worstTrade = trades.length > 0 ? Math.min(...trades.map((t: any) => t.pnl || 0)) : 0;
+  const bestTrade = trades.length > 0 ? Math.max(...trades.map((t: TradeLike) => t.pnl || 0)) : 0;
+  const worstTrade = trades.length > 0 ? Math.min(...trades.map((t: TradeLike) => t.pnl || 0)) : 0;
 
-  const avgWin = winningTradesCount > 0 ? winningTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0) / winningTradesCount : 0;
-  const avgLoss = losingTradesCount > 0 ? losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0) / losingTradesCount : 0;
+  const avgWin = winningTradesCount > 0 ? winningTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0) / winningTradesCount : 0;
+  const avgLoss = losingTradesCount > 0 ? losingTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0) / losingTradesCount : 0;
 
-  const grossProfit = winningTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0);
-  const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0));
+  const grossProfit = winningTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0);
+  const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0));
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
 
   // Support both standard field names and Coinbase API response field names
@@ -474,14 +509,14 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 
   const recentTrades = (portfolio.recent_trades || trades).slice(0, 10);
   // Merge and sort recent trades to ensure sells are included and latest first
-  const mergedRecentTrades = Array.from(
+  const mergedRecentTrades: TradeLike[] = Array.from(
     new Map(
       [...(portfolio.recent_trades || []), ...trades]
-        .map((t: any) => [t.id || t.trade_id || `${t.symbol}-${t.timestamp}-${t.side}`, t])
+        .map((t: TradeLike) => [t.id || t.trade_id || `${t.symbol}-${t.timestamp}-${t.side}`, t])
     ).values()
   )
-    .filter((t: any) => t && t.timestamp)
-    .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .filter((t: TradeLike): t is TradeLike => Boolean(t && t.timestamp))
+    .sort((a: TradeLike, b: TradeLike) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
     .slice(0, 10);
 
   return (
@@ -629,10 +664,10 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {mergedRecentTrades.map((trade: any, index: number) => (
+                  {mergedRecentTrades.map((trade: TradeLike, index: number) => (
                     <tr key={index}>
                       <td className="px-4 py-2 text-sm text-gray-900">
-                        {new Date(trade.timestamp || Date.now()).toLocaleString()}
+                        {trade.timestamp ? new Date(trade.timestamp).toLocaleString() : '-'}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900">{trade.symbol || '-'}</td>
                       <td className="px-4 py-2 text-sm">
@@ -652,9 +687,8 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
                       <td className="px-4 py-2 text-sm text-gray-900 text-red-600">
                         ${typeof trade.fee === 'number' ? trade.fee.toFixed(2) : (trade.fee || 0)}
                       </td>
-                      <td className={`px-4 py-2 text-sm font-medium ${(trade.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                        ${(trade.pnl || 0).toFixed(2)}
+                      <td className={`px-4 py-2 text-sm font-medium ${(Number(trade.pnl ?? 0)) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {(Number(trade.pnl ?? 0)).toFixed(2)}
                       </td>
                     </tr>
                   ))}
@@ -695,7 +729,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
   const queryClient = useQueryClient();
 
   const [strategy, setStrategy] = useState<TradingStrategy>('ml_enhanced_orderbook');
-  const [config, setConfig] = useState<Record<string, any>>({
+  const [config, setConfig] = useState<TradingConfigState>({
     position_size_mode: 'percent',
     position_size_value: 1,
     initial_portfolio_size: 10000,
@@ -704,22 +738,11 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
   });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
 
-  // Sync local symbols state with active trading status
-  useEffect(() => {
-    if (status.isActive && status.symbols && status.symbols.length > 0) {
-      // Only update if different to avoid infinite loops (though React handles identical state updates efficiently)
-      const isDifferent = symbols.length !== status.symbols.length ||
-        !symbols.every((s, i) => s === status.symbols![i]);
-
-      if (isDifferent) {
-        setSymbols(status.symbols);
-      }
-    }
-  }, [status.isActive, status.symbols, symbols]);
-
   // Use local symbols for polling; fallback to backend status if empty
   // Always pass symbols (even if empty) to enable query when trading is active
-  const activeSymbols = (symbols && symbols.length > 0) ? symbols : (status.symbols || []);
+  const activeSymbols = (status.isActive && status.symbols && status.symbols.length > 0)
+    ? status.symbols
+    : (symbols && symbols.length > 0 ? symbols : []);
   const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
     activeSymbols,
     status.isActive,

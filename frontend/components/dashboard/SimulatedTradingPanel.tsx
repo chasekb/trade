@@ -1,17 +1,42 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LiveTradingPanelProps, TradingStrategy } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
+import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 import { OpenPositionsSection } from './OpenPositionsSection';
 import { StrategySelector } from './StrategySelector';
 import { TradingControls } from './TradingControls';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { OrderBookSignalsTable } from './OrderBookSignalsTable';
+
+type TradingConfigState = {
+  position_size_mode: 'percent' | 'dollar' | string;
+  position_size_value: number;
+  initial_portfolio_size: number;
+  max_positions_per_session?: number | string;
+  [key: string]: string | number | boolean | undefined;
+};
+
+type CoinbaseProduct = {
+  status?: string;
+  trading_disabled?: boolean;
+  id?: string;
+};
+
+type RecentTradeRow = {
+  timestamp?: string;
+  symbol?: string;
+  side?: string;
+  quantity?: number | string;
+  price?: number | string;
+  pnl?: number | string;
+};
+
 // Trading Configuration Section
 function TradingConfiguration({
   strategy,
@@ -26,13 +51,13 @@ function TradingConfiguration({
 }: {
   strategy: TradingStrategy;
   onStrategyChange: (strategy: TradingStrategy) => void;
-  config: Record<string, any>;
-  onConfigChange: (config: Record<string, any>) => void;
+  config: TradingConfigState;
+  onConfigChange: React.Dispatch<React.SetStateAction<TradingConfigState>>;
   symbols: string[];
   onSymbolsChange: (symbols: string[]) => void;
   onHide?: () => void;
   status: { isActive: boolean };
-  updateStrategyParameters: (params: Record<string, any>) => void;
+  updateStrategyParameters: (params: Record<string, string | number | boolean | undefined>) => void;
 }) {
   const { data: products } = useProducts();
   const [symbolMode, setSymbolMode] = useState<'single' | 'universe'>('single');
@@ -76,10 +101,10 @@ function TradingConfiguration({
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      const products = await response.json();
+      const products = (await response.json()) as CoinbaseProduct[];
       const symbols = products
-        .filter((product: any) => product.status === 'online' && !product.trading_disabled)
-        .map((product: any) => product.id)
+        .filter((product) => product.status === 'online' && !product.trading_disabled && typeof product.id === 'string')
+        .flatMap((product) => (typeof product.id === 'string' ? [product.id] : []))
         .sort();
       console.log(`Fetched ${symbols.length} symbols from Coinbase`);
       return symbols;
@@ -255,7 +280,7 @@ function TradingConfiguration({
             }}
             className="w-full border border-gray-300 rounded-md px-3 py-2"
           >
-            {Object.entries(products || {}).map(([category, categorySymbols]) =>
+            {Object.entries(products || {}).map(([, categorySymbols]) =>
               categorySymbols.map((symbol: string) => (
                 <option key={symbol} value={symbol}>
                   {symbol}
@@ -380,72 +405,32 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
     );
   }
 
-  const rawStats = stats as any;
-  const portfolio = rawStats.portfolio ?? {
-    ...rawStats,
-    cash_balance: rawStats.current_capital ?? rawStats.cash_balance ?? rawStats.available_balance_usd ?? 0,
-    current_capital: rawStats.current_capital ?? rawStats.cash_balance ?? rawStats.available_balance_usd ?? 0,
-    total_value: rawStats.total_value ?? ((rawStats.current_capital ?? rawStats.cash_balance ?? rawStats.available_balance_usd ?? 0) + Number(rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl ?? 0)),
-    total_positions_value: rawStats.total_positions_value ?? 0,
-    unrealized_pnl: rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl ?? 0,
-    realized_pnl: rawStats.realized_pnl ?? 0,
-    net_pnl: rawStats.net_pnl ?? ((Number(rawStats.realized_pnl ?? 0) + Number(rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl ?? 0)) - Number(rawStats.total_fees ?? 0)),
-    total_fees: rawStats.total_fees ?? 0,
-    positions: rawStats.positions ?? [],
-    recent_trades: rawStats.recent_trades ?? [],
-    trades: rawStats.trades ?? [],
-    open_positions_count: rawStats.open_positions_count ?? rawStats.stats?.open_positions ?? 0,
-  };
-  const trades = portfolio.trades || portfolio.recent_trades || [];
-  const positions = portfolio.positions || {};
-  // Normalize positions to an array of open positions
-  const openPositions = Array.isArray(positions)
-    ? positions
-    : Object.values(positions).filter((pos: any) => (pos?.status || 'open') === 'open');
-  const cashBalance = Number(portfolio.cash_balance ?? portfolio.current_capital ?? portfolio.available_balance_usd ?? 0);
-  const totalValue = Number(portfolio.total_value ?? ((Number(portfolio.current_capital ?? portfolio.cash_balance ?? 0)) + Number(portfolio.unrealized_pnl ?? 0)));
-  const totalPositionsValue = Number(
-    portfolio.total_positions_value ??
-    openPositions.reduce((sum: number, pos: any) => sum + Math.abs(Number(pos?.current_price ?? pos?.price ?? pos?.entry_price ?? 0) * Number(pos?.quantity ?? pos?.size ?? 0)), 0)
-  );
-  const activePositions = Number(portfolio.open_positions_count ?? portfolio.active_positions ?? openPositions.length);
-  const winningTrades = trades.filter((trade: any) => trade.pnl > 0);
-  const losingTrades = trades.filter((trade: any) => trade.pnl < 0);
-  const totalTrades = trades.length;
-  const winningTradesCount = winningTrades.length;
-  const losingTradesCount = losingTrades.length;
-
-  const completedTradesCount = trades.filter((t: any) => (t.side || '').toLowerCase() === 'sell').length;
-  const denom = completedTradesCount || totalTrades;
-  const winRate = denom > 0 ? (winningTradesCount / denom) * 100 : 0;
-
-  const totalVolume = trades.reduce((sum: number, trade: any) => sum + (trade.quantity * trade.price), 0);
-  const avgTradeSize = totalTrades > 0 ? totalVolume / totalTrades : 0;
-
-  const bestTrade = trades.length > 0 ? Math.max(...trades.map((t: any) => t.pnl || 0)) : 0;
-  const worstTrade = trades.length > 0 ? Math.min(...trades.map((t: any) => t.pnl || 0)) : 0;
-
-  const avgWin = winningTradesCount > 0 ? winningTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0) / winningTradesCount : 0;
-  const avgLoss = losingTradesCount > 0 ? losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0) / losingTradesCount : 0;
-
-  const grossProfit = winningTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0);
-  const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: any) => sum + trade.pnl, 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
-  const unrealizedPnl = Number(portfolio.unrealized_pnl ?? 0);
-  const realizedPnl = Number(portfolio.realized_pnl ?? 0);
-  const netPnl = Number(portfolio.net_pnl ?? (unrealizedPnl + realizedPnl));
-  const totalFees = Number(portfolio.total_fees ?? 0);
-
-  // Merge and sort recent trades to ensure sells are included and latest first
-  const mergedRecentTrades = Array.from(
-    new Map(
-      [...(portfolio.recent_trades || []), ...trades]
-        .map((t: any) => [t.id || t.trade_id || `${t.symbol}-${t.timestamp}-${t.side}`, t])
-    ).values()
-  )
-    .filter((t: any) => t && t.timestamp)
-    .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 10);
+  const snapshot = normalizeSimulatedTradingSnapshot(stats);
+  const {
+    openPositions,
+    cashBalance,
+    totalValue,
+    totalPositionsValue,
+    activePositions,
+    unrealizedPnl,
+    realizedPnl,
+    totalFees,
+    netPnl,
+    stats: statsView,
+    recentTrades: mergedRecentTrades,
+  } = snapshot;
+  const winningTradesCount = statsView.winning_trades;
+  const losingTradesCount = statsView.losing_trades;
+  const totalTrades = statsView.total_trades;
+  const winRate = statsView.win_rate;
+  const totalVolume = statsView.total_volume;
+  const avgTradeSize = statsView.avg_trade_size;
+  const bestTrade = statsView.best_trade;
+  const worstTrade = statsView.worst_trade;
+  const avgWin = statsView.avg_win;
+  const avgLoss = statsView.avg_loss;
+  const profitFactor = Number(statsView.profit_factor);
+  const formattedProfitFactor = profitFactor >= 999 ? '∞' : profitFactor.toFixed(2);
 
   return (
     <Card>
@@ -546,7 +531,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Profit Factor</span>
                 <span className="text-sm font-medium">
-                  {profitFactor === Infinity ? '∞' : profitFactor.toFixed(2)}
+                  {formattedProfitFactor}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -591,10 +576,10 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {mergedRecentTrades.map((trade: any, index: number) => (
+                  {mergedRecentTrades.map((trade: RecentTradeRow, index: number) => (
                     <tr key={index}>
                       <td className="px-4 py-2 text-sm text-gray-900">
-                        {new Date(trade.timestamp || Date.now()).toLocaleString()}
+                        {trade.timestamp ? new Date(trade.timestamp).toLocaleString() : '-'}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900">{trade.symbol || '-'}</td>
                       <td className="px-4 py-2 text-sm">
@@ -611,10 +596,14 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
                       <td className="px-4 py-2 text-sm text-gray-900">
                         ${typeof trade.price === 'number' ? trade.price.toFixed(2) : trade.price || 0}
                       </td>
-                      <td className={`px-4 py-2 text-sm font-medium ${(trade.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                        ${(trade.pnl || 0).toFixed(2)}
-                      </td>
+                      {(() => {
+                        const tradePnl = Number(trade.pnl ?? 0);
+                        return (
+                          <td className={`px-4 py-2 text-sm font-medium ${tradePnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {tradePnl.toFixed(2)}
+                          </td>
+                        );
+                      })()}
                     </tr>
                   ))}
                 </tbody>
@@ -666,7 +655,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const [pageSize, setPageSize] = useState(getStoredPageSize);
 
   const [strategy, setStrategy] = useState<TradingStrategy>('ml_enhanced_orderbook');
-  const [config, setConfig] = useState<Record<string, any>>({
+  const [config, setConfig] = useState<TradingConfigState>({
     position_size_mode: 'percent',
     position_size_value: 1,
     initial_portfolio_size: 10000,
@@ -676,23 +665,12 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   // Use local symbols for polling; fallback to backend status if empty
   // Always pass symbols (even if empty) to enable query when trading is active
 
-  // Sync local symbols state with active trading status
-  useEffect(() => {
-    if (status.isActive && status.symbols && status.symbols.length > 0) {
-      // Only update if different to avoid infinite loops (though React handles identical state updates efficiently)
-      const isDifferent = symbols.length !== status.symbols.length ||
-        !symbols.every((s, i) => s === status.symbols![i]);
-
-      if (isDifferent) {
-        setSymbols(status.symbols);
-      }
-    }
-  }, [status.isActive, status.symbols, symbols]);
-
   // Always pass symbols (even if empty) to enable query when trading is active
-  const activeSymbols = (symbols && symbols.length > 0) ? symbols : (status.symbols || []);
+  const activeSymbols = status.isActive && status.symbols && status.symbols.length > 0
+    ? status.symbols
+    : ((symbols && symbols.length > 0) ? symbols : (status.symbols || []));
   // Fetch the active page of signals; the backend now deduplicates by symbol and sorts by strength/win probability.
-  const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
+  const { data: orderBookData } = useOrderBookSignals(
     activeSymbols,
     status.isActive,
     currentPage,

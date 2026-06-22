@@ -29,28 +29,40 @@ double getDoubleOrDefault(const pqxx::row &row, const char *column) {
   }
 }
 
-std::string getStringOrDefault(const pqxx::row &row, const char *column) {
+long long getLongLongOrDefault(const pqxx::row &row, const char *column) {
   try {
     if (row[column].is_null()) {
-      return "";
+      return 0;
     }
-    return row[column].c_str();
+    return row[column].as<long long>();
   } catch (...) {
-    return "";
+    return 0;
   }
 }
 
-std::string currentDateIso() {
-  auto now = std::chrono::system_clock::now();
-  std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm{};
+std::string formatUtcDateFromEpoch(long long epoch_seconds) {
+  std::time_t raw = static_cast<std::time_t>(epoch_seconds);
+  std::tm utc_tm{};
 #ifdef _WIN32
-  localtime_s(&local_tm, &now_c);
+  gmtime_s(&utc_tm, &raw);
 #else
-  localtime_r(&now_c, &local_tm);
+  gmtime_r(&raw, &utc_tm);
 #endif
   std::ostringstream oss;
-  oss << std::put_time(&local_tm, "%Y-%m-%d");
+  oss << std::put_time(&utc_tm, "%Y-%m-%d");
+  return oss.str();
+}
+
+std::string formatUtcIsoFromEpoch(long long epoch_seconds) {
+  std::time_t raw = static_cast<std::time_t>(epoch_seconds);
+  std::tm utc_tm{};
+#ifdef _WIN32
+  gmtime_s(&utc_tm, &raw);
+#else
+  gmtime_r(&raw, &utc_tm);
+#endif
+  std::ostringstream oss;
+  oss << std::put_time(&utc_tm, "%Y-%m-%dT%H:%M:%SZ");
   return oss.str();
 }
 
@@ -74,7 +86,9 @@ TradingStats TradingStatsService::getTradingStats() const {
       return stats;
     }
 
-    const std::string today = currentDateIso();
+    const auto now = std::chrono::system_clock::now();
+    const std::string today = formatUtcDateFromEpoch(
+        std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count());
     std::vector<double> pnl_values;
     std::vector<double> positive_pnls;
     std::vector<double> negative_pnls;
@@ -90,7 +104,8 @@ TradingStats TradingStatsService::getTradingStats() const {
       const double fees = getDoubleOrDefault(row, "fees");
       const double size = getDoubleOrDefault(row, "size");
       const double price = getDoubleOrDefault(row, "price");
-      const std::string timestamp = getStringOrDefault(row, "timestamp");
+      const long long timestamp_epoch = getLongLongOrDefault(row, "timestamp");
+      const std::string timestamp = formatUtcIsoFromEpoch(timestamp_epoch);
 
       stats.total_pnl += pnl;
       stats.total_fees += fees;
