@@ -2,7 +2,9 @@
 
 #include "db/DatabaseManager.hpp"
 #include "trading/TradingStatsService.hpp"
+#include "trading/PositionSizingPolicy.hpp"
 #include "ml/Metrics.hpp"
+#include "cache/CacheManager.hpp"
 #include "utils/Logger.hpp"
 
 #include <algorithm>
@@ -224,7 +226,7 @@ double SimulatedTradingService::basePriceForSymbol(const std::string &symbol) co
   return 100.0 + (static_cast<double>(std::hash<std::string>{}(symbol) % 5000) / 10.0);
 }
 
-double SimulatedTradingService::positionSizeUsdForSignal(double price) const {
+double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &signal) const {
   const double pct = parameters_.isMember("position_size_percent")
                          ? parameters_["position_size_percent"].asDouble()
                          : 1.0;
@@ -235,13 +237,55 @@ double SimulatedTradingService::positionSizeUsdForSignal(double price) const {
                                     ? parameters_["position_size_value"].asDouble()
                                     : 1.0;
 
-  if (size_mode == "dollar") {
-    return std::max(25.0, position_value);
+  const double capital = initial_capital_ > 0.0 ? initial_capital_ : kDefaultInitialCapital;
+  PositionSizingInputs inputs;
+  inputs.base_usd = size_mode == "dollar" ? std::max(25.0, position_value)
+                                            : capital * std::max(0.01, pct) / 100.0;
+  inputs.signal_strength = signal.strength;
+  inputs.win_probability = signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
+                               .get("win_probability", Json::Value(0.5))
+                               .asDouble();
+  inputs.expected_return = signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
+                               .get("expected_return", Json::Value(0.0))
+                               .asDouble();
+  inputs.model_confidence = signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
+                                 .get("confidence", Json::Value(0.0))
+                                 .asDouble();
+  inputs.spread_percent = signal.mid_price > 0.0 ? signal.spread / signal.mid_price : 0.0;
+
+  const auto live_stats = TradingStatsService::getInstance().getTradingStats();
+  inputs.live_profit_factor = live_stats.profit_factor;
+  inputs.live_sharpe_ratio = live_stats.sharpe_ratio;
+  inputs.live_max_drawdown = live_stats.max_drawdown;
+  inputs.live_total_fees = live_stats.total_fees;
+  inputs.live_net_pnl = live_stats.net_pnl;
+
+  const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
+  if (!recent_metrics.cohort_metrics.empty()) {
+    double weighted_profit_factor = 0.0;
+    double weighted_sharpe_ratio = 0.0;
+    double weighted_drawdown = 0.0;
+    std::size_t total_samples = 0;
+    for (const auto &cohort : recent_metrics.cohort_metrics) {
+      if (cohort.sample_count <= 0) {
+        continue;
+      }
+      const double weight = static_cast<double>(cohort.sample_count);
+      total_samples += static_cast<std::size_t>(cohort.sample_count);
+      weighted_profit_factor += cohort.profit_factor * weight;
+      weighted_sharpe_ratio += cohort.sharpe_ratio * weight;
+      weighted_drawdown += cohort.max_drawdown * weight;
+    }
+    if (total_samples > 0) {
+      const double denominator = static_cast<double>(total_samples);
+      inputs.cohort_sample_count = total_samples;
+      inputs.cohort_profit_factor = weighted_profit_factor / denominator;
+      inputs.cohort_sharpe_ratio = weighted_sharpe_ratio / denominator;
+      inputs.cohort_avg_drawdown = weighted_drawdown / denominator;
+    }
   }
 
-  const double capital = initial_capital_ > 0.0 ? initial_capital_ : kDefaultInitialCapital;
-  const double usd = capital * std::max(0.01, pct) / 100.0;
-  return std::max(25.0, usd);
+  return calculate_position_size_usd(inputs);
 }
 
 Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) const {
@@ -519,7 +563,7 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
     return;
   }
 
-  const double allocated_usd = positionSizeUsdForSignal(signal.price);
+  const double allocated_usd = positionSizeUsdForSignal(signal);
   const double quantity = std::max(0.000001, allocated_usd / std::max(0.000001, signal.price));
   const double fee = signal.price * quantity * kFeeRate;
 

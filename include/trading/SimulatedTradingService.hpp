@@ -102,7 +102,7 @@ private:
   Json::Value closePositionLocked(const std::string &symbol, const std::string &reason);
   void updateMarkToMarketLocked(const std::map<std::string, double> &prices);
   double basePriceForSymbol(const std::string &symbol) const;
-  double positionSizeUsdForSignal(double price) const;
+  double positionSizeUsdForSignal(const SignalRecord &signal) const;
   long long nowEpochSeconds() const;
   std::string nowIsoUtc() const;
   std::string makeId(const std::string &prefix, long long ts, const std::string &symbol,

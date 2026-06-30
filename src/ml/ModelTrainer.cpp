@@ -1,5 +1,6 @@
 #include "ml/ModelTrainer.hpp"
 #include "ml/Metrics.hpp"
+#include "ml/ExecutionCohorts.hpp"
 #include "ml/TransformerOnnxExport.hpp"
 #include "ml/TransformerModel.hpp"
 #include <algorithm>
@@ -161,6 +162,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
             ++wins;
           }
           update_pnl_stats(pnl_stats, sample.second.pnl);
+          update_execution_cohort(cohort_accumulators, sample.first, sample.second);
         }
       }
 
@@ -185,6 +187,8 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       }
 
       finalize_trading_metrics(pnl_stats);
+      metrics.validation_strategy = "streaming_batch";
+      metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
       return metrics;
     }
     case ModelType::GRADIENT_BOOSTING: {
@@ -224,6 +228,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
             ++correct;
 
           update_pnl_stats(pnl_stats, sample.second.pnl);
+          update_execution_cohort(cohort_accumulators, sample.first, sample.second);
         }
       }
 
@@ -245,6 +250,8 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
               : 0.0;
 
       finalize_trading_metrics(pnl_stats);
+      metrics.validation_strategy = "streaming_batch";
+      metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
       return metrics;
     }
     case ModelType::TRANSFORMER: {
@@ -278,6 +285,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
           sum_xx += x * x;
           sum_xy += x * y;
           update_pnl_stats(pnl_stats, y);
+          update_execution_cohort(cohort_accumulators, sample.first, sample.second);
         }
       }
 
@@ -330,6 +338,8 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       metrics.r2_score = ss_tot == 0.0 ? 0.0 : 1.0 - (ss_res / ss_tot);
 
       finalize_trading_metrics(pnl_stats);
+      metrics.validation_strategy = "streaming_batch";
+      metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
       return metrics;
     }
     default:
@@ -382,6 +392,14 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
     test_outcomes.push_back(paired_data[i].second);
   }
 
+  std::vector<std::pair<OrderBookFeatures, TradeOutcome>> validation_samples;
+  validation_samples.reserve(test_features.size());
+  for (size_t i = 0; i < test_features.size(); ++i) {
+    validation_samples.emplace_back(test_features[i], test_outcomes[i]);
+  }
+
+  std::map<std::string, ExecutionCohortAccumulator> cohort_accumulators;
+
   // 5. Train based on type
   switch (config.type) {
   case ModelType::RANDOM_FOREST:
@@ -398,6 +416,8 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
                  static_cast<int>(config.type));
   }
 
+  metrics.validation_strategy = "random_split";
+  metrics.cohort_metrics = summarize_execution_cohorts(std::move(validation_samples));
   return metrics;
 }
 

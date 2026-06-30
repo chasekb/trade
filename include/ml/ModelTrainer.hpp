@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ml/DataCollector.hpp"
+#include "ml/ExecutionCohorts.hpp"
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -43,6 +44,8 @@ struct ModelMetrics {
   double r2_score = 0.0;
   double sharpe_ratio = 0.0;
   double profit_factor = 0.0;
+  std::string validation_strategy = "random_split";
+  std::vector<ExecutionCohortMetrics> cohort_metrics;
 };
 
 // JSON Serialization

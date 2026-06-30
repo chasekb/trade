@@ -1,5 +1,6 @@
 #include "ml/Metrics.hpp"
 #include "ml/ModelTrainer.hpp"
+#include "ml/ExecutionCohorts.hpp"
 #include <algorithm>
 #include <nlohmann/json.hpp>
 #include <numeric>
@@ -163,17 +164,25 @@ void to_json(nlohmann::json &j, const ml::ModelMetrics &m) {
                      {"mse", m.mse},
                      {"r2_score", m.r2_score},
                      {"sharpe_ratio", m.sharpe_ratio},
-                     {"profit_factor", m.profit_factor}};
+                     {"profit_factor", m.profit_factor},
+                     {"validation_strategy", m.validation_strategy},
+                     {"cohort_metrics", m.cohort_metrics}};
 }
 
 void from_json(const nlohmann::json &j, ml::ModelMetrics &m) {
-  j.at("accuracy").get_to(m.accuracy);
-  j.at("precision").get_to(m.precision);
-  j.at("recall").get_to(m.recall);
-  j.at("mse").get_to(m.mse);
-  j.at("r2_score").get_to(m.r2_score);
-  j.at("sharpe_ratio").get_to(m.sharpe_ratio);
-  j.at("profit_factor").get_to(m.profit_factor);
+  m.accuracy = j.value("accuracy", 0.0);
+  m.precision = j.value("precision", 0.0);
+  m.recall = j.value("recall", 0.0);
+  m.mse = j.value("mse", 0.0);
+  m.r2_score = j.value("r2_score", 0.0);
+  m.sharpe_ratio = j.value("sharpe_ratio", 0.0);
+  m.profit_factor = j.value("profit_factor", 0.0);
+  m.validation_strategy = j.value("validation_strategy", std::string{"random_split"});
+  if (j.contains("cohort_metrics") && j["cohort_metrics"].is_array()) {
+    m.cohort_metrics = j["cohort_metrics"].get<std::vector<ml::ExecutionCohortMetrics>>();
+  } else {
+    m.cohort_metrics.clear();
+  }
 }
 
 } // namespace ml

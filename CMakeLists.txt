@@ -30,9 +30,11 @@ set(SOURCES
     src/ml/ONNXModelManager.cpp
     src/ml/Types.cpp
     src/ml/DataCollector.cpp
+    src/ml/ExecutionCohorts.cpp
     src/ml/ModelTrainer.cpp
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
+    src/trading/PositionSizingPolicy.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
     src/api/PredictController.cpp
@@ -86,6 +88,28 @@ if(xtensor_INCLUDE_DIRS)
 endif()
 
 enable_testing()
+
+add_executable(test_execution_cohorts
+    src/tests/test_execution_cohorts.cpp
+    src/ml/ExecutionCohorts.cpp
+)
+target_include_directories(test_execution_cohorts PRIVATE include)
+target_link_libraries(test_execution_cohorts PRIVATE
+    nlohmann_json::nlohmann_json
+    libpqxx::pqxx
+    xtensor
+)
+if(xtensor_INCLUDE_DIRS)
+    target_include_directories(test_execution_cohorts PRIVATE ${xtensor_INCLUDE_DIRS})
+endif()
+add_test(NAME execution_cohorts COMMAND test_execution_cohorts)
+
+add_executable(test_position_sizing_policy
+    src/tests/test_position_sizing_policy.cpp
+    src/trading/PositionSizingPolicy.cpp
+)
+target_include_directories(test_position_sizing_policy PRIVATE include)
+add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
 
 add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
