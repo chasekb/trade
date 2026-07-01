@@ -114,6 +114,7 @@ add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
 add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
     src/ml/DataCollector.cpp
+    src/ml/ExecutionCohorts.cpp
     src/ml/Metrics.cpp
     src/ml/ModelTrainer.cpp
     src/ml/TransformerOnnxExport.cpp

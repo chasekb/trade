@@ -528,7 +528,7 @@ void PredictController::tradingStats(
     std::function<void(const HttpResponsePtr &)> &&callback) {
   (void)req;
 
-  const auto stats = trade::trading::TradingStatsService().getTradingStats();
+  const auto stats = trade::trading::TradingStatsService::getInstance().getTradingStats();
 
   Json::Value result;
   result["total_pnl"] = stats.total_pnl;
