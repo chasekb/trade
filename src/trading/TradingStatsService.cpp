@@ -16,6 +16,11 @@
 namespace trade {
 namespace trading {
 
+TradingStatsService &TradingStatsService::getInstance() {
+  static TradingStatsService instance;
+  return instance;
+}
+
 namespace {
 
 double getDoubleOrDefault(const pqxx::row &row, const char *column) {

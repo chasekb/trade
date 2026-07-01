@@ -28,7 +28,15 @@ struct TradingStats {
 
 class TradingStatsService {
 public:
+  static TradingStatsService &getInstance();
+
   TradingStats getTradingStats() const;
+
+private:
+  TradingStatsService() = default;
+  ~TradingStatsService() = default;
+  TradingStatsService(const TradingStatsService &) = delete;
+  TradingStatsService &operator=(const TradingStatsService &) = delete;
 };
 
 } // namespace trading

@@ -94,6 +94,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
 
   if (use_batch) {
     const int batch_rows = std::max(1, config.batch_size);
+    std::map<std::string, ExecutionCohortAccumulator> cohort_accumulators;
     spdlog::info(
         "ModelTrainer: batch_training enabled, streaming unlimited rows in batches of {}",
         batch_rows);
