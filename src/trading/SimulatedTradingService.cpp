@@ -1,6 +1,8 @@
 #include "trading/SimulatedTradingService.hpp"
 
 #include "db/DatabaseManager.hpp"
+#include <pqxx/pqxx>
+#include "trading/TradingStatsCalculator.hpp"
 #include "trading/TradingStatsService.hpp"
 #include "trading/PositionSizingPolicy.hpp"
 #include "ml/Metrics.hpp"
@@ -103,6 +105,21 @@ std::string sanitizeSide(const std::string &side) {
     return "sell";
   }
   return "buy";
+}
+
+TradePerformanceInput toTradePerformanceInput(const pqxx::row &row) {
+  TradePerformanceInput input;
+  try {
+    input.pnl = row["pnl"].is_null() ? 0.0 : row["pnl"].as<double>();
+    input.fees = row["fees"].is_null() ? 0.0 : row["fees"].as<double>();
+    input.quantity = row["size"].is_null() ? 0.0 : row["size"].as<double>();
+    input.price = row["price"].is_null() ? 0.0 : row["price"].as<double>();
+    const long long timestamp_epoch = row["timestamp"].is_null() ? 0 : row["timestamp"].as<long long>();
+    input.timestamp_iso = epochSecondsToIso(timestamp_epoch);
+  } catch (...) {
+    input = {};
+  }
+  return input;
 }
 
 } // namespace
@@ -600,6 +617,11 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   trade.trade_type = mode_;
 
   total_fees_ += fee;
+  if (position.side == "buy") {
+    cash_ -= (allocated_usd + fee);
+  } else {
+    cash_ += (allocated_usd - fee);
+  }
   persistTradeLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -625,7 +647,11 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
 
   realized_pnl_ += gross_pnl;
   total_fees_ += fee;
-  cash_ = initial_capital_ + realized_pnl_ - total_fees_;
+  if (position.side == "buy") {
+    cash_ += (exit_price * position.quantity - fee);
+  } else {
+    cash_ -= (exit_price * position.quantity + fee);
+  }
 
   TradeRecord trade;
   const long long ts = nowEpochSeconds();
@@ -757,20 +783,30 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   for (const auto &symbol : symbols_) {
     portfolio["symbols"].append(symbol);
   }
-  portfolio["current_capital"] = initial_capital_ + realized_pnl_ + unrealized_pnl_ - total_fees_;
+  Json::Value positions(Json::objectValue);
+  double directional_positions_value = 0.0;
+  double absolute_positions_value = 0.0;
+  for (const auto &[symbol, position] : positions_) {
+    positions[symbol] = positionToJson(position);
+    const double market_value = std::abs(position.quantity * position.current_price);
+    absolute_positions_value += market_value;
+    directional_positions_value += position.side == "buy" ? market_value : -market_value;
+  }
+  const double total_value = cash_ + directional_positions_value;
+
+  portfolio["cash_balance"] = cash_;
+  portfolio["available_balance_usd"] = cash_;
+  portfolio["total_balance_usd"] = total_value;
+  portfolio["current_capital"] = total_value;
+  portfolio["total_value"] = total_value;
   portfolio["initial_capital"] = initial_capital_;
-  portfolio["total_positions_value"] = total_positions_value_;
+  portfolio["total_positions_value"] = absolute_positions_value;
   portfolio["unrealized_pnl"] = unrealized_pnl_;
   portfolio["realized_pnl"] = realized_pnl_;
-  portfolio["net_pnl"] = unrealized_pnl_ + realized_pnl_ - total_fees_;
+  portfolio["net_pnl"] = total_value - initial_capital_;
   portfolio["total_fees"] = total_fees_;
   portfolio["open_positions_count"] = static_cast<int>(positions_.size());
   portfolio["tick"] = static_cast<Json::Int64>(tick_);
-
-  Json::Value positions(Json::objectValue);
-  for (const auto &[symbol, position] : positions_) {
-    positions[symbol] = positionToJson(position);
-  }
   portfolio["positions"] = positions;
 
   Json::Value recent_trades(Json::arrayValue);
@@ -802,101 +838,56 @@ Json::Value SimulatedTradingService::buildStatusJson() const {
     status["symbols"].append(symbol);
   }
 
-  Json::Value stats_json(Json::objectValue);
-  stats_json["total_pnl"] = 0.0;
-  stats_json["total_fees"] = 0.0;
-  stats_json["net_pnl"] = 0.0;
-  stats_json["win_rate"] = 0.0;
-  stats_json["total_trades"] = 0;
-  stats_json["winning_trades"] = 0;
-  stats_json["losing_trades"] = 0;
-  stats_json["avg_win"] = 0.0;
-  stats_json["avg_loss"] = 0.0;
-  stats_json["best_trade"] = 0.0;
-  stats_json["worst_trade"] = 0.0;
-  stats_json["profit_factor"] = 0.0;
-  stats_json["sharpe_ratio"] = 0.0;
-  stats_json["max_drawdown"] = 0.0;
-  stats_json["total_volume"] = 0.0;
-  stats_json["avg_trade_size"] = 0.0;
-  stats_json["trades_today"] = 0;
-  stats_json["last_trade_time"] = "";
-
+  std::vector<TradePerformanceInput> trades;
   const std::string today = formatNowIsoUtc().substr(0, 10);
-  std::vector<double> pnl_values;
-  std::vector<double> positive_pnls;
-  std::vector<double> negative_pnls;
-  double cumulative_pnl = 0.0;
-  double peak_pnl = 0.0;
 
-  stats_json["best_trade"] = std::numeric_limits<double>::lowest();
-  stats_json["worst_trade"] = std::numeric_limits<double>::max();
-
-  for (const auto &trade : recent_trades_) {
-    const double pnl = trade.pnl;
-    const double fees = trade.fees;
-    const double volume = trade.quantity * trade.price;
-
-    stats_json["total_pnl"] = stats_json["total_pnl"].asDouble() + pnl;
-    stats_json["total_fees"] = stats_json["total_fees"].asDouble() + fees;
-    stats_json["total_volume"] = stats_json["total_volume"].asDouble() + volume;
-    stats_json["total_trades"] = stats_json["total_trades"].asInt() + 1;
-    stats_json["last_trade_time"] = trade.timestamp_iso;
-
-    pnl_values.push_back(pnl);
-
-    if (pnl > 0.0) {
-      stats_json["winning_trades"] = stats_json["winning_trades"].asInt() + 1;
-      positive_pnls.push_back(pnl);
-    } else if (pnl < 0.0) {
-      stats_json["losing_trades"] = stats_json["losing_trades"].asInt() + 1;
-      negative_pnls.push_back(pnl);
-    }
-
-    stats_json["best_trade"] = std::max(stats_json["best_trade"].asDouble(), pnl);
-    stats_json["worst_trade"] = std::min(stats_json["worst_trade"].asDouble(), pnl);
-
-    cumulative_pnl += pnl;
-    peak_pnl = std::max(peak_pnl, cumulative_pnl);
-    stats_json["max_drawdown"] = std::max(stats_json["max_drawdown"].asDouble(), peak_pnl - cumulative_pnl);
-
-    if (!trade.timestamp_iso.empty() && trade.timestamp_iso.rfind(today, 0) == 0) {
-      stats_json["trades_today"] = stats_json["trades_today"].asInt() + 1;
-    }
-  }
-
-  if (stats_json["total_trades"].asInt() > 0) {
-    const double total_trades = static_cast<double>(stats_json["total_trades"].asInt());
-    stats_json["win_rate"] = static_cast<double>(stats_json["winning_trades"].asInt()) / total_trades * 100.0;
-    stats_json["avg_trade_size"] = stats_json["total_volume"].asDouble() / total_trades;
-    stats_json["net_pnl"] = stats_json["total_pnl"].asDouble() - stats_json["total_fees"].asDouble();
-
-    if (!positive_pnls.empty()) {
-      double gross_wins = 0.0;
-      for (double value : positive_pnls) {
-        gross_wins += value;
+  try {
+    if (!session_id_.empty()) {
+      auto exists = DatabaseManager::getInstance().query(
+          "SELECT to_regclass('public.individual_trades') AS relname");
+      if (!exists.empty() && !exists[0]["relname"].is_null()) {
+        std::ostringstream sql;
+        sql << "SELECT size, price, timestamp, pnl, fees "
+            << "FROM individual_trades WHERE session_id='" << escapeSql(session_id_)
+            << "' ORDER BY timestamp ASC";
+        auto rows = DatabaseManager::getInstance().query(sql.str());
+        trades.reserve(rows.size());
+        for (const auto &row : rows) {
+          trades.push_back(toTradePerformanceInput(row));
+        }
       }
-      stats_json["avg_win"] = gross_wins / static_cast<double>(positive_pnls.size());
     }
+  } catch (const std::exception &e) {
+    TR_LOG_WARN("Failed to load persisted simulated trade stats for session {}: {}", session_id_, e.what());
+  }
 
-    if (!negative_pnls.empty()) {
-      double gross_losses = 0.0;
-      for (double value : negative_pnls) {
-        gross_losses += value;
-      }
-      stats_json["avg_loss"] = gross_losses / static_cast<double>(negative_pnls.size());
+  if (trades.empty()) {
+    trades.reserve(recent_trades_.size());
+    for (const auto &trade : recent_trades_) {
+      trades.push_back(TradePerformanceInput{trade.pnl, trade.fees, trade.quantity, trade.price, trade.timestamp_iso});
     }
-
-    stats_json["profit_factor"] = trade::ml::Metrics::calculate_profit_factor(pnl_values);
-    stats_json["sharpe_ratio"] = trade::ml::Metrics::calculate_sharpe_ratio(pnl_values);
   }
 
-  if (stats_json["best_trade"].asDouble() == std::numeric_limits<double>::lowest()) {
-    stats_json["best_trade"] = 0.0;
-  }
-  if (stats_json["worst_trade"].asDouble() == std::numeric_limits<double>::max()) {
-    stats_json["worst_trade"] = 0.0;
-  }
+  const TradingStats summary = calculateTradingStats(trades, today);
+  Json::Value stats_json(Json::objectValue);
+  stats_json["total_pnl"] = summary.total_pnl;
+  stats_json["total_fees"] = summary.total_fees;
+  stats_json["net_pnl"] = summary.net_pnl;
+  stats_json["win_rate"] = summary.win_rate;
+  stats_json["total_trades"] = summary.total_trades;
+  stats_json["winning_trades"] = summary.winning_trades;
+  stats_json["losing_trades"] = summary.losing_trades;
+  stats_json["avg_win"] = summary.avg_win;
+  stats_json["avg_loss"] = summary.avg_loss;
+  stats_json["best_trade"] = summary.best_trade;
+  stats_json["worst_trade"] = summary.worst_trade;
+  stats_json["profit_factor"] = summary.profit_factor;
+  stats_json["sharpe_ratio"] = summary.sharpe_ratio;
+  stats_json["max_drawdown"] = summary.max_drawdown;
+  stats_json["total_volume"] = summary.total_volume;
+  stats_json["avg_trade_size"] = summary.avg_trade_size;
+  stats_json["trades_today"] = summary.trades_today;
+  stats_json["last_trade_time"] = summary.last_trade_time;
 
   status["stats"] = stats_json;
   return status;

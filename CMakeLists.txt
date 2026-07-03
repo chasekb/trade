@@ -37,6 +37,7 @@ set(SOURCES
     src/trading/PositionSizingPolicy.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
+    src/trading/TradingStatsCalculator.cpp
     src/api/PredictController.cpp
 )
 
@@ -110,6 +111,17 @@ add_executable(test_position_sizing_policy
 )
 target_include_directories(test_position_sizing_policy PRIVATE include)
 add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
+
+add_executable(test_trading_stats_calculator
+    src/tests/test_trading_stats_calculator.cpp
+    src/ml/Metrics.cpp
+    src/trading/TradingStatsCalculator.cpp
+)
+target_include_directories(test_trading_stats_calculator PRIVATE include)
+target_link_libraries(test_trading_stats_calculator PRIVATE
+    spdlog::spdlog
+)
+add_test(NAME trading_stats_calculator COMMAND test_trading_stats_calculator)
 
 add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
