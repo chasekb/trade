@@ -114,7 +114,6 @@ add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
 
 add_executable(test_trading_stats_calculator
     src/tests/test_trading_stats_calculator.cpp
-    src/ml/Metrics.cpp
     src/trading/TradingStatsCalculator.cpp
 )
 target_include_directories(test_trading_stats_calculator PRIVATE include)

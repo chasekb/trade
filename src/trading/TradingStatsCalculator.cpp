@@ -1,7 +1,5 @@
 #include "trading/TradingStatsCalculator.hpp"
 
-#include "ml/Metrics.hpp"
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -29,6 +27,50 @@ std::string currentUtcDate() {
     return {};
   }
   return buffer;
+}
+
+double calculateProfitFactor(const std::vector<double> &pnl_values) {
+  if (pnl_values.empty()) {
+    return 0.0;
+  }
+
+  double gross_profit = 0.0;
+  double gross_loss = 0.0;
+  for (double pnl : pnl_values) {
+    if (pnl > 0.0) {
+      gross_profit += pnl;
+    } else if (pnl < 0.0) {
+      gross_loss += std::abs(pnl);
+    }
+  }
+
+  if (gross_loss == 0.0) {
+    return gross_profit > 0.0 ? 999.0 : 0.0;
+  }
+
+  return gross_profit / gross_loss;
+}
+
+double calculateSharpeRatio(const std::vector<double> &returns) {
+  if (returns.empty()) {
+    return 0.0;
+  }
+
+  const double mean_return = std::accumulate(returns.begin(), returns.end(), 0.0) /
+                             static_cast<double>(returns.size());
+  double variance = 0.0;
+  for (double r : returns) {
+    const double diff = r - mean_return;
+    variance += diff * diff;
+  }
+  variance /= static_cast<double>(returns.size());
+
+  const double std_dev = std::sqrt(variance);
+  if (std_dev == 0.0) {
+    return 0.0;
+  }
+
+  return (mean_return / std_dev) * std::sqrt(252.0);
 }
 
 } // namespace
@@ -97,8 +139,8 @@ TradingStats calculateTradingStats(const std::vector<TradePerformanceInput> &tra
 
   stats.best_trade = best_trade == std::numeric_limits<double>::lowest() ? 0.0 : best_trade;
   stats.worst_trade = worst_trade == std::numeric_limits<double>::max() ? 0.0 : worst_trade;
-  stats.profit_factor = trade::ml::Metrics::calculate_profit_factor(pnl_values);
-  stats.sharpe_ratio = trade::ml::Metrics::calculate_sharpe_ratio(pnl_values);
+  stats.profit_factor = calculateProfitFactor(pnl_values);
+  stats.sharpe_ratio = calculateSharpeRatio(pnl_values);
   return stats;
 }
 
