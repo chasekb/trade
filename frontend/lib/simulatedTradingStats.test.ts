@@ -107,4 +107,55 @@ describe('normalizeSimulatedTradingSnapshot', () => {
     expect(snapshot.stats.last_trade_time).toBe('2026-06-18T14:00:00.000Z');
     expect(snapshot.recentTrades.map((trade) => trade.trade_id)).toEqual(['trade-2', 'trade-1']);
   });
+
+  it('keeps open-leg trades out of win-rate calculations while still counting them toward totals', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        cash_balance: 1000,
+        realized_pnl: 4,
+        unrealized_pnl: 6,
+        total_fees: 3.5,
+        recent_trades: [
+          {
+            trade_id: 'trade-open',
+            symbol: 'BTC-USD',
+            side: 'buy',
+            quantity: 1,
+            price: 50,
+            pnl: 0,
+            fees: 0.5,
+            timestamp: '2026-06-18T12:00:00.000Z',
+          },
+          {
+            trade_id: 'trade-win',
+            symbol: 'BTC-USD',
+            side: 'sell',
+            quantity: 1,
+            price: 100,
+            pnl: 10,
+            fees: 2,
+            timestamp: '2026-06-18T13:00:00.000Z',
+          },
+          {
+            trade_id: 'trade-loss',
+            symbol: 'ETH-USD',
+            side: 'buy',
+            quantity: 2,
+            price: 120,
+            pnl: -6,
+            fees: 1,
+            timestamp: '2026-06-18T14:00:00.000Z',
+          },
+        ],
+      },
+    });
+
+    expect(snapshot.stats.total_trades).toBe(3);
+    expect(snapshot.stats.winning_trades).toBe(1);
+    expect(snapshot.stats.losing_trades).toBe(1);
+    expect(snapshot.stats.win_rate).toBe(50);
+    expect(snapshot.stats.total_fees).toBe(7);
+    expect(snapshot.stats.total_volume).toBe(390);
+    expect(snapshot.stats.avg_trade_size).toBe(130);
+  });
 });

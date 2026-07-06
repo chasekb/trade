@@ -194,9 +194,9 @@ export function OrderBookSignalsTable({
                     return <span className="text-xs text-gray-400">No ML</span>;
                 }
 
-                // Fix: Clamp win probability to 100%
                 const rawWinProb = ml.win_probability || 0;
-                const winProb = Math.min(rawWinProb, 100);
+                const winProb = Math.min(rawWinProb * 100, 100);
+                const expectedReturn = (ml.expected_return || 0) * 100;
 
                 return (
                     <div className="text-xs space-y-1">
@@ -205,11 +205,11 @@ export function OrderBookSignalsTable({
                             <span className={`font-medium ${winProb >= 60 ? 'text-green-600' :
                                 winProb >= 40 ? 'text-yellow-600' : 'text-red-600'
                                 }`}>
-                                Win Probability: {winProb.toFixed(4)}%
+                                Win Probability: {winProb.toFixed(2)}%
                             </span>
                         </div>
                         <div className="text-gray-500">
-                            Expected Return: {(ml.expected_return || 0).toFixed(4)}%
+                            Expected Return: {expectedReturn.toFixed(2)}%
                         </div>
                     </div>
                 );
@@ -237,8 +237,8 @@ Criteria Analysis:
 
 ${row.ml_analysis?.ml_enabled ? `
 ML Analysis:
-- Win Probability: ${(row.ml_analysis.win_probability).toFixed(4)}%
-- Expected Return: ${(row.ml_analysis.expected_return).toFixed(4)}%
+- Win Probability: ${(row.ml_analysis.win_probability * 100).toFixed(2)}%
+- Expected Return: ${(row.ml_analysis.expected_return * 100).toFixed(2)}%
 - Confidence: ${(row.ml_analysis.confidence * 100).toFixed(2)}%
 - Model: ${row.ml_analysis.model_version || 'N/A'}
 

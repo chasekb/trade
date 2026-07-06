@@ -52,5 +52,24 @@ int main() {
     return 1;
   }
 
+  const std::vector<TradePerformanceInput> trades_with_open_leg{
+      {10.0, 2.0, 1.0, 100.0, "2026-06-18T10:00:00Z"},
+      {-6.0, 1.0, 2.0, 120.0, "2026-06-18T11:00:00Z"},
+      {0.0, 0.5, 1.0, 50.0, "2026-06-18T12:00:00Z"},
+  };
+
+  const auto open_leg_stats = calculateTradingStats(trades_with_open_leg, "2026-06-18");
+  if (open_leg_stats.total_trades != 3 || open_leg_stats.winning_trades != 1 ||
+      open_leg_stats.losing_trades != 1) {
+    std::cerr << "Unexpected open-leg trade counts" << std::endl;
+    return 1;
+  }
+  if (!expect_close(open_leg_stats.win_rate, 50.0, 1e-9, "open_leg_win_rate") ||
+      !expect_close(open_leg_stats.total_fees, 3.5, 1e-9, "open_leg_total_fees") ||
+      !expect_close(open_leg_stats.total_volume, 390.0, 1e-9, "open_leg_total_volume") ||
+      !expect_close(open_leg_stats.avg_trade_size, 130.0, 1e-9, "open_leg_avg_trade_size")) {
+    return 1;
+  }
+
   return 0;
 }

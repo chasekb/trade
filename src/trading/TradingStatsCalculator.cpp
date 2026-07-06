@@ -125,7 +125,10 @@ TradingStats calculateTradingStats(const std::vector<TradePerformanceInput> &tra
   }
 
   stats.net_pnl = stats.total_pnl - stats.total_fees;
-  stats.win_rate = static_cast<double>(stats.winning_trades) / static_cast<double>(stats.total_trades) * 100.0;
+  const double completed_trades = static_cast<double>(stats.winning_trades + stats.losing_trades);
+  stats.win_rate = completed_trades > 0.0
+                       ? static_cast<double>(stats.winning_trades) / completed_trades * 100.0
+                       : 0.0;
   stats.avg_trade_size = stats.total_volume / static_cast<double>(stats.total_trades);
 
   if (!positive_pnls.empty()) {

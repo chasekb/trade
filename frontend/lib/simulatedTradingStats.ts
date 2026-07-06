@@ -182,7 +182,7 @@ function deriveStats(trades: TradeLike[], totalFees: number): TradingStats {
     total_pnl: totalPnl,
     total_fees: totalFees,
     net_pnl: totalPnl - totalFees,
-    win_rate: totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0,
+    win_rate: (winningTrades + losingTrades) > 0 ? (winningTrades / (winningTrades + losingTrades)) * 100 : 0,
     total_trades: totalTrades,
     winning_trades: winningTrades,
     losing_trades: losingTrades,
