@@ -12,6 +12,7 @@ import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters
 import { useModelTraining } from '@/hooks/useModelTraining';
 
 import { OpenPositionsSection } from './OpenPositionsSection';
+import { RecentTradesTable } from './RecentTradesTable';
 import { StrategySelector } from './StrategySelector';
 import { TradingControls } from './TradingControls';
 import { StrategyConfigForm } from './StrategyConfigForm';
@@ -648,54 +649,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 
         {/* Recent Trades Table */}
         {mergedRecentTrades.length > 0 && (
-          <div className="space-y-4">
-            <h4 className="font-semibold text-gray-700">Recent Trades</h4>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Side</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fees</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">P&L</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {mergedRecentTrades.map((trade: TradeLike, index: number) => (
-                    <tr key={index}>
-                      <td className="px-4 py-2 text-sm text-gray-900">
-                        {trade.timestamp ? new Date(trade.timestamp).toLocaleString() : '-'}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-900">{trade.symbol || '-'}</td>
-                      <td className="px-4 py-2 text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs ${(trade.side || '').toUpperCase() === 'BUY'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                          }`}>
-                          {(trade.side || '').toUpperCase() || '-'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-900">
-                        {typeof trade.quantity === 'number' ? trade.quantity.toFixed(4) : trade.quantity || 0}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-900">
-                        ${typeof trade.price === 'number' ? trade.price.toFixed(2) : trade.price || 0}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-900 text-red-600">
-                        ${typeof trade.fee === 'number' ? trade.fee.toFixed(2) : (trade.fee || 0)}
-                      </td>
-                      <td className={`px-4 py-2 text-sm font-medium ${(Number(trade.pnl ?? 0)) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {(Number(trade.pnl ?? 0)).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <RecentTradesTable trades={mergedRecentTrades} includeFees />
         )}
       </CardContent>
     </Card>

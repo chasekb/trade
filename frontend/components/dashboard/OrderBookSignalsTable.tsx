@@ -216,7 +216,7 @@ export function OrderBookSignalsTable({
             },
         },
         {
-            key: 'timestamp' as keyof OrderBookSignal,
+            key: 'signal_reason' as keyof OrderBookSignal,
             header: 'Details',
             className: "px-2 py-2",
             render: (value, row) => (
