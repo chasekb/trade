@@ -115,7 +115,8 @@ function PerformanceMetricsCard({ metrics }: PerformanceMetricsProps) {
             <div>
               <p className="text-sm text-muted-foreground">Win Rate</p>
               <p className="text-lg font-semibold">
-                {metrics.win_rate !== undefined ? `${(metrics.win_rate * 100).toFixed(1)}%` : 'N/A'}
+                {/* Backend win_rate values are already percentages (0-100). */}
+                {metrics.win_rate !== undefined ? `${metrics.win_rate.toFixed(1)}%` : 'N/A'}
               </p>
             </div>
           </div>
@@ -135,7 +136,9 @@ function PerformanceMetricsCard({ metrics }: PerformanceMetricsProps) {
             <div>
               <p className="text-sm text-muted-foreground">Data Utilization</p>
               <p className="text-lg font-semibold">
-                {metrics.total_feature_vectors && metrics.total_used_samples
+                {metrics.total_feature_vectors !== undefined
+                  && metrics.total_used_samples !== undefined
+                  && metrics.total_feature_vectors > 0
                   ? `${((metrics.total_used_samples / metrics.total_feature_vectors) * 100).toFixed(1)}%`
                   : 'N/A'}
               </p>

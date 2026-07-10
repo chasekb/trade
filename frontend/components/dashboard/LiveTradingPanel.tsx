@@ -462,9 +462,10 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
       quantity: pos.balance_crypto || 0,
       // Calculate implied price if quantity > 0
       current_price: pos.balance_crypto ? (pos.balance_fiat || 0) / pos.balance_crypto : 0,
-      entry_price: 0, // Entry price not available in portfolio summary
+      // Entry price is not available in the portfolio summary; leave it unset so
+      // the table shows a dash instead of a fabricated $0 entry.
+      entry_price: undefined,
       unrealized_pnl: pos.unrealized_pnl || 0,
-      pnl_percent: 0, // Needs entry price
       side: 'LONG', // Spot holdings are effectively long
       status: 'open',
       timestamp: new Date().toISOString() // Placeholder
@@ -478,9 +479,10 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
   const winningTradesCount = winningTrades.length;
   const losingTradesCount = losingTrades.length;
 
-  const completedTradesCount = trades.filter((t: TradeLike) => (t.side || '').toLowerCase() === 'sell').length;
-  const denom = completedTradesCount || totalTrades;
-  const winRate = denom > 0 ? (winningTradesCount / denom) * 100 : 0;
+  // Win rate over completed (P&L-bearing) trades only, matching the simulated
+  // panel's definition; open buy legs with no P&L are excluded from both sides.
+  const completedTradesCount = winningTradesCount + losingTradesCount;
+  const winRate = completedTradesCount > 0 ? (winningTradesCount / completedTradesCount) * 100 : 0;
 
   const totalVolume = trades.reduce((sum: number, trade: TradeLike) => sum + ((trade.quantity || 0) * (trade.price || 0)), 0);
   const avgTradeSize = totalTrades > 0 ? totalVolume / totalTrades : 0;
@@ -495,20 +497,21 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
   const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0));
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
 
-  // Support both standard field names and Coinbase API response field names
-  const cashBalance = portfolio.cash_balance || portfolio.available_balance_usd || 0;
-  const totalValue = portfolio.total_value || portfolio.total_balance_usd || 0;
+  // Support both standard field names and Coinbase API response field names.
+  // Use ?? so a legitimate value of 0 is kept instead of falling through.
+  const cashBalance = portfolio.cash_balance ?? portfolio.available_balance_usd ?? 0;
+  const totalValue = portfolio.total_value ?? portfolio.total_balance_usd ?? 0;
   // Calculate total positions value if not provided directly
-  const totalPositionsValue = portfolio.total_positions_value || (totalValue - cashBalance) || 0;
-  
-  const unrealizedPnl = portfolio.unrealized_pnl || portfolio.total_unrealized_pnl || 0;
-  const realizedPnl = portfolio.realized_pnl || 0;
-  const netPnl = portfolio.net_pnl || (unrealizedPnl + realizedPnl);
-  const totalFees = portfolio.total_fees || 0;
+  const totalPositionsValue = portfolio.total_positions_value ?? (totalValue - cashBalance);
+
+  const unrealizedPnl = portfolio.unrealized_pnl ?? portfolio.total_unrealized_pnl ?? 0;
+  const realizedPnl = portfolio.realized_pnl ?? 0;
+  const totalFees = portfolio.total_fees ?? 0;
+  // Net P&L is net of fees, consistent with the simulated trading panel.
+  const netPnl = portfolio.net_pnl ?? (unrealizedPnl + realizedPnl - totalFees);
 
   const activePositions = openPositions.length;
 
-  const recentTrades = (portfolio.recent_trades || trades).slice(0, 10);
   // Merge and sort recent trades to ensure sells are included and latest first
   const mergedRecentTrades: TradeLike[] = Array.from(
     new Map(

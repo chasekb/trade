@@ -102,8 +102,10 @@ describe('normalizeSimulatedTradingSnapshot', () => {
     expect(snapshot.stats.best_trade).toBe(10);
     expect(snapshot.stats.worst_trade).toBe(-6);
     expect(snapshot.stats.max_drawdown).toBe(6);
-    expect(snapshot.stats.total_fees).toBe(8);
-    expect(snapshot.stats.net_pnl).toBe(-4);
+    // The snapshot-level total_fees (5) already includes per-trade fees; the
+    // derived stats must not add the per-trade fees on top of it.
+    expect(snapshot.stats.total_fees).toBe(5);
+    expect(snapshot.stats.net_pnl).toBe(-1);
     expect(snapshot.stats.last_trade_time).toBe('2026-06-18T14:00:00.000Z');
     expect(snapshot.recentTrades.map((trade) => trade.trade_id)).toEqual(['trade-2', 'trade-1']);
   });
@@ -154,8 +156,55 @@ describe('normalizeSimulatedTradingSnapshot', () => {
     expect(snapshot.stats.winning_trades).toBe(1);
     expect(snapshot.stats.losing_trades).toBe(1);
     expect(snapshot.stats.win_rate).toBe(50);
-    expect(snapshot.stats.total_fees).toBe(7);
+    expect(snapshot.stats.total_fees).toBe(3.5);
     expect(snapshot.stats.total_volume).toBe(390);
     expect(snapshot.stats.avg_trade_size).toBe(130);
+  });
+
+  it('sums per-trade fees only when no portfolio-level fee total is provided', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        cash_balance: 1000,
+        recent_trades: [
+          {
+            trade_id: 'trade-win',
+            symbol: 'BTC-USD',
+            side: 'sell',
+            quantity: 1,
+            price: 100,
+            pnl: 10,
+            fees: 2,
+            timestamp: '2026-06-18T13:00:00.000Z',
+          },
+          {
+            trade_id: 'trade-loss',
+            symbol: 'ETH-USD',
+            side: 'sell',
+            quantity: 2,
+            price: 120,
+            pnl: -6,
+            fees: 1,
+            timestamp: '2026-06-18T14:00:00.000Z',
+          },
+        ],
+      },
+    });
+
+    expect(snapshot.stats.total_fees).toBe(3);
+    expect(snapshot.stats.net_pnl).toBe(1);
+    expect(snapshot.stats.last_trade_time).toBe('2026-06-18T14:00:00.000Z');
+  });
+
+  it('reports the latest trade time even when trades arrive unsorted', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        recent_trades: [
+          { trade_id: 'later', symbol: 'BTC-USD', side: 'sell', pnl: 1, timestamp: '2026-06-18T15:00:00.000Z' },
+          { trade_id: 'earlier', symbol: 'BTC-USD', side: 'buy', pnl: 0, timestamp: '2026-06-18T09:00:00.000Z' },
+        ],
+      },
+    });
+
+    expect(snapshot.stats.last_trade_time).toBe('2026-06-18T15:00:00.000Z');
   });
 });

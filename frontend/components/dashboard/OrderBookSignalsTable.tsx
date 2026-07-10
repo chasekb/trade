@@ -15,10 +15,13 @@ export function OrderBookSignalsTable({
 }: {
     signals: OrderBookSignal[];
     pagination?: {
-        current_page: number;
-        per_page: number;
+        current_page?: number;
+        page?: number;
+        per_page?: number;
+        limit?: number;
         total_pages: number;
-        total_signals: number;
+        total_signals?: number;
+        total?: number;
         has_next: boolean;
         has_prev: boolean;
     };
@@ -35,7 +38,9 @@ export function OrderBookSignalsTable({
 }) {
     const activePage = currentPage;
     const activePageSize = pageSize;
-    const totalSignals = summary?.total_analyzed ?? pagination?.total_signals ?? signals.length;
+    // Page math must use the actual signal count; summary.total_analyzed counts
+    // analyzed symbols, which is a different (usually larger) population.
+    const totalSignals = pagination?.total_signals ?? pagination?.total ?? signals.length;
     const totalPages = pagination?.total_pages || Math.max(1, Math.ceil(totalSignals / Math.max(activePageSize, 1)));
 
     const handlePageChange = (page: number) => {
@@ -332,7 +337,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
             {signals.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
                     <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{totalSignals}</div>
+                        <div className="text-lg font-semibold text-gray-900">{summary?.total_analyzed ?? totalSignals}</div>
                         <div className="text-sm text-gray-600">Total Analyzed</div>
                     </div>
                     <div className="text-center">

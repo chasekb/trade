@@ -1,6 +1,6 @@
 import type { TradingStats, Trade } from '@/types/trading';
 
-type TradeLike = Partial<Trade> & {
+export type TradeLike = Partial<Trade> & {
   id?: string;
   trade_id?: string;
   pnl?: number;
@@ -103,12 +103,13 @@ function mergeRecentTrades(primary: unknown, secondary: unknown): TradeLike[] {
     .slice(0, 10);
 }
 
-function deriveStats(trades: TradeLike[], totalFees: number): TradingStats {
+export function deriveStats(trades: TradeLike[], knownTotalFees?: number): TradingStats {
   const today = new Date().toISOString().slice(0, 10);
   const pnlValues: number[] = [];
   const positivePnls: number[] = [];
   const negativePnls: number[] = [];
   let totalPnl = 0;
+  let tradeFees = 0;
   let totalVolume = 0;
   let winningTrades = 0;
   let losingTrades = 0;
@@ -119,6 +120,7 @@ function deriveStats(trades: TradeLike[], totalFees: number): TradingStats {
   let maxDrawdown = 0;
   let tradesToday = 0;
   let lastTradeTime = '';
+  let lastTradeTimeMs = Number.NEGATIVE_INFINITY;
 
   for (const trade of trades) {
     const pnl = toNumber(trade.pnl, 0);
@@ -128,10 +130,16 @@ function deriveStats(trades: TradeLike[], totalFees: number): TradingStats {
     const volume = quantity * price;
 
     totalPnl += pnl;
-    totalFees += fees;
+    tradeFees += fees;
     totalVolume += volume;
     pnlValues.push(pnl);
-    lastTradeTime = trade.timestamp || lastTradeTime;
+    if (trade.timestamp) {
+      const timestampMs = new Date(trade.timestamp).getTime();
+      if (Number.isFinite(timestampMs) && timestampMs >= lastTradeTimeMs) {
+        lastTradeTimeMs = timestampMs;
+        lastTradeTime = trade.timestamp;
+      }
+    }
 
     if (pnl > 0) {
       winningTrades += 1;
@@ -175,8 +183,14 @@ function deriveStats(trades: TradeLike[], totalFees: number): TradingStats {
     const mean = pnlValues.reduce((sum, value) => sum + value, 0) / pnlValues.length;
     const variance = pnlValues.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / pnlValues.length;
     const stdDev = Math.sqrt(variance);
-    return stdDev > 0 ? (mean / stdDev) * Math.sqrt(252) : 0;
+    // Per-trade Sharpe (mean/std of trade PnL). No annualization factor: the
+    // trade series is not a daily return series, so sqrt(252) would overstate it.
+    return stdDev > 0 ? mean / stdDev : 0;
   })();
+
+  // A provided portfolio-level fee total already includes per-trade fees, so it
+  // must replace (not add to) the per-trade sum to avoid double counting.
+  const totalFees = knownTotalFees !== undefined ? knownTotalFees : tradeFees;
 
   const stats: TradingStats = {
     total_pnl: totalPnl,
@@ -205,7 +219,7 @@ function deriveStats(trades: TradeLike[], totalFees: number): TradingStats {
   return { ...stats, last_trade_time: lastTradeTime };
 }
 
-function mergeStats(base: Partial<TradingStats> | undefined, fallback: TradingStats): TradingStats {
+export function mergeStats(base: Partial<TradingStats> | undefined, fallback: TradingStats): TradingStats {
   const stats: TradingStats = {
     total_pnl: toNumber(base?.total_pnl, fallback.total_pnl),
     total_fees: toNumber(base?.total_fees, fallback.total_fees),
@@ -246,7 +260,8 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
   );
   const unrealizedPnl = toNumber(portfolio.unrealized_pnl ?? rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl, 0);
   const realizedPnl = toNumber(portfolio.realized_pnl ?? rawStats.realized_pnl, 0);
-  const totalFees = toNumber(portfolio.total_fees ?? rawStats.total_fees, 0);
+  const rawTotalFees = portfolio.total_fees ?? rawStats.total_fees;
+  const totalFees = toNumber(rawTotalFees, 0);
   const totalPositionsValue = toNumber(
     portfolio.total_positions_value,
     openPositions.reduce(
@@ -254,9 +269,10 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
       0,
     ),
   );
+  // Keep the identity Total Value = Cash + Positions Value so the tiles reconcile.
   const totalValue = toNumber(
     portfolio.total_value,
-    cashBalance + unrealizedPnl,
+    cashBalance + totalPositionsValue,
   );
   const activePositions = Math.trunc(toNumber(
     portfolio.open_positions_count ?? portfolio.active_positions ?? rawStats.open_positions,
@@ -264,7 +280,7 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
   ));
   const netPnl = toNumber(portfolio.net_pnl ?? rawStats.net_pnl, realizedPnl + unrealizedPnl - totalFees);
 
-  const derivedStats = deriveStats(trades, totalFees);
+  const derivedStats = deriveStats(trades, rawTotalFees !== undefined ? totalFees : undefined);
   const statsSource = rawStats.stats ?? (rawStats.total_trades !== undefined ? (rawStats as Partial<TradingStats>) : undefined);
   const stats = mergeStats(statsSource, derivedStats);
 

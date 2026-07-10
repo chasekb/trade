@@ -68,7 +68,7 @@ export function OpenPositionsSection({ positions, onClose }: { positions: any[],
                                     </span>
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-900">{Number(pos.quantity || 0).toFixed(4)}</td>
-                                <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.entry_price || 0).toFixed(4)}</td>
+                                <td className="px-4 py-2 text-sm text-gray-900">{pos.entry_price != null ? `$${Number(pos.entry_price).toFixed(4)}` : '—'}</td>
                                 <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.current_price || 0).toFixed(4)}</td>
                                 <td className={`px-4 py-2 text-sm font-medium ${Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                     }`}>
