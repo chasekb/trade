@@ -375,69 +375,116 @@ Json::Value SimulatedTradingService::positionToJson(const PositionState &positio
   return out;
 }
 
-void SimulatedTradingService::persistSignalLocked(const SignalRecord &signal) {
-  std::ostringstream sql;
-  sql << "INSERT INTO order_book_signals ("
-      << "signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
-      << "spread, imbalance, mid_price, best_bid, best_ask, order_book_depth, volume, total_signals"
-      << ") VALUES ("
-      << "'" << escapeSql(signal.signal_id) << "',"
-      << "'" << escapeSql(signal.session_id) << "',"
-      << "'" << escapeSql(signal.symbol) << "',"
-      << "'" << escapeSql(signal.signal_type) << "',"
-      << signal.strength << ","
-      << signal.price << ","
-      << signal.timestamp << ","
-      << "'" << escapeSql(jsonToString(signal.payload)) << "',"
-      << signal.spread << ","
-      << signal.imbalance << ","
-      << signal.mid_price << ","
-      << signal.best_bid << ","
-      << signal.best_ask << ","
-      << signal.order_book_depth << ","
-      << signal.volume << ","
-      << signal.total_signals
-      << ") ON CONFLICT (signal_id) DO UPDATE SET "
-      << "signal_type = EXCLUDED.signal_type, strength = EXCLUDED.strength, price = EXCLUDED.price, "
-      << "timestamp = EXCLUDED.timestamp, signal_data = EXCLUDED.signal_data, spread = EXCLUDED.spread, "
-      << "imbalance = EXCLUDED.imbalance, mid_price = EXCLUDED.mid_price, best_bid = EXCLUDED.best_bid, "
-      << "best_ask = EXCLUDED.best_ask, order_book_depth = EXCLUDED.order_book_depth, volume = EXCLUDED.volume, "
-      << "total_signals = EXCLUDED.total_signals";
-
-  DatabaseManager::getInstance().query(sql.str());
+void SimulatedTradingService::queueSignalWriteLocked(const SignalRecord &signal) {
+  pending_signal_writes_.push_back(signal);
 }
 
-void SimulatedTradingService::persistTradeLocked(const TradeRecord &trade) {
-  std::ostringstream sql;
-  sql << "INSERT INTO individual_trades ("
-      << "trade_id, session_id, symbol, side, size, price, timestamp, strategy_type, signal_reason, pnl, fees, "
-      << "win_probability, expected_return, model_confidence, trade_type"
-      << ") VALUES ("
-      << "'" << escapeSql(trade.trade_id) << "',"
-      << "'" << escapeSql(trade.session_id) << "',"
-      << "'" << escapeSql(trade.symbol) << "',"
-      << "'" << escapeSql(trade.side) << "',"
-      << trade.quantity << ","
-      << trade.price << ","
-      << trade.timestamp << ","
-      << "'" << escapeSql(trade.strategy_type) << "',"
-      << "'" << escapeSql(trade.signal_reason) << "',"
-      << trade.pnl << ","
-      << trade.fees << ","
-      << trade.win_probability << ","
-      << trade.expected_return << ","
-      << trade.model_confidence << ","
-      << "'" << escapeSql(trade.trade_type) << "'"
-      << ") ON CONFLICT (trade_id) DO UPDATE SET "
-      << "symbol = EXCLUDED.symbol, side = EXCLUDED.side, size = EXCLUDED.size, price = EXCLUDED.price, "
-      << "timestamp = EXCLUDED.timestamp, strategy_type = EXCLUDED.strategy_type, signal_reason = EXCLUDED.signal_reason, "
-      << "pnl = EXCLUDED.pnl, fees = EXCLUDED.fees, win_probability = EXCLUDED.win_probability, "
-      << "expected_return = EXCLUDED.expected_return, model_confidence = EXCLUDED.model_confidence, "
-      << "trade_type = EXCLUDED.trade_type";
-
-  DatabaseManager::getInstance().query(sql.str());
+void SimulatedTradingService::queueTradeWriteLocked(const TradeRecord &trade) {
+  pending_trade_writes_.push_back(trade);
   session_trade_inputs_.push_back(TradePerformanceInput{
       trade.pnl, trade.fees, trade.quantity, trade.price, trade.timestamp_iso});
+}
+
+SimulatedTradingService::PendingWrites SimulatedTradingService::takePendingWritesLocked() {
+  PendingWrites writes;
+  writes.signals.swap(pending_signal_writes_);
+  writes.trades.swap(pending_trade_writes_);
+  return writes;
+}
+
+void SimulatedTradingService::flushWrites(PendingWrites &&writes) const {
+  if (!writes.signals.empty()) {
+    // Dedupe by id (keeping the latest) so a multi-row upsert never touches
+    // the same row twice, then persist the whole tick in one statement.
+    std::map<std::string, const SignalRecord *> unique_signals;
+    for (const auto &signal : writes.signals) {
+      unique_signals[signal.signal_id] = &signal;
+    }
+
+    std::ostringstream sql;
+    sql << "INSERT INTO order_book_signals ("
+        << "signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
+        << "spread, imbalance, mid_price, best_bid, best_ask, order_book_depth, volume, total_signals"
+        << ") VALUES ";
+    bool first = true;
+    for (const auto &[signal_id, signal] : unique_signals) {
+      if (!first) {
+        sql << ",";
+      }
+      first = false;
+      sql << "("
+          << "'" << escapeSql(signal->signal_id) << "',"
+          << "'" << escapeSql(signal->session_id) << "',"
+          << "'" << escapeSql(signal->symbol) << "',"
+          << "'" << escapeSql(signal->signal_type) << "',"
+          << signal->strength << ","
+          << signal->price << ","
+          << signal->timestamp << ","
+          << "'" << escapeSql(jsonToString(signal->payload)) << "',"
+          << signal->spread << ","
+          << signal->imbalance << ","
+          << signal->mid_price << ","
+          << signal->best_bid << ","
+          << signal->best_ask << ","
+          << signal->order_book_depth << ","
+          << signal->volume << ","
+          << signal->total_signals
+          << ")";
+    }
+    sql << " ON CONFLICT (signal_id) DO UPDATE SET "
+        << "signal_type = EXCLUDED.signal_type, strength = EXCLUDED.strength, price = EXCLUDED.price, "
+        << "timestamp = EXCLUDED.timestamp, signal_data = EXCLUDED.signal_data, spread = EXCLUDED.spread, "
+        << "imbalance = EXCLUDED.imbalance, mid_price = EXCLUDED.mid_price, best_bid = EXCLUDED.best_bid, "
+        << "best_ask = EXCLUDED.best_ask, order_book_depth = EXCLUDED.order_book_depth, volume = EXCLUDED.volume, "
+        << "total_signals = EXCLUDED.total_signals";
+
+    DatabaseManager::getInstance().query(sql.str());
+  }
+
+  if (!writes.trades.empty()) {
+    std::map<std::string, const TradeRecord *> unique_trades;
+    for (const auto &trade : writes.trades) {
+      unique_trades[trade.trade_id] = &trade;
+    }
+
+    std::ostringstream sql;
+    sql << "INSERT INTO individual_trades ("
+        << "trade_id, session_id, symbol, side, size, price, timestamp, strategy_type, signal_reason, pnl, fees, "
+        << "win_probability, expected_return, model_confidence, trade_type"
+        << ") VALUES ";
+    bool first = true;
+    for (const auto &[trade_id, trade] : unique_trades) {
+      if (!first) {
+        sql << ",";
+      }
+      first = false;
+      sql << "("
+          << "'" << escapeSql(trade->trade_id) << "',"
+          << "'" << escapeSql(trade->session_id) << "',"
+          << "'" << escapeSql(trade->symbol) << "',"
+          << "'" << escapeSql(trade->side) << "',"
+          << trade->quantity << ","
+          << trade->price << ","
+          << trade->timestamp << ","
+          << "'" << escapeSql(trade->strategy_type) << "',"
+          << "'" << escapeSql(trade->signal_reason) << "',"
+          << trade->pnl << ","
+          << trade->fees << ","
+          << trade->win_probability << ","
+          << trade->expected_return << ","
+          << trade->model_confidence << ","
+          << "'" << escapeSql(trade->trade_type) << "'"
+          << ")";
+    }
+    sql << " ON CONFLICT (trade_id) DO UPDATE SET "
+        << "symbol = EXCLUDED.symbol, side = EXCLUDED.side, size = EXCLUDED.size, price = EXCLUDED.price, "
+        << "timestamp = EXCLUDED.timestamp, strategy_type = EXCLUDED.strategy_type, signal_reason = EXCLUDED.signal_reason, "
+        << "pnl = EXCLUDED.pnl, fees = EXCLUDED.fees, win_probability = EXCLUDED.win_probability, "
+        << "expected_return = EXCLUDED.expected_return, model_confidence = EXCLUDED.model_confidence, "
+        << "trade_type = EXCLUDED.trade_type";
+
+    DatabaseManager::getInstance().query(sql.str());
+  }
 }
 
 SimulatedTradingService::SignalRecord
@@ -737,7 +784,7 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
 
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
-  persistTradeLocked(trade);
+  queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
   trimHistoryLocked();
@@ -785,7 +832,7 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   trade.model_confidence = position.entry_model_confidence;
   trade.trade_type = mode_;
 
-  persistTradeLocked(trade);
+  queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   positions_.erase(it);
   updated_at_ = nowIsoUtc();
@@ -814,7 +861,7 @@ void SimulatedTradingService::generateTickLocked() {
     auto signal = buildSignalRecordLocked(symbol, index);
     prices[symbol] = signal.price;
     recent_signals_.push_back(signal);
-    persistSignalLocked(signal);
+    queueSignalWriteLocked(signal);
 
     auto position_it = positions_.find(symbol);
     const bool signal_generated = signal.signal_type != "hold";
@@ -853,13 +900,18 @@ void SimulatedTradingService::workerLoop() {
   TR_LOG_INFO("Simulated trading worker started for session {}", session_id_);
   while (true) {
     try {
+      PendingWrites writes;
       {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stop_requested_) {
           break;
         }
         generateTickLocked();
+        writes = takePendingWritesLocked();
       }
+      // Database I/O happens outside the mutex so API handlers never block
+      // behind tick persistence.
+      flushWrites(std::move(writes));
     } catch (const std::exception &e) {
       TR_LOG_ERROR("Simulated trading worker tick failed for session {}: {}", session_id_, e.what());
     } catch (...) {
@@ -1114,12 +1166,19 @@ Json::Value SimulatedTradingService::stopSession() {
     worker_.join();
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-  active_ = false;
-  stop_requested_ = false;
-  updated_at_ = nowIsoUtc();
+  Json::Value resp;
+  PendingWrites writes;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    active_ = false;
+    stop_requested_ = false;
+    updated_at_ = nowIsoUtc();
+    writes = takePendingWritesLocked();
 
-  Json::Value resp = buildStatusJson();
+    resp = buildStatusJson();
+  }
+  flushWrites(std::move(writes));
+
   resp["status"] = "success";
   resp["is_active"] = false;
   resp["is_trading"] = false;
@@ -1374,8 +1433,15 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
 }
 
 Json::Value SimulatedTradingService::closePosition(const std::string &symbol) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return closePositionLocked(symbol, "Manual close request");
+  Json::Value result;
+  PendingWrites writes;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    result = closePositionLocked(symbol, "Manual close request");
+    writes = takePendingWritesLocked();
+  }
+  flushWrites(std::move(writes));
+  return result;
 }
 
 } // namespace trading

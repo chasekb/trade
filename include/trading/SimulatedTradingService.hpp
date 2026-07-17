@@ -109,14 +109,23 @@ private:
     int total_signals = 0;
   };
 
+  // Rows produced under the mutex, flushed to Postgres outside it so API
+  // handlers sharing the mutex never wait on database I/O.
+  struct PendingWrites {
+    std::vector<SignalRecord> signals;
+    std::vector<TradeRecord> trades;
+  };
+
   void ensureSchema();
   void startWorkerLocked();
   void workerLoop();
   void generateTickLocked();
   SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index);
   bool signalPassesMlGateLocked(const SignalRecord &signal) const;
-  void persistSignalLocked(const SignalRecord &signal);
-  void persistTradeLocked(const TradeRecord &trade);
+  void queueSignalWriteLocked(const SignalRecord &signal);
+  void queueTradeWriteLocked(const TradeRecord &trade);
+  PendingWrites takePendingWritesLocked();
+  void flushWrites(PendingWrites &&writes) const;
   void openPositionLocked(const SignalRecord &signal, const std::string &reason);
   Json::Value closePositionLocked(const std::string &symbol, const std::string &reason);
   void updateMarkToMarketLocked(const std::map<std::string, double> &prices);
@@ -163,6 +172,8 @@ private:
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).
   std::vector<TradePerformanceInput> session_trade_inputs_;
+  std::vector<SignalRecord> pending_signal_writes_;
+  std::vector<TradeRecord> pending_trade_writes_;
 };
 
 } // namespace trading
