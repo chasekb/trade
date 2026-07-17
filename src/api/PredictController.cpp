@@ -526,9 +526,15 @@ void PredictController::predict(
 void PredictController::tradingStats(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
-  (void)req;
+  // Optional scoping: ?trade_type=simulated|live (alias: mode) and ?session_id=.
+  trade::trading::TradingStatsFilter filter;
+  filter.trade_type = req->getParameter("trade_type");
+  if (filter.trade_type.empty()) {
+    filter.trade_type = req->getParameter("mode");
+  }
+  filter.session_id = req->getParameter("session_id");
 
-  const auto stats = trade::trading::TradingStatsService::getInstance().getTradingStats();
+  const auto stats = trade::trading::TradingStatsService::getInstance().getTradingStats(filter);
 
   Json::Value result;
   result["total_pnl"] = stats.total_pnl;

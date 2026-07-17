@@ -85,7 +85,36 @@ TradePerformanceInput toTradePerformanceInput(const pqxx::row &row) {
 
 } // namespace
 
-TradingStats TradingStatsService::getTradingStats() const {
+namespace {
+
+std::string escapeSqlLiteral(const std::string &value) {
+  std::string escaped;
+  escaped.reserve(value.size() + 8);
+  for (char c : value) {
+    if (c == '\'') {
+      escaped += "''";
+    } else {
+      escaped += c;
+    }
+  }
+  return escaped;
+}
+
+constexpr std::chrono::seconds kStatsCacheTtl{5};
+
+} // namespace
+
+TradingStats TradingStatsService::getTradingStats(const TradingStatsFilter &filter) const {
+  const std::string cache_key = filter.trade_type + "|" + filter.session_id;
+  const auto now_steady = std::chrono::steady_clock::now();
+  {
+    std::lock_guard<std::mutex> lock(cache_mutex_);
+    const auto it = cache_.find(cache_key);
+    if (it != cache_.end() && now_steady - it->second.first < kStatsCacheTtl) {
+      return it->second.second;
+    }
+  }
+
   try {
     auto table_exists = DatabaseManager::getInstance().query(
         "SELECT to_regclass('public.individual_trades') AS relname");
@@ -93,9 +122,20 @@ TradingStats TradingStatsService::getTradingStats() const {
       return {};
     }
 
-    auto res = DatabaseManager::getInstance().query(
-        "SELECT trade_id, symbol, side, size, price, timestamp, pnl, fees "
-        "FROM individual_trades ORDER BY timestamp ASC");
+    std::ostringstream sql;
+    sql << "SELECT trade_id, symbol, side, size, price, timestamp, pnl, fees "
+        << "FROM individual_trades";
+    std::string separator = " WHERE ";
+    if (!filter.trade_type.empty()) {
+      sql << separator << "trade_type='" << escapeSqlLiteral(filter.trade_type) << "'";
+      separator = " AND ";
+    }
+    if (!filter.session_id.empty()) {
+      sql << separator << "session_id='" << escapeSqlLiteral(filter.session_id) << "'";
+    }
+    sql << " ORDER BY timestamp ASC";
+
+    auto res = DatabaseManager::getInstance().query(sql.str());
 
     if (res.empty()) {
       return {};
@@ -110,7 +150,12 @@ TradingStats TradingStatsService::getTradingStats() const {
     const auto now = std::chrono::system_clock::now();
     const std::string today = formatUtcDateFromEpoch(
         std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count());
-    return calculateTradingStats(trades, today);
+    const TradingStats stats = calculateTradingStats(trades, today);
+    {
+      std::lock_guard<std::mutex> lock(cache_mutex_);
+      cache_[cache_key] = {now_steady, stats};
+    }
+    return stats;
   } catch (const std::exception &e) {
     TR_LOG_ERROR("Failed to compute trading stats: {}", e.what());
   }

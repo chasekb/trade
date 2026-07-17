@@ -274,7 +274,10 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
                                  .asDouble();
   inputs.spread_percent = signal.mid_price > 0.0 ? signal.spread / signal.mid_price : 0.0;
 
-  const auto live_stats = TradingStatsService::getInstance().getTradingStats();
+  // Scoped to this service's trade mode so cross-mode history cannot skew
+  // sizing; served from the stats service's short-TTL cache.
+  const auto live_stats =
+      TradingStatsService::getInstance().getTradingStats(TradingStatsFilter{mode_, std::string()});
   inputs.live_profit_factor = live_stats.profit_factor;
   inputs.live_sharpe_ratio = live_stats.sharpe_ratio;
   inputs.live_max_drawdown = live_stats.max_drawdown;
@@ -433,6 +436,8 @@ void SimulatedTradingService::persistTradeLocked(const TradeRecord &trade) {
       << "trade_type = EXCLUDED.trade_type";
 
   DatabaseManager::getInstance().query(sql.str());
+  session_trade_inputs_.push_back(TradePerformanceInput{
+      trade.pnl, trade.fees, trade.quantity, trade.price, trade.timestamp_iso});
 }
 
 SimulatedTradingService::SignalRecord
@@ -952,11 +957,13 @@ Json::Value SimulatedTradingService::buildStatusJson() const {
     status["symbols"].append(symbol);
   }
 
-  std::vector<TradePerformanceInput> trades;
+  // Serve from the in-memory session record; only fall back to the database
+  // when the process has no in-memory state for the session (cold start).
+  std::vector<TradePerformanceInput> trades = session_trade_inputs_;
   const std::string today = formatNowIsoUtc().substr(0, 10);
 
   try {
-    if (!session_id_.empty()) {
+    if (trades.empty() && !session_id_.empty()) {
       auto exists = DatabaseManager::getInstance().query(
           "SELECT to_regclass('public.individual_trades') AS relname");
       if (!exists.empty() && !exists[0]["relname"].is_null()) {
@@ -1074,6 +1081,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   market_state_.clear();
   recent_trades_.clear();
   recent_signals_.clear();
+  session_trade_inputs_.clear();
   tick_ = 0;
   started_at_ = nowIsoUtc();
   updated_at_ = started_at_;

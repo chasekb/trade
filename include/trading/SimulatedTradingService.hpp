@@ -1,5 +1,7 @@
 #pragma once
 
+#include "trading/TradingStatsCalculator.hpp"
+
 #include <drogon/drogon.h>
 
 #include <atomic>
@@ -158,6 +160,9 @@ private:
   std::map<std::string, PositionState> positions_;
   std::deque<TradeRecord> recent_trades_;
   std::deque<SignalRecord> recent_signals_;
+  // Full per-session trade inputs so status stats never rescan the database
+  // while a session is running (recent_trades_ is capped and insufficient).
+  std::vector<TradePerformanceInput> session_trade_inputs_;
 };
 
 } // namespace trading
