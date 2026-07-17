@@ -35,6 +35,13 @@ public:
   ADD_METHOD_TO(PredictController::closeLivePosition, "/api/trading/live/close-position", Post);
   ADD_METHOD_TO(PredictController::startLiveTrading, "/api/trading/live/start", Post);
   ADD_METHOD_TO(PredictController::stopLiveTrading, "/api/trading/live/stop", Post);
+  ADD_METHOD_TO(PredictController::products, "/api/products", Get);
+  ADD_METHOD_TO(PredictController::logMessage, "/api/log", Post);
+  ADD_METHOD_TO(PredictController::getMlConfig, "/api/ml/config", Get);
+  ADD_METHOD_TO(PredictController::updateMlConfig, "/api/ml/config", Post);
+  ADD_METHOD_TO(PredictController::pnlTrades, "/api/ml/pnl-trades", Get);
+  ADD_METHOD_TO(PredictController::predictionComparison, "/api/ml/prediction-comparison", Post);
+  ADD_METHOD_TO(PredictController::resetMlDatabases, "/api/ml/databases", Delete);
   METHOD_LIST_END
 
   void predict(const HttpRequestPtr &req,
@@ -78,6 +85,20 @@ public:
                         std::function<void(const HttpResponsePtr &)> &&callback);
   void stopLiveTrading(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
+  void products(const HttpRequestPtr &req,
+                std::function<void(const HttpResponsePtr &)> &&callback);
+  void logMessage(const HttpRequestPtr &req,
+                  std::function<void(const HttpResponsePtr &)> &&callback);
+  void getMlConfig(const HttpRequestPtr &req,
+                   std::function<void(const HttpResponsePtr &)> &&callback);
+  void updateMlConfig(const HttpRequestPtr &req,
+                      std::function<void(const HttpResponsePtr &)> &&callback);
+  void pnlTrades(const HttpRequestPtr &req,
+                 std::function<void(const HttpResponsePtr &)> &&callback);
+  void predictionComparison(const HttpRequestPtr &req,
+                            std::function<void(const HttpResponsePtr &)> &&callback);
+  void resetMlDatabases(const HttpRequestPtr &req,
+                        std::function<void(const HttpResponsePtr &)> &&callback);
 
   static void init(const std::string &param_path, const std::string &model_dir);
 

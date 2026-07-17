@@ -2,6 +2,7 @@
 #include "api/PredictController.hpp"
 #include "cache/CacheManager.hpp"
 #include "config/Config.hpp"
+#include "db/DatabaseManager.hpp"
 #include "ml/ModelTrainer.hpp"
 #include "ml/Types.hpp"
 #include "trading/TradingStatsService.hpp"
@@ -12,6 +13,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
@@ -1198,6 +1200,287 @@ void PredictController::stopLiveTrading(
   (void)req;
   Json::Value response = trade::trading::SimulatedTradingService::getInstance().stopSession();
   callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::products(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+
+  Json::Value categories(Json::objectValue);
+  const std::vector<std::string> major = {
+      "BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD", "DOT-USD", "XRP-USD", "LTC-USD"};
+  const std::vector<std::string> all_usd = {
+      "BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD", "DOT-USD", "XRP-USD",
+      "LTC-USD", "AVAX-USD", "DOGE-USD", "LINK-USD", "MATIC-USD", "ATOM-USD",
+      "UNI-USD", "AAVE-USD", "ALGO-USD", "BCH-USD", "ETC-USD", "FIL-USD"};
+
+  Json::Value major_json(Json::arrayValue);
+  for (const auto &symbol : major) {
+    major_json.append(symbol);
+  }
+  Json::Value all_usd_json(Json::arrayValue);
+  for (const auto &symbol : all_usd) {
+    all_usd_json.append(symbol);
+  }
+  categories["major"] = major_json;
+  categories["all_usd"] = all_usd_json;
+  categories["all_products"] = all_usd_json;
+
+  Json::Value resp;
+  resp["categories"] = categories;
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::logMessage(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  const std::string message = json_req && json_req->isMember("message")
+                                  ? (*json_req)["message"].asString()
+                                  : "";
+  if (!message.empty()) {
+    TR_LOG_INFO("frontend: {}", message);
+  }
+
+  Json::Value resp;
+  resp["status"] = "success";
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+namespace {
+
+Json::Value defaultMlConfig() {
+  Json::Value config(Json::objectValue);
+  config["continuous_training_enabled"] = false;
+  config["training_interval"] = 3600;
+  config["new_data_threshold"] = 100;
+  return config;
+}
+
+Json::Value loadMlConfig() {
+  Json::Value config = defaultMlConfig();
+  const auto stored = CacheManager::getInstance().get("ml_config");
+  if (!stored) {
+    return config;
+  }
+
+  Json::Value parsed;
+  Json::CharReaderBuilder builder;
+  std::string errs;
+  std::istringstream stream(*stored);
+  if (Json::parseFromStream(builder, stream, &parsed, &errs) && parsed.isObject()) {
+    for (const auto &member : parsed.getMemberNames()) {
+      config[member] = parsed[member];
+    }
+  }
+  return config;
+}
+
+} // namespace
+
+void PredictController::getMlConfig(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+  callback(HttpResponse::newHttpJsonResponse(loadMlConfig()));
+}
+
+void PredictController::updateMlConfig(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  if (!json_req || !json_req->isObject()) {
+    Json::Value err;
+    err["error"] = "JSON object body is required";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  Json::Value config = loadMlConfig();
+  for (const auto &member : json_req->getMemberNames()) {
+    config[member] = (*json_req)[member];
+  }
+
+  Json::StreamWriterBuilder writer;
+  writer["indentation"] = "";
+  CacheManager::getInstance().set("ml_config", Json::writeString(writer, config));
+
+  Json::Value resp = config;
+  resp["status"] = "success";
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::pnlTrades(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  const std::string sort_by = req->getParameter("sort_by") == "pnl_percent"
+                                  ? "pnl / NULLIF(ABS(price * size), 0)"
+                                  : "pnl";
+
+  Json::Value resp;
+  resp["top_trades"] = Json::arrayValue;
+  resp["bottom_trades"] = Json::arrayValue;
+
+  try {
+    auto exists = DatabaseManager::getInstance().query(
+        "SELECT to_regclass('public.individual_trades') AS relname");
+    if (exists.empty() || exists[0]["relname"].is_null()) {
+      callback(HttpResponse::newHttpJsonResponse(resp));
+      return;
+    }
+
+    auto rowToJson = [](const pqxx::row &row) {
+      Json::Value trade;
+      trade["symbol"] = row["symbol"].is_null() ? "" : row["symbol"].c_str();
+      trade["side"] = row["side"].is_null() ? "" : row["side"].c_str();
+      const double pnl = row["pnl"].is_null() ? 0.0 : row["pnl"].as<double>();
+      const double size = row["size"].is_null() ? 0.0 : row["size"].as<double>();
+      const double price = row["price"].is_null() ? 0.0 : row["price"].as<double>();
+      trade["pnl"] = pnl;
+      const double notional = std::abs(price * size);
+      trade["pnl_percent"] = notional > 0.0 ? (pnl / notional) * 100.0 : 0.0;
+      trade["timestamp"] =
+          row["timestamp"].is_null() ? Json::Value(0) : Json::Value(static_cast<Json::Int64>(row["timestamp"].as<long long>()));
+      return trade;
+    };
+
+    const std::string base =
+        "SELECT symbol, side, size, price, timestamp, pnl FROM individual_trades "
+        "WHERE pnl IS NOT NULL AND pnl <> 0 ORDER BY " + sort_by;
+    for (const auto &row : DatabaseManager::getInstance().query(base + " DESC LIMIT 10")) {
+      resp["top_trades"].append(rowToJson(row));
+    }
+    for (const auto &row : DatabaseManager::getInstance().query(base + " ASC LIMIT 10")) {
+      resp["bottom_trades"].append(rowToJson(row));
+    }
+  } catch (const std::exception &e) {
+    TR_LOG_WARN("Failed to fetch PnL trades: {}", e.what());
+  }
+
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::predictionComparison(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  if (!json_req || !(*json_req)["model_ids"].isArray()) {
+    Json::Value err;
+    err["error"] = "model_ids array is required";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  std::vector<double> pca_features;
+  std::vector<std::vector<double>> sequence;
+  try {
+    Json::StreamWriterBuilder builder;
+    auto features_json =
+        nlohmann::json::parse(Json::writeString(builder, (*json_req)["features"]));
+    ml::OrderBookFeatures features;
+    ml::from_json(features_json, features);
+    if (!feature_engineer_) {
+      throw std::runtime_error("feature engineering is not initialized");
+    }
+    pca_features = feature_engineer_->preprocess(features);
+    sequence = feature_engineer_->get_transformer_sequence();
+  } catch (const std::exception &e) {
+    Json::Value err;
+    err["error"] = std::string("Invalid features payload: ") + e.what();
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+
+  Json::Value comparisons(Json::arrayValue);
+  for (const auto &model_id_json : (*json_req)["model_ids"]) {
+    if (!model_id_json.isString()) {
+      continue;
+    }
+    const std::string model_id = model_id_json.asString();
+
+    Json::Value comparison;
+    comparison["model_name"] = model_id;
+    comparison["version_id"] = "";
+
+    try {
+      namespace fs = std::filesystem;
+      fs::path package_dir;
+      if (model_id == "regressor" || model_id == "classifier" || model_id == "transformer") {
+        package_dir = fs::path(model_dir_);
+      } else {
+        package_dir = fs::path(trained_models_dir_) / model_id;
+        const fs::path meta_path = package_dir / "metadata.json";
+        if (fs::exists(meta_path)) {
+          std::ifstream in(meta_path);
+          nlohmann::json meta = nlohmann::json::parse(in, nullptr, true, true);
+          comparison["model_name"] = meta.value("model_name", model_id);
+          comparison["version_id"] = meta.value("version_id", "");
+        }
+      }
+
+      ml::ONNXModelManager candidate;
+      if (!candidate.load_models(package_dir.string())) {
+        throw std::runtime_error("failed to load model package");
+      }
+
+      const double win_prob =
+          candidate.has_classifier() ? candidate.predict_win_prob(pca_features) : 0.5;
+      double expected_return = 0.0;
+      if (candidate.has_regressor()) {
+        expected_return = candidate.predict_pnl(pca_features);
+      } else if (candidate.has_transformer()) {
+        expected_return = candidate.predict_transformer(sequence);
+      }
+
+      comparison["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
+      comparison["expected_return"] = expected_return;
+      comparison["confidence"] = std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0);
+    } catch (const std::exception &e) {
+      comparison["error"] = e.what();
+    }
+
+    comparisons.append(comparison);
+  }
+
+  Json::Value resp;
+  resp["comparisons"] = comparisons;
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::resetMlDatabases(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  (void)req;
+
+  Json::Value resp;
+  try {
+    for (const char *table : {"individual_trades", "order_book_signals"}) {
+      const std::string qualified = std::string("public.") + table;
+      auto exists = DatabaseManager::getInstance().query(
+          "SELECT to_regclass('" + qualified + "') AS relname");
+      if (!exists.empty() && !exists[0]["relname"].is_null()) {
+        DatabaseManager::getInstance().query(std::string("TRUNCATE TABLE ") + table);
+        resp["cleared"].append(table);
+      }
+    }
+    resp["status"] = "success";
+  } catch (const std::exception &e) {
+    resp["status"] = "error";
+    resp["error"] = e.what();
+    auto error_resp = HttpResponse::newHttpJsonResponse(resp);
+    error_resp->setStatusCode(k500InternalServerError);
+    callback(error_resp);
+    return;
+  }
+
+  callback(HttpResponse::newHttpJsonResponse(resp));
 }
 
 } // namespace api
