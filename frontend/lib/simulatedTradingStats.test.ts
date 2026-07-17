@@ -207,4 +207,19 @@ describe('normalizeSimulatedTradingSnapshot', () => {
 
     expect(snapshot.stats.last_trade_time).toBe('2026-06-18T15:00:00.000Z');
   });
+
+  it('derives a signed positions value so Total Value = Cash + Positions Value holds with shorts', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        cash_balance: 1000,
+        positions: [
+          { symbol: 'X-USD', side: 'sell', quantity: 2, current_price: 50 },
+          { symbol: 'Y-USD', side: 'buy', quantity: 1, current_price: 100 },
+        ],
+      },
+    });
+
+    expect(snapshot.totalPositionsValue).toBe(0);
+    expect(snapshot.totalValue).toBe(snapshot.cashBalance + snapshot.totalPositionsValue);
+  });
 });

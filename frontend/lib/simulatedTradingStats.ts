@@ -262,10 +262,15 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
   const realizedPnl = toNumber(portfolio.realized_pnl ?? rawStats.realized_pnl, 0);
   const rawTotalFees = portfolio.total_fees ?? rawStats.total_fees;
   const totalFees = toNumber(rawTotalFees, 0);
+  // Signed market value (shorts negative), matching the backend convention so
+  // the Total Value = Cash + Positions Value identity holds either way.
   const totalPositionsValue = toNumber(
     portfolio.total_positions_value,
     openPositions.reduce(
-      (sum, pos) => sum + Math.abs(toNumber(pos.current_price ?? pos.price ?? pos.entry_price, 0) * toNumber(pos.quantity ?? pos.size, 0)),
+      (sum, pos) => {
+        const notional = toNumber(pos.current_price ?? pos.price ?? pos.entry_price, 0) * toNumber(pos.quantity ?? pos.size, 0);
+        return sum + (pos.side === 'sell' ? -Math.abs(notional) : Math.abs(notional));
+      },
       0,
     ),
   );

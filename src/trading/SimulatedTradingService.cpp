@@ -4,6 +4,7 @@
 #include <pqxx/pqxx>
 #include "trading/TradingStatsCalculator.hpp"
 #include "trading/TradingStatsService.hpp"
+#include "trading/PortfolioAccounting.hpp"
 #include "trading/PositionSizingPolicy.hpp"
 #include "ml/Metrics.hpp"
 #include "cache/CacheManager.hpp"
@@ -570,7 +571,8 @@ void SimulatedTradingService::updateMarkToMarketLocked(
                                   : 0.0;
     position.age_ticks += 1;
     unrealized_pnl_ += position.unrealized_pnl;
-    total_positions_value_ += std::abs(position.quantity * position.current_price);
+    total_positions_value_ +=
+        signedPositionValue(position.side, position.quantity, position.current_price);
   }
 }
 
@@ -617,11 +619,7 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   trade.trade_type = mode_;
 
   total_fees_ += fee;
-  if (position.side == "buy") {
-    cash_ -= (allocated_usd + fee);
-  } else {
-    cash_ += (allocated_usd - fee);
-  }
+  cash_ += openCashDelta(position.side, allocated_usd, fee);
   persistTradeLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -647,11 +645,7 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
 
   realized_pnl_ += gross_pnl;
   total_fees_ += fee;
-  if (position.side == "buy") {
-    cash_ += (exit_price * position.quantity - fee);
-  } else {
-    cash_ -= (exit_price * position.quantity + fee);
-  }
+  cash_ += closeCashDelta(position.side, exit_price * position.quantity, fee);
 
   TradeRecord trade;
   const long long ts = nowEpochSeconds();
@@ -728,8 +722,8 @@ void SimulatedTradingService::generateTickLocked() {
   }
 
   updateMarkToMarketLocked(prices);
-  total_fees_ = std::max(total_fees_, 0.0);
-  cash_ = initial_capital_ + realized_pnl_ - total_fees_;
+  // Cash is maintained transactionally by open/close deltas; recomputing it
+  // here from realized PnL would erase the debits for still-open positions.
   updated_at_ = nowIsoUtc();
   trimHistoryLocked();
 }
@@ -788,9 +782,10 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   double absolute_positions_value = 0.0;
   for (const auto &[symbol, position] : positions_) {
     positions[symbol] = positionToJson(position);
-    const double market_value = std::abs(position.quantity * position.current_price);
-    absolute_positions_value += market_value;
-    directional_positions_value += position.side == "buy" ? market_value : -market_value;
+    const double market_value =
+        signedPositionValue(position.side, position.quantity, position.current_price);
+    absolute_positions_value += std::abs(market_value);
+    directional_positions_value += market_value;
   }
   const double total_value = cash_ + directional_positions_value;
 
@@ -800,7 +795,10 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   portfolio["current_capital"] = total_value;
   portfolio["total_value"] = total_value;
   portfolio["initial_capital"] = initial_capital_;
-  portfolio["total_positions_value"] = absolute_positions_value;
+  // Signed so that total_value == cash_balance + total_positions_value holds
+  // with shorts; the absolute exposure is reported separately.
+  portfolio["total_positions_value"] = directional_positions_value;
+  portfolio["total_positions_exposure"] = absolute_positions_value;
   portfolio["unrealized_pnl"] = unrealized_pnl_;
   portfolio["realized_pnl"] = realized_pnl_;
   portfolio["net_pnl"] = total_value - initial_capital_;
@@ -1041,8 +1039,11 @@ Json::Value SimulatedTradingService::updateStrategyParameters(const Json::Value 
     position_update_interval_ = std::max(1, parameters_["position_update_interval"].asInt());
   }
   if (parameters_.isMember("initial_portfolio_size")) {
+    const double previous_capital = initial_capital_;
     initial_capital_ = std::max(100.0, parameters_["initial_portfolio_size"].asDouble());
-    cash_ = initial_capital_ + realized_pnl_ - total_fees_;
+    // Adjust cash by the capital delta only; a full reset would erase the
+    // debits/credits of currently open positions.
+    cash_ += initial_capital_ - previous_capital;
   }
 
   Json::Value resp;

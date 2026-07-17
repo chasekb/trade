@@ -112,6 +112,12 @@ add_executable(test_position_sizing_policy
 target_include_directories(test_position_sizing_policy PRIVATE include)
 add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
 
+add_executable(test_portfolio_accounting
+    src/tests/test_portfolio_accounting.cpp
+)
+target_include_directories(test_portfolio_accounting PRIVATE include)
+add_test(NAME portfolio_accounting COMMAND test_portfolio_accounting)
+
 add_executable(test_trading_stats_calculator
     src/tests/test_trading_stats_calculator.cpp
     src/trading/TradingStatsCalculator.cpp
