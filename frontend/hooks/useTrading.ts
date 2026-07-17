@@ -34,7 +34,6 @@ export function useLiveTrading() {
     refetchInterval: status.isActive ? 5000 : false, // Poll every 5 seconds when active
     staleTime: 1000, // Consider data fresh for 1 second
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
-    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 
   // Update local status when backend status changes.
@@ -309,7 +308,6 @@ export function useOrderBookSignals(
     staleTime: 3000, // Consider data fresh for 3 seconds
     refetchInterval: enabled ? 3000 : false, // Keep signals moving in active simulation sessions
     refetchOnWindowFocus: true,
-    refetchIntervalInBackground: true,
     refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
@@ -347,7 +345,6 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
     staleTime: 2 * 1000, // 2 seconds - consider data fresh for 2 seconds
     refetchInterval: enabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for near real-time updates
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
-    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 }
 
@@ -368,7 +365,6 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       setProcessingSignal(nextSignal);
       setSignalQueue(prev => prev.slice(1));
 
-      console.log('🎯 Processing signal from queue:', nextSignal.symbol, nextSignal.timestamp);
 
       // Add to display cache (same logic as before)
       const allQueries = queryClient.getQueryCache().getAll();
@@ -461,20 +457,13 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
   }, [signalQueue, processingSignal, processNextSignal]);
 
   useEffect(() => {
-    console.log('🚀 useSimTradingWebSocket hook called with enabled:', enabled);
-    console.log('📊 Current queue length:', signalQueue.length, 'Processing:', !!processingSignal);
     if (!enabled) {
-      console.log('🌐 WebSocket disabled - not connecting');
       return;
     }
 
     const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8081';
     const wsUrl = base.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
 
-    console.log('🔌 Attempting to connect to WebSocket:', wsUrl);
-    console.log('📡 Environment NEXT_PUBLIC_WS_URL:', process.env.NEXT_PUBLIC_WS_URL);
-    console.log('🌐 Running in browser:', typeof window !== 'undefined');
-    console.log('🚀 Trading enabled:', enabled);
 
     const ws = new WebSocket(wsUrl);
     let pingInterval: NodeJS.Timeout | null = null;
@@ -485,7 +474,6 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         if (ws.readyState === WebSocket.OPEN) {
           try {
             ws.send(JSON.stringify({ type: 'ping' }));
-            console.log('💓 Sent ping to maintain connection');
           } catch (error) {
             console.error('❌ Failed to send ping:', error);
           }
@@ -494,17 +482,14 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
     };
 
     const onOpen = () => {
-      console.log('✅ WebSocket connection opened successfully');
       setConnected(true);
       startHeartbeat();
     };
 
     const onClose = (event: CloseEvent) => {
-      console.log('❌ WebSocket connection closed:', {
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean
-      });
+      if (!event.wasClean) {
+        console.warn('WebSocket connection closed unexpectedly:', event.code, event.reason);
+      }
       setConnected(false);
       if (pingInterval) {
         clearInterval(pingInterval);
@@ -536,7 +521,6 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         const data = payload?.data;
 
         if (type === 'pong') {
-          console.log('💓 Received pong from server');
           return;
         }
 
@@ -564,9 +548,6 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
         // ENQUEUE orderbook signals into FIFO queue for sequential processing
         if (type === 'orderbook_signals_update' && data) {
-          console.log('📥 Received orderbook_signals_update WebSocket message:', data);
-          apiClient.logMessage('Order book signal received and queued for sequential processing');
-
           try {
             // Handle both array of signals (from signals key) or single signal object
             const signalsList = Array.isArray(data.signals) ? data.signals : (Array.isArray(data) ? data : [data]);
@@ -586,7 +567,6 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
               });
 
               const updatedQueue = [...prevQueue, ...filteredSignals];
-              console.log('🗂️ Added', filteredSignals.length, 'signals to queue. Queue length:', updatedQueue.length);
 
               return updatedQueue;
             });

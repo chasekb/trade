@@ -77,13 +77,11 @@ function TradingConfiguration({
   }, [symbols, customInput]);
 
   const handleSymbolModeChange = (mode: 'single' | 'universe') => {
-    console.log('Symbol mode change:', mode);
     setSymbolMode(mode);
     if (mode === 'single') {
       onSymbolsChange(['BTC-USD']);
     } else {
       // For universe mode, apply the current universe type
-      console.log('Applying universe type:', selectedUniverseType);
       applyUniverseType(selectedUniverseType);
     }
   };
@@ -97,7 +95,6 @@ function TradingConfiguration({
   // Fetch products directly from Coinbase API
   const fetchCoinbaseSymbols = async (): Promise<string[]> => {
     try {
-      console.log('Fetching products from Coinbase API...');
       const response = await fetch('https://api.exchange.coinbase.com/products');
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -107,7 +104,6 @@ function TradingConfiguration({
         .filter((product) => product.status === 'online' && !product.trading_disabled && typeof product.id === 'string')
         .flatMap((product) => (typeof product.id === 'string' ? [product.id] : []))
         .sort();
-      console.log(`Fetched ${symbols.length} symbols from Coinbase`);
       return symbols;
     } catch (error) {
       console.error('Error fetching Coinbase symbols:', error);
@@ -117,59 +113,48 @@ function TradingConfiguration({
 
   // Function to filter symbols by universe type
   const applyUniverseType = async (universeType: string) => {
-    console.log('applyUniverseType called with:', universeType);
 
     let allSymbols = getAllSymbols(products);
 
     // If no symbols from hook, try to fetch from Coinbase directly
     if (allSymbols.length === 0) {
-      console.log('No products from hook, fetching from Coinbase API...');
       try {
         const symbols = await fetchCoinbaseSymbols();
         allSymbols = symbols;
-        console.log('Fetched symbols from Coinbase:', allSymbols.length);
       } catch (error) {
         console.warn('Failed to fetch Coinbase symbols:', error);
         allSymbols = ['BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 'DOT-USD', 'XRP-USD'];
       }
     }
 
-    console.log('All symbols available:', allSymbols.length);
 
     let filteredSymbols: string[] = [];
 
     // First try to use backend categories if available
     if (products && products[universeType]) {
       filteredSymbols = products[universeType];
-      console.log(`${universeType}: using backend category with ${filteredSymbols.length} symbols`);
     } else {
       // Fallback to client-side filtering
       switch (universeType) {
         case 'all_products':
           filteredSymbols = allSymbols;
-          console.log('all_products: using all symbols');
           break;
         case 'all_usd':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USD'));
-          console.log('all_usd: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'all_eur':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-EUR'));
-          console.log('all_eur: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'all_usdt':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USDT'));
-          console.log('all_usdt: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'all_btc':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-BTC'));
-          console.log('all_btc: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'major':
           // Major crypto pairs (fallback)
           const majorPairs = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'ADA-USD', 'DOT-USD', 'XRP-USD', 'LTC-USD'];
           filteredSymbols = allSymbols.filter(symbol => majorPairs.includes(symbol));
-          console.log('major: found', filteredSymbols.length, 'major pairs from', majorPairs.length, 'candidates');
           break;
         case 'minor':
         // Minor currency pairs (excluding major pairs)
@@ -179,7 +164,6 @@ function TradingConfiguration({
           !symbol.includes('BTC') && !symbol.includes('ETH')
         ).slice(0, 21); // Limit to 21 as indicated
         filteredSymbols = minorPairs;
-        console.log('minor: found', filteredSymbols.length, 'minor pairs');
         break;
       case 'crypto':
         // Cryptocurrency pairs
@@ -187,24 +171,19 @@ function TradingConfiguration({
           symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('ADA') ||
           symbol.includes('SOL') || symbol.includes('DOT') || symbol.includes('XRP')
         ).slice(0, 35); // Limit to 35 as indicated
-        console.log('crypto: found', filteredSymbols.length, 'crypto pairs');
         filteredSymbols = filteredSymbols;
         break;
       case 'custom':
       default:
         // For custom, don't auto-populate
-        console.log('custom or default: not populating');
         return;
       }
     }
 
     // Update symbols if filtered symbols were found
-    console.log('Final filteredSymbols:', filteredSymbols);
     if (filteredSymbols.length > 0) {
-      console.log('Calling onSymbolsChange with', filteredSymbols);
       onSymbolsChange(filteredSymbols);
     } else {
-      console.log('No symbols found, not calling onSymbolsChange');
     }
   };
 
@@ -212,17 +191,6 @@ function TradingConfiguration({
     setSelectedUniverseType(universeType);
     applyUniverseType(universeType);
   };
-
-  useEffect(() => {
-    // Update UI based on symbol mode
-    const singleConfig = document.getElementById('single-symbol-config-simulated');
-    const universeConfig = document.getElementById('universe-config-simulated');
-
-    if (singleConfig && universeConfig) {
-      singleConfig.style.display = symbolMode === 'single' ? 'block' : 'none';
-      universeConfig.style.display = symbolMode === 'universe' ? 'block' : 'none';
-    }
-  }, [symbolMode]);
 
   return (
     <Card>
@@ -272,7 +240,8 @@ function TradingConfiguration({
         </div>
 
         {/* Single Symbol Configuration */}
-        <div id="single-symbol-config-simulated" className="space-y-2">
+        {symbolMode === 'single' && (
+        <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">Trading Symbol</label>
           <select
             value={symbols.length > 1 ? symbols[0] : symbols[0] || 'BTC-USD'}
@@ -290,9 +259,11 @@ function TradingConfiguration({
             )}
           </select>
         </div>
+        )}
 
         {/* Universe Configuration */}
-        <div id="universe-config-simulated" className="space-y-4" style={{ display: 'none' }}>
+        {symbolMode === 'universe' && (
+        <div className="space-y-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Universe Type</label>
             <select
@@ -313,7 +284,7 @@ function TradingConfiguration({
           </div>
 
           {/* Custom Symbols Configuration */}
-          <div id="custom-symbols-config-simulated" className="space-y-2">
+          <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Custom Symbols (comma-separated)</label>
             <Input
               type="text"
@@ -333,6 +304,7 @@ function TradingConfiguration({
             Selected {symbols.length} symbols
           </p>
         </div>
+        )}
 
         <StrategyConfigForm
           strategy={strategy}
