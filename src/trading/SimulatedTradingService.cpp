@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cctype>
 #include <functional>
@@ -442,14 +443,37 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   signal.timestamp_iso = nowIsoUtc();
   signal.signal_id = makeId("sig", signal.timestamp, symbol, static_cast<std::size_t>(tick_));
 
-  const double base = basePriceForSymbol(symbol);
-  const double phase = (static_cast<double>(tick_) / 3.5) + static_cast<double>(symbol_index) * 0.73;
-  const double wave = std::sin(phase);
-  const double drift = std::cos(phase / 4.0) * base * 0.0025;
-  const double noise = std::sin(phase * 3.0) * base * 0.0008;
-  const double mid = std::max(0.0001, base + drift + wave * base * 0.008 + noise);
-  const double spread = std::max(0.0001, mid * (0.0004 + (0.0003 * (1.0 + std::cos(phase * 0.7)))));
-  const double imbalance = std::tanh(wave * 1.4);
+  auto [state_it, state_inserted] = market_state_.try_emplace(symbol);
+  SymbolMarketState &state = state_it->second;
+  if (state_inserted) {
+    state.price = basePriceForSymbol(symbol);
+    state.rng.seed(static_cast<std::uint32_t>(
+        std::hash<std::string>{}(symbol) ^
+        static_cast<std::size_t>(start_epoch_seconds_)));
+  }
+
+  std::uniform_real_distribution<double> unit(-1.0, 1.0);
+  std::uniform_real_distribution<double> unit01(0.0, 1.0);
+
+  // Imbalance is persistent (AR(1)) and *leads* price: the current tick's
+  // return contains a component proportional to the prior imbalance. Acting on
+  // strong imbalance therefore has genuine positive expectancy while the
+  // imbalance persists, unlike the old sine wave where strong signals marked
+  // reverting extremes.
+  constexpr double kImbalancePersistence = 0.85;
+  constexpr double kImbalanceImpact = 0.0015;
+  constexpr double kNoiseVol = 0.002;
+
+  const double prior_imbalance = state.imbalance;
+  const double tick_return = kImbalanceImpact * prior_imbalance + kNoiseVol * unit(state.rng);
+  state.price = std::max(0.0001, state.price * (1.0 + tick_return));
+  state.last_return = tick_return;
+  state.imbalance = std::clamp(
+      kImbalancePersistence * prior_imbalance + 0.35 * unit(state.rng), -1.0, 1.0);
+
+  const double mid = state.price;
+  const double imbalance = state.imbalance;
+  const double spread = std::max(0.0001, mid * (0.0004 + 0.0003 * unit01(state.rng)));
   const double strength = std::min(1.0, std::abs(imbalance) * 1.15);
   const bool generated = strength >= 0.22;
   const std::string signal_type = !generated ? "hold" : (imbalance >= 0.0 ? "buy" : "sell");
@@ -463,7 +487,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   signal.best_bid = mid - spread / 2.0;
   signal.best_ask = mid + spread / 2.0;
   signal.order_book_depth = 20 + static_cast<int>((symbol_index + tick_) % 12);
-  signal.volume = 10000.0 + std::abs(wave) * 5000.0 + static_cast<double>(symbol_index) * 1200.0;
+  signal.volume = 10000.0 + std::abs(imbalance) * 5000.0 + static_cast<double>(symbol_index) * 1200.0;
   signal.total_signals = static_cast<int>(tick_ * std::max<std::size_t>(1, symbols_.size()) + symbol_index + 1);
 
   Json::Value payload(Json::objectValue);
@@ -955,6 +979,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   total_fees_ = 0.0;
   total_positions_value_ = 0.0;
   positions_.clear();
+  market_state_.clear();
   recent_trades_.clear();
   recent_signals_.clear();
   tick_ = 0;

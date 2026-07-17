@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <memory>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -69,6 +70,16 @@ private:
     double expected_return = 0.0;
     double model_confidence = 0.0;
     std::string trade_type = "simulated";
+  };
+
+  // Per-symbol synthetic market state. Imbalance follows a persistent AR(1)
+  // process and feeds the *next* tick's return, so order-flow signals carry a
+  // real (positive-expectancy) edge instead of marking sine-wave extremes.
+  struct SymbolMarketState {
+    double price = 0.0;
+    double imbalance = 0.0;
+    double last_return = 0.0;
+    std::mt19937 rng;
   };
 
   struct SignalRecord {
@@ -137,6 +148,7 @@ private:
   double unrealized_pnl_ = 0.0;
   double total_fees_ = 0.0;
   double total_positions_value_ = 0.0;
+  std::map<std::string, SymbolMarketState> market_state_;
   std::map<std::string, PositionState> positions_;
   std::deque<TradeRecord> recent_trades_;
   std::deque<SignalRecord> recent_signals_;
