@@ -43,6 +43,19 @@ int main() {
     return 1;
   }
 
+  // Sharpe is per-trade mean/std of PnL with no annualization factor.
+  {
+    const double mean = 8.0 / 3.0;
+    const double variance =
+        ((10.0 - mean) * (10.0 - mean) + (-6.0 - mean) * (-6.0 - mean) +
+         (4.0 - mean) * (4.0 - mean)) /
+        3.0;
+    const double expected_sharpe = mean / std::sqrt(variance);
+    if (!expect_close(stats.sharpe_ratio, expected_sharpe, 1e-9, "sharpe_ratio")) {
+      return 1;
+    }
+  }
+
   if (stats.trades_today != 2) {
     std::cerr << "Unexpected trades_today: " << stats.trades_today << std::endl;
     return 1;

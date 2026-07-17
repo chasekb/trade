@@ -70,7 +70,10 @@ double calculateSharpeRatio(const std::vector<double> &returns) {
     return 0.0;
   }
 
-  return (mean_return / std_dev) * std::sqrt(252.0);
+  // Per-trade Sharpe (mean/std of trade PnL). The trade series is not a daily
+  // return series, so no sqrt(252) annualization; the frontend derives the
+  // same convention.
+  return mean_return / std_dev;
 }
 
 } // namespace
