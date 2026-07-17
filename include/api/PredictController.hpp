@@ -81,6 +81,11 @@ public:
 
   static void init(const std::string &param_path, const std::string &model_dir);
 
+  // Shared inference surfaces for non-HTTP callers (e.g. the trading loop).
+  // May return nullptr before init() runs.
+  static ml::FeatureEngineer *featureEngineer() { return feature_engineer_.get(); }
+  static ml::ONNXModelManager *modelManager() { return model_manager_.get(); }
+
 private:
   static std::unique_ptr<ml::FeatureEngineer> feature_engineer_;
   static std::unique_ptr<ml::ONNXModelManager> model_manager_;

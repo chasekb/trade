@@ -107,6 +107,7 @@ private:
   void workerLoop();
   void generateTickLocked();
   SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index);
+  bool signalPassesMlGateLocked(const SignalRecord &signal) const;
   void persistSignalLocked(const SignalRecord &signal);
   void persistTradeLocked(const TradeRecord &trade);
   void openPositionLocked(const SignalRecord &signal, const std::string &reason);

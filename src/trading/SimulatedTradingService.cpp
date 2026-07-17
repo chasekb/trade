@@ -1,6 +1,8 @@
 #include "trading/SimulatedTradingService.hpp"
 
+#include "api/PredictController.hpp"
 #include "db/DatabaseManager.hpp"
+#include "ml/Types.hpp"
 #include <pqxx/pqxx>
 #include "trading/TradingStatsCalculator.hpp"
 #include "trading/TradingStatsService.hpp"
@@ -535,12 +537,62 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   imbalance_sell["analysis"] = signal_type == "sell" ? "Sell imbalance detected" : "No sell imbalance";
   criteria["volume_imbalance_sell"] = imbalance_sell;
 
+  // Real model inference drives ml_analysis whenever the ONNX pack is loaded;
+  // the heuristic path only remains as an honestly-labeled fallback.
   Json::Value ml_analysis(Json::objectValue);
-  ml_analysis["ml_enabled"] = true;
-  ml_analysis["win_probability"] = std::clamp(0.5 + (generated ? (imbalance * 0.2) : 0.0), 0.0, 1.0);
-  ml_analysis["expected_return"] = generated ? (imbalance * 0.012) : 0.0;
-  ml_analysis["confidence"] = generated ? strength : 0.0;
-  ml_analysis["model_version"] = "simulated-v1";
+  bool used_model = false;
+  if (strategy_ == "ml_enhanced_orderbook") {
+    auto *engineer = api::PredictController::featureEngineer();
+    auto *models = api::PredictController::modelManager();
+    if (engineer != nullptr && models != nullptr && models->is_ready()) {
+      try {
+        ::ml::OrderBookFeatures features;
+        features.timestamp = signal.timestamp;
+        features.symbol = symbol;
+        features.bid_ask_imbalance = imbalance;
+        features.spread_percent = mid > 0.0 ? spread / mid : 0.0;
+        features.mid_price = mid;
+        features.bid_volume = signal.volume * (imbalance >= 0.0 ? 0.55 + strength * 0.25 : 0.4);
+        features.ask_volume = signal.volume * (imbalance < 0.0 ? 0.55 + strength * 0.25 : 0.4);
+        features.order_book_depth = signal.order_book_depth;
+        features.large_bid_wall = false;
+        features.large_ask_wall = false;
+        features.wall_size = 0.0;
+        features.volume_weighted_price = mid;
+        features.price_momentum = state.last_return;
+        features.volatility = std::abs(state.last_return);
+
+        const auto pca_features = engineer->preprocess(features);
+        const double win_prob =
+            models->has_classifier() ? models->predict_win_prob(pca_features) : 0.5;
+        const double expected_pnl =
+            models->has_regressor() ? models->predict_pnl(pca_features) : 0.0;
+        double transformer_pnl = 0.0;
+        if (models->has_transformer()) {
+          transformer_pnl = models->predict_transformer(engineer->get_transformer_sequence());
+        }
+
+        ml_analysis["ml_enabled"] = true;
+        ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
+        ml_analysis["expected_return"] = expected_pnl;
+        ml_analysis["transformer_expected_pnl"] = transformer_pnl;
+        ml_analysis["confidence"] = std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0);
+        ml_analysis["model_version"] =
+            CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack");
+        used_model = true;
+      } catch (const std::exception &e) {
+        TR_LOG_WARN("ML inference failed for {}; using heuristic fallback: {}", symbol, e.what());
+      }
+    }
+  }
+
+  if (!used_model) {
+    ml_analysis["ml_enabled"] = strategy_ == "ml_enhanced_orderbook";
+    ml_analysis["win_probability"] = std::clamp(0.5 + (generated ? (imbalance * 0.2) : 0.0), 0.0, 1.0);
+    ml_analysis["expected_return"] = generated ? (imbalance * 0.012) : 0.0;
+    ml_analysis["confidence"] = generated ? strength : 0.0;
+    ml_analysis["model_version"] = "heuristic-fallback";
+  }
   ml_analysis["features_used"] = Json::arrayValue;
   ml_analysis["features_used"].append("bid_ask_imbalance");
   ml_analysis["features_used"].append("spread_percent");
@@ -567,6 +619,36 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
 
   signal.payload = payload;
   return signal;
+}
+
+bool SimulatedTradingService::signalPassesMlGateLocked(const SignalRecord &signal) const {
+  if (strategy_ != "ml_enhanced_orderbook") {
+    return true;
+  }
+
+  const Json::Value ml_analysis =
+      signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
+  const std::string model_version = ml_analysis.get("model_version", Json::Value("")).asString();
+  if (model_version == "heuristic-fallback") {
+    // Models unavailable: honor the fallback_to_baseline strategy parameter.
+    const Json::Value fallback = parameters_.get("fallback_to_baseline", Json::Value(true));
+    return fallback.isString() ? fallback.asString() != "false" : fallback.asBool();
+  }
+
+  const double threshold = std::clamp(
+      parameters_.get("confidence_threshold", Json::Value(0.6)).asDouble(), 0.0, 1.0);
+  const double win_probability =
+      ml_analysis.get("win_probability", Json::Value(0.5)).asDouble();
+
+  // win_probability is trained as the probability of a favorable (upward)
+  // outcome, so buys need it high and sells need it correspondingly low.
+  if (signal.signal_type == "buy") {
+    return win_probability >= threshold;
+  }
+  if (signal.signal_type == "sell") {
+    return win_probability <= 1.0 - threshold;
+  }
+  return false;
 }
 
 void SimulatedTradingService::trimHistoryLocked() {
@@ -726,7 +808,8 @@ void SimulatedTradingService::generateTickLocked() {
     const std::size_t hold_ticks = std::max(3, position_update_interval_ * 2);
 
     if (position_it == positions_.end()) {
-      if (signal_generated && static_cast<int>(positions_.size()) < max_positions_) {
+      if (signal_generated && static_cast<int>(positions_.size()) < max_positions_ &&
+          signalPassesMlGateLocked(signal)) {
         openPositionLocked(signal, "Opened on generated signal");
       }
       continue;
@@ -739,7 +822,8 @@ void SimulatedTradingService::generateTickLocked() {
 
     if (opposite_signal || age_out) {
       closePositionLocked(symbol, opposite_signal ? "Closed on opposite signal" : "Closed after holding period");
-      if (signal_generated && static_cast<int>(positions_.size()) < max_positions_) {
+      if (signal_generated && static_cast<int>(positions_.size()) < max_positions_ &&
+          signalPassesMlGateLocked(signal)) {
         openPositionLocked(signal, "Re-opened after close");
       }
     }
