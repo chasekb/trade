@@ -109,6 +109,20 @@ std::vector<std::string> optional_artifacts_for(const trade::ml::ModelType type)
   }
 }
 
+// Model ids become path components under the trained-models directory; only
+// simple names are allowed so request input can never traverse out of it.
+bool is_safe_model_id(const std::string &model_id) {
+  if (model_id.empty() || model_id.size() > 128) {
+    return false;
+  }
+  for (unsigned char c : model_id) {
+    if (!(std::isalnum(c) || c == '_' || c == '-' || c == '.')) {
+      return false;
+    }
+  }
+  return model_id.find("..") == std::string::npos;
+}
+
 std::string now_iso_utc() {
   const auto now = std::chrono::system_clock::now();
   const auto t = std::chrono::system_clock::to_time_t(now);
@@ -1012,9 +1026,10 @@ void PredictController::setActiveModel(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
   const std::string model_name = req->getParameter("model_name");
-  if (model_name.empty()) {
+  if (model_name.empty() || !is_safe_model_id(model_name)) {
     Json::Value err;
-    err["error"] = "model_name is required";
+    err["error"] = model_name.empty() ? "model_name is required"
+                                      : "model_name contains invalid characters";
     auto resp = HttpResponse::newHttpJsonResponse(err);
     resp->setStatusCode(k400BadRequest);
     callback(resp);
@@ -1408,6 +1423,12 @@ void PredictController::predictionComparison(
     Json::Value comparison;
     comparison["model_name"] = model_id;
     comparison["version_id"] = "";
+
+    if (!is_safe_model_id(model_id)) {
+      comparison["error"] = "invalid model id";
+      comparisons.append(comparison);
+      continue;
+    }
 
     try {
       namespace fs = std::filesystem;
