@@ -704,6 +704,12 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   position.entry_time = signal.timestamp_iso;
   position.status = "open";
   position.age_ticks = 0;
+  position.entry_win_probability =
+      signal.payload["ml_analysis"].get("win_probability", Json::Value(0.5)).asDouble();
+  position.entry_expected_return =
+      signal.payload["ml_analysis"].get("expected_return", Json::Value(0.0)).asDouble();
+  position.entry_model_confidence =
+      signal.payload["ml_analysis"].get("confidence", Json::Value(0.0)).asDouble();
   positions_[signal.symbol] = position;
 
   TradeRecord trade;
@@ -767,9 +773,11 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   trade.signal_reason = reason;
   trade.pnl = gross_pnl;
   trade.fees = fee;
-  trade.win_probability = gross_pnl >= 0.0 ? 0.65 : 0.35;
-  trade.expected_return = gross_pnl / std::max(1.0, position.entry_price * position.quantity);
-  trade.model_confidence = std::min(1.0, std::abs(gross_pnl) / std::max(1.0, position.entry_price * position.quantity));
+  // Persist the prediction-time values captured at entry; deriving them from
+  // the realized outcome would poison calibration and training data.
+  trade.win_probability = position.entry_win_probability;
+  trade.expected_return = position.entry_expected_return;
+  trade.model_confidence = position.entry_model_confidence;
   trade.trade_type = mode_;
 
   persistTradeLocked(trade);

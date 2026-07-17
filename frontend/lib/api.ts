@@ -18,6 +18,9 @@ type LocalSimPosition = {
   entry_time: string;
   status: 'open';
   age_ticks: number;
+  entry_win_probability: number;
+  entry_expected_return: number;
+  entry_model_confidence: number;
 };
 
 type LocalSimTrade = {
@@ -216,6 +219,9 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
       entry_time: signal.timestamp,
       status: 'open',
       age_ticks: 0,
+      entry_win_probability: winProbability,
+      entry_expected_return: expectedReturn,
+      entry_model_confidence: modelConfidence,
     };
 
     const fee = signal.price * quantity * feeRate;
@@ -276,9 +282,10 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
     pnl: grossPnl,
     timestamp: signal.timestamp,
     fees: exitFee,
-    win_probability: netPnl >= 0 ? Math.max(winProbability, 0.65) : Math.min(winProbability, 0.35),
-    expected_return: netPnl / Math.max(1, existingPosition.entry_price * existingPosition.quantity),
-    model_confidence: Math.min(1, Math.abs(netPnl) / Math.max(1, existingPosition.entry_price * existingPosition.quantity)),
+    // Prediction-time values from entry, never outcome-derived hindsight.
+    win_probability: existingPosition.entry_win_probability,
+    expected_return: existingPosition.entry_expected_return,
+    model_confidence: existingPosition.entry_model_confidence,
   });
 
   if (signalSide && Object.keys(portfolio.positions).length < maxPositions) {

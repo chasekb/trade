@@ -51,6 +51,11 @@ private:
     std::string entry_time;
     std::string status = "open";
     std::size_t age_ticks = 0;
+    // Prediction-time ML values captured at entry; exit rows persist these so
+    // calibration analysis never sees outcome-derived (hindsight) numbers.
+    double entry_win_probability = 0.5;
+    double entry_expected_return = 0.0;
+    double entry_model_confidence = 0.0;
   };
 
   struct TradeRecord {
