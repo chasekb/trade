@@ -264,7 +264,6 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
     ? (exitPrice - existingPosition.entry_price) * existingPosition.quantity
     : (existingPosition.entry_price - exitPrice) * existingPosition.quantity;
   const exitFee = exitPrice * existingPosition.quantity * feeRate;
-  const netPnl = grossPnl - exitFee;
   portfolio.realized_pnl += grossPnl;
   portfolio.total_fees += exitFee;
   portfolio.cash_balance += isLong
