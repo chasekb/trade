@@ -31,11 +31,11 @@ CausalSelfAttentionImpl::CausalSelfAttentionImpl(int64_t embedding_dim,
                                                  int64_t n_heads,
                                                  double dropout_rate)
     : embedding_dim_(embedding_dim),
+      n_heads_(n_heads > 0 && embedding_dim % n_heads == 0 ? n_heads : 1),
       qkv(torch::nn::Linear(embedding_dim, embedding_dim * 3)),
       proj(torch::nn::Linear(embedding_dim, embedding_dim)),
       attn_dropout(torch::nn::Dropout(dropout_rate)),
       res_dropout(torch::nn::Dropout(dropout_rate)) {
-  (void)n_heads;
   register_module("qkv", qkv);
   register_module("proj", proj);
   register_module("attn_dropout", attn_dropout);
@@ -46,21 +46,26 @@ torch::Tensor CausalSelfAttentionImpl::forward(torch::Tensor x) {
   int64_t B = x.size(0);
   int64_t N = x.size(1);
   int64_t D = x.size(2);
+  const int64_t H = n_heads_;
+  const int64_t head_dim = D / H;
 
   auto qkv_out = qkv->forward(x);
-  auto q = qkv_out.slice(-1, 0, D);
-  auto k = qkv_out.slice(-1, D, 2 * D);
-  auto v = qkv_out.slice(-1, 2 * D, 3 * D);
+  // Split into heads: (B, N, D) -> (B, H, N, D/H). Reshape/permute keeps the
+  // graph ONNX-exportable at opset 13.
+  auto q = qkv_out.slice(-1, 0, D).reshape({B, N, H, head_dim}).permute({0, 2, 1, 3});
+  auto k = qkv_out.slice(-1, D, 2 * D).reshape({B, N, H, head_dim}).permute({0, 2, 1, 3});
+  auto v = qkv_out.slice(-1, 2 * D, 3 * D).reshape({B, N, H, head_dim}).permute({0, 2, 1, 3});
 
-  auto mask = torch::tril(torch::ones({N, N}, x.options())).unsqueeze(0);
+  auto mask = torch::tril(torch::ones({N, N}, x.options()));
 
-  auto attn = q.matmul(k.permute({0, 2, 1})) *
-              (1.0 / std::sqrt(static_cast<double>(D)));
+  auto attn = q.matmul(k.transpose(-2, -1)) *
+              (1.0 / std::sqrt(static_cast<double>(head_dim)));
   attn = attn.masked_fill(mask == 0, -1e9);
   attn = torch::softmax(attn, -1);
   attn = attn_dropout->forward(attn);
 
-  auto y = attn.matmul(v); // (B, N, D)
+  auto y = attn.matmul(v);                       // (B, H, N, D/H)
+  y = y.permute({0, 2, 1, 3}).reshape({B, N, D}); // (B, N, D)
 
   return res_dropout->forward(proj->forward(y));
 }
@@ -107,10 +112,25 @@ StockTransformerImpl::StockTransformerImpl(int64_t n_features, int64_t lookback,
       head(torch::nn::Linear(embedding_dim, 1)) {
 
   int64_t num_patches = std::ceil((double)lookback / patch_size);
-  // Positional embeddings are a fixed architectural constant here, not a
-  // learned weight, so keep them out of the autograd graph and ONNX export
-  // parameter set.
+  // Fixed sinusoidal positional encodings: a non-learned buffer (kept out of
+  // the autograd graph and ONNX parameter set) that still gives every patch a
+  // distinct position signature — an all-zero buffer would make the model
+  // position-blind.
   pos_embed = torch::zeros({1, num_patches, embedding_dim});
+  {
+    auto accessor = pos_embed.accessor<float, 3>();
+    for (int64_t pos = 0; pos < num_patches; ++pos) {
+      for (int64_t i = 0; i < embedding_dim; i += 2) {
+        const double angle =
+            static_cast<double>(pos) /
+            std::pow(10000.0, static_cast<double>(i) / static_cast<double>(embedding_dim));
+        accessor[0][pos][i] = static_cast<float>(std::sin(angle));
+        if (i + 1 < embedding_dim) {
+          accessor[0][pos][i + 1] = static_cast<float>(std::cos(angle));
+        }
+      }
+    }
+  }
   register_buffer("pos_embed", pos_embed);
 
   for (int64_t i = 0; i < n_layers; ++i) {
