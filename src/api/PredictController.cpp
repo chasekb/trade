@@ -633,6 +633,14 @@ void PredictController::train(
     config.batch_size = 1;
   }
   config.model_name = payload.value("model_name", config.model_name);
+  if (!is_safe_model_id(config.model_name)) {
+    Json::Value err;
+    err["error"] = "model_name contains invalid characters";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
 
   std::string model_type = payload.value("model_type", "random_forest");
   std::transform(model_type.begin(), model_type.end(), model_type.begin(),
