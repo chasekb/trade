@@ -869,7 +869,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
       <LiveTradingStatistics isTradingActive={status.isActive} />
 
       {/* Order Book Signals */}
-      {(strategy === 'orderbook' || strategy === 'ml_enhanced_orderbook') && status.isActive && (
+      {status.isActive && (
         <Card>
           <CardHeader>
             <CardTitle>Order Book Signals</CardTitle>

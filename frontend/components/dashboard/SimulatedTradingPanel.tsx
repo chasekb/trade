@@ -759,7 +759,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
       <SimulatedTradingStatistics isTradingActive={status.isActive} />
 
       {/* Order Book Signals */}
-      {(strategy === 'orderbook' || strategy === 'ml_enhanced_orderbook') && status.isActive && (
+      {status.isActive && (
         <Card>
           <CardHeader>
             <CardTitle>Order Book Signals</CardTitle>

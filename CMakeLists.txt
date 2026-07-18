@@ -35,6 +35,7 @@ set(SOURCES
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
     src/trading/PositionSizingPolicy.cpp
+    src/trading/StrategySignal.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
     src/trading/TradingStatsCalculator.cpp
@@ -117,6 +118,13 @@ add_executable(test_portfolio_accounting
 )
 target_include_directories(test_portfolio_accounting PRIVATE include)
 add_test(NAME portfolio_accounting COMMAND test_portfolio_accounting)
+
+add_executable(test_strategy_signal
+    src/tests/test_strategy_signal.cpp
+    src/trading/StrategySignal.cpp
+)
+target_include_directories(test_strategy_signal PRIVATE include)
+add_test(NAME strategy_signal COMMAND test_strategy_signal)
 
 add_executable(test_trading_stats_calculator
     src/tests/test_trading_stats_calculator.cpp

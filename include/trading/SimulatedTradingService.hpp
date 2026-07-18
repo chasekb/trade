@@ -87,6 +87,9 @@ private:
     double imbalance = 0.0;
     double last_return = 0.0;
     std::mt19937 rng;
+    // Rolling close history for the indicator strategies (sma/ema/rsi/...).
+    std::deque<double> price_history;
+    long long last_entry_tick = -1;
   };
 
   struct SignalRecord {
@@ -127,6 +130,7 @@ private:
   PendingWrites takePendingWritesLocked();
   void flushWrites(PendingWrites &&writes) const;
   void openPositionLocked(const SignalRecord &signal, const std::string &reason);
+  void addToPositionLocked(const SignalRecord &signal, const std::string &reason);
   Json::Value closePositionLocked(const std::string &symbol, const std::string &reason);
   void updateMarkToMarketLocked(const std::map<std::string, double> &prices);
   double basePriceForSymbol(const std::string &symbol) const;

@@ -8,6 +8,7 @@
 #include "trading/TradingStatsService.hpp"
 #include "trading/PortfolioAccounting.hpp"
 #include "trading/PositionSizingPolicy.hpp"
+#include "trading/StrategySignal.hpp"
 #include "ml/Metrics.hpp"
 #include "cache/CacheManager.hpp"
 #include "utils/Logger.hpp"
@@ -102,6 +103,77 @@ Json::Value parseJsonString(const std::string &text) {
 
 std::string makeSessionId() {
   return "sim_" + std::to_string(currentEpochSeconds());
+}
+
+constexpr std::size_t kMaxPriceHistory = 512;
+
+bool isOrderBookStrategy(const std::string &strategy) {
+  return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
+}
+
+// Form inputs may deliver numbers as strings; read either representation.
+double paramNumber(const Json::Value &params, const char *key, double fallback) {
+  if (!params.isMember(key)) {
+    return fallback;
+  }
+  const Json::Value &value = params[key];
+  if (value.isNumeric()) {
+    return value.asDouble();
+  }
+  if (value.isString()) {
+    try {
+      return std::stod(value.asString());
+    } catch (...) {
+    }
+  }
+  return fallback;
+}
+
+StrategyParams buildStrategyParams(const Json::Value &p, const std::string &strategy) {
+  StrategyParams sp;
+  if (strategy == "sma" || strategy == "ema") {
+    sp.short_window = paramNumber(p, "short_window", sp.short_window);
+    sp.long_window = paramNumber(p, "long_window", sp.long_window);
+  } else if (strategy == "rsi") {
+    sp.rsi_window = paramNumber(p, "window", sp.rsi_window);
+    sp.rsi_overbought = paramNumber(p, "overbought", sp.rsi_overbought);
+    sp.rsi_oversold = paramNumber(p, "oversold", sp.rsi_oversold);
+  } else if (strategy == "bollinger") {
+    sp.bb_window = paramNumber(p, "window", sp.bb_window);
+    sp.bb_std_dev = paramNumber(p, "std_dev", sp.bb_std_dev);
+  } else if (strategy == "macd") {
+    sp.macd_fast = paramNumber(p, "fast_window", sp.macd_fast);
+    sp.macd_slow = paramNumber(p, "slow_window", sp.macd_slow);
+    sp.macd_signal = paramNumber(p, "signal_window", sp.macd_signal);
+  } else if (strategy == "stochastic") {
+    sp.stoch_k = paramNumber(p, "k_window", sp.stoch_k);
+    sp.stoch_d = paramNumber(p, "d_window", sp.stoch_d);
+    sp.stoch_overbought = paramNumber(p, "overbought", sp.stoch_overbought);
+    sp.stoch_oversold = paramNumber(p, "oversold", sp.stoch_oversold);
+  } else if (strategy == "fibonacci") {
+    sp.fib_lookback = paramNumber(p, "fib_lookback_period", sp.fib_lookback);
+    if (p.isMember("fib_levels") && p["fib_levels"].isString()) {
+      std::vector<double> levels;
+      std::stringstream stream(p["fib_levels"].asString());
+      std::string item;
+      while (std::getline(stream, item, ',')) {
+        try {
+          levels.push_back(std::stod(item));
+        } catch (...) {
+        }
+      }
+      if (!levels.empty()) {
+        sp.fib_levels = levels;
+      }
+    }
+  } else if (strategy == "dca") {
+    // The 1s-per-tick simulator compresses one configured hour to one minute
+    // of ticks so DCA cadences are observable in a session.
+    const double interval_hours = paramNumber(p, "interval_hours", 24.0);
+    sp.dca_interval_ticks =
+        std::max<long long>(1, static_cast<long long>(std::llround(interval_hours * 60.0)));
+  }
+  return sp;
 }
 
 std::string sanitizeSide(const std::string &side) {
@@ -248,6 +320,14 @@ double SimulatedTradingService::basePriceForSymbol(const std::string &symbol) co
 }
 
 double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &signal) const {
+  // Fixed-amount strategies bypass the confidence/performance multiplier: the
+  // user-configured amount is the whole point of DCA and buy-and-hold.
+  if (strategy_ == "dca" || strategy_ == "buyandhold") {
+    const double amount =
+        paramNumber(parameters_, "amount", strategy_ == "dca" ? 100.0 : 1000.0);
+    return std::max(25.0, amount);
+  }
+
   const double pct = parameters_.isMember("position_size_percent")
                          ? parameters_["position_size_percent"].asDouble()
                          : 1.0;
@@ -528,9 +608,35 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   const double mid = state.price;
   const double imbalance = state.imbalance;
   const double spread = std::max(0.0001, mid * (0.0004 + 0.0003 * unit01(state.rng)));
-  const double strength = std::min(1.0, std::abs(imbalance) * 1.15);
-  const bool generated = strength >= 0.22;
-  const std::string signal_type = !generated ? "hold" : (imbalance >= 0.0 ? "buy" : "sell");
+
+  state.price_history.push_back(mid);
+  while (state.price_history.size() > kMaxPriceHistory) {
+    state.price_history.pop_front();
+  }
+
+  // Order-book strategies signal from the live imbalance; every other strategy
+  // evaluates its own indicator rule over the rolling price history.
+  double strength = 0.0;
+  bool generated = false;
+  std::string signal_type = "hold";
+  std::string strategy_reason;
+  if (isOrderBookStrategy(strategy_)) {
+    strength = std::min(1.0, std::abs(imbalance) * 1.15);
+    generated = strength >= 0.22;
+    signal_type = !generated ? "hold" : (imbalance >= 0.0 ? "buy" : "sell");
+  } else {
+    const bool has_position = positions_.find(symbol) != positions_.end();
+    const long long ticks_since_entry =
+        state.last_entry_tick < 0 ? std::numeric_limits<long long>::max() / 2
+                                  : tick_ - state.last_entry_tick;
+    const StrategySignalOutcome outcome = evaluateStrategySignal(
+        strategy_, state.price_history, buildStrategyParams(parameters_, strategy_),
+        has_position, ticks_since_entry);
+    signal_type = outcome.signal_type;
+    strength = outcome.strength;
+    generated = signal_type != "hold";
+    strategy_reason = outcome.reason;
+  }
 
   signal.signal_type = signal_type;
   signal.strength = strength;
@@ -554,8 +660,12 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   payload["signal_strength"] = signal.strength;
   payload["price"] = signal.price;
   payload["timestamp"] = signal.timestamp_iso;
-  payload["signal_reason"] = generated ? (signal.signal_type == "buy" ? "Order book imbalance favors upside" : "Order book imbalance favors downside")
-                                          : "Signal below activity threshold";
+  payload["signal_reason"] =
+      !strategy_reason.empty()
+          ? strategy_reason
+          : (generated ? (signal.signal_type == "buy" ? "Order book imbalance favors upside"
+                                                      : "Order book imbalance favors downside")
+                       : "Signal below activity threshold");
   payload["data_status"] = generated ? "sufficient" : "insufficient";
   payload["spread"] = signal.spread;
   payload["volume"] = signal.volume;
@@ -784,6 +894,53 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
 
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
+  market_state_[signal.symbol].last_entry_tick = tick_;
+  queueTradeWriteLocked(trade);
+  recent_trades_.push_back(trade);
+  updated_at_ = nowIsoUtc();
+  trimHistoryLocked();
+}
+
+// DCA accumulation: grow an existing position and average the entry price.
+void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
+                                                  const std::string &reason) {
+  auto it = positions_.find(signal.symbol);
+  if (it == positions_.end()) {
+    openPositionLocked(signal, reason);
+    return;
+  }
+
+  PositionState &position = it->second;
+  const double allocated_usd = positionSizeUsdForSignal(signal);
+  const double quantity = std::max(0.000001, allocated_usd / std::max(0.000001, signal.price));
+  const double fee = signal.price * quantity * kFeeRate;
+
+  const double previous_notional = position.entry_price * position.quantity;
+  position.quantity += quantity;
+  position.entry_price = (previous_notional + signal.price * quantity) / position.quantity;
+  position.current_price = signal.price;
+
+  TradeRecord trade;
+  trade.trade_id = makeId("trade", signal.timestamp, signal.symbol, recent_trades_.size() + 1);
+  trade.session_id = session_id_;
+  trade.symbol = signal.symbol;
+  trade.side = position.side;
+  trade.quantity = quantity;
+  trade.price = signal.price;
+  trade.timestamp = signal.timestamp;
+  trade.timestamp_iso = signal.timestamp_iso;
+  trade.strategy_type = strategy_;
+  trade.signal_reason = reason;
+  trade.pnl = 0.0;
+  trade.fees = fee;
+  trade.win_probability = signal.payload["ml_analysis"].get("win_probability", Json::Value(0.5)).asDouble();
+  trade.expected_return = signal.payload["ml_analysis"].get("expected_return", Json::Value(0.0)).asDouble();
+  trade.model_confidence = signal.payload["ml_analysis"].get("confidence", Json::Value(0.0)).asDouble();
+  trade.trade_type = mode_;
+
+  total_fees_ += fee;
+  cash_ += openCashDelta(position.side, allocated_usd, fee);
+  market_state_[signal.symbol].last_entry_tick = tick_;
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -877,6 +1034,19 @@ void SimulatedTradingService::generateTickLocked() {
 
     PositionState &position = position_it->second;
     position.current_price = signal.price;
+
+    // Accumulation strategies never auto-close: buy-and-hold keeps its
+    // position for the session, DCA adds on each scheduled buy signal.
+    if (strategy_ == "buyandhold") {
+      continue;
+    }
+    if (strategy_ == "dca") {
+      if (signal_generated && signal.signal_type == "buy") {
+        addToPositionLocked(signal, "DCA scheduled purchase");
+      }
+      continue;
+    }
+
     const bool opposite_signal = signal_generated && sanitizeSide(signal.signal_type) != position.side;
     const bool age_out = position.age_ticks >= static_cast<std::size_t>(hold_ticks);
 
