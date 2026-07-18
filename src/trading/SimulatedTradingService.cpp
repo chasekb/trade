@@ -1092,18 +1092,31 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
     symbols_ = defaultSymbols();
   }
 
-  parameters_ = payload.isMember("parameters") && payload["parameters"].isObject()
-                    ? payload["parameters"]
-                    : Json::Value(Json::objectValue);
+  // Canonical key is `parameters`; older frontends sent the same object as
+  // `strategy_params`, so accept that alias too.
+  if (payload.isMember("parameters") && payload["parameters"].isObject()) {
+    parameters_ = payload["parameters"];
+  } else if (payload.isMember("strategy_params") && payload["strategy_params"].isObject()) {
+    parameters_ = payload["strategy_params"];
+  } else {
+    parameters_ = Json::Value(Json::objectValue);
+  }
 
-  if (payload.isMember("position_size_percent")) {
-    parameters_["position_size_percent"] = payload["position_size_percent"];
+  // Top-level settings override/backfill the parameters object.
+  for (const char *key : {"position_size_percent", "max_positions",
+                          "position_update_interval", "confidence_threshold",
+                          "fallback_to_baseline", "stop_loss", "take_profit"}) {
+    if (payload.isMember(key) && !payload[key].isNull()) {
+      parameters_[key] = payload[key];
+    }
   }
-  if (payload.isMember("max_positions")) {
-    parameters_["max_positions"] = payload["max_positions"];
-  }
-  if (payload.isMember("position_update_interval")) {
-    parameters_["position_update_interval"] = payload["position_update_interval"];
+  if (!parameters_.isMember("initial_portfolio_size")) {
+    for (const char *key : {"initial_portfolio_size", "initial_balance", "capital"}) {
+      if (payload.isMember(key) && payload[key].isNumeric()) {
+        parameters_["initial_portfolio_size"] = payload[key];
+        break;
+      }
+    }
   }
 
   max_positions_ = payload.isMember("max_positions")

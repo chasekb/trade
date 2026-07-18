@@ -461,6 +461,54 @@ function buildLocalSimulatedTradingStatus() {
   };
 }
 
+// Exported for tests: the canonical start-trading payload contract shared with
+// SimulatedTradingService::startSession.
+export function buildStartTradingPayload(
+  strategy: string,
+  symbols: string[],
+  parameters: Record<string, any>,
+  config: {
+    position_size_percent?: number;
+    max_positions?: number;
+    position_update_interval?: number;
+  }
+) {
+  const positionSizeFraction =
+    typeof config.position_size_percent === 'number'
+      ? config.position_size_percent / 100
+      : undefined;
+  const initialPortfolioSize = parameters.initial_portfolio_size ?? parameters.capital ?? 10000.0;
+
+  return {
+    symbols,
+    strategy,
+    strategy_type: strategy,
+    // Canonical contract: the backend session reads `parameters` (including
+    // initial_portfolio_size, position sizing mode, per-strategy tuning, and
+    // the ML gate settings). The legacy aliases below are kept for older
+    // backend builds.
+    parameters: {
+      ...parameters,
+      initial_portfolio_size: initialPortfolioSize,
+    } as Record<string, any>,
+    strategy_params: parameters,
+    initial_balance: initialPortfolioSize,
+    capital: initialPortfolioSize,
+    initial_portfolio_size: initialPortfolioSize,
+    max_positions: config.max_positions,
+    position_size_percent: config.position_size_percent,
+    position_size: positionSizeFraction,
+    position_update_interval: config.position_update_interval || 5,
+    immediate_start: true,
+    batch_size: 3,
+    order_prioritization: parameters.order_prioritization,
+    confidence_threshold: parameters.confidence_threshold,
+    fallback_to_baseline: parameters.fallback_to_baseline,
+    stop_loss: parameters.stop_loss,
+    take_profit: parameters.take_profit,
+  };
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -584,30 +632,7 @@ class ApiClient {
       position_update_interval?: number;
     }
   ): Promise<ApiResponse<{ is_active: boolean; message: string }>> {
-    const positionSizeFraction =
-      typeof config.position_size_percent === 'number'
-        ? config.position_size_percent / 100
-        : undefined;
-
-    const basePayload = {
-      symbols,
-      strategy,
-      strategy_type: strategy,
-      strategy_params: parameters,
-      initial_balance: parameters.initial_portfolio_size ?? parameters.capital ?? 10000.0,
-      capital: parameters.initial_portfolio_size ?? parameters.capital ?? 10000.0,
-      max_positions: config.max_positions,
-      position_size_percent: config.position_size_percent,
-      position_size: positionSizeFraction,
-      position_update_interval: config.position_update_interval || 5,
-      immediate_start: true,
-      batch_size: 3,
-      order_prioritization: parameters.order_prioritization,
-      confidence_threshold: parameters.confidence_threshold,
-      fallback_to_baseline: parameters.fallback_to_baseline,
-      stop_loss: parameters.stop_loss,
-      take_profit: parameters.take_profit,
-    };
+    const basePayload = buildStartTradingPayload(strategy, symbols, parameters, config);
 
     if (mode === 'simulated' && FORCE_LOCAL_SIM_TRADING) {
       setLocalSimTradingSession(strategy, symbols, parameters);
