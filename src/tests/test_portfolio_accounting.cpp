@@ -81,6 +81,34 @@ int main() {
     return 1;
   }
 
+  // Percent sizing compounds with current total value; wiped equity falls
+  // back to the provided capital.
+  {
+    using trade::trading::percentSizingCapital;
+    if (!expect_close(percentSizingCapital(9000.0, 6000.0, 10000.0), 15000.0,
+                      "sizing base = current value") ||
+        !expect_close(percentSizingCapital(500.0, -300.0, 10000.0), 200.0,
+                      "sizing base with net-short book") ||
+        !expect_close(percentSizingCapital(-100.0, 50.0, 10000.0), 10000.0,
+                      "wiped equity falls back to initial capital")) {
+      return 1;
+    }
+  }
+
+  // Cash-sufficiency gate: buys need notional + fee, shorts need collateral.
+  {
+    using trade::trading::hasSufficientCash;
+    bool ok = true;
+    ok &= hasSufficientCash("buy", 101.0, 100.0, 0.5);
+    ok &= !hasSufficientCash("buy", 100.0, 100.0, 0.5);
+    ok &= hasSufficientCash("sell", 100.0, 100.0, 0.5);
+    ok &= !hasSufficientCash("sell", 99.0, 100.0, 0.5);
+    if (!ok) {
+      std::cerr << "cash sufficiency expectations failed" << std::endl;
+      return 1;
+    }
+  }
+
   // Stop-loss / take-profit exit rule.
   {
     using trade::trading::exitReasonForPnl;

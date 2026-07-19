@@ -342,7 +342,11 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
                                     ? parameters_["position_size_value"].asDouble()
                                     : 1.0;
 
-  const double capital = initial_capital_ > 0.0 ? initial_capital_ : kDefaultInitialCapital;
+  // Percent sizing compounds: percent of the current total value, not the
+  // session's starting capital.
+  const double capital = percentSizingCapital(
+      cash_, total_positions_value_,
+      initial_capital_ > 0.0 ? initial_capital_ : kDefaultInitialCapital);
   PositionSizingInputs inputs;
   inputs.base_usd = size_mode == "dollar" ? std::max(25.0, position_value)
                                             : capital * std::max(0.01, pct) / 100.0;
@@ -982,10 +986,17 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   const double allocated_usd = positionSizeUsdForSignal(signal);
   const double quantity = std::max(0.000001, allocated_usd / std::max(0.000001, signal.price));
   const double fee = signal.price * quantity * kFeeRate;
+  const std::string side = sanitizeSide(signal.signal_type);
+
+  if (!hasSufficientCash(side, cash_, allocated_usd, fee)) {
+    TR_LOG_DEBUG("Skipping {} entry for {}: insufficient cash ({} < {})", side, signal.symbol,
+                 cash_, allocated_usd + fee);
+    return;
+  }
 
   PositionState position;
   position.symbol = signal.symbol;
-  position.side = sanitizeSide(signal.signal_type);
+  position.side = side;
   position.quantity = quantity;
   position.entry_price = signal.price;
   position.current_price = signal.price;
@@ -1053,6 +1064,12 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
   const double allocated_usd = positionSizeUsdForSignal(signal);
   const double quantity = std::max(0.000001, allocated_usd / std::max(0.000001, signal.price));
   const double fee = signal.price * quantity * kFeeRate;
+
+  if (!hasSufficientCash(position.side, cash_, allocated_usd, fee)) {
+    TR_LOG_DEBUG("Skipping DCA add for {}: insufficient cash ({} < {})", signal.symbol, cash_,
+                 allocated_usd + fee);
+    return;
+  }
 
   const double previous_notional = position.entry_price * position.quantity;
   position.quantity += quantity;

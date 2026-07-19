@@ -25,6 +25,24 @@ inline double signedPositionValue(const std::string &side, double quantity, doub
   return side == "buy" ? market_value : -market_value;
 }
 
+// Base capital for percent position sizing: percent of the *current* total
+// value (cash + signed positions value) so sizing compounds with the session.
+// Falls back to the given capital when equity is wiped or not yet established.
+inline double percentSizingCapital(double cash, double signed_positions_value,
+                                   double fallback_capital) {
+  const double current_value = cash + signed_positions_value;
+  return current_value > 0.0 ? current_value : fallback_capital;
+}
+
+// Cash-sufficiency gate for opening/adding to a position. Buys must cover the
+// notional plus fee; shorts must hold the notional as free collateral (their
+// fee comes out of the sale proceeds). Insufficient cash rejects the entry
+// outright — no auto-scaling.
+inline bool hasSufficientCash(const std::string &side, double cash, double allocated_usd,
+                              double fee) {
+  return side == "buy" ? cash >= allocated_usd + fee : cash >= allocated_usd;
+}
+
 // Stop-loss / take-profit exit rule over a position's PnL percentage. A zero
 // or negative threshold disables that side. Returns the close reason, or
 // nullptr when the position should stay open.

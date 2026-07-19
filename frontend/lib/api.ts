@@ -194,7 +194,9 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
   const positionSizePercent = Number(session.parameters.position_size_percent ?? 1);
   const maxPositions = Math.max(1, Number(session.parameters.max_positions ?? session.parameters.max_positions_per_session ?? 100));
   const holdTicks = Math.max(3, Number(session.parameters.position_update_interval ?? 5) * 2);
-  const allocatedUsd = Math.max(25, portfolio.initial_capital * Math.max(0.01, positionSizePercent) / 100);
+  // Percent of current total value (compounding), matching the backend engine.
+  const sizingCapital = portfolio.total_value > 0 ? portfolio.total_value : portfolio.initial_capital;
+  const allocatedUsd = Math.max(25, sizingCapital * Math.max(0.01, positionSizePercent) / 100);
   const quantity = Math.max(0.000001, allocatedUsd / Math.max(0.000001, signal.price));
   const feeRate = 0.0008;
   const signalSide = signal.signal;
@@ -204,6 +206,13 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
 
   const openTrade = () => {
     if (Object.keys(portfolio.positions).length >= maxPositions) {
+      return;
+    }
+
+    // Cash-sufficiency gate mirroring the backend: reject, never auto-scale.
+    const entryFee = signal.price * quantity * feeRate;
+    const requiredCash = signalSide === 'buy' ? allocatedUsd + entryFee : allocatedUsd;
+    if (portfolio.cash_balance < requiredCash) {
       return;
     }
 

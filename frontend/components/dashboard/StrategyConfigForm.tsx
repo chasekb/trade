@@ -329,7 +329,7 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                     </div>
                     <div className="text-xs text-gray-500">
                         {(config.position_size_mode || 'percent') === 'percent'
-                            ? 'Example: 1 means 1% of portfolio per position'
+                            ? 'Example: 1 means 1% of current portfolio value per position (compounds)'
                             : 'Example: 250 means allocate $250 per position'}
                     </div>
 
