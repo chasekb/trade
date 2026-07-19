@@ -1,6 +1,7 @@
 #include "trading/SimulatedTradingService.hpp"
 
 #include "api/PredictController.hpp"
+#include "config/Config.hpp"
 #include "db/DatabaseManager.hpp"
 #include "ml/Types.hpp"
 #include <pqxx/pqxx>
@@ -106,6 +107,9 @@ std::string makeSessionId() {
 }
 
 constexpr std::size_t kMaxPriceHistory = 512;
+// Live quotes are fetched sequentially over HTTPS each tick; cap the universe
+// so one tick stays within the cadence budget.
+constexpr std::size_t kMaxLiveQuoteSymbols = 10;
 
 bool isOrderBookStrategy(const std::string &strategy) {
   return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
@@ -472,6 +476,90 @@ SimulatedTradingService::PendingWrites SimulatedTradingService::takePendingWrite
   return writes;
 }
 
+bool SimulatedTradingService::liveOrderExecutionEnabledLocked() const {
+  if (mode_ != "live" || !exchange_client_ || !exchange_client_->configured()) {
+    return false;
+  }
+  const Json::Value flag = parameters_.get("live_order_execution", Json::Value(false));
+  return flag.isString() ? flag.asString() == "true" : flag.asBool();
+}
+
+void SimulatedTradingService::queueOrderIntentLocked(const std::string &product_id,
+                                                     const std::string &side, double amount,
+                                                     bool amount_is_quote,
+                                                     const std::string &reason) {
+  OrderIntent intent;
+  intent.product_id = product_id;
+  intent.side = side;
+  intent.amount = amount;
+  intent.amount_is_quote = amount_is_quote;
+  intent.reason = reason;
+  pending_orders_.push_back(std::move(intent));
+}
+
+std::vector<SimulatedTradingService::OrderIntent>
+SimulatedTradingService::takePendingOrdersLocked() {
+  std::vector<OrderIntent> orders;
+  orders.swap(pending_orders_);
+  return orders;
+}
+
+void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
+  if (orders.empty() || !exchange_client_) {
+    return;
+  }
+  for (const auto &intent : orders) {
+    const auto result = exchange_client_->placeMarketOrder(intent.product_id, intent.side,
+                                                           intent.amount, intent.amount_is_quote);
+    if (result.success) {
+      TR_LOG_INFO("Coinbase order placed: {} {} {} ({}) order_id={} [{}]", intent.side,
+                  intent.amount, intent.product_id, intent.amount_is_quote ? "quote" : "base",
+                  result.order_id, intent.reason);
+    } else {
+      TR_LOG_ERROR("Coinbase order FAILED: {} {} {} ({}): {} [{}]", intent.side, intent.amount,
+                   intent.product_id, intent.amount_is_quote ? "quote" : "base", result.error,
+                   intent.reason);
+    }
+  }
+}
+
+std::map<std::string, SimulatedTradingService::MarketQuote>
+SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
+  std::map<std::string, MarketQuote> quotes;
+  if (!exchange_client_) {
+    return quotes;
+  }
+
+  std::size_t fetched = 0;
+  for (const auto &symbol : symbols) {
+    if (fetched >= kMaxLiveQuoteSymbols) {
+      TR_LOG_WARN("Live quote universe capped at {} symbols; {} requested",
+                  kMaxLiveQuoteSymbols, symbols.size());
+      break;
+    }
+    ++fetched;
+
+    exchange::OrderBookSummary book;
+    std::string error;
+    if (!exchange_client_->getOrderBook(symbol, book, &error)) {
+      TR_LOG_WARN("Failed to fetch order book for {}: {}", symbol, error);
+      continue;
+    }
+
+    MarketQuote quote;
+    quote.valid = true;
+    quote.mid = book.mid;
+    quote.spread = book.spread;
+    quote.best_bid = book.best_bid;
+    quote.best_ask = book.best_ask;
+    quote.imbalance = book.imbalance;
+    quote.volume = book.bid_volume + book.ask_volume;
+    quote.depth = book.depth;
+    quotes[symbol] = quote;
+  }
+  return quotes;
+}
+
 void SimulatedTradingService::flushWrites(PendingWrites &&writes) const {
   if (!writes.signals.empty()) {
     // Dedupe by id (keeping the latest) so a multi-row upsert never touches
@@ -569,7 +657,8 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) const {
 
 SimulatedTradingService::SignalRecord
 SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
-                                                 std::size_t symbol_index) {
+                                                 std::size_t symbol_index,
+                                                 const MarketQuote *quote) {
   SignalRecord signal;
   signal.session_id = session_id_;
   signal.symbol = symbol;
@@ -589,25 +678,40 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   std::uniform_real_distribution<double> unit(-1.0, 1.0);
   std::uniform_real_distribution<double> unit01(0.0, 1.0);
 
-  // Imbalance is persistent (AR(1)) and *leads* price: the current tick's
-  // return contains a component proportional to the prior imbalance. Acting on
-  // strong imbalance therefore has genuine positive expectancy while the
-  // imbalance persists, unlike the old sine wave where strong signals marked
-  // reverting extremes.
-  constexpr double kImbalancePersistence = 0.85;
-  constexpr double kImbalanceImpact = 0.0015;
-  constexpr double kNoiseVol = 0.002;
+  double mid = 0.0;
+  double imbalance = 0.0;
+  double spread = 0.0;
+  if (quote != nullptr && quote->valid) {
+    // Live mode: real Coinbase order-book snapshot drives price and imbalance.
+    const double previous_price = state.price > 0.0 ? state.price : quote->mid;
+    state.last_return =
+        previous_price > 0.0 ? (quote->mid - previous_price) / previous_price : 0.0;
+    state.price = quote->mid;
+    state.imbalance = quote->imbalance;
+    mid = quote->mid;
+    imbalance = quote->imbalance;
+    spread = std::max(0.0001, quote->spread);
+  } else {
+    // Simulated mode: imbalance is persistent (AR(1)) and *leads* price: the
+    // current tick's return contains a component proportional to the prior
+    // imbalance. Acting on strong imbalance therefore has genuine
+    // positive expectancy while the imbalance persists, unlike the old sine
+    // wave where strong signals marked reverting extremes.
+    constexpr double kImbalancePersistence = 0.85;
+    constexpr double kImbalanceImpact = 0.0015;
+    constexpr double kNoiseVol = 0.002;
 
-  const double prior_imbalance = state.imbalance;
-  const double tick_return = kImbalanceImpact * prior_imbalance + kNoiseVol * unit(state.rng);
-  state.price = std::max(0.0001, state.price * (1.0 + tick_return));
-  state.last_return = tick_return;
-  state.imbalance = std::clamp(
-      kImbalancePersistence * prior_imbalance + 0.35 * unit(state.rng), -1.0, 1.0);
+    const double prior_imbalance = state.imbalance;
+    const double tick_return = kImbalanceImpact * prior_imbalance + kNoiseVol * unit(state.rng);
+    state.price = std::max(0.0001, state.price * (1.0 + tick_return));
+    state.last_return = tick_return;
+    state.imbalance = std::clamp(
+        kImbalancePersistence * prior_imbalance + 0.35 * unit(state.rng), -1.0, 1.0);
 
-  const double mid = state.price;
-  const double imbalance = state.imbalance;
-  const double spread = std::max(0.0001, mid * (0.0004 + 0.0003 * unit01(state.rng)));
+    mid = state.price;
+    imbalance = state.imbalance;
+    spread = std::max(0.0001, mid * (0.0004 + 0.0003 * unit01(state.rng)));
+  }
 
   state.price_history.push_back(mid);
   while (state.price_history.size() > kMaxPriceHistory) {
@@ -644,10 +748,17 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   signal.spread = spread;
   signal.imbalance = imbalance;
   signal.mid_price = mid;
-  signal.best_bid = mid - spread / 2.0;
-  signal.best_ask = mid + spread / 2.0;
-  signal.order_book_depth = 20 + static_cast<int>((symbol_index + tick_) % 12);
-  signal.volume = 10000.0 + std::abs(imbalance) * 5000.0 + static_cast<double>(symbol_index) * 1200.0;
+  if (quote != nullptr && quote->valid) {
+    signal.best_bid = quote->best_bid;
+    signal.best_ask = quote->best_ask;
+    signal.order_book_depth = quote->depth;
+    signal.volume = quote->volume;
+  } else {
+    signal.best_bid = mid - spread / 2.0;
+    signal.best_ask = mid + spread / 2.0;
+    signal.order_book_depth = 20 + static_cast<int>((symbol_index + tick_) % 12);
+    signal.volume = 10000.0 + std::abs(imbalance) * 5000.0 + static_cast<double>(symbol_index) * 1200.0;
+  }
   signal.total_signals = static_cast<int>(tick_ * std::max<std::size_t>(1, symbols_.size()) + symbol_index + 1);
 
   Json::Value payload(Json::objectValue);
@@ -824,9 +935,14 @@ void SimulatedTradingService::trimHistoryLocked() {
 
 void SimulatedTradingService::updateMarkToMarketLocked(
     const std::map<std::string, double> &prices) {
-  unrealized_pnl_ = 0.0;
-  total_positions_value_ = 0.0;
+  // Stop-loss / take-profit thresholds in percent of entry notional; zero or
+  // absent disables the rule.
+  const double stop_loss = paramNumber(
+      parameters_, "stop_loss_percent", paramNumber(parameters_, "stop_loss", 0.0));
+  const double take_profit = paramNumber(
+      parameters_, "take_profit_percent", paramNumber(parameters_, "take_profit", 0.0));
 
+  std::vector<std::pair<std::string, const char *>> exits;
   for (auto &[symbol, position] : positions_) {
     const auto it = prices.find(symbol);
     if (it != prices.end()) {
@@ -838,6 +954,21 @@ void SimulatedTradingService::updateMarkToMarketLocked(
                                   ? (position.unrealized_pnl / (position.entry_price * position.quantity)) * 100.0
                                   : 0.0;
     position.age_ticks += 1;
+
+    if (stop_loss > 0.0 && position.pnl_percentage <= -stop_loss) {
+      exits.emplace_back(symbol, "Stop loss triggered");
+    } else if (take_profit > 0.0 && position.pnl_percentage >= take_profit) {
+      exits.emplace_back(symbol, "Take profit triggered");
+    }
+  }
+
+  for (const auto &[symbol, reason] : exits) {
+    closePositionLocked(symbol, reason);
+  }
+
+  unrealized_pnl_ = 0.0;
+  total_positions_value_ = 0.0;
+  for (const auto &[symbol, position] : positions_) {
     unrealized_pnl_ += position.unrealized_pnl;
     total_positions_value_ +=
         signedPositionValue(position.side, position.quantity, position.current_price);
@@ -890,11 +1021,21 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   trade.win_probability = signal.payload["ml_analysis"].get("win_probability", Json::Value(0.5)).asDouble();
   trade.expected_return = signal.payload["ml_analysis"].get("expected_return", Json::Value(0.0)).asDouble();
   trade.model_confidence = signal.payload["ml_analysis"].get("confidence", Json::Value(0.0)).asDouble();
-  trade.trade_type = mode_;
+  trade.trade_type = mode_ == "live"
+                         ? (liveOrderExecutionEnabledLocked() ? "live" : "live_paper")
+                         : mode_;
 
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
   market_state_[signal.symbol].last_entry_tick = tick_;
+  if (liveOrderExecutionEnabledLocked()) {
+    // Buys spend quote currency; shorts on spot are entered by selling base.
+    if (position.side == "buy") {
+      queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason);
+    } else {
+      queueOrderIntentLocked(signal.symbol, "sell", quantity, false, reason);
+    }
+  }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -936,11 +1077,16 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
   trade.win_probability = signal.payload["ml_analysis"].get("win_probability", Json::Value(0.5)).asDouble();
   trade.expected_return = signal.payload["ml_analysis"].get("expected_return", Json::Value(0.0)).asDouble();
   trade.model_confidence = signal.payload["ml_analysis"].get("confidence", Json::Value(0.0)).asDouble();
-  trade.trade_type = mode_;
+  trade.trade_type = mode_ == "live"
+                         ? (liveOrderExecutionEnabledLocked() ? "live" : "live_paper")
+                         : mode_;
 
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
   market_state_[signal.symbol].last_entry_tick = tick_;
+  if (liveOrderExecutionEnabledLocked() && position.side == "buy") {
+    queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason);
+  }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -987,8 +1133,15 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   trade.win_probability = position.entry_win_probability;
   trade.expected_return = position.entry_expected_return;
   trade.model_confidence = position.entry_model_confidence;
-  trade.trade_type = mode_;
+  trade.trade_type = mode_ == "live"
+                         ? (liveOrderExecutionEnabledLocked() ? "live" : "live_paper")
+                         : mode_;
 
+  if (liveOrderExecutionEnabledLocked()) {
+    // Closing a long sells the base quantity; closing a short buys it back.
+    queueOrderIntentLocked(symbol, position.side == "buy" ? "sell" : "buy",
+                           position.quantity, false, reason);
+  }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   positions_.erase(it);
@@ -1005,17 +1158,27 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   return result;
 }
 
-void SimulatedTradingService::generateTickLocked() {
+void SimulatedTradingService::generateTickLocked(const std::map<std::string, MarketQuote> &quotes) {
   if (!active_) {
     return;
   }
 
   tick_ += 1;
+  const bool live_mode = mode_ == "live";
   std::map<std::string, double> prices;
 
   for (std::size_t index = 0; index < symbols_.size(); ++index) {
     const std::string &symbol = symbols_[index];
-    auto signal = buildSignalRecordLocked(symbol, index);
+    const MarketQuote *quote = nullptr;
+    const auto quote_it = quotes.find(symbol);
+    if (quote_it != quotes.end() && quote_it->second.valid) {
+      quote = &quote_it->second;
+    }
+    // Live mode never trades on synthetic data: no quote, no tick action.
+    if (live_mode && quote == nullptr) {
+      continue;
+    }
+    auto signal = buildSignalRecordLocked(symbol, index, quote);
     prices[symbol] = signal.price;
     recent_signals_.push_back(signal);
     queueSignalWriteLocked(signal);
@@ -1070,18 +1233,39 @@ void SimulatedTradingService::workerLoop() {
   TR_LOG_INFO("Simulated trading worker started for session {}", session_id_);
   while (true) {
     try {
-      PendingWrites writes;
+      // Live market data is fetched over HTTPS before taking the mutex so API
+      // handlers never wait behind network I/O.
+      std::vector<std::string> symbols_snapshot;
+      bool live_mode = false;
       {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stop_requested_) {
           break;
         }
-        generateTickLocked();
-        writes = takePendingWritesLocked();
+        symbols_snapshot = symbols_;
+        live_mode = mode_ == "live";
       }
-      // Database I/O happens outside the mutex so API handlers never block
-      // behind tick persistence.
+
+      std::map<std::string, MarketQuote> quotes;
+      if (live_mode) {
+        quotes = fetchLiveQuotes(symbols_snapshot);
+      }
+
+      PendingWrites writes;
+      std::vector<OrderIntent> orders;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_requested_) {
+          break;
+        }
+        generateTickLocked(quotes);
+        writes = takePendingWritesLocked();
+        orders = takePendingOrdersLocked();
+      }
+      // Database I/O and exchange orders happen outside the mutex so API
+      // handlers never block behind tick persistence.
       flushWrites(std::move(writes));
+      dispatchOrders(std::move(orders));
     } catch (const std::exception &e) {
       TR_LOG_ERROR("Simulated trading worker tick failed for session {}: {}", session_id_, e.what());
     } catch (...) {
@@ -1242,13 +1426,34 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   ensureSchema();
 
   if (active_) {
+    if (mode_ != mode) {
+      // Cross-mode takeover would silently hijack the other tab's session.
+      Json::Value resp;
+      resp["status"] = "error";
+      resp["error"] = "A " + mode_ + " session is already active; stop it before starting a " +
+                      mode + " session";
+      resp["active_mode"] = mode_;
+      return resp;
+    }
     Json::Value resp = buildStatusJson();
-    resp["message"] = "Simulated trading already running";
+    resp["message"] = "Trading session already running";
     return resp;
   }
 
   session_id_ = payload.isMember("session_id") ? payload["session_id"].asString() : makeSessionId();
   mode_ = mode;
+  if (mode_ == "live") {
+    // Public market data works without credentials; order execution and the
+    // account portfolio additionally need COINBASE_API_KEY / COINBASE_API_SECRET.
+    auto &cfg = Config::getInstance();
+    exchange::CoinbaseCredentials credentials;
+    credentials.api_key = cfg.get("COINBASE_API_KEY", "");
+    credentials.api_secret = cfg.get("COINBASE_API_SECRET", "");
+    exchange_client_ =
+        std::make_unique<exchange::CoinbaseAdvancedClient>(std::move(credentials));
+  } else {
+    exchange_client_.reset();
+  }
   strategy_ = payload.isMember("strategy") ? payload["strategy"].asString() : "orderbook";
   symbols_.clear();
   if (payload.isMember("symbols") && payload["symbols"].isArray()) {
@@ -1317,6 +1522,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   recent_trades_.clear();
   recent_signals_.clear();
   session_trade_inputs_.clear();
+  pending_orders_.clear();
   tick_ = 0;
   started_at_ = nowIsoUtc();
   updated_at_ = started_at_;
@@ -1618,12 +1824,15 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
 Json::Value SimulatedTradingService::closePosition(const std::string &symbol) {
   Json::Value result;
   PendingWrites writes;
+  std::vector<OrderIntent> orders;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     result = closePositionLocked(symbol, "Manual close request");
     writes = takePendingWritesLocked();
+    orders = takePendingOrdersLocked();
   }
   flushWrites(std::move(writes));
+  dispatchOrders(std::move(orders));
   return result;
 }
 

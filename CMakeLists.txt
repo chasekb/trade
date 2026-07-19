@@ -14,6 +14,7 @@ find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 find_package(Python3 COMPONENTS Development REQUIRED)
 find_package(Torch REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
@@ -34,6 +35,8 @@ set(SOURCES
     src/ml/ModelTrainer.cpp
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
+    src/exchange/CoinbaseAuth.cpp
+    src/exchange/CoinbaseAdvancedClient.cpp
     src/trading/PositionSizingPolicy.cpp
     src/trading/StrategySignal.cpp
     src/trading/TradingStatsService.cpp
@@ -58,6 +61,8 @@ target_include_directories(trading_bot_cpp PRIVATE
 
 target_link_libraries(trading_bot_cpp PRIVATE
     Drogon::Drogon
+    OpenSSL::SSL
+    OpenSSL::Crypto
     nlohmann_json::nlohmann_json
     libpqxx::pqxx
     hiredis::hiredis
@@ -125,6 +130,17 @@ add_executable(test_strategy_signal
 )
 target_include_directories(test_strategy_signal PRIVATE include)
 add_test(NAME strategy_signal COMMAND test_strategy_signal)
+
+add_executable(test_coinbase_auth
+    src/tests/test_coinbase_auth.cpp
+    src/exchange/CoinbaseAuth.cpp
+)
+target_include_directories(test_coinbase_auth PRIVATE include)
+target_link_libraries(test_coinbase_auth PRIVATE
+    OpenSSL::SSL
+    OpenSSL::Crypto
+)
+add_test(NAME coinbase_auth COMMAND test_coinbase_auth)
 
 add_executable(test_trading_stats_calculator
     src/tests/test_trading_stats_calculator.cpp

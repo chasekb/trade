@@ -1,5 +1,6 @@
 #pragma once
 
+#include "exchange/CoinbaseAdvancedClient.hpp"
 #include "trading/TradingStatsCalculator.hpp"
 
 #include <drogon/drogon.h>
@@ -119,16 +120,46 @@ private:
     std::vector<TradeRecord> trades;
   };
 
+  // Real market snapshot fetched from Coinbase public endpoints (live mode)
+  // outside the mutex, then consumed by the tick under it.
+  struct MarketQuote {
+    bool valid = false;
+    double mid = 0.0;
+    double spread = 0.0;
+    double best_bid = 0.0;
+    double best_ask = 0.0;
+    double imbalance = 0.0;
+    double volume = 0.0;
+    int depth = 0;
+  };
+
+  // Exchange order produced by a live tick with order execution enabled;
+  // dispatched outside the mutex.
+  struct OrderIntent {
+    std::string product_id;
+    std::string side;
+    double amount = 0.0;
+    bool amount_is_quote = false;
+    std::string reason;
+  };
+
   void ensureSchema();
   void startWorkerLocked();
   void workerLoop();
-  void generateTickLocked();
-  SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index);
+  void generateTickLocked(const std::map<std::string, MarketQuote> &quotes);
+  SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index,
+                                       const MarketQuote *quote);
   bool signalPassesMlGateLocked(const SignalRecord &signal) const;
   void queueSignalWriteLocked(const SignalRecord &signal);
   void queueTradeWriteLocked(const TradeRecord &trade);
   PendingWrites takePendingWritesLocked();
   void flushWrites(PendingWrites &&writes) const;
+  void queueOrderIntentLocked(const std::string &product_id, const std::string &side,
+                              double amount, bool amount_is_quote, const std::string &reason);
+  std::vector<OrderIntent> takePendingOrdersLocked();
+  void dispatchOrders(std::vector<OrderIntent> &&orders);
+  bool liveOrderExecutionEnabledLocked() const;
+  std::map<std::string, MarketQuote> fetchLiveQuotes(const std::vector<std::string> &symbols);
   void openPositionLocked(const SignalRecord &signal, const std::string &reason);
   void addToPositionLocked(const SignalRecord &signal, const std::string &reason);
   Json::Value closePositionLocked(const std::string &symbol, const std::string &reason);
@@ -178,6 +209,8 @@ private:
   std::vector<TradePerformanceInput> session_trade_inputs_;
   std::vector<SignalRecord> pending_signal_writes_;
   std::vector<TradeRecord> pending_trade_writes_;
+  std::vector<OrderIntent> pending_orders_;
+  std::unique_ptr<exchange::CoinbaseAdvancedClient> exchange_client_;
 };
 
 } // namespace trading

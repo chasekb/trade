@@ -35,6 +35,7 @@ public:
   ADD_METHOD_TO(PredictController::closeLivePosition, "/api/trading/live/close-position", Post);
   ADD_METHOD_TO(PredictController::startLiveTrading, "/api/trading/live/start", Post);
   ADD_METHOD_TO(PredictController::stopLiveTrading, "/api/trading/live/stop", Post);
+  ADD_METHOD_TO(PredictController::executeLiveTrade, "/api/trading/live/execute", Post);
   ADD_METHOD_TO(PredictController::products, "/api/products", Get);
   ADD_METHOD_TO(PredictController::logMessage, "/api/log", Post);
   ADD_METHOD_TO(PredictController::getMlConfig, "/api/ml/config", Get);
@@ -85,6 +86,8 @@ public:
                         std::function<void(const HttpResponsePtr &)> &&callback);
   void stopLiveTrading(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
+  void executeLiveTrade(const HttpRequestPtr &req,
+                        std::function<void(const HttpResponsePtr &)> &&callback);
   void products(const HttpRequestPtr &req,
                 std::function<void(const HttpResponsePtr &)> &&callback);
   void logMessage(const HttpRequestPtr &req,
