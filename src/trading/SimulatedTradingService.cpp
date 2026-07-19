@@ -1530,8 +1530,10 @@ void SimulatedTradingService::workerLoop() {
       bool settling = false;
       {
         std::lock_guard<std::mutex> lock(mutex_);
+        const bool writes_pending =
+            !pending_signal_writes_.empty() || !pending_trade_writes_.empty();
         if (shutdown_requested_ ||
-            (stop_requested_ && pending_order_symbols_.empty())) {
+            (stop_requested_ && pending_order_symbols_.empty() && !writes_pending)) {
           break;
         }
         if (stop_requested_) {
@@ -1580,15 +1582,26 @@ void SimulatedTradingService::workerLoop() {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
-  PendingWrites final_writes;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     active_ = false;
     stop_requested_ = false;
     updated_at_ = nowIsoUtc();
-    final_writes = takePendingWritesLocked();
   }
-  flushWrites(std::move(final_writes));
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    PendingWrites final_writes;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      final_writes = takePendingWritesLocked();
+    }
+    if (final_writes.signals.empty() && final_writes.trades.empty()) {
+      break;
+    }
+    flushWrites(std::move(final_writes));
+    if (attempt < 2) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(250 * (attempt + 1)));
+    }
+  }
   TR_LOG_INFO("Simulated trading worker stopped for session {}", session_id_);
 }
 
@@ -1753,10 +1766,11 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   }
 
   if (worker_.joinable()) {
-    if (!pending_order_symbols_.empty()) {
+    if (!pending_order_symbols_.empty() || !pending_signal_writes_.empty() ||
+        !pending_trade_writes_.empty()) {
       Json::Value resp = buildStatusJson();
       resp["status"] = "settling";
-      resp["error"] = "The previous session still has Coinbase orders awaiting settlement";
+      resp["error"] = "The previous session is still settling orders or persistence writes";
       return resp;
     }
     lock.unlock();
@@ -2152,8 +2166,9 @@ Json::Value SimulatedTradingService::closePosition(const std::string &symbol) {
     orders = takePendingOrdersLocked();
   }
   flushWrites(std::move(writes));
+  const bool created_close_intent = !orders.empty();
   const OrderDispatchResult dispatch_result = dispatchOrders(std::move(orders));
-  if (result.get("status", Json::Value("")).asString() == "pending" &&
+  if (created_close_intent && result.get("status", Json::Value("")).asString() == "pending" &&
       !dispatch_result.accepted) {
     result["status"] = "error";
     result["error"] = dispatch_result.attempted
