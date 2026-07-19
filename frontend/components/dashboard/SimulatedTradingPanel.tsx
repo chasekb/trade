@@ -638,12 +638,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         mode: 'simulated',
         strategy,
         symbols,
-        parameters: {
-          ...config,
-          ...(config.position_size_mode === 'dollar' && config.position_size_value
-            ? { position_size_usd: config.position_size_value }
-            : {}),
-        },
+        parameters: { ...config },
         max_positions: maxPositions,
         position_update_interval: 5,
       };

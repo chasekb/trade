@@ -90,7 +90,18 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
         const newConfig = { ...config, [name]: value };
         onChange(newConfig);
         if (status.isActive) {
-            updateStrategyParameters({ [name]: value });
+            const updates: Record<string, string | number | boolean | undefined> = { [name]: value };
+            // The backend sizes percent mode from position_size_percent, so keep
+            // that read-key in sync whenever the sizing mode or value changes.
+            if (name === 'position_size_value' || name === 'position_size_mode') {
+                const mode = name === 'position_size_mode' ? value : (newConfig.position_size_mode || 'percent');
+                updates.position_size_mode = mode as string;
+                updates.position_size_value = newConfig.position_size_value;
+                if (mode === 'percent' && typeof newConfig.position_size_value === 'number') {
+                    updates.position_size_percent = newConfig.position_size_value;
+                }
+            }
+            updateStrategyParameters(updates);
         }
     };
 
@@ -314,6 +325,18 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                             onChange={(e) => handleParameterChange('initial_portfolio_size', Number(e.target.value))}
                             className="w-full"
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Position Size Mode</label>
+                        <select
+                            value={(config.position_size_mode as string) || 'percent'}
+                            onChange={(e) => handleParameterChange('position_size_mode', e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2"
+                        >
+                            <option value="percent">Percent of portfolio value</option>
+                            <option value="dollar">Fixed dollar amount</option>
+                        </select>
                     </div>
 
                     <div className="space-y-2">
