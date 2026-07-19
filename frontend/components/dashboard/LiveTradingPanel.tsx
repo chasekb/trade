@@ -10,6 +10,7 @@ import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, Univer
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLivePortfolio, useMLModels, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
 import { useModelTraining } from '@/hooks/useModelTraining';
+import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 
 import { OpenPositionsSection } from './OpenPositionsSection';
 import { RecentTradesTable } from './RecentTradesTable';
@@ -93,13 +94,11 @@ function TradingConfiguration({
   }, [symbols, customInput]);
 
   const handleSymbolModeChange = (mode: 'single' | 'universe') => {
-    console.log('Symbol mode change:', mode);
     setSymbolMode(mode);
     if (mode === 'single') {
       onSymbolsChange(['BTC-USD']);
     } else {
       // For universe mode, apply the current universe type
-      console.log('Applying universe type:', selectedUniverseType);
       applyUniverseType(selectedUniverseType);
     }
   };
@@ -113,7 +112,6 @@ function TradingConfiguration({
   // Fetch products directly from Coinbase API
   const fetchCoinbaseSymbols = async (): Promise<string[]> => {
     try {
-      console.log('Fetching products from Coinbase API...');
       const response = await fetch('https://api.exchange.coinbase.com/products');
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -124,7 +122,6 @@ function TradingConfiguration({
         .map((product) => product.id)
         .filter((id): id is string => Boolean(id))
         .sort();
-      console.log(`Fetched ${symbols.length} symbols from Coinbase`);
       return symbols;
     } catch (error) {
       console.error('Error fetching Coinbase symbols:', error);
@@ -134,59 +131,48 @@ function TradingConfiguration({
 
   // Function to filter symbols by universe type
   const applyUniverseType = async (universeType: string) => {
-    console.log('applyUniverseType called with:', universeType);
 
     let allSymbols = getAllSymbols(products);
 
     // If no symbols from hook, try to fetch from Coinbase directly
     if (allSymbols.length === 0) {
-      console.log('No products from hook, fetching from Coinbase API...');
       try {
         const symbols = await fetchCoinbaseSymbols();
         allSymbols = symbols;
-        console.log('Fetched symbols from Coinbase:', allSymbols.length);
       } catch (error) {
         console.warn('Failed to fetch Coinbase symbols:', error);
         allSymbols = ['BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 'DOT-USD', 'XRP-USD'];
       }
     }
 
-    console.log('All symbols available:', allSymbols.length);
 
     let filteredSymbols: string[] = [];
 
     // First try to use backend categories if available
     if (products && products[universeType]) {
       filteredSymbols = products[universeType];
-      console.log(`${universeType}: using backend category with ${filteredSymbols.length} symbols`);
     } else {
       // Fallback to client-side filtering
       switch (universeType) {
         case 'all_products':
           filteredSymbols = allSymbols;
-          console.log('all_products: using all symbols');
           break;
         case 'all_usd':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USD'));
-          console.log('all_usd: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'all_eur':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-EUR'));
-          console.log('all_eur: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'all_usdt':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USDT'));
-          console.log('all_usdt: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'all_btc':
           filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-BTC'));
-          console.log('all_btc: filtered', allSymbols.length, 'to', filteredSymbols.length, 'symbols');
           break;
         case 'major':
           // Major crypto pairs (fallback)
           const majorPairs = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'ADA-USD', 'DOT-USD', 'XRP-USD', 'LTC-USD'];
           filteredSymbols = allSymbols.filter(symbol => majorPairs.includes(symbol));
-          console.log('major: found', filteredSymbols.length, 'major pairs from', majorPairs.length, 'candidates');
           break;
       case 'minor':
         // Minor currency pairs (excluding major pairs)
@@ -196,7 +182,6 @@ function TradingConfiguration({
           !symbol.includes('BTC') && !symbol.includes('ETH')
         ).slice(0, 21); // Limit to 21 as indicated
         filteredSymbols = minorPairs;
-        console.log('minor: found', filteredSymbols.length, 'minor pairs');
         break;
       case 'crypto':
         // Cryptocurrency pairs
@@ -204,24 +189,19 @@ function TradingConfiguration({
           symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('ADA') ||
           symbol.includes('SOL') || symbol.includes('DOT') || symbol.includes('XRP')
         ).slice(0, 35); // Limit to 35 as indicated
-        console.log('crypto: found', filteredSymbols.length, 'crypto pairs');
         filteredSymbols = filteredSymbols;
         break;
       case 'custom':
       default:
         // For custom, don't auto-populate
-        console.log('custom or default: not populating');
         return;
     }
     }
 
     // Update symbols if filtered symbols were found
-    console.log('Final filteredSymbols:', filteredSymbols);
     if (filteredSymbols.length > 0) {
-      console.log('Calling onSymbolsChange with', filteredSymbols);
       onSymbolsChange(filteredSymbols);
     } else {
-      console.log('No symbols found, not calling onSymbolsChange');
     }
   };
 
@@ -229,17 +209,6 @@ function TradingConfiguration({
     setSelectedUniverseType(universeType);
     applyUniverseType(universeType);
   };
-
-  useEffect(() => {
-    // Update UI based on symbol mode
-    const singleConfig = document.getElementById('single-symbol-config-live');
-    const universeConfig = document.getElementById('universe-config-live');
-
-    if (singleConfig && universeConfig) {
-      singleConfig.style.display = symbolMode === 'single' ? 'block' : 'none';
-      universeConfig.style.display = symbolMode === 'universe' ? 'block' : 'none';
-    }
-  }, [symbolMode]);
 
   return (
     <Card>
@@ -289,7 +258,8 @@ function TradingConfiguration({
         </div>
 
         {/* Single Symbol Configuration */}
-        <div id="single-symbol-config-live" className="space-y-2">
+        {symbolMode === 'single' && (
+        <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">Trading Symbol</label>
           <select
             value={symbols.length > 1 ? symbols[0] : symbols[0] || 'BTC-USD'}
@@ -307,9 +277,11 @@ function TradingConfiguration({
             )}
           </select>
         </div>
+        )}
 
         {/* Universe Configuration */}
-        <div id="universe-config-live" className="space-y-4" style={{ display: 'none' }}>
+        {symbolMode === 'universe' && (
+        <div className="space-y-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Universe Type</label>
             <select
@@ -330,7 +302,7 @@ function TradingConfiguration({
           </div>
 
           {/* Custom Symbols Configuration */}
-          <div id="custom-symbols-config-live" className="space-y-2">
+          <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Custom Symbols (comma-separated)</label>
             <Input
               type="text"
@@ -350,6 +322,7 @@ function TradingConfiguration({
             Selected {symbols.length} symbols
           </p>
         </div>
+        )}
 
         <StrategyConfigForm
           strategy={strategy}
@@ -363,16 +336,18 @@ function TradingConfiguration({
   );
 }
 
-// Main Live Trading Panel Component
-// Live Trading Statistics Component
+// Live Trading Statistics: session statistics come from the canonical
+// snapshot layer (full-session stats block, not the capped trade list);
+// portfolio tiles prefer the real Coinbase account portfolio when configured.
 function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
   const queryClient = useQueryClient();
-  const { closePosition } = useLiveTrading();
-  // Fetch live portfolio data always (enabled=true) to show balance even when not trading
-  const { data: stats, isLoading, error } = useLivePortfolio(true);
+  const { closePosition } = useLiveTrading('live');
+  const { data: portfolioData, isLoading: portfolioLoading, error: portfolioError } = useLivePortfolio(true);
+  const { data: sessionData, isLoading: sessionLoading } = useSimulatedTradingStats(isTradingActive);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+    queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
   };
 
   const handleClosePosition = async (symbol: string) => {
@@ -383,7 +358,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
     }
   };
 
-  if (isLoading) {
+  if (portfolioLoading && sessionLoading) {
     return (
       <Card>
         <CardHeader>
@@ -398,130 +373,27 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
     );
   }
 
-  // Handle missing API credentials specifically
-  if (error && (error.message.includes('400') || error.message.includes('setup_required'))) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Live Portfolio & Trading Statistics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <div className="text-red-500 mb-2">
-              <i className="fas fa-exclamation-circle text-2xl"></i>
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-1">Coinbase API Setup Required</h3>
-            <p className="text-gray-500 mb-4">
-              To view your portfolio and trade live, please configure your Coinbase API credentials.
-            </p>
-            <div className="bg-gray-50 p-4 rounded-md text-left inline-block">
-              <p className="text-sm font-mono text-gray-700">COINBASE_API_KEY=your_key</p>
-              <p className="text-sm font-mono text-gray-700">COINBASE_API_SECRET=your_secret</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const setupRequired = Boolean(
+    portfolioError && (portfolioError.message.includes('400') || portfolioError.message.includes('setup_required'))
+  );
 
-  if (error || !stats) {
-    return (
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle>Live Portfolio & Trading Statistics</CardTitle>
-            <Button variant="secondary" size="sm" onClick={handleRefresh}>
-              <i className="fas fa-sync-alt mr-1"></i>Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            <p>Unable to load portfolio data.</p>
-            {error && <p className="text-sm text-red-500 mt-2">{error.message}</p>}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const snapshot = normalizeSimulatedTradingSnapshot(sessionData ?? {});
+  const statsView = snapshot.stats;
+  const coinbase = !portfolioError && portfolioData && (portfolioData as any).source === 'coinbase'
+    ? (portfolioData as any)
+    : null;
 
-  const portfolio = stats;
-  const trades = portfolio.trades || [];
-  // Support both 'positions' (simulated/legacy) and 'active_positions_data' (Coinbase live)
-  const positions = portfolio.positions || portfolio.active_positions_data || {};
-  
-  // Normalize positions to an array of open positions
-  let openPositions: PositionLike[] = Array.isArray(positions)
-    ? positions
-    : Object.values(positions as Record<string, PositionLike>).filter((pos): pos is PositionLike => (pos?.status || 'open') === 'open');
+  // Portfolio tiles: real Coinbase account when configured, session otherwise.
+  const cashBalance = coinbase ? (coinbase.cash_balance ?? 0) : snapshot.cashBalance;
+  const totalValue = coinbase ? (coinbase.total_value ?? 0) : snapshot.totalValue;
+  const totalPositionsValue = coinbase ? (coinbase.total_positions_value ?? 0) : snapshot.totalPositionsValue;
 
-  // If using Coinbase data format, normalize to standard Position format
-  if (openPositions.length > 0 && 'asset' in openPositions[0]) {
-    openPositions = openPositions.map((pos) => ({
-      symbol: pos.asset || '-',
-      quantity: pos.balance_crypto || 0,
-      // Calculate implied price if quantity > 0
-      current_price: pos.balance_crypto ? (pos.balance_fiat || 0) / pos.balance_crypto : 0,
-      // Entry price is not available in the portfolio summary; leave it unset so
-      // the table shows a dash instead of a fabricated $0 entry.
-      entry_price: undefined,
-      unrealized_pnl: pos.unrealized_pnl || 0,
-      side: 'LONG', // Spot holdings are effectively long
-      status: 'open',
-      timestamp: new Date().toISOString() // Placeholder
-    })) as unknown as typeof openPositions;
-  }
+  const coinbasePositions: PositionLike[] = coinbase && Array.isArray(coinbase.positions) ? coinbase.positions : [];
+  const openPositions = coinbasePositions.length > 0 ? coinbasePositions : snapshot.openPositions;
+  const activePositions = coinbase ? (coinbase.open_positions_count ?? coinbasePositions.length) : snapshot.activePositions;
 
-  // Calculate derived statistics (similar to vanilla JS implementation)
-  const winningTrades = trades.filter((trade: TradeLike) => (trade.pnl || 0) > 0);
-  const losingTrades = trades.filter((trade: TradeLike) => (trade.pnl || 0) < 0);
-  const totalTrades = trades.length;
-  const winningTradesCount = winningTrades.length;
-  const losingTradesCount = losingTrades.length;
-
-  // Win rate over completed (P&L-bearing) trades only, matching the simulated
-  // panel's definition; open buy legs with no P&L are excluded from both sides.
-  const completedTradesCount = winningTradesCount + losingTradesCount;
-  const winRate = completedTradesCount > 0 ? (winningTradesCount / completedTradesCount) * 100 : 0;
-
-  const totalVolume = trades.reduce((sum: number, trade: TradeLike) => sum + ((trade.quantity || 0) * (trade.price || 0)), 0);
-  const avgTradeSize = totalTrades > 0 ? totalVolume / totalTrades : 0;
-
-  const bestTrade = trades.length > 0 ? Math.max(...trades.map((t: TradeLike) => t.pnl || 0)) : 0;
-  const worstTrade = trades.length > 0 ? Math.min(...trades.map((t: TradeLike) => t.pnl || 0)) : 0;
-
-  const avgWin = winningTradesCount > 0 ? winningTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0) / winningTradesCount : 0;
-  const avgLoss = losingTradesCount > 0 ? losingTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0) / losingTradesCount : 0;
-
-  const grossProfit = winningTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0);
-  const grossLoss = Math.abs(losingTrades.reduce((sum: number, trade: TradeLike) => sum + (trade.pnl || 0), 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
-
-  // Support both standard field names and Coinbase API response field names.
-  // Use ?? so a legitimate value of 0 is kept instead of falling through.
-  const cashBalance = portfolio.cash_balance ?? portfolio.available_balance_usd ?? 0;
-  const totalValue = portfolio.total_value ?? portfolio.total_balance_usd ?? 0;
-  // Calculate total positions value if not provided directly
-  const totalPositionsValue = portfolio.total_positions_value ?? (totalValue - cashBalance);
-
-  const unrealizedPnl = portfolio.unrealized_pnl ?? portfolio.total_unrealized_pnl ?? 0;
-  const realizedPnl = portfolio.realized_pnl ?? 0;
-  const totalFees = portfolio.total_fees ?? 0;
-  // Net P&L is net of fees, consistent with the simulated trading panel.
-  const netPnl = portfolio.net_pnl ?? (unrealizedPnl + realizedPnl - totalFees);
-
-  const activePositions = openPositions.length;
-
-  // Merge and sort recent trades to ensure sells are included and latest first
-  const mergedRecentTrades: TradeLike[] = Array.from(
-    new Map(
-      [...(portfolio.recent_trades || []), ...trades]
-        .map((t: TradeLike) => [t.id || t.trade_id || `${t.symbol}-${t.timestamp}-${t.side}`, t])
-    ).values()
-  )
-    .filter((t: TradeLike): t is TradeLike => Boolean(t && t.timestamp))
-    .sort((a: TradeLike, b: TradeLike) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
-    .slice(0, 10);
+  const profitFactor = Number(statsView.profit_factor);
+  const formattedProfitFactor = profitFactor >= 999 ? '∞' : profitFactor.toFixed(2);
 
   return (
     <Card>
@@ -534,32 +406,46 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {setupRequired && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <h3 className="text-sm font-medium text-yellow-900 mb-1">
+              <i className="fas fa-exclamation-circle mr-1"></i>Coinbase API Setup Required
+            </h3>
+            <p className="text-sm text-yellow-800 mb-2">
+              Configure Coinbase credentials to view your real portfolio and place live orders.
+              Session statistics below reflect paper trading on live market data.
+            </p>
+            <p className="text-xs font-mono text-yellow-900">COINBASE_API_KEY=your_key</p>
+            <p className="text-xs font-mono text-yellow-900">COINBASE_API_SECRET=your_secret</p>
+          </div>
+        )}
+
         {/* Main Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-lg">
             <p className="text-sm text-gray-600">Total Net P&L</p>
-            <p className={`text-2xl font-bold ${netPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              ${netPnl.toFixed(2)}
+            <p className={`text-2xl font-bold ${snapshot.netPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${snapshot.netPnl.toFixed(2)}
             </p>
           </div>
           <div className="text-center p-4 bg-green-50 rounded-lg">
             <p className="text-sm text-gray-600">Win Rate</p>
-            <p className="text-2xl font-bold text-green-600">{winRate.toFixed(1)}%</p>
+            <p className="text-2xl font-bold text-green-600">{statsView.win_rate.toFixed(1)}%</p>
           </div>
           <div className="text-center p-4 bg-purple-50 rounded-lg">
             <p className="text-sm text-gray-600">Total Trades</p>
-            <p className="text-2xl font-bold text-purple-600">{totalTrades}</p>
+            <p className="text-2xl font-bold text-purple-600">{statsView.total_trades}</p>
           </div>
         </div>
 
         {/* Portfolio Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Cash Balance</p>
+            <p className="text-sm text-gray-600">Cash Balance{coinbase ? ' (Coinbase)' : ''}</p>
             <p className="text-lg font-semibold">${cashBalance.toFixed(2)}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Total Value</p>
+            <p className="text-sm text-gray-600">Total Value{coinbase ? ' (Coinbase)' : ''}</p>
             <p className="text-lg font-semibold">${totalValue.toFixed(2)}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded-lg">
@@ -576,19 +462,19 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-gray-600">Unrealized P&L</p>
-            <p className={`text-lg font-semibold ${unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              ${unrealizedPnl.toFixed(2)}
+            <p className={`text-lg font-semibold ${snapshot.unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${snapshot.unrealizedPnl.toFixed(2)}
             </p>
           </div>
           <div className="p-3 bg-green-50 rounded-lg">
             <p className="text-sm text-gray-600">Realized P&L</p>
-            <p className={`text-lg font-semibold ${realizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              ${realizedPnl.toFixed(2)}
+            <p className={`text-lg font-semibold ${snapshot.realizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${snapshot.realizedPnl.toFixed(2)}
             </p>
           </div>
           <div className="p-3 bg-red-50 rounded-lg">
             <p className="text-sm text-gray-600">Total Fees</p>
-            <p className="text-lg font-semibold text-red-600">${totalFees.toFixed(2)}</p>
+            <p className="text-lg font-semibold text-red-600">${snapshot.totalFees.toFixed(2)}</p>
           </div>
         </div>
 
@@ -599,19 +485,19 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Average Win</span>
-                <span className="text-sm font-medium text-green-600">${avgWin.toFixed(2)}</span>
+                <span className="text-sm font-medium text-green-600">${statsView.avg_win.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Average Loss</span>
-                <span className="text-sm font-medium text-red-600">${avgLoss.toFixed(2)}</span>
+                <span className="text-sm font-medium text-red-600">${statsView.avg_loss.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Best Trade</span>
-                <span className="text-sm font-medium text-green-600">${bestTrade.toFixed(2)}</span>
+                <span className="text-sm font-medium text-green-600">${statsView.best_trade.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Worst Trade</span>
-                <span className="text-sm font-medium text-red-600">${worstTrade.toFixed(2)}</span>
+                <span className="text-sm font-medium text-red-600">${statsView.worst_trade.toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -621,25 +507,23 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Profit Factor</span>
-                <span className="text-sm font-medium">
-                  {profitFactor === Infinity ? '∞' : profitFactor.toFixed(2)}
-                </span>
+                <span className="text-sm font-medium">{formattedProfitFactor}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Total Volume</span>
-                <span className="text-sm font-medium">${totalVolume.toFixed(2)}</span>
+                <span className="text-sm font-medium">${statsView.total_volume.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Avg Trade Size</span>
-                <span className="text-sm font-medium">${avgTradeSize.toFixed(2)}</span>
+                <span className="text-sm font-medium">${statsView.avg_trade_size.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Winning Trades</span>
-                <span className="text-sm font-medium text-green-600">{winningTradesCount}</span>
+                <span className="text-sm font-medium text-green-600">{statsView.winning_trades}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Losing Trades</span>
-                <span className="text-sm font-medium text-red-600">{losingTradesCount}</span>
+                <span className="text-sm font-medium text-red-600">{statsView.losing_trades}</span>
               </div>
             </div>
           </div>
@@ -647,12 +531,15 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 
         {/* Open Positions Table with Pagination */}
         {openPositions.length > 0 && (
-          <OpenPositionsSection positions={openPositions} onClose={handleClosePosition} />
+          <OpenPositionsSection
+            positions={openPositions}
+            {...(coinbasePositions.length > 0 ? {} : { onClose: handleClosePosition })}
+          />
         )}
 
         {/* Recent Trades Table */}
-        {mergedRecentTrades.length > 0 && (
-          <RecentTradesTable trades={mergedRecentTrades} includeFees />
+        {snapshot.recentTrades.length > 0 && (
+          <RecentTradesTable trades={snapshot.recentTrades} includeFees />
         )}
       </CardContent>
     </Card>
@@ -660,7 +547,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 }
 
 export default function LiveTradingPanel({ className = '' }: LiveTradingPanelProps) {
-  const { status, startTrading, stopTrading, loading, updateStrategyParameters, closePosition } = useLiveTrading();
+  const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading('live');
   // Start native WebSocket to receive live updates for stats/signals
   useSimTradingWebSocket(status.isActive);
 
@@ -692,6 +579,9 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     initial_portfolio_size: 10000,
     stop_loss_percent: 0,
     take_profit_percent: 0,
+    // Safety default: signals run on live market data but no exchange orders
+    // are placed until this is explicitly enabled.
+    live_order_execution: false,
   });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
 
@@ -727,14 +617,6 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('orderbook-signals-pageSize', newPageSize.toString());
       sessionStorage.setItem('orderbook-signals-page', '1');
-    }
-  };
-
-  const handleClosePosition = async (symbol: string) => {
-    try {
-      await closePosition(symbol);
-    } catch (error) {
-      console.error('Failed to close position:', error);
     }
   };
 
@@ -839,6 +721,18 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
           <CardTitle>Trading Controls</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="live-order-execution"
+              checked={Boolean(config.live_order_execution)}
+              onChange={(e) => setConfig((prev) => ({ ...prev, live_order_execution: e.target.checked }))}
+              disabled={status.isActive}
+            />
+            <label htmlFor="live-order-execution" className="text-sm text-gray-700">
+              Place real Coinbase orders (requires API credentials; otherwise the bot paper-trades on live market data)
+            </label>
+          </div>
           <TradingControls
             status={status}
             onStart={handleStartTrading}

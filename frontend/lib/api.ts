@@ -715,7 +715,7 @@ class ApiClient {
     return lastError;
   }
 
-  async stopTrading(): Promise<ApiResponse<{ message: string }>> {
+  async stopTrading(mode: 'live' | 'simulated' = 'simulated'): Promise<ApiResponse<{ message: string }>> {
     if (localSimTradingSession?.active) {
       clearLocalSimTradingSession();
       return {
@@ -725,7 +725,7 @@ class ApiClient {
       };
     }
 
-    return fetch(`${API_BASE_URL}/api/trading/simulated/stop`, {
+    return fetch(`${API_BASE_URL}/api/trading/${mode === 'live' ? 'live' : 'simulated'}/stop`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

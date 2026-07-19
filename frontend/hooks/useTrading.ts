@@ -11,11 +11,11 @@ import {
 
 // Live Trading Hooks
 
-export function useLiveTrading() {
+export function useLiveTrading(mode: TradingMode = 'simulated') {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState({
     isActive: false,
-    mode: 'simulated' as TradingMode,
+    mode,
     strategy: 'orderbook' as TradingStrategy,
     symbols: [] as string[],
   });
@@ -52,12 +52,14 @@ export function useLiveTrading() {
 
       return {
         isActive: backendIsActive,
-        mode: 'simulated',
+        // The session's real mode comes from the backend; fall back to the
+        // tab's own mode rather than assuming simulated.
+        mode: (backendStatus.mode as TradingMode) || mode,
         strategy: backendStatus.strategy_type || backendStatus.strategy || 'orderbook',
         symbols: backendStatus.symbols || [],
       };
     });
-  }, [backendStatus]);
+  }, [backendStatus, mode]);
 
   const startTradingMutation = useMutation({
     mutationFn: async (config: {
@@ -140,7 +142,7 @@ export function useLiveTrading() {
   });
 
   const stopTradingMutation = useMutation({
-    mutationFn: () => apiClient.stopTrading(),
+    mutationFn: () => apiClient.stopTrading(mode),
     onSuccess: (response) => {
       if (response.status === 'success') {
         setStatus(prev => ({ ...prev, isActive: false, symbols: [] }));
