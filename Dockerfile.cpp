@@ -263,7 +263,7 @@ WORKDIR /app
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
       apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update && \
-      apt-get install -y --no-install-recommends --fix-missing libgfortran5 libgomp1 \
+      apt-get install -y --no-install-recommends --fix-missing libgfortran5 libgomp1 ca-certificates \
       && break; \
       echo "runtime apt install attempt ${i} failed, retrying in 15s..."; \
       sleep 15; \
