@@ -955,10 +955,8 @@ void SimulatedTradingService::updateMarkToMarketLocked(
                                   : 0.0;
     position.age_ticks += 1;
 
-    if (stop_loss > 0.0 && position.pnl_percentage <= -stop_loss) {
-      exits.emplace_back(symbol, "Stop loss triggered");
-    } else if (take_profit > 0.0 && position.pnl_percentage >= take_profit) {
-      exits.emplace_back(symbol, "Take profit triggered");
+    if (const char *reason = exitReasonForPnl(position.pnl_percentage, stop_loss, take_profit)) {
+      exits.emplace_back(symbol, reason);
     }
   }
 
@@ -1731,22 +1729,24 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
       return result;
     }
 
+    // Symbols arrive from the request; bind them as parameters, never inline.
     std::ostringstream where;
-    bool has_where = false;
+    std::vector<std::string> bound_symbols;
     if (!symbols.empty()) {
       where << " WHERE symbol IN (";
       for (std::size_t i = 0; i < symbols.size(); ++i) {
+        bound_symbols.push_back(symbols[i]);
         if (i > 0) {
           where << ",";
         }
-        where << "'" << escapeSql(symbols[i]) << "'";
+        where << "$" << bound_symbols.size();
       }
       where << ")";
-      has_where = true;
     }
 
-    auto count_res = DatabaseManager::getInstance().query(
-        "SELECT COUNT(DISTINCT symbol) AS total_count FROM order_book_signals" + where.str());
+    auto count_res = DatabaseManager::getInstance().execParams(
+        "SELECT COUNT(DISTINCT symbol) AS total_count FROM order_book_signals" + where.str(),
+        bound_symbols);
     const int total = (!count_res.empty() && !count_res[0]["total_count"].is_null())
                           ? count_res[0]["total_count"].as<int>()
                           : 0;
@@ -1767,7 +1767,7 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
         << "ORDER BY strength DESC, COALESCE((signal_data::jsonb -> 'ml_analysis' ->> 'win_probability')::double precision, 0.5) DESC, timestamp DESC "
         << "LIMIT " << safe_per_page << " OFFSET " << offset;
 
-    auto rows = DatabaseManager::getInstance().query(sql.str());
+    auto rows = DatabaseManager::getInstance().execParams(sql.str(), bound_symbols);
     double strength_sum = 0.0;
     int active_count = 0;
     long long latest_ts = 0;

@@ -50,3 +50,26 @@ pqxx::result DatabaseManager::query(const std::string &sql) {
 
   return pqxx::result{};
 }
+
+pqxx::result DatabaseManager::execParams(const std::string &sql,
+                                         const std::vector<std::string> &params) {
+  if (db_url_.empty() && !init()) {
+    return pqxx::result{};
+  }
+
+  try {
+    pqxx::connection conn(db_url_);
+    pqxx::work W(conn);
+    pqxx::params bound;
+    for (const auto &value : params) {
+      bound.append(value);
+    }
+    pqxx::result R = W.exec(pqxx::zview(sql), bound);
+    W.commit();
+    return R;
+  } catch (const std::exception &e) {
+    TR_LOG_ERROR("Database parameterized query failed: {}", e.what());
+  }
+
+  return pqxx::result{};
+}

@@ -25,5 +25,19 @@ inline double signedPositionValue(const std::string &side, double quantity, doub
   return side == "buy" ? market_value : -market_value;
 }
 
+// Stop-loss / take-profit exit rule over a position's PnL percentage. A zero
+// or negative threshold disables that side. Returns the close reason, or
+// nullptr when the position should stay open.
+inline const char *exitReasonForPnl(double pnl_percentage, double stop_loss_percent,
+                                    double take_profit_percent) {
+  if (stop_loss_percent > 0.0 && pnl_percentage <= -stop_loss_percent) {
+    return "Stop loss triggered";
+  }
+  if (take_profit_percent > 0.0 && pnl_percentage >= take_profit_percent) {
+    return "Take profit triggered";
+  }
+  return nullptr;
+}
+
 } // namespace trading
 } // namespace trade

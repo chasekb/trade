@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <string>
 
 using trade::trading::closeCashDelta;
 using trade::trading::openCashDelta;
@@ -78,6 +79,32 @@ int main() {
   if (!expect_close(signedPositionValue("sell", 2.0, 50.0), -100.0,
                     "short signed value")) {
     return 1;
+  }
+
+  // Stop-loss / take-profit exit rule.
+  {
+    using trade::trading::exitReasonForPnl;
+    bool ok = true;
+    auto expect_reason = [&](const char *actual, const char *expected, const char *label) {
+      const bool matches = (actual == nullptr && expected == nullptr) ||
+                           (actual != nullptr && expected != nullptr &&
+                            std::string(actual) == expected);
+      if (!matches) {
+        std::cerr << label << " expected " << (expected ? expected : "nullptr") << " got "
+                  << (actual ? actual : "nullptr") << std::endl;
+        ok = false;
+      }
+    };
+
+    expect_reason(exitReasonForPnl(-2.1, 2.0, 3.0), "Stop loss triggered", "sl breach");
+    expect_reason(exitReasonForPnl(3.5, 2.0, 3.0), "Take profit triggered", "tp breach");
+    expect_reason(exitReasonForPnl(-1.9, 2.0, 3.0), nullptr, "inside band holds");
+    expect_reason(exitReasonForPnl(-50.0, 0.0, 0.0), nullptr, "disabled thresholds hold");
+    expect_reason(exitReasonForPnl(-2.0, 2.0, 0.0), "Stop loss triggered", "sl at threshold");
+    expect_reason(exitReasonForPnl(3.0, 0.0, 3.0), "Take profit triggered", "tp at threshold");
+    if (!ok) {
+      return 1;
+    }
   }
   return 0;
 }

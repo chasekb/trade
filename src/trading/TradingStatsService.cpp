@@ -87,19 +87,6 @@ TradePerformanceInput toTradePerformanceInput(const pqxx::row &row) {
 
 namespace {
 
-std::string escapeSqlLiteral(const std::string &value) {
-  std::string escaped;
-  escaped.reserve(value.size() + 8);
-  for (char c : value) {
-    if (c == '\'') {
-      escaped += "''";
-    } else {
-      escaped += c;
-    }
-  }
-  return escaped;
-}
-
 constexpr std::chrono::seconds kStatsCacheTtl{5};
 
 } // namespace
@@ -122,20 +109,25 @@ TradingStats TradingStatsService::getTradingStats(const TradingStatsFilter &filt
       return {};
     }
 
+    // Request-derived filter values are bound as parameters, never inlined.
     std::ostringstream sql;
     sql << "SELECT trade_id, symbol, side, size, price, timestamp, pnl, fees "
         << "FROM individual_trades";
+    std::vector<std::string> bound;
     std::string separator = " WHERE ";
     if (!filter.trade_type.empty()) {
-      sql << separator << "trade_type='" << escapeSqlLiteral(filter.trade_type) << "'";
+      bound.push_back(filter.trade_type);
+      sql << separator << "trade_type=$" << bound.size();
       separator = " AND ";
     }
     if (!filter.session_id.empty()) {
-      sql << separator << "session_id='" << escapeSqlLiteral(filter.session_id) << "'";
+      bound.push_back(filter.session_id);
+      sql << separator << "session_id=$" << bound.size();
     }
     sql << " ORDER BY timestamp ASC";
 
-    auto res = DatabaseManager::getInstance().query(sql.str());
+    auto res = bound.empty() ? DatabaseManager::getInstance().query(sql.str())
+                             : DatabaseManager::getInstance().execParams(sql.str(), bound);
 
     if (res.empty()) {
       return {};
