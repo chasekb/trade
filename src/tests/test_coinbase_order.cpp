@@ -87,5 +87,18 @@ int main() {
   expect(!trade::exchange::parseOrderFill(malformed, fill, &error),
          "trailing junk is rejected");
 
+  Json::Value missing = partial;
+  missing["order"].removeMember("total_fees");
+  expect(!trade::exchange::parseOrderFill(missing, fill, &error),
+         "filled order requires actual fees");
+  missing = partial;
+  missing["order"].removeMember("filled_value");
+  expect(!trade::exchange::parseOrderFill(missing, fill, &error),
+         "filled order requires filled value");
+  missing = partial;
+  missing["order"].removeMember("average_filled_price");
+  expect(!trade::exchange::parseOrderFill(missing, fill, &error),
+         "filled order requires average fill price");
+
   return failures == 0 ? 0 : 1;
 }

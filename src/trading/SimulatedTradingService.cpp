@@ -611,9 +611,11 @@ void SimulatedTradingService::applyLiveFillLocked(const OrderIntent &intent,
   trimHistoryLocked();
 }
 
-void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
+SimulatedTradingService::OrderDispatchResult
+SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
+  OrderDispatchResult dispatch_result;
   if (orders.empty() || !exchange_client_) {
-    return;
+    return dispatch_result;
   }
   const auto cancel_requested = [this]() {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -639,6 +641,7 @@ void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) 
     const auto result = exchange_client_->placeMarketOrder(intent.product_id, intent.side,
                                                            intent.amount, intent.amount_is_quote,
                                                            cancel_requested);
+    dispatch_result.attempted = true;
     if (!result.accepted) {
       std::lock_guard<std::mutex> lock(mutex_);
       pending_order_symbols_.erase(intent.product_id);
@@ -646,8 +649,10 @@ void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) 
       TR_LOG_ERROR("Coinbase order FAILED: {} {} {} ({}): {} [{}]", intent.side, intent.amount,
                    intent.product_id, intent.amount_is_quote ? "quote" : "base", result.error,
                    intent.reason);
+      dispatch_result.error = result.error;
       continue;
     }
+    dispatch_result.accepted = true;
     if (result.fill_available) {
       std::lock_guard<std::mutex> lock(mutex_);
       applyLiveFillLocked(intent, result.fill);
@@ -660,6 +665,7 @@ void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) 
     TR_LOG_INFO("Coinbase order accepted; fill pending: {} {} {} order_id={} [{}]", intent.side,
                 intent.amount, intent.product_id, result.order_id, intent.reason);
   }
+  return dispatch_result;
 }
 
 void SimulatedTradingService::resolvePendingLiveOrders() {
@@ -746,7 +752,8 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
   return quotes;
 }
 
-void SimulatedTradingService::flushWrites(PendingWrites &&writes) const {
+void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
+  try {
   if (!writes.signals.empty()) {
     // Dedupe by id (keeping the latest) so a multi-row upsert never touches
     // the same row twice, then persist the whole tick in one statement.
@@ -838,6 +845,14 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) const {
         << "trade_type = EXCLUDED.trade_type";
 
     DatabaseManager::getInstance().query(sql.str());
+  }
+  } catch (const std::exception &e) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    pending_signal_writes_.insert(pending_signal_writes_.end(), writes.signals.begin(),
+                                  writes.signals.end());
+    pending_trade_writes_.insert(pending_trade_writes_.end(), writes.trades.begin(),
+                                 writes.trades.end());
+    TR_LOG_WARN("Failed to persist trading writes; queued for retry: {}", e.what());
   }
 }
 
@@ -2122,7 +2137,6 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
 }
 
 Json::Value SimulatedTradingService::closePosition(const std::string &symbol) {
-  std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
   Json::Value result;
   PendingWrites writes;
   std::vector<OrderIntent> orders;
@@ -2138,7 +2152,15 @@ Json::Value SimulatedTradingService::closePosition(const std::string &symbol) {
     orders = takePendingOrdersLocked();
   }
   flushWrites(std::move(writes));
-  dispatchOrders(std::move(orders));
+  const OrderDispatchResult dispatch_result = dispatchOrders(std::move(orders));
+  if (result.get("status", Json::Value("")).asString() == "pending" &&
+      !dispatch_result.accepted) {
+    result["status"] = "error";
+    result["error"] = dispatch_result.attempted
+                          ? dispatch_result.error
+                          : "Position close was not submitted because trading stopped";
+    result["message"] = result["error"];
+  }
   {
     std::lock_guard<std::mutex> lock(mutex_);
     writes = takePendingWritesLocked();

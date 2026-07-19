@@ -153,6 +153,12 @@ private:
     OrderIntent intent;
   };
 
+  struct OrderDispatchResult {
+    bool attempted = false;
+    bool accepted = false;
+    std::string error;
+  };
+
   void ensureSchema();
   void startWorkerLocked();
   void workerLoop();
@@ -163,10 +169,10 @@ private:
   void queueSignalWriteLocked(const SignalRecord &signal);
   void queueTradeWriteLocked(const TradeRecord &trade);
   PendingWrites takePendingWritesLocked();
-  void flushWrites(PendingWrites &&writes) const;
+  void flushWrites(PendingWrites &&writes);
   void queueOrderIntentLocked(OrderIntent intent);
   std::vector<OrderIntent> takePendingOrdersLocked();
-  void dispatchOrders(std::vector<OrderIntent> &&orders);
+  OrderDispatchResult dispatchOrders(std::vector<OrderIntent> &&orders);
   void resolvePendingLiveOrders();
   void applyLiveFillLocked(const OrderIntent &intent, const exchange::OrderFill &fill);
   bool liveOrderExecutionEnabledLocked() const;

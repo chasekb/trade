@@ -71,6 +71,16 @@ bool parseOrderFill(const Json::Value &response, OrderFill &out, std::string *er
     }
     return false;
   }
+  if (parsed.filled_size > 0.0 &&
+      (!order.isMember("filled_value") || order["filled_value"].isNull() ||
+       !order.isMember("average_filled_price") || order["average_filled_price"].isNull() ||
+       !order.isMember("total_fees") || order["total_fees"].isNull() ||
+       parsed.filled_value <= 0.0 || parsed.average_filled_price <= 0.0)) {
+    if (error) {
+      *error = "filled order is missing execution value, price, or actual fees";
+    }
+    return false;
+  }
 
   out = std::move(parsed);
   if (error) {
