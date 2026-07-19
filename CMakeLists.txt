@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Drogon CONFIG REQUIRED)
+find_package(jsoncpp CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(libpqxx CONFIG REQUIRED)
 find_package(hiredis CONFIG REQUIRED)
@@ -149,7 +150,7 @@ add_executable(test_coinbase_order
 )
 target_include_directories(test_coinbase_order PRIVATE include)
 target_link_libraries(test_coinbase_order PRIVATE
-    jsoncpp_lib
+    JsonCpp::JsonCpp
 )
 add_test(NAME coinbase_order COMMAND test_coinbase_order)
 
