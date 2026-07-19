@@ -261,6 +261,7 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
       result.error = "Coinbase accepted the order without returning an order id";
       return result;
     }
+    result.accepted = true;
 
     // A successful create response only means Coinbase accepted the order.
     // Market IOC fills and their actual fees are available from historical
@@ -271,11 +272,15 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
       }
       if (getOrderFill(result.order_id, result.fill, &fill_error)) {
-        result.success = true;
+        result.fill_available = true;
+        result.success = result.fill.filled_size > 0.0;
         return result;
       }
     }
-    result.error = "order accepted but actual fill details were unavailable: " + fill_error;
+    // Acceptance and execution are distinct. The trading worker retains this
+    // order and keeps polling until Coinbase reports a terminal result.
+    result.success = true;
+    result.error = "order accepted; actual fill details pending: " + fill_error;
     return result;
   }
 

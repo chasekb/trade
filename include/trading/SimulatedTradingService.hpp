@@ -12,6 +12,7 @@
 #include <mutex>
 #include <memory>
 #include <random>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -141,8 +142,15 @@ private:
     double amount = 0.0;
     bool amount_is_quote = false;
     std::string reason;
-    std::string trade_id;
-    double estimated_fee = 0.0;
+    std::string action;
+    SignalRecord signal;
+    PositionState position;
+    double reserved_cash = 0.0;
+  };
+
+  struct PendingLiveOrder {
+    std::string order_id;
+    OrderIntent intent;
   };
 
   void ensureSchema();
@@ -156,13 +164,11 @@ private:
   void queueTradeWriteLocked(const TradeRecord &trade);
   PendingWrites takePendingWritesLocked();
   void flushWrites(PendingWrites &&writes) const;
-  void queueOrderIntentLocked(const std::string &product_id, const std::string &side,
-                              double amount, bool amount_is_quote, const std::string &reason,
-                              const std::string &trade_id, double estimated_fee);
+  void queueOrderIntentLocked(OrderIntent intent);
   std::vector<OrderIntent> takePendingOrdersLocked();
-  void dispatchOrders(std::vector<OrderIntent> &&orders, PendingWrites &writes);
-  void reconcileOrderFeeLocked(const std::string &trade_id, double estimated_fee,
-                               double actual_fee);
+  void dispatchOrders(std::vector<OrderIntent> &&orders);
+  void resolvePendingLiveOrders();
+  void applyLiveFillLocked(const OrderIntent &intent, const exchange::OrderFill &fill);
   bool liveOrderExecutionEnabledLocked() const;
   std::map<std::string, MarketQuote> fetchLiveQuotes(const std::vector<std::string> &symbols);
   void openPositionLocked(const SignalRecord &signal, const std::string &reason);
@@ -212,10 +218,13 @@ private:
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).
   std::vector<TradePerformanceInput> session_trade_inputs_;
-  std::map<std::string, std::size_t> session_trade_indices_;
+
   std::vector<SignalRecord> pending_signal_writes_;
   std::vector<TradeRecord> pending_trade_writes_;
   std::vector<OrderIntent> pending_orders_;
+  std::vector<PendingLiveOrder> pending_live_orders_;
+  std::set<std::string> pending_order_symbols_;
+  double pending_reserved_cash_ = 0.0;
   std::unique_ptr<exchange::CoinbaseAdvancedClient> exchange_client_;
 };
 

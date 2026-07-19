@@ -1,5 +1,7 @@
 #include "exchange/CoinbaseOrder.hpp"
 
+#include <cmath>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -41,9 +43,20 @@ bool parseOrderFill(const Json::Value &response, OrderFill &out, std::string *er
       toDouble(order.get("average_filled_price", Json::Value(0.0)));
   parsed.total_fees = toDouble(order.get("total_fees", Json::Value(0.0)));
 
-  if (parsed.order_id.empty() || parsed.filled_size <= 0.0) {
+  static const std::set<std::string> terminal_statuses = {
+      "FILLED", "CANCELLED", "EXPIRED", "FAILED"};
+  if (parsed.order_id.empty() || terminal_statuses.count(parsed.status) == 0) {
     if (error) {
-      *error = "order has not produced a fill yet";
+      *error = "order is not terminal yet";
+    }
+    return false;
+  }
+  if (!std::isfinite(parsed.filled_size) || parsed.filled_size < 0.0 ||
+      !std::isfinite(parsed.filled_value) || parsed.filled_value < 0.0 ||
+      !std::isfinite(parsed.average_filled_price) || parsed.average_filled_price < 0.0 ||
+      !std::isfinite(parsed.total_fees) || parsed.total_fees < 0.0) {
+    if (error) {
+      *error = "order fill contains invalid numeric values";
     }
     return false;
   }

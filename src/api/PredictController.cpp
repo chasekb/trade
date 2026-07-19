@@ -1317,15 +1317,19 @@ void PredictController::executeLiveTrade(
   const auto result = client.placeMarketOrder(symbol, side, amount, amount_type == "quote");
 
   Json::Value resp;
-  if (result.success) {
-    resp["status"] = "success";
-    resp["message"] = "Order filled: " + side + " " + std::to_string(amount) + " " + symbol;
+  if (result.accepted) {
+    resp["status"] = result.fill_available ? (result.success ? "success" : "unfilled") : "pending";
+    resp["message"] = result.fill_available
+                          ? (result.success ? "Order filled" : "Order completed without a fill")
+                          : "Order accepted; awaiting Coinbase fill details";
     resp["order_id"] = result.order_id;
     resp["client_order_id"] = result.client_order_id;
-    resp["filled_size"] = result.fill.filled_size;
-    resp["filled_value"] = result.fill.filled_value;
-    resp["average_filled_price"] = result.fill.average_filled_price;
-    resp["fees"] = result.fill.total_fees;
+    if (result.fill_available) {
+      resp["filled_size"] = result.fill.filled_size;
+      resp["filled_value"] = result.fill.filled_value;
+      resp["average_filled_price"] = result.fill.average_filled_price;
+      resp["fees"] = result.fill.total_fees;
+    }
     callback(HttpResponse::newHttpJsonResponse(resp));
     return;
   }

@@ -469,7 +469,6 @@ void SimulatedTradingService::queueSignalWriteLocked(const SignalRecord &signal)
 
 void SimulatedTradingService::queueTradeWriteLocked(const TradeRecord &trade) {
   pending_trade_writes_.push_back(trade);
-  session_trade_indices_[trade.trade_id] = session_trade_inputs_.size();
   session_trade_inputs_.push_back(TradePerformanceInput{
       trade.pnl, trade.fees, trade.quantity, trade.price, trade.timestamp_iso});
 }
@@ -489,20 +488,9 @@ bool SimulatedTradingService::liveOrderExecutionEnabledLocked() const {
   return flag.isString() ? flag.asString() == "true" : flag.asBool();
 }
 
-void SimulatedTradingService::queueOrderIntentLocked(const std::string &product_id,
-                                                     const std::string &side, double amount,
-                                                     bool amount_is_quote,
-                                                     const std::string &reason,
-                                                     const std::string &trade_id,
-                                                     double estimated_fee) {
-  OrderIntent intent;
-  intent.product_id = product_id;
-  intent.side = side;
-  intent.amount = amount;
-  intent.amount_is_quote = amount_is_quote;
-  intent.reason = reason;
-  intent.trade_id = trade_id;
-  intent.estimated_fee = estimated_fee;
+void SimulatedTradingService::queueOrderIntentLocked(OrderIntent intent) {
+  pending_order_symbols_.insert(intent.product_id);
+  pending_reserved_cash_ += intent.reserved_cash;
   pending_orders_.push_back(std::move(intent));
 }
 
@@ -513,54 +501,165 @@ SimulatedTradingService::takePendingOrdersLocked() {
   return orders;
 }
 
-void SimulatedTradingService::reconcileOrderFeeLocked(const std::string &trade_id,
-                                                      double estimated_fee,
-                                                      double actual_fee) {
-  const double fee_delta = actual_fee - estimated_fee;
-  total_fees_ += fee_delta;
-  cash_ -= fee_delta;
+void SimulatedTradingService::applyLiveFillLocked(const OrderIntent &intent,
+                                                  const exchange::OrderFill &fill) {
+  pending_order_symbols_.erase(intent.product_id);
+  pending_reserved_cash_ = std::max(0.0, pending_reserved_cash_ - intent.reserved_cash);
+  if (fill.filled_size <= 0.0) {
+    TR_LOG_WARN("Coinbase order {} completed without a fill for {}", fill.order_id,
+                intent.product_id);
+    return;
+  }
 
-  for (auto &trade : recent_trades_) {
-    if (trade.trade_id == trade_id) {
-      trade.fees = actual_fee;
-      break;
+  const double quantity = fill.filled_size;
+  const double price = fill.average_filled_price > 0.0
+                           ? fill.average_filled_price
+                           : fill.filled_value / quantity;
+  const double notional = fill.filled_value > 0.0 ? fill.filled_value : price * quantity;
+
+  TradeRecord trade;
+  const long long ts = intent.action == "close" ? nowEpochSeconds() : intent.signal.timestamp;
+  trade.trade_id = makeId("trade", ts, intent.product_id, recent_trades_.size() + 1);
+  trade.session_id = session_id_;
+  trade.symbol = intent.product_id;
+  trade.side = intent.side;
+  trade.quantity = quantity;
+  trade.price = price;
+  trade.timestamp = ts;
+  trade.timestamp_iso = intent.action == "close" ? nowIsoUtc() : intent.signal.timestamp_iso;
+  trade.strategy_type = strategy_;
+  trade.signal_reason = intent.reason;
+  trade.fees = fill.total_fees;
+  trade.trade_type = "live";
+
+  if (intent.action == "close") {
+    auto position_it = positions_.find(intent.product_id);
+    if (position_it == positions_.end()) {
+      TR_LOG_ERROR("Received Coinbase close fill for missing position {}", intent.product_id);
+      return;
     }
+    PositionState &position = position_it->second;
+    const double closed_quantity = std::min(quantity, position.quantity);
+    const double closed_notional = price * closed_quantity;
+    const double direction = position.side == "buy" ? 1.0 : -1.0;
+    const double gross_pnl = (price - position.entry_price) * closed_quantity * direction;
+    trade.quantity = closed_quantity;
+    trade.pnl = gross_pnl;
+    trade.win_probability = position.entry_win_probability;
+    trade.expected_return = position.entry_expected_return;
+    trade.model_confidence = position.entry_model_confidence;
+    realized_pnl_ += gross_pnl;
+    cash_ += closeCashDelta(position.side, closed_notional, fill.total_fees);
+    position.quantity -= closed_quantity;
+    if (position.quantity <= 1e-12) {
+      positions_.erase(position_it);
+    }
+  } else {
+    auto position_it = positions_.find(intent.product_id);
+    if (position_it == positions_.end()) {
+      PositionState position;
+      position.symbol = intent.product_id;
+      position.side = intent.side;
+      position.quantity = quantity;
+      position.entry_price = price;
+      position.current_price = price;
+      position.entry_timestamp = intent.signal.timestamp;
+      position.entry_time = intent.signal.timestamp_iso;
+      position.entry_win_probability = intent.signal.payload["ml_analysis"]
+                                           .get("win_probability", Json::Value(0.5))
+                                           .asDouble();
+      position.entry_expected_return = intent.signal.payload["ml_analysis"]
+                                           .get("expected_return", Json::Value(0.0))
+                                           .asDouble();
+      position.entry_model_confidence = intent.signal.payload["ml_analysis"]
+                                            .get("confidence", Json::Value(0.0))
+                                            .asDouble();
+      positions_[intent.product_id] = position;
+    } else {
+      PositionState &position = position_it->second;
+      const double previous_notional = position.entry_price * position.quantity;
+      position.quantity += quantity;
+      position.entry_price = (previous_notional + notional) / position.quantity;
+      position.current_price = price;
+    }
+    trade.pnl = 0.0;
+    trade.win_probability = intent.signal.payload["ml_analysis"]
+                                .get("win_probability", Json::Value(0.5))
+                                .asDouble();
+    trade.expected_return = intent.signal.payload["ml_analysis"]
+                                .get("expected_return", Json::Value(0.0))
+                                .asDouble();
+    trade.model_confidence = intent.signal.payload["ml_analysis"]
+                                 .get("confidence", Json::Value(0.0))
+                                 .asDouble();
+    cash_ += openCashDelta(intent.side, notional, fill.total_fees);
+    market_state_[intent.product_id].last_entry_tick = tick_;
   }
-  const auto input_it = session_trade_indices_.find(trade_id);
-  if (input_it != session_trade_indices_.end() &&
-      input_it->second < session_trade_inputs_.size()) {
-    session_trade_inputs_[input_it->second].fees = actual_fee;
-  }
+
+  total_fees_ += fill.total_fees;
+  queueTradeWriteLocked(trade);
+  recent_trades_.push_back(trade);
+  updated_at_ = nowIsoUtc();
+  trimHistoryLocked();
 }
 
-void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders,
-                                             PendingWrites &writes) {
+void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
   if (orders.empty() || !exchange_client_) {
     return;
   }
   for (const auto &intent : orders) {
     const auto result = exchange_client_->placeMarketOrder(intent.product_id, intent.side,
                                                            intent.amount, intent.amount_is_quote);
-    const double actual_fee = result.success ? result.fill.total_fees : 0.0;
-    for (auto &trade : writes.trades) {
-      if (trade.trade_id == intent.trade_id) {
-        trade.fees = actual_fee;
-        break;
-      }
-    }
-    {
+    if (!result.accepted) {
       std::lock_guard<std::mutex> lock(mutex_);
-      reconcileOrderFeeLocked(intent.trade_id, intent.estimated_fee, actual_fee);
-    }
-    if (result.success) {
-      TR_LOG_INFO("Coinbase order filled: {} {} {} ({}) order_id={} actual_fee={} [{}]", intent.side,
-                  intent.amount, intent.product_id, intent.amount_is_quote ? "quote" : "base",
-                  result.order_id, actual_fee, intent.reason);
-    } else {
+      pending_order_symbols_.erase(intent.product_id);
+      pending_reserved_cash_ = std::max(0.0, pending_reserved_cash_ - intent.reserved_cash);
       TR_LOG_ERROR("Coinbase order FAILED: {} {} {} ({}): {} [{}]", intent.side, intent.amount,
                    intent.product_id, intent.amount_is_quote ? "quote" : "base", result.error,
                    intent.reason);
+      continue;
     }
+    if (result.fill_available) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      applyLiveFillLocked(intent, result.fill);
+      continue;
+    }
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      pending_live_orders_.push_back(PendingLiveOrder{result.order_id, intent});
+    }
+    TR_LOG_INFO("Coinbase order accepted; fill pending: {} {} {} order_id={} [{}]", intent.side,
+                intent.amount, intent.product_id, result.order_id, intent.reason);
+  }
+}
+
+void SimulatedTradingService::resolvePendingLiveOrders() {
+  if (!exchange_client_) {
+    return;
+  }
+  std::vector<PendingLiveOrder> pending_orders;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    pending_orders.swap(pending_live_orders_);
+  }
+  if (pending_orders.empty()) {
+    return;
+  }
+  std::vector<PendingLiveOrder> still_pending;
+  for (const auto &pending : pending_orders) {
+    exchange::OrderFill fill;
+    std::string error;
+    if (!exchange_client_->getOrderFill(pending.order_id, fill, &error)) {
+      still_pending.push_back(pending);
+      continue;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    applyLiveFillLocked(pending.intent, fill);
+  }
+  if (!still_pending.empty()) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    pending_live_orders_.insert(pending_live_orders_.end(), still_pending.begin(),
+                                still_pending.end());
   }
 }
 
@@ -1016,7 +1115,14 @@ void SimulatedTradingService::updateMarkToMarketLocked(
 
 void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
                                                  const std::string &reason) {
-  if (positions_.find(signal.symbol) != positions_.end()) {
+  if (positions_.find(signal.symbol) != positions_.end() ||
+      pending_order_symbols_.count(signal.symbol) > 0) {
+    return;
+  }
+  const std::size_t pending_entries = std::count_if(
+      pending_order_symbols_.begin(), pending_order_symbols_.end(),
+      [this](const std::string &symbol) { return positions_.find(symbol) == positions_.end(); });
+  if (positions_.size() + pending_entries >= static_cast<std::size_t>(max_positions_)) {
     return;
   }
 
@@ -1028,9 +1134,24 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   const double fee = signal.price * quantity * kFeeRate;
   const std::string side = sanitizeSide(signal.signal_type);
 
-  if (!hasSufficientCash(side, cash_, allocated_usd, fee)) {
+  const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
+  if (!hasSufficientCash(side, available_cash, allocated_usd, fee)) {
     TR_LOG_DEBUG("Skipping {} entry for {}: insufficient cash ({} < {})", side, signal.symbol,
-                 cash_, allocated_usd + fee);
+                 available_cash, allocated_usd + fee);
+    return;
+  }
+
+  if (liveOrderExecutionEnabledLocked()) {
+    OrderIntent intent;
+    intent.product_id = signal.symbol;
+    intent.side = side;
+    intent.amount = side == "buy" ? allocated_usd : quantity;
+    intent.amount_is_quote = side == "buy";
+    intent.reason = reason;
+    intent.action = "open";
+    intent.signal = signal;
+    intent.reserved_cash = side == "buy" ? allocated_usd + fee : allocated_usd;
+    queueOrderIntentLocked(std::move(intent));
     return;
   }
 
@@ -1077,16 +1198,6 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
   market_state_[signal.symbol].last_entry_tick = tick_;
-  if (liveOrderExecutionEnabledLocked()) {
-    // Buys spend quote currency; shorts on spot are entered by selling base.
-    if (position.side == "buy") {
-      queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason,
-                             trade.trade_id, fee);
-    } else {
-      queueOrderIntentLocked(signal.symbol, "sell", quantity, false, reason,
-                             trade.trade_id, fee);
-    }
-  }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -1096,6 +1207,9 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
 // DCA accumulation: grow an existing position and average the entry price.
 void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
                                                   const std::string &reason) {
+  if (pending_order_symbols_.count(signal.symbol) > 0) {
+    return;
+  }
   auto it = positions_.find(signal.symbol);
   if (it == positions_.end()) {
     openPositionLocked(signal, reason);
@@ -1110,9 +1224,25 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
   const double quantity = allocated_usd / signal.price;
   const double fee = signal.price * quantity * kFeeRate;
 
-  if (!hasSufficientCash(position.side, cash_, allocated_usd, fee)) {
-    TR_LOG_DEBUG("Skipping DCA add for {}: insufficient cash ({} < {})", signal.symbol, cash_,
+  const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
+  if (!hasSufficientCash(position.side, available_cash, allocated_usd, fee)) {
+    TR_LOG_DEBUG("Skipping DCA add for {}: insufficient cash ({} < {})", signal.symbol,
+                 available_cash,
                  allocated_usd + fee);
+    return;
+  }
+
+  if (liveOrderExecutionEnabledLocked()) {
+    OrderIntent intent;
+    intent.product_id = signal.symbol;
+    intent.side = position.side;
+    intent.amount = position.side == "buy" ? allocated_usd : quantity;
+    intent.amount_is_quote = position.side == "buy";
+    intent.reason = reason;
+    intent.action = "add";
+    intent.signal = signal;
+    intent.reserved_cash = position.side == "buy" ? allocated_usd + fee : allocated_usd;
+    queueOrderIntentLocked(std::move(intent));
     return;
   }
 
@@ -1144,10 +1274,6 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
   market_state_[signal.symbol].last_entry_tick = tick_;
-  if (liveOrderExecutionEnabledLocked() && position.side == "buy") {
-    queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason,
-                           trade.trade_id, fee);
-  }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -1165,6 +1291,26 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   }
 
   PositionState position = it->second;
+  if (pending_order_symbols_.count(symbol) > 0) {
+    result["status"] = "pending";
+    result["message"] = "An exchange order is already pending for this symbol";
+    return result;
+  }
+  if (liveOrderExecutionEnabledLocked()) {
+    OrderIntent intent;
+    intent.product_id = symbol;
+    intent.side = position.side == "buy" ? "sell" : "buy";
+    intent.amount = position.quantity;
+    intent.amount_is_quote = false;
+    intent.reason = reason;
+    intent.action = "close";
+    intent.position = position;
+    queueOrderIntentLocked(std::move(intent));
+    result["status"] = "pending";
+    result["message"] = "Position close submitted to Coinbase";
+    result["symbol"] = symbol;
+    return result;
+  }
   const double exit_price = position.current_price > 0.0 ? position.current_price : position.entry_price;
   const double direction = position.side == "buy" ? 1.0 : -1.0;
   const double gross_pnl = (exit_price - position.entry_price) * position.quantity * direction;
@@ -1198,11 +1344,6 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
                          ? (liveOrderExecutionEnabledLocked() ? "live" : "live_paper")
                          : mode_;
 
-  if (liveOrderExecutionEnabledLocked()) {
-    // Closing a long sells the base quantity; closing a short buys it back.
-    queueOrderIntentLocked(symbol, position.side == "buy" ? "sell" : "buy",
-                           position.quantity, false, reason, trade.trade_id, fee);
-  }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   positions_.erase(it);
@@ -1294,14 +1435,26 @@ void SimulatedTradingService::workerLoop() {
   TR_LOG_INFO("Simulated trading worker started for session {}", session_id_);
   while (true) {
     try {
+      // Accepted orders remain pending until Coinbase reports a terminal fill;
+      // never invent a zero fee or abandon an exchange order on session stop.
+      resolvePendingLiveOrders();
+      PendingWrites settled_writes;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        settled_writes = takePendingWritesLocked();
+      }
+      flushWrites(std::move(settled_writes));
       // Live market data is fetched over HTTPS before taking the mutex so API
       // handlers never wait behind network I/O.
       std::vector<std::string> symbols_snapshot;
       bool live_mode = false;
       {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (stop_requested_) {
+        if (stop_requested_ && pending_live_orders_.empty()) {
           break;
+        }
+        if (stop_requested_) {
+          continue;
         }
         symbols_snapshot = symbols_;
         live_mode = mode_ == "live";
@@ -1325,7 +1478,7 @@ void SimulatedTradingService::workerLoop() {
       }
       // Database I/O and exchange orders happen outside the mutex so API
       // handlers never block behind tick persistence.
-      dispatchOrders(std::move(orders), writes);
+      dispatchOrders(std::move(orders));
       flushWrites(std::move(writes));
     } catch (const std::exception &e) {
       TR_LOG_ERROR("Simulated trading worker tick failed for session {}: {}", session_id_, e.what());
@@ -1583,8 +1736,10 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   recent_trades_.clear();
   recent_signals_.clear();
   session_trade_inputs_.clear();
-  session_trade_indices_.clear();
   pending_orders_.clear();
+  pending_live_orders_.clear();
+  pending_order_symbols_.clear();
+  pending_reserved_cash_ = 0.0;
   tick_ = 0;
   started_at_ = nowIsoUtc();
   updated_at_ = started_at_;

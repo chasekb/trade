@@ -43,6 +43,8 @@ struct OrderBookSummary {
 
 struct OrderResult {
   bool success = false;
+  bool accepted = false;
+  bool fill_available = false;
   std::string order_id;
   std::string client_order_id;
   std::string error;

@@ -51,5 +51,26 @@ int main() {
   expect(!trade::exchange::parseOrderFill(pending, fill, &error),
          "unfilled order is not accepted as an actual fill");
 
+  Json::Value partial(Json::objectValue);
+  partial["order"]["order_id"] = "order-partial";
+  partial["order"]["status"] = "CANCELLED";
+  partial["order"]["filled_size"] = "0.001";
+  partial["order"]["filled_value"] = "100";
+  partial["order"]["average_filled_price"] = "100000";
+  partial["order"]["total_fees"] = "0.60";
+  expect(trade::exchange::parseOrderFill(partial, fill, &error),
+         "terminal partial IOC fill parses");
+  expect_close(fill.filled_size, 0.001, "partial filled size");
+  expect_close(fill.total_fees, 0.60, "partial actual fees");
+
+  Json::Value rejected(Json::objectValue);
+  rejected["order"]["order_id"] = "order-rejected";
+  rejected["order"]["status"] = "CANCELLED";
+  rejected["order"]["filled_size"] = "0";
+  rejected["order"]["filled_value"] = "0";
+  rejected["order"]["total_fees"] = "0";
+  expect(trade::exchange::parseOrderFill(rejected, fill, &error),
+         "terminal order with no fill parses for rejection handling");
+
   return failures == 0 ? 0 : 1;
 }

@@ -184,6 +184,18 @@ function appendLocalTrade(session: LocalSimTradingSession, trade: LocalSimTrade)
   }
 }
 
+export function calculateLocalAllocatedUsd(
+  totalValue: number,
+  initialCapital: number,
+  positionSizePercent: number,
+): number {
+  if (!Number.isFinite(positionSizePercent)) {
+    return 0;
+  }
+  const sizingCapital = totalValue > 0 ? totalValue : initialCapital;
+  return sizingCapital * Math.max(0, positionSizePercent) / 100;
+}
+
 function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSignal) {
   if (!signal.signal_generated || signal.signal === 'hold') {
     return;
@@ -195,9 +207,15 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
   const maxPositions = Math.max(1, Number(session.parameters.max_positions ?? session.parameters.max_positions_per_session ?? 100));
   const holdTicks = Math.max(3, Number(session.parameters.position_update_interval ?? 5) * 2);
   // Percent of current total value (compounding), matching the backend engine.
-  const sizingCapital = portfolio.total_value > 0 ? portfolio.total_value : portfolio.initial_capital;
-  const allocatedUsd = Math.max(25, sizingCapital * Math.max(0.01, positionSizePercent) / 100);
-  const quantity = Math.max(0.000001, allocatedUsd / Math.max(0.000001, signal.price));
+  const allocatedUsd = calculateLocalAllocatedUsd(
+    portfolio.total_value,
+    portfolio.initial_capital,
+    positionSizePercent,
+  );
+  if (allocatedUsd <= 0 || signal.price <= 0) {
+    return;
+  }
+  const quantity = allocatedUsd / signal.price;
   const feeRate = 0.0008;
   const signalSide = signal.signal;
   const winProbability = localSignalWinProbability(signal);
