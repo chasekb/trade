@@ -1602,12 +1602,17 @@ void SimulatedTradingService::workerLoop() {
       std::this_thread::sleep_for(std::chrono::milliseconds(250 * (attempt + 1)));
     }
   }
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    worker_finished_ = true;
+  }
   TR_LOG_INFO("Simulated trading worker stopped for session {}", session_id_);
 }
 
 void SimulatedTradingService::startWorkerLocked() {
   stop_requested_ = false;
   shutdown_requested_ = false;
+  worker_finished_ = false;
   worker_ = std::thread([this]() { workerLoop(); });
 }
 
@@ -1766,8 +1771,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   }
 
   if (worker_.joinable()) {
-    if (!pending_order_symbols_.empty() || !pending_signal_writes_.empty() ||
-        !pending_trade_writes_.empty()) {
+    if (!worker_finished_) {
       Json::Value resp = buildStatusJson();
       resp["status"] = "settling";
       resp["error"] = "The previous session is still settling orders or persistence writes";

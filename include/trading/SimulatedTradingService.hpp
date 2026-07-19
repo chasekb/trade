@@ -202,6 +202,7 @@ private:
   bool active_ = false;
   bool stop_requested_ = false;
   bool shutdown_requested_ = false;
+  bool worker_finished_ = true;
   std::string session_id_;
   std::string mode_ = "simulated";
   std::string strategy_ = "orderbook";
