@@ -72,5 +72,20 @@ int main() {
   expect(trade::exchange::parseOrderFill(rejected, fill, &error),
          "terminal order with no fill parses for rejection handling");
 
+  Json::Value malformed = partial;
+  malformed["order"]["total_fees"] = "not-a-number";
+  expect(!trade::exchange::parseOrderFill(malformed, fill, &error),
+         "malformed fees never masquerade as zero actual fees");
+
+  malformed["order"]["total_fees"] = " 0.60";
+  expect(!trade::exchange::parseOrderFill(malformed, fill, &error),
+         "leading whitespace is rejected");
+  malformed["order"]["total_fees"] = "0x1p2";
+  expect(!trade::exchange::parseOrderFill(malformed, fill, &error),
+         "hexadecimal floats are rejected");
+  malformed["order"]["total_fees"] = "0.60junk";
+  expect(!trade::exchange::parseOrderFill(malformed, fill, &error),
+         "trailing junk is rejected");
+
   return failures == 0 ? 0 : 1;
 }

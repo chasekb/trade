@@ -220,9 +220,14 @@ bool CoinbaseAdvancedClient::listAccounts(std::vector<AccountBalance> &out, std:
 }
 
 OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_id,
-                                                     const std::string &side, double amount,
-                                                     bool amount_is_quote) {
+                                                      const std::string &side, double amount,
+                                                      bool amount_is_quote,
+                                                      const std::function<bool()> &cancel_requested) {
   OrderResult result;
+  if (cancel_requested && cancel_requested()) {
+    result.error = "order placement cancelled";
+    return result;
+  }
   if (amount <= 0.0) {
     result.error = "amount must be positive";
     return result;
@@ -268,6 +273,11 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
     // order details shortly afterward.
     std::string fill_error;
     for (int attempt = 0; attempt < 5; ++attempt) {
+      if (cancel_requested && cancel_requested()) {
+        result.success = true;
+        result.error = "order accepted; fill polling cancelled during shutdown";
+        return result;
+      }
       if (attempt > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
       }

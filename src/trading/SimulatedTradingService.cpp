@@ -210,7 +210,15 @@ SimulatedTradingService &SimulatedTradingService::getInstance() {
 }
 
 SimulatedTradingService::~SimulatedTradingService() {
-  stopSession();
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    active_ = false;
+    stop_requested_ = true;
+    shutdown_requested_ = true;
+  }
+  if (worker_.joinable()) {
+    worker_.join();
+  }
 }
 
 std::string SimulatedTradingService::escapeSql(const std::string &value) const {
@@ -607,9 +615,30 @@ void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) 
   if (orders.empty() || !exchange_client_) {
     return;
   }
-  for (const auto &intent : orders) {
+  const auto cancel_requested = [this]() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return shutdown_requested_;
+  };
+  for (std::size_t index = 0; index < orders.size(); ++index) {
+    const OrderIntent &intent = orders[index];
+    bool stop_dispatch = false;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      stop_dispatch = stop_requested_ || shutdown_requested_;
+      if (stop_dispatch) {
+        for (std::size_t remaining = index; remaining < orders.size(); ++remaining) {
+          pending_order_symbols_.erase(orders[remaining].product_id);
+          pending_reserved_cash_ =
+              std::max(0.0, pending_reserved_cash_ - orders[remaining].reserved_cash);
+        }
+      }
+    }
+    if (stop_dispatch) {
+      break;
+    }
     const auto result = exchange_client_->placeMarketOrder(intent.product_id, intent.side,
-                                                           intent.amount, intent.amount_is_quote);
+                                                           intent.amount, intent.amount_is_quote,
+                                                           cancel_requested);
     if (!result.accepted) {
       std::lock_guard<std::mutex> lock(mutex_);
       pending_order_symbols_.erase(intent.product_id);
@@ -646,7 +675,18 @@ void SimulatedTradingService::resolvePendingLiveOrders() {
     return;
   }
   std::vector<PendingLiveOrder> still_pending;
-  for (const auto &pending : pending_orders) {
+  for (std::size_t index = 0; index < pending_orders.size(); ++index) {
+    const PendingLiveOrder &pending = pending_orders[index];
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (shutdown_requested_) {
+        pending_live_orders_.insert(pending_live_orders_.end(), still_pending.begin(),
+                                    still_pending.end());
+        pending_live_orders_.insert(pending_live_orders_.end(), pending_orders.begin() + index,
+                                    pending_orders.end());
+        return;
+      }
+    }
     exchange::OrderFill fill;
     std::string error;
     if (!exchange_client_->getOrderFill(pending.order_id, fill, &error)) {
@@ -672,6 +712,12 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
 
   std::size_t fetched = 0;
   for (const auto &symbol : symbols) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (stop_requested_ || shutdown_requested_) {
+        break;
+      }
+    }
     if (fetched >= kMaxLiveQuoteSymbols) {
       TR_LOG_WARN("Live quote universe capped at {} symbols; {} requested",
                   kMaxLiveQuoteSymbols, symbols.size());
@@ -1296,6 +1342,8 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
     result["message"] = "An exchange order is already pending for this symbol";
     return result;
   }
+  const double exit_price =
+      position.current_price > 0.0 ? position.current_price : position.entry_price;
   if (liveOrderExecutionEnabledLocked()) {
     OrderIntent intent;
     intent.product_id = symbol;
@@ -1305,13 +1353,23 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
     intent.reason = reason;
     intent.action = "close";
     intent.position = position;
+    if (intent.side == "buy") {
+      const double buyback_notional = exit_price * position.quantity;
+      const double estimated_fee = buyback_notional * kFeeRate;
+      const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
+      if (!hasSufficientCash("buy", available_cash, buyback_notional, estimated_fee)) {
+        result["status"] = "error";
+        result["error"] = "Insufficient cash to close short position";
+        return result;
+      }
+      intent.reserved_cash = buyback_notional + estimated_fee;
+    }
     queueOrderIntentLocked(std::move(intent));
     result["status"] = "pending";
     result["message"] = "Position close submitted to Coinbase";
     result["symbol"] = symbol;
     return result;
   }
-  const double exit_price = position.current_price > 0.0 ? position.current_price : position.entry_price;
   const double direction = position.side == "buy" ? 1.0 : -1.0;
   const double gross_pnl = (exit_price - position.entry_price) * position.quantity * direction;
   const double fee = exit_price * position.quantity * kFeeRate;
@@ -1435,6 +1493,12 @@ void SimulatedTradingService::workerLoop() {
   TR_LOG_INFO("Simulated trading worker started for session {}", session_id_);
   while (true) {
     try {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (shutdown_requested_) {
+          break;
+        }
+      }
       // Accepted orders remain pending until Coinbase reports a terminal fill;
       // never invent a zero fee or abandon an exchange order on session stop.
       resolvePendingLiveOrders();
@@ -1448,16 +1512,23 @@ void SimulatedTradingService::workerLoop() {
       // handlers never wait behind network I/O.
       std::vector<std::string> symbols_snapshot;
       bool live_mode = false;
+      bool settling = false;
       {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (stop_requested_ && pending_live_orders_.empty()) {
+        if (shutdown_requested_ ||
+            (stop_requested_ && pending_order_symbols_.empty())) {
           break;
         }
         if (stop_requested_) {
-          continue;
+          settling = true;
+        } else {
+          symbols_snapshot = symbols_;
+          live_mode = mode_ == "live";
         }
-        symbols_snapshot = symbols_;
-        live_mode = mode_ == "live";
+      }
+      if (settling) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
       }
 
       std::map<std::string, MarketQuote> quotes;
@@ -1467,14 +1538,19 @@ void SimulatedTradingService::workerLoop() {
 
       PendingWrites writes;
       std::vector<OrderIntent> orders;
+      bool stop_after_quotes = false;
       {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stop_requested_) {
-          break;
+          stop_after_quotes = true;
+        } else {
+          generateTickLocked(quotes);
+          writes = takePendingWritesLocked();
+          orders = takePendingOrdersLocked();
         }
-        generateTickLocked(quotes);
-        writes = takePendingWritesLocked();
-        orders = takePendingOrdersLocked();
+      }
+      if (stop_after_quotes) {
+        continue;
       }
       // Database I/O and exchange orders happen outside the mutex so API
       // handlers never block behind tick persistence.
@@ -1489,18 +1565,21 @@ void SimulatedTradingService::workerLoop() {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-  active_ = false;
-  stop_requested_ = false;
-  updated_at_ = nowIsoUtc();
+  PendingWrites final_writes;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    active_ = false;
+    stop_requested_ = false;
+    updated_at_ = nowIsoUtc();
+    final_writes = takePendingWritesLocked();
+  }
+  flushWrites(std::move(final_writes));
   TR_LOG_INFO("Simulated trading worker stopped for session {}", session_id_);
 }
 
 void SimulatedTradingService::startWorkerLocked() {
-  if (worker_.joinable()) {
-    worker_.join();
-  }
   stop_requested_ = false;
+  shutdown_requested_ = false;
   worker_ = std::thread([this]() { workerLoop(); });
 }
 
@@ -1529,9 +1608,12 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
     directional_positions_value += market_value;
   }
   const double total_value = cash_ + directional_positions_value;
+  const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
 
   portfolio["cash_balance"] = cash_;
-  portfolio["available_balance_usd"] = cash_;
+  portfolio["available_balance_usd"] = available_cash;
+  portfolio["pending_reserved_cash"] = pending_reserved_cash_;
+  portfolio["pending_order_count"] = static_cast<Json::UInt64>(pending_order_symbols_.size());
   portfolio["total_balance_usd"] = total_value;
   portfolio["current_capital"] = total_value;
   portfolio["total_value"] = total_value;
@@ -1636,7 +1718,8 @@ Json::Value SimulatedTradingService::buildStatusJson() const {
 
 Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
                                                   const std::string &mode) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+  std::unique_lock<std::mutex> lock(mutex_);
   ensureSchema();
 
   if (active_) {
@@ -1652,6 +1735,18 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
     Json::Value resp = buildStatusJson();
     resp["message"] = "Trading session already running";
     return resp;
+  }
+
+  if (worker_.joinable()) {
+    if (!pending_order_symbols_.empty()) {
+      Json::Value resp = buildStatusJson();
+      resp["status"] = "settling";
+      resp["error"] = "The previous session still has Coinbase orders awaiting settlement";
+      return resp;
+    }
+    lock.unlock();
+    worker_.join();
+    lock.lock();
   }
 
   session_id_ = payload.isMember("session_id") ? payload["session_id"].asString() : makeSessionId();
@@ -1758,37 +1853,23 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
 }
 
 Json::Value SimulatedTradingService::stopSession() {
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!active_ && !worker_.joinable()) {
-      Json::Value resp = buildStatusJson();
-      resp["message"] = "Simulated trading already stopped";
-      return resp;
-    }
-    stop_requested_ = true;
+  std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!active_ && !worker_.joinable()) {
+    Json::Value resp = buildStatusJson();
+    resp["message"] = "Simulated trading already stopped";
+    return resp;
   }
-
-  if (worker_.joinable()) {
-    worker_.join();
-  }
-
-  Json::Value resp;
-  PendingWrites writes;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    active_ = false;
-    stop_requested_ = false;
-    updated_at_ = nowIsoUtc();
-    writes = takePendingWritesLocked();
-
-    resp = buildStatusJson();
-  }
-  flushWrites(std::move(writes));
-
-  resp["status"] = "success";
+  stop_requested_ = true;
+  active_ = false;
+  updated_at_ = nowIsoUtc();
+  Json::Value resp = buildStatusJson();
+  const bool settling = !pending_order_symbols_.empty();
+  resp["status"] = settling ? "settling" : "success";
   resp["is_active"] = false;
   resp["is_trading"] = false;
-  resp["message"] = "Simulated trading stopped";
+  resp["message"] = settling ? "Trading stopped; accepted Coinbase orders are still settling"
+                              : "Simulated trading stopped";
   return resp;
 }
 
@@ -2041,17 +2122,28 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
 }
 
 Json::Value SimulatedTradingService::closePosition(const std::string &symbol) {
+  std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
   Json::Value result;
   PendingWrites writes;
   std::vector<OrderIntent> orders;
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!active_) {
+      result["status"] = "error";
+      result["error"] = "Trading session is not active";
+      return result;
+    }
     result = closePositionLocked(symbol, "Manual close request");
     writes = takePendingWritesLocked();
     orders = takePendingOrdersLocked();
   }
   flushWrites(std::move(writes));
   dispatchOrders(std::move(orders));
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    writes = takePendingWritesLocked();
+  }
+  flushWrites(std::move(writes));
   return result;
 }
 

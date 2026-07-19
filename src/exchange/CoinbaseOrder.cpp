@@ -1,5 +1,6 @@
 #include "exchange/CoinbaseOrder.hpp"
 
+#include <charconv>
 #include <cmath>
 #include <set>
 #include <string>
@@ -10,17 +11,22 @@ namespace exchange {
 
 namespace {
 
-double toDouble(const Json::Value &value, double fallback = 0.0) {
+bool toDouble(const Json::Value &value, double &out) {
   if (value.isNumeric()) {
-    return value.asDouble();
+    out = value.asDouble();
+    return true;
   }
   if (value.isString()) {
-    try {
-      return std::stod(value.asString());
-    } catch (...) {
+    const std::string text = value.asString();
+    if (text.empty()) {
+      return false;
     }
+    const char *begin = text.data();
+    const char *end = begin + text.size();
+    const auto parsed = std::from_chars(begin, end, out, std::chars_format::general);
+    return parsed.ec == std::errc() && parsed.ptr == end;
   }
-  return fallback;
+  return false;
 }
 
 } // namespace
@@ -37,11 +43,16 @@ bool parseOrderFill(const Json::Value &response, OrderFill &out, std::string *er
   OrderFill parsed;
   parsed.order_id = order.get("order_id", Json::Value("")).asString();
   parsed.status = order.get("status", Json::Value("")).asString();
-  parsed.filled_size = toDouble(order.get("filled_size", Json::Value(0.0)));
-  parsed.filled_value = toDouble(order.get("filled_value", Json::Value(0.0)));
-  parsed.average_filled_price =
-      toDouble(order.get("average_filled_price", Json::Value(0.0)));
-  parsed.total_fees = toDouble(order.get("total_fees", Json::Value(0.0)));
+  if (!toDouble(order.get("filled_size", Json::Value(0.0)), parsed.filled_size) ||
+      !toDouble(order.get("filled_value", Json::Value(0.0)), parsed.filled_value) ||
+      !toDouble(order.get("average_filled_price", Json::Value(0.0)),
+                parsed.average_filled_price) ||
+      !toDouble(order.get("total_fees", Json::Value(0.0)), parsed.total_fees)) {
+    if (error) {
+      *error = "order fill contains malformed numeric values";
+    }
+    return false;
+  }
 
   static const std::set<std::string> terminal_statuses = {
       "FILLED", "CANCELLED", "EXPIRED", "FAILED"};

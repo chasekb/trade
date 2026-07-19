@@ -4,6 +4,8 @@
 
 #include <json/json.h>
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -67,7 +69,8 @@ public:
   // Authenticated: POST /api/v3/brokerage/orders (market IOC). `amount` is a
   // quote-currency size for buys (amount_is_quote=true) or a base size.
   OrderResult placeMarketOrder(const std::string &product_id, const std::string &side,
-                               double amount, bool amount_is_quote);
+                               double amount, bool amount_is_quote,
+                               const std::function<bool()> &cancel_requested = {});
 
   // Authenticated: retrieve the actual fill, including Coinbase's charged fee.
   bool getOrderFill(const std::string &order_id, OrderFill &out,

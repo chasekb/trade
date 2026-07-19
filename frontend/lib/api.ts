@@ -192,7 +192,12 @@ export function calculateLocalAllocatedUsd(
   if (!Number.isFinite(positionSizePercent)) {
     return 0;
   }
-  const sizingCapital = totalValue > 0 ? totalValue : initialCapital;
+  const sizingCapital = Number.isFinite(totalValue) && totalValue > 0
+    ? totalValue
+    : initialCapital;
+  if (!Number.isFinite(sizingCapital) || sizingCapital <= 0) {
+    return 0;
+  }
   return sizingCapital * Math.max(0, positionSizePercent) / 100;
 }
 

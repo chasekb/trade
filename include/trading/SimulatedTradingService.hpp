@@ -191,9 +191,11 @@ private:
   void trimHistoryLocked();
 
   mutable std::mutex mutex_;
+  mutable std::mutex lifecycle_mutex_;
   std::thread worker_;
   bool active_ = false;
   bool stop_requested_ = false;
+  bool shutdown_requested_ = false;
   std::string session_id_;
   std::string mode_ = "simulated";
   std::string strategy_ = "orderbook";
