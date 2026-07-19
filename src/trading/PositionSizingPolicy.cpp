@@ -76,8 +76,8 @@ double derive_position_size_multiplier(const PositionSizingInputs &inputs) {
 }
 
 double calculate_position_size_usd(const PositionSizingInputs &inputs) {
-  const double base_usd = std::max(25.0, inputs.base_usd);
-  return std::max(25.0, base_usd * derive_position_size_multiplier(inputs));
+  const double base_usd = std::max(0.0, inputs.base_usd);
+  return base_usd * derive_position_size_multiplier(inputs);
 }
 
 } // namespace trading

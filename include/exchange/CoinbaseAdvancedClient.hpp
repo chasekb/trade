@@ -1,5 +1,7 @@
 #pragma once
 
+#include "exchange/CoinbaseOrder.hpp"
+
 #include <json/json.h>
 
 #include <string>
@@ -44,6 +46,7 @@ struct OrderResult {
   std::string order_id;
   std::string client_order_id;
   std::string error;
+  OrderFill fill;
 };
 
 // Thin client for the Coinbase Advanced Trade API (authenticated, JWT or
@@ -63,6 +66,10 @@ public:
   // quote-currency size for buys (amount_is_quote=true) or a base size.
   OrderResult placeMarketOrder(const std::string &product_id, const std::string &side,
                                double amount, bool amount_is_quote);
+
+  // Authenticated: retrieve the actual fill, including Coinbase's charged fee.
+  bool getOrderFill(const std::string &order_id, OrderFill &out,
+                    std::string *error = nullptr);
 
   // Public market data (api.exchange.coinbase.com), no credentials required.
   bool getTicker(const std::string &product_id, ProductTicker &out,

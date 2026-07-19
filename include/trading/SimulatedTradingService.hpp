@@ -141,6 +141,8 @@ private:
     double amount = 0.0;
     bool amount_is_quote = false;
     std::string reason;
+    std::string trade_id;
+    double estimated_fee = 0.0;
   };
 
   void ensureSchema();
@@ -155,9 +157,12 @@ private:
   PendingWrites takePendingWritesLocked();
   void flushWrites(PendingWrites &&writes) const;
   void queueOrderIntentLocked(const std::string &product_id, const std::string &side,
-                              double amount, bool amount_is_quote, const std::string &reason);
+                              double amount, bool amount_is_quote, const std::string &reason,
+                              const std::string &trade_id, double estimated_fee);
   std::vector<OrderIntent> takePendingOrdersLocked();
-  void dispatchOrders(std::vector<OrderIntent> &&orders);
+  void dispatchOrders(std::vector<OrderIntent> &&orders, PendingWrites &writes);
+  void reconcileOrderFeeLocked(const std::string &trade_id, double estimated_fee,
+                               double actual_fee);
   bool liveOrderExecutionEnabledLocked() const;
   std::map<std::string, MarketQuote> fetchLiveQuotes(const std::vector<std::string> &symbols);
   void openPositionLocked(const SignalRecord &signal, const std::string &reason);
@@ -207,6 +212,7 @@ private:
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).
   std::vector<TradePerformanceInput> session_trade_inputs_;
+  std::map<std::string, std::size_t> session_trade_indices_;
   std::vector<SignalRecord> pending_signal_writes_;
   std::vector<TradeRecord> pending_trade_writes_;
   std::vector<OrderIntent> pending_orders_;

@@ -1,5 +1,6 @@
 #include "trading/PositionSizingPolicy.hpp"
 
+#include <cmath>
 #include <iostream>
 
 int main() {
@@ -62,6 +63,27 @@ int main() {
   }
   if (!(weak_size < 1000.0)) {
     std::cerr << "Weak setup should stay below base size" << std::endl;
+    return 1;
+  }
+
+  trade::trading::PositionSizingInputs small{};
+  small.base_usd = 1.0;
+  small.signal_strength = 0.5;
+  small.win_probability = 0.5;
+  small.model_confidence = 0.5;
+  small.live_profit_factor = 1.0;
+  const double expected_small_size =
+      small.base_usd * trade::trading::derive_position_size_multiplier(small);
+  const double actual_small_size = trade::trading::calculate_position_size_usd(small);
+  if (std::fabs(actual_small_size - expected_small_size) > 1e-9) {
+    std::cerr << "Small calculated size should not be raised to an exchange minimum: expected "
+              << expected_small_size << " got " << actual_small_size << std::endl;
+    return 1;
+  }
+
+  trade::trading::PositionSizingInputs zero{};
+  if (trade::trading::calculate_position_size_usd(zero) != 0.0) {
+    std::cerr << "Zero configured size should remain zero" << std::endl;
     return 1;
   }
   return 0;

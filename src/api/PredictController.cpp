@@ -1319,9 +1319,13 @@ void PredictController::executeLiveTrade(
   Json::Value resp;
   if (result.success) {
     resp["status"] = "success";
-    resp["message"] = "Order placed: " + side + " " + std::to_string(amount) + " " + symbol;
+    resp["message"] = "Order filled: " + side + " " + std::to_string(amount) + " " + symbol;
     resp["order_id"] = result.order_id;
     resp["client_order_id"] = result.client_order_id;
+    resp["filled_size"] = result.fill.filled_size;
+    resp["filled_value"] = result.fill.filled_value;
+    resp["average_filled_price"] = result.fill.average_filled_price;
+    resp["fees"] = result.fill.total_fees;
     callback(HttpResponse::newHttpJsonResponse(resp));
     return;
   }

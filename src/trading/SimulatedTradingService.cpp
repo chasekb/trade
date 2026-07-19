@@ -329,7 +329,7 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
   if (strategy_ == "dca" || strategy_ == "buyandhold") {
     const double amount =
         paramNumber(parameters_, "amount", strategy_ == "dca" ? 100.0 : 1000.0);
-    return std::max(25.0, amount);
+    return std::max(0.0, amount);
   }
 
   const double pct = parameters_.isMember("position_size_percent")
@@ -348,8 +348,8 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
       cash_, total_positions_value_,
       initial_capital_ > 0.0 ? initial_capital_ : kDefaultInitialCapital);
   PositionSizingInputs inputs;
-  inputs.base_usd = size_mode == "dollar" ? std::max(25.0, position_value)
-                                            : capital * std::max(0.01, pct) / 100.0;
+  inputs.base_usd = size_mode == "dollar" ? std::max(0.0, position_value)
+                                            : capital * std::max(0.0, pct) / 100.0;
   inputs.signal_strength = signal.strength;
   inputs.win_probability = signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
                                .get("win_probability", Json::Value(0.5))
@@ -469,6 +469,7 @@ void SimulatedTradingService::queueSignalWriteLocked(const SignalRecord &signal)
 
 void SimulatedTradingService::queueTradeWriteLocked(const TradeRecord &trade) {
   pending_trade_writes_.push_back(trade);
+  session_trade_indices_[trade.trade_id] = session_trade_inputs_.size();
   session_trade_inputs_.push_back(TradePerformanceInput{
       trade.pnl, trade.fees, trade.quantity, trade.price, trade.timestamp_iso});
 }
@@ -491,13 +492,17 @@ bool SimulatedTradingService::liveOrderExecutionEnabledLocked() const {
 void SimulatedTradingService::queueOrderIntentLocked(const std::string &product_id,
                                                      const std::string &side, double amount,
                                                      bool amount_is_quote,
-                                                     const std::string &reason) {
+                                                     const std::string &reason,
+                                                     const std::string &trade_id,
+                                                     double estimated_fee) {
   OrderIntent intent;
   intent.product_id = product_id;
   intent.side = side;
   intent.amount = amount;
   intent.amount_is_quote = amount_is_quote;
   intent.reason = reason;
+  intent.trade_id = trade_id;
+  intent.estimated_fee = estimated_fee;
   pending_orders_.push_back(std::move(intent));
 }
 
@@ -508,17 +513,49 @@ SimulatedTradingService::takePendingOrdersLocked() {
   return orders;
 }
 
-void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
+void SimulatedTradingService::reconcileOrderFeeLocked(const std::string &trade_id,
+                                                      double estimated_fee,
+                                                      double actual_fee) {
+  const double fee_delta = actual_fee - estimated_fee;
+  total_fees_ += fee_delta;
+  cash_ -= fee_delta;
+
+  for (auto &trade : recent_trades_) {
+    if (trade.trade_id == trade_id) {
+      trade.fees = actual_fee;
+      break;
+    }
+  }
+  const auto input_it = session_trade_indices_.find(trade_id);
+  if (input_it != session_trade_indices_.end() &&
+      input_it->second < session_trade_inputs_.size()) {
+    session_trade_inputs_[input_it->second].fees = actual_fee;
+  }
+}
+
+void SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders,
+                                             PendingWrites &writes) {
   if (orders.empty() || !exchange_client_) {
     return;
   }
   for (const auto &intent : orders) {
     const auto result = exchange_client_->placeMarketOrder(intent.product_id, intent.side,
                                                            intent.amount, intent.amount_is_quote);
+    const double actual_fee = result.success ? result.fill.total_fees : 0.0;
+    for (auto &trade : writes.trades) {
+      if (trade.trade_id == intent.trade_id) {
+        trade.fees = actual_fee;
+        break;
+      }
+    }
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      reconcileOrderFeeLocked(intent.trade_id, intent.estimated_fee, actual_fee);
+    }
     if (result.success) {
-      TR_LOG_INFO("Coinbase order placed: {} {} {} ({}) order_id={} [{}]", intent.side,
+      TR_LOG_INFO("Coinbase order filled: {} {} {} ({}) order_id={} actual_fee={} [{}]", intent.side,
                   intent.amount, intent.product_id, intent.amount_is_quote ? "quote" : "base",
-                  result.order_id, intent.reason);
+                  result.order_id, actual_fee, intent.reason);
     } else {
       TR_LOG_ERROR("Coinbase order FAILED: {} {} {} ({}): {} [{}]", intent.side, intent.amount,
                    intent.product_id, intent.amount_is_quote ? "quote" : "base", result.error,
@@ -984,7 +1021,10 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   }
 
   const double allocated_usd = positionSizeUsdForSignal(signal);
-  const double quantity = std::max(0.000001, allocated_usd / std::max(0.000001, signal.price));
+  if (allocated_usd <= 0.0 || signal.price <= 0.0) {
+    return;
+  }
+  const double quantity = allocated_usd / signal.price;
   const double fee = signal.price * quantity * kFeeRate;
   const std::string side = sanitizeSide(signal.signal_type);
 
@@ -1040,9 +1080,11 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   if (liveOrderExecutionEnabledLocked()) {
     // Buys spend quote currency; shorts on spot are entered by selling base.
     if (position.side == "buy") {
-      queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason);
+      queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason,
+                             trade.trade_id, fee);
     } else {
-      queueOrderIntentLocked(signal.symbol, "sell", quantity, false, reason);
+      queueOrderIntentLocked(signal.symbol, "sell", quantity, false, reason,
+                             trade.trade_id, fee);
     }
   }
   queueTradeWriteLocked(trade);
@@ -1062,7 +1104,10 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
 
   PositionState &position = it->second;
   const double allocated_usd = positionSizeUsdForSignal(signal);
-  const double quantity = std::max(0.000001, allocated_usd / std::max(0.000001, signal.price));
+  if (allocated_usd <= 0.0 || signal.price <= 0.0) {
+    return;
+  }
+  const double quantity = allocated_usd / signal.price;
   const double fee = signal.price * quantity * kFeeRate;
 
   if (!hasSufficientCash(position.side, cash_, allocated_usd, fee)) {
@@ -1100,7 +1145,8 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
   cash_ += openCashDelta(position.side, allocated_usd, fee);
   market_state_[signal.symbol].last_entry_tick = tick_;
   if (liveOrderExecutionEnabledLocked() && position.side == "buy") {
-    queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason);
+    queueOrderIntentLocked(signal.symbol, "buy", allocated_usd, true, reason,
+                           trade.trade_id, fee);
   }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
@@ -1155,7 +1201,7 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   if (liveOrderExecutionEnabledLocked()) {
     // Closing a long sells the base quantity; closing a short buys it back.
     queueOrderIntentLocked(symbol, position.side == "buy" ? "sell" : "buy",
-                           position.quantity, false, reason);
+                           position.quantity, false, reason, trade.trade_id, fee);
   }
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
@@ -1279,8 +1325,8 @@ void SimulatedTradingService::workerLoop() {
       }
       // Database I/O and exchange orders happen outside the mutex so API
       // handlers never block behind tick persistence.
+      dispatchOrders(std::move(orders), writes);
       flushWrites(std::move(writes));
-      dispatchOrders(std::move(orders));
     } catch (const std::exception &e) {
       TR_LOG_ERROR("Simulated trading worker tick failed for session {}: {}", session_id_, e.what());
     } catch (...) {
@@ -1537,6 +1583,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   recent_trades_.clear();
   recent_signals_.clear();
   session_trade_inputs_.clear();
+  session_trade_indices_.clear();
   pending_orders_.clear();
   tick_ = 0;
   started_at_ = nowIsoUtc();

@@ -13,6 +13,7 @@
 #include <memory>
 #include <random>
 #include <sstream>
+#include <thread>
 
 namespace trade {
 namespace exchange {
@@ -253,10 +254,28 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
   }
 
   if (json.get("success", Json::Value(false)).asBool()) {
-    result.success = true;
     result.order_id = json.get("success_response", Json::Value(Json::objectValue))
                           .get("order_id", Json::Value(""))
                           .asString();
+    if (result.order_id.empty()) {
+      result.error = "Coinbase accepted the order without returning an order id";
+      return result;
+    }
+
+    // A successful create response only means Coinbase accepted the order.
+    // Market IOC fills and their actual fees are available from historical
+    // order details shortly afterward.
+    std::string fill_error;
+    for (int attempt = 0; attempt < 5; ++attempt) {
+      if (attempt > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      }
+      if (getOrderFill(result.order_id, result.fill, &fill_error)) {
+        result.success = true;
+        return result;
+      }
+    }
+    result.error = "order accepted but actual fill details were unavailable: " + fill_error;
     return result;
   }
 
@@ -267,6 +286,23 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
   }
   result.error = message;
   return result;
+}
+
+bool CoinbaseAdvancedClient::getOrderFill(const std::string &order_id, OrderFill &out,
+                                          std::string *error) {
+  if (order_id.empty()) {
+    if (error) {
+      *error = "order id is required";
+    }
+    return false;
+  }
+  const Json::Value json = request("GET", kAdvancedTradeHost,
+                                   "/api/v3/brokerage/orders/historical/" + order_id,
+                                   "", true, error);
+  if (json.isNull()) {
+    return false;
+  }
+  return parseOrderFill(json, out, error);
 }
 
 bool CoinbaseAdvancedClient::getTicker(const std::string &product_id, ProductTicker &out,

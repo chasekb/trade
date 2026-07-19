@@ -37,6 +37,7 @@ set(SOURCES
     src/ml/TransformerModel.cpp
     src/exchange/CoinbaseAuth.cpp
     src/exchange/CoinbaseAdvancedClient.cpp
+    src/exchange/CoinbaseOrder.cpp
     src/trading/PositionSizingPolicy.cpp
     src/trading/StrategySignal.cpp
     src/trading/TradingStatsService.cpp
@@ -141,6 +142,16 @@ target_link_libraries(test_coinbase_auth PRIVATE
     OpenSSL::Crypto
 )
 add_test(NAME coinbase_auth COMMAND test_coinbase_auth)
+
+add_executable(test_coinbase_order
+    src/tests/test_coinbase_order.cpp
+    src/exchange/CoinbaseOrder.cpp
+)
+target_include_directories(test_coinbase_order PRIVATE include)
+target_link_libraries(test_coinbase_order PRIVATE
+    jsoncpp_lib
+)
+add_test(NAME coinbase_order COMMAND test_coinbase_order)
 
 add_executable(test_trading_stats_calculator
     src/tests/test_trading_stats_calculator.cpp

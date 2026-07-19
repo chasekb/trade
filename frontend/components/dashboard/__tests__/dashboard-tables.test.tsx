@@ -55,7 +55,7 @@ describe('trade dashboard tables', () => {
             side: 'buy',
             quantity: 2,
             price: 2500,
-            fee: 3.25,
+            fees: 3.25,
             pnl: 125.5,
           },
         ]}

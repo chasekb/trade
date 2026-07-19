@@ -8,6 +8,7 @@ export type RecentTradeRow = {
   price?: number | string;
   pnl?: number | string;
   fee?: number | string;
+  fees?: number | string;
 };
 
 interface RecentTradesTableProps {
@@ -57,7 +58,10 @@ export function RecentTradesTable({ trades, includeFees = false }: RecentTradesT
                 </td>
                 {includeFees && (
                   <td className="px-4 py-2 text-sm text-gray-900 text-red-600">
-                    ${typeof trade.fee === 'number' ? trade.fee.toFixed(2) : (trade.fee || 0)}
+                    ${(() => {
+                      const fee = trade.fees ?? trade.fee ?? 0;
+                      return typeof fee === 'number' ? fee.toFixed(2) : fee;
+                    })()}
                   </td>
                 )}
                 {(() => {
