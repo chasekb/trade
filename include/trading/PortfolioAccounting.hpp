@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <string>
 
 namespace trade {
@@ -41,6 +42,13 @@ inline double percentSizingCapital(double cash, double signed_positions_value,
 inline bool hasSufficientCash(const std::string &side, double cash, double allocated_usd,
                               double fee) {
   return side == "buy" ? cash >= allocated_usd + fee : cash >= allocated_usd;
+}
+
+// Automated live exits may sell only the application-managed slice of a
+// Coinbase holding, bounded by the exchange's currently available quantity.
+inline double managedSellQuantity(double total_quantity, double managed_quantity,
+                                  double available_quantity) {
+  return std::max(0.0, std::min({total_quantity, managed_quantity, available_quantity}));
 }
 
 // Stop-loss / take-profit exit rule over a position's PnL percentage. A zero

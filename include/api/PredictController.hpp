@@ -30,11 +30,14 @@ public:
   ADD_METHOD_TO(PredictController::simulatedTradingStatus, "/api/trading/simulated/status", Get);
   ADD_METHOD_TO(PredictController::updateSimulatedStrategyParameters, "/api/trading/simulated/update-strategy-params", Post);
   ADD_METHOD_TO(PredictController::liveOrderBookSignals, "/api/orderbook/live-signals", Get);
+  ADD_METHOD_TO(PredictController::simulatedOrderBookSignals, "/api/orderbook/simulated-signals", Get);
   ADD_METHOD_TO(PredictController::livePortfolioStatus, "/api/live-portfolio/status", Get);
   ADD_METHOD_TO(PredictController::livePortfolioPositions, "/api/trading/live/positions", Get);
   ADD_METHOD_TO(PredictController::closeLivePosition, "/api/trading/live/close-position", Post);
   ADD_METHOD_TO(PredictController::startLiveTrading, "/api/trading/live/start", Post);
   ADD_METHOD_TO(PredictController::stopLiveTrading, "/api/trading/live/stop", Post);
+  ADD_METHOD_TO(PredictController::liveTradingStatus, "/api/trading/live/status", Get);
+  ADD_METHOD_TO(PredictController::updateLiveStrategyParameters, "/api/trading/live/update-strategy-params", Post);
   ADD_METHOD_TO(PredictController::executeLiveTrade, "/api/trading/live/execute", Post);
   ADD_METHOD_TO(PredictController::products, "/api/products", Get);
   ADD_METHOD_TO(PredictController::logMessage, "/api/log", Post);
@@ -76,6 +79,8 @@ public:
                                          std::function<void(const HttpResponsePtr &)> &&callback);
   void liveOrderBookSignals(const HttpRequestPtr &req,
                             std::function<void(const HttpResponsePtr &)> &&callback);
+  void simulatedOrderBookSignals(const HttpRequestPtr &req,
+                                 std::function<void(const HttpResponsePtr &)> &&callback);
   void livePortfolioStatus(const HttpRequestPtr &req,
                            std::function<void(const HttpResponsePtr &)> &&callback);
   void livePortfolioPositions(const HttpRequestPtr &req,
@@ -86,6 +91,10 @@ public:
                         std::function<void(const HttpResponsePtr &)> &&callback);
   void stopLiveTrading(const HttpRequestPtr &req,
                        std::function<void(const HttpResponsePtr &)> &&callback);
+  void liveTradingStatus(const HttpRequestPtr &req,
+                         std::function<void(const HttpResponsePtr &)> &&callback);
+  void updateLiveStrategyParameters(const HttpRequestPtr &req,
+                                    std::function<void(const HttpResponsePtr &)> &&callback);
   void executeLiveTrade(const HttpRequestPtr &req,
                         std::function<void(const HttpResponsePtr &)> &&callback);
   void products(const HttpRequestPtr &req,

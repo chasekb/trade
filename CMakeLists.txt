@@ -43,6 +43,8 @@ set(SOURCES
     src/trading/StrategySignal.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
+    src/trading/LiveTradingService.cpp
+    src/trading/CoinbasePortfolio.cpp
     src/trading/TradingStatsCalculator.cpp
     src/api/PredictController.cpp
 )
@@ -153,6 +155,14 @@ target_link_libraries(test_coinbase_order PRIVATE
     JsonCpp::JsonCpp
 )
 add_test(NAME coinbase_order COMMAND test_coinbase_order)
+
+add_executable(test_coinbase_portfolio
+    src/tests/test_coinbase_portfolio.cpp
+    src/trading/CoinbasePortfolio.cpp
+)
+target_include_directories(test_coinbase_portfolio PRIVATE include)
+target_link_libraries(test_coinbase_portfolio PRIVATE JsonCpp::JsonCpp Drogon::Drogon)
+add_test(NAME coinbase_portfolio COMMAND test_coinbase_portfolio)
 
 add_executable(test_trading_stats_calculator
     src/tests/test_trading_stats_calculator.cpp

@@ -46,11 +46,18 @@ struct OrderBookSummary {
 struct OrderResult {
   bool success = false;
   bool accepted = false;
+  bool definitive_rejection = false;
   bool fill_available = false;
   std::string order_id;
   std::string client_order_id;
   std::string error;
   OrderFill fill;
+};
+
+enum class ClientOrderLookupStatus {
+  Found,
+  CompleteNotFound,
+  Inconclusive,
 };
 
 // Thin client for the Coinbase Advanced Trade API (authenticated, JWT or
@@ -70,7 +77,14 @@ public:
   // quote-currency size for buys (amount_is_quote=true) or a base size.
   OrderResult placeMarketOrder(const std::string &product_id, const std::string &side,
                                double amount, bool amount_is_quote,
-                               const std::function<bool()> &cancel_requested = {});
+                               const std::function<bool()> &cancel_requested = {},
+                               const std::string &client_order_id = "");
+
+  // Recover an application-owned order after a crash between Coinbase
+  // acceptance and local persistence of the exchange order id.
+  ClientOrderLookupStatus findOrderIdByClientOrderId(
+      const std::string &client_order_id, std::string &order_id,
+      std::string *error = nullptr);
 
   // Authenticated: retrieve the actual fill, including Coinbase's charged fee.
   bool getOrderFill(const std::string &order_id, OrderFill &out,

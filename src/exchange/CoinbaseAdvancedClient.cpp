@@ -8,6 +8,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <future>
 #include <memory>
@@ -35,6 +37,35 @@ double toDouble(const Json::Value &value, double fallback = 0.0) {
     }
   }
   return fallback;
+}
+
+bool parseNonnegativeDecimal(const Json::Value &value, double &out) {
+  double parsed = 0.0;
+  if (value.isNumeric()) {
+    parsed = value.asDouble();
+  } else if (value.isString()) {
+    const std::string text = value.asString();
+    if (text.empty() || std::isspace(static_cast<unsigned char>(text.front())) ||
+        std::isspace(static_cast<unsigned char>(text.back()))) {
+      return false;
+    }
+    try {
+      std::size_t consumed = 0;
+      parsed = std::stod(text, &consumed);
+      if (consumed != text.size()) {
+        return false;
+      }
+    } catch (...) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  if (!std::isfinite(parsed) || parsed < 0.0) {
+    return false;
+  }
+  out = parsed;
+  return true;
 }
 
 std::string randomHex(std::size_t bytes) {
@@ -197,32 +228,77 @@ Json::Value CoinbaseAdvancedClient::request(const std::string &method, const std
 }
 
 bool CoinbaseAdvancedClient::listAccounts(std::vector<AccountBalance> &out, std::string *error) {
-  const Json::Value json =
-      request("GET", kAdvancedTradeHost, "/api/v3/brokerage/accounts?limit=250", "", true, error);
-  if (!json.isObject() || !json.isMember("accounts")) {
-    return false;
-  }
-
   out.clear();
-  for (const auto &account : json["accounts"]) {
-    AccountBalance balance;
-    balance.currency = account.get("currency", Json::Value("")).asString();
-    balance.available =
-        toDouble(account.get("available_balance", Json::Value(Json::objectValue))
-                     .get("value", Json::Value(0.0)));
-    balance.hold = toDouble(
-        account.get("hold", Json::Value(Json::objectValue)).get("value", Json::Value(0.0)));
-    if (!balance.currency.empty()) {
+  std::string cursor;
+  for (std::size_t page = 0; page < 100; ++page) {
+    std::string path = "/api/v3/brokerage/accounts?limit=250";
+    if (!cursor.empty()) {
+      path += "&cursor=" + cursor;
+    }
+    const Json::Value json = request("GET", kAdvancedTradeHost, path, "", true, error);
+    if (!json.isObject() || !json["accounts"].isArray()) {
+      if (error && error->empty()) {
+        *error = "Coinbase accounts response is missing an accounts array";
+      }
+      return false;
+    }
+    for (const auto &account : json["accounts"]) {
+      AccountBalance balance;
+      balance.currency = account.get("currency", Json::Value("")).asString();
+      const Json::Value available =
+          account.get("available_balance", Json::Value(Json::objectValue))
+              .get("value", Json::Value());
+      const Json::Value hold =
+          account.get("hold", Json::Value(Json::objectValue)).get("value", Json::Value());
+      if (balance.currency.empty() || !parseNonnegativeDecimal(available, balance.available) ||
+          !parseNonnegativeDecimal(hold, balance.hold)) {
+        if (error) {
+          *error = "Coinbase returned an invalid account balance";
+        }
+        out.clear();
+        return false;
+      }
       out.push_back(balance);
     }
+    if (!json.isMember("has_next") || !json["has_next"].isBool()) {
+      if (error) {
+        *error = "Coinbase account pagination returned an invalid has_next flag";
+      }
+      out.clear();
+      return false;
+    }
+    if (!json["has_next"].asBool()) {
+      return true;
+    }
+    if (!json.isMember("cursor") || !json["cursor"].isString()) {
+      if (error) {
+        *error = "Coinbase account pagination returned an invalid cursor";
+      }
+      out.clear();
+      return false;
+    }
+    const std::string next_cursor = json["cursor"].asString();
+    if (next_cursor.empty() || next_cursor == cursor) {
+      if (error) {
+        *error = "Coinbase account pagination returned an invalid cursor";
+      }
+      out.clear();
+      return false;
+    }
+    cursor = next_cursor;
   }
-  return true;
+  if (error) {
+    *error = "Coinbase account pagination exceeded the safety limit";
+  }
+  out.clear();
+  return false;
 }
 
 OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_id,
                                                       const std::string &side, double amount,
                                                       bool amount_is_quote,
-                                                      const std::function<bool()> &cancel_requested) {
+                                                      const std::function<bool()> &cancel_requested,
+                                                      const std::string &client_order_id) {
   OrderResult result;
   if (cancel_requested && cancel_requested()) {
     result.error = "order placement cancelled";
@@ -233,7 +309,8 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
     return result;
   }
 
-  result.client_order_id = "trade-" + randomHex(12);
+  result.client_order_id = client_order_id.empty() ? "trade-" + randomHex(12)
+                                                    : client_order_id;
 
   Json::Value config(Json::objectValue);
   Json::Value market(Json::objectValue);
@@ -299,8 +376,94 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
   if (message.empty()) {
     message = error_response.get("error", Json::Value("order rejected")).asString();
   }
+  result.definitive_rejection =
+      json.isMember("error_response") && json["error_response"].isObject();
   result.error = message;
   return result;
+}
+
+ClientOrderLookupStatus CoinbaseAdvancedClient::findOrderIdByClientOrderId(
+    const std::string &client_order_id, std::string &order_id,
+    std::string *error) {
+  order_id.clear();
+  if (client_order_id.empty()) {
+    if (error) {
+      *error = "client order id is required";
+    }
+    return ClientOrderLookupStatus::Inconclusive;
+  }
+  std::string cursor;
+  std::set<std::string> seen_cursors;
+  for (int page = 0; page < 3; ++page) {
+    std::string path = "/api/v3/brokerage/orders/historical/batch?limit=100";
+    if (!cursor.empty()) {
+      path += "&cursor=" + cursor;
+    }
+    const Json::Value json =
+        request("GET", kAdvancedTradeHost, path, "", true, error);
+    if (!json.isObject() || !json["orders"].isArray()) {
+      if (error && error->empty()) {
+        *error = "Coinbase order-history lookup returned malformed data";
+      }
+      return ClientOrderLookupStatus::Inconclusive;
+    }
+    for (const auto &order : json["orders"]) {
+      if (!order.isObject() || !order.isMember("client_order_id") ||
+          !order["client_order_id"].isString()) {
+        if (error) {
+          *error = "Coinbase order-history response contained a malformed order";
+        }
+        return ClientOrderLookupStatus::Inconclusive;
+      }
+      if (!order.isMember("order_id") || !order["order_id"].isString() ||
+          order["order_id"].asString().empty()) {
+        if (error) {
+          *error = "Coinbase order-history response omitted a valid order id";
+        }
+        return ClientOrderLookupStatus::Inconclusive;
+      }
+      if (order["client_order_id"].asString() != client_order_id) {
+        continue;
+      }
+      order_id = order["order_id"].asString();
+      if (error) {
+        error->clear();
+      }
+      return ClientOrderLookupStatus::Found;
+    }
+    if (!json.isMember("has_next") || !json["has_next"].isBool()) {
+      if (error) {
+        *error = "Coinbase order-history response omitted boolean has_next";
+      }
+      return ClientOrderLookupStatus::Inconclusive;
+    }
+    const bool has_next = json["has_next"].asBool();
+    if (!has_next) {
+      if (error) {
+        *error = "Coinbase client order id was not found in complete history";
+      }
+      return ClientOrderLookupStatus::CompleteNotFound;
+    }
+    if (!json.isMember("cursor") || !json["cursor"].isString()) {
+      if (error) {
+        *error = "Coinbase order-history response omitted a string cursor";
+      }
+      return ClientOrderLookupStatus::Inconclusive;
+    }
+    const std::string next_cursor = json["cursor"].asString();
+    if (next_cursor.empty() || next_cursor == cursor ||
+        !seen_cursors.insert(next_cursor).second) {
+      if (error) {
+        *error = "Coinbase order-history pagination did not advance";
+      }
+      return ClientOrderLookupStatus::Inconclusive;
+    }
+    cursor = next_cursor;
+  }
+  if (error) {
+    *error = "Coinbase client order lookup is inconclusive beyond the recovery window";
+  }
+  return ClientOrderLookupStatus::Inconclusive;
 }
 
 bool CoinbaseAdvancedClient::getOrderFill(const std::string &order_id, OrderFill &out,

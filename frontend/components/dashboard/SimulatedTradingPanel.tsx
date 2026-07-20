@@ -600,7 +600,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     status.isActive,
     currentPage,
     pageSize,
-    strategy
+    strategy,
+    'simulated'
   );
   const [configHidden, setConfigHidden] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);

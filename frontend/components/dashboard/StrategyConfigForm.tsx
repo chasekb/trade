@@ -29,9 +29,10 @@ interface StrategyConfigFormProps {
     className?: string;
     status: { isActive: boolean };
     updateStrategyParameters: (params: Record<string, string | number | boolean | undefined>) => void;
+    showInitialPortfolioSize?: boolean;
 }
 
-export function StrategyConfigForm({ strategy, config, onChange, className = '', status, updateStrategyParameters }: StrategyConfigFormProps) {
+export function StrategyConfigForm({ strategy, config, onChange, className = '', status, updateStrategyParameters, showInitialPortfolioSize = true }: StrategyConfigFormProps) {
     const { getStrategyParameters, getOrderBookPresets } = useStrategyParameters();
     const { availableModels, setActiveModel, trainModel, isTraining, isSettingActiveModel } = useModelTraining();
     const [selectedModel, setSelectedModel] = useState('');
@@ -315,17 +316,19 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
             <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
                 <h4 className="text-md font-semibold text-gray-700">Risk Settings</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">Initial Portfolio Size ($)</label>
-                        <Input
-                            type="number"
-                            min={1}
-                            step={100}
-                            value={getConfigValue(config.initial_portfolio_size, 10000)}
-                            onChange={(e) => handleParameterChange('initial_portfolio_size', Number(e.target.value))}
-                            className="w-full"
-                        />
-                    </div>
+                    {showInitialPortfolioSize && (
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">Initial Portfolio Size ($)</label>
+                            <Input
+                                type="number"
+                                min={1}
+                                step={100}
+                                value={getConfigValue(config.initial_portfolio_size, 10000)}
+                                onChange={(e) => handleParameterChange('initial_portfolio_size', Number(e.target.value))}
+                                className="w-full"
+                            />
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">Position Size Mode</label>

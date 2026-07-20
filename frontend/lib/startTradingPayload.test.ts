@@ -40,4 +40,29 @@ describe('buildStartTradingPayload', () => {
     const payload = buildStartTradingPayload('sma', ['ETH-USD'], {}, {});
     expect(payload.parameters.initial_portfolio_size).toBe(10000);
   });
+
+  it('never sends synthetic capital fields to a live Coinbase session', () => {
+    const payload = buildStartTradingPayload(
+      'orderbook',
+      ['BTC-USD'],
+      {
+        initial_portfolio_size: 10000,
+        initial_balance: 10000,
+        capital: 10000,
+        live_order_execution: true,
+        position_size_mode: 'dollar',
+        position_size_value: 10,
+      },
+      {},
+      'live',
+    );
+
+    expect(payload.parameters.initial_portfolio_size).toBeUndefined();
+    expect(payload.parameters.initial_balance).toBeUndefined();
+    expect(payload.parameters.capital).toBeUndefined();
+    expect(payload.initial_portfolio_size).toBeUndefined();
+    expect(payload.initial_balance).toBeUndefined();
+    expect(payload.capital).toBeUndefined();
+    expect(payload.parameters.live_order_execution).toBe(true);
+  });
 });

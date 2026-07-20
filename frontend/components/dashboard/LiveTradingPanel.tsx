@@ -8,7 +8,7 @@ import { DataTable } from '@/components/ui/DataTable';
 import Tooltip from '@/components/ui/Tooltip';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLivePortfolio, useMLModels, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
+import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLivePortfolio, useMLModels } from '@/hooks/useTrading';
 import { useModelTraining } from '@/hooks/useModelTraining';
 import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 
@@ -330,6 +330,7 @@ function TradingConfiguration({
           onChange={onConfigChange}
           status={status}
           updateStrategyParameters={updateStrategyParameters}
+          showInitialPortfolioSize={false}
         />
       </CardContent>
     </Card>
@@ -339,15 +340,15 @@ function TradingConfiguration({
 // Live Trading Statistics: session statistics come from the canonical
 // snapshot layer (full-session stats block, not the capped trade list);
 // portfolio tiles prefer the real Coinbase account portfolio when configured.
-function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
+function LiveTradingStatistics() {
   const queryClient = useQueryClient();
   const { closePosition } = useLiveTrading('live');
   const { data: portfolioData, isLoading: portfolioLoading, error: portfolioError } = useLivePortfolio(true);
-  const { data: sessionData, isLoading: sessionLoading } = useSimulatedTradingStats(isTradingActive);
+  const sessionData = portfolioData;
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
-    queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['trading-status', 'live'] });
   };
 
   const handleClosePosition = async (symbol: string) => {
@@ -358,7 +359,7 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
     }
   };
 
-  if (portfolioLoading && sessionLoading) {
+  if (portfolioLoading) {
     return (
       <Card>
         <CardHeader>
@@ -413,7 +414,6 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
             </h3>
             <p className="text-sm text-yellow-800 mb-2">
               Configure Coinbase credentials to view your real portfolio and place live orders.
-              Session statistics below reflect paper trading on live market data.
             </p>
             <p className="text-xs font-mono text-yellow-900">COINBASE_API_KEY=your_key</p>
             <p className="text-xs font-mono text-yellow-900">COINBASE_API_SECRET=your_secret</p>
@@ -548,8 +548,6 @@ function LiveTradingStatistics({ isTradingActive }: { isTradingActive: boolean }
 
 export default function LiveTradingPanel({ className = '' }: LiveTradingPanelProps) {
   const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading('live');
-  // Start native WebSocket to receive live updates for stats/signals
-  useSimTradingWebSocket(status.isActive);
 
   // Use sessionStorage to persist pagination state across tab switches and component remounts
   const getStoredPage = () => {
@@ -576,7 +574,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
   const [config, setConfig] = useState<TradingConfigState>({
     position_size_mode: 'percent',
     position_size_value: 1,
-    initial_portfolio_size: 10000,
+    initial_portfolio_size: 0,
     stop_loss_percent: 0,
     take_profit_percent: 0,
     // Safety default: signals run on live market data but no exchange orders
@@ -725,7 +723,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
               disabled={status.isActive}
             />
             <label htmlFor="live-order-execution" className="text-sm text-gray-700">
-              Place real Coinbase orders (requires API credentials; otherwise the bot paper-trades on live market data)
+              I confirm this session may place real Coinbase orders (required to start live trading)
             </label>
           </div>
           <TradingControls
@@ -755,7 +753,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
       <ManualTradeSection symbols={activeSymbols} />
 
       {/* Live Trading Statistics */}
-      <LiveTradingStatistics isTradingActive={status.isActive} />
+      <LiveTradingStatistics />
 
       {/* Order Book Signals */}
       {status.isActive && (

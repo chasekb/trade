@@ -22,43 +22,35 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
 
   // Query to keep status in sync with backend (especially for symbols added in background)
   const { data: backendStatus } = useQuery({
-    queryKey: ['trading-status'],
+    queryKey: ['trading-status', mode],
     queryFn: async () => {
-      const response = await apiClient.getSimulatedTradingStatus();
+      const response = await apiClient.getTradingStatus(mode);
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch trading status');
       }
       return response.data;
     },
-    enabled: status.isActive, // Only poll when trading is active
-    refetchInterval: status.isActive ? 5000 : false, // Poll every 5 seconds when active
+    enabled: mode === 'live' || status.isActive,
+    refetchInterval: status.isActive ? 5000 : (mode === 'live' ? 10000 : false),
     staleTime: 1000, // Consider data fresh for 1 second
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
   });
 
   // Update local status when backend status changes.
-  // Preserve an active optimistic session if the backend briefly reports inactive
-  // during startup or while the polling endpoint is warming up.
   useEffect(() => {
     if (!backendStatus) {
       return;
     }
 
     const backendIsActive = backendStatus.isActive ?? backendStatus.is_active ?? backendStatus.is_trading ?? false;
-    setStatus((prev) => {
-      if (!backendIsActive && prev.isActive) {
-        return prev;
-      }
-
-      return {
+    setStatus(() => ({
         isActive: backendIsActive,
         // The session's real mode comes from the backend; fall back to the
         // tab's own mode rather than assuming simulated.
         mode: (backendStatus.mode as TradingMode) || mode,
         strategy: backendStatus.strategy_type || backendStatus.strategy || 'orderbook',
         symbols: backendStatus.symbols || [],
-      };
-    });
+      }));
   }, [backendStatus, mode]);
 
   const startTradingMutation = useMutation({
@@ -124,8 +116,9 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
           symbols: variables.symbols,
         });
 
-        queryClient.setQueryData(['trading-status'], responseData);
+        queryClient.setQueryData(['trading-status', mode], responseData);
         if (
+          mode === 'simulated' &&
           responseData &&
           typeof responseData === 'object' &&
           ('portfolio' in responseData || 'stats' in responseData || 'recent_trades' in responseData || 'current_capital' in responseData)
@@ -133,10 +126,14 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
           queryClient.setQueryData(['simulated-trading-stats'], responseData);
         }
 
-        queryClient.invalidateQueries({ queryKey: ['trading-status'] });
-        queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
-        queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
-        queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
+        queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
+        if (mode === 'simulated') {
+          queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+        }
+        if (mode === 'live') {
+          queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+        }
+        queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
       }
     },
   });
@@ -144,23 +141,30 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
   const stopTradingMutation = useMutation({
     mutationFn: () => apiClient.stopTrading(mode),
     onSuccess: (response) => {
-      if (response.status === 'success') {
+      const responseStatus = (response as { status: string }).status;
+      if (responseStatus === 'success' || responseStatus === 'settling') {
         setStatus(prev => ({ ...prev, isActive: false, symbols: [] }));
-        queryClient.setQueryData(['trading-status'], response);
-        queryClient.invalidateQueries({ queryKey: ['trading-status'] });
-        queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
-        queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
-        queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
+        queryClient.setQueryData(['trading-status', mode], response);
+        queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
+        if (mode === 'simulated') {
+          queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+        }
+        if (mode === 'live') {
+          queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+        }
+        queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
       }
     },
   });
 
   const updateStrategyParamsMutation = useMutation({
-    mutationFn: (params: Record<string, any>) => apiClient.updateStrategyParameters(params),
+    mutationFn: (params: Record<string, any>) => apiClient.updateStrategyParameters(params, mode),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trading-status'] });
-      queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['orderbook-signals'] });
+      queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
+      if (mode === 'simulated') {
+        queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
     },
   });
 
@@ -169,7 +173,6 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
     onSuccess: () => {
       // Refetch portfolio status to update positions list
       queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
-      queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
     },
   });
 
@@ -269,7 +272,8 @@ export function useOrderBookSignals(
   enabled: boolean = true,
   page: number = 1,
   perPage: number = 10,
-  strategy?: string
+  strategy?: string,
+  mode: 'live' | 'simulated' = 'live'
 ) {
   // Enable query when trading is active, even if symbols aren't loaded yet
   // This allows WebSocket updates to populate the widget immediately
@@ -277,12 +281,12 @@ export function useOrderBookSignals(
   const requestSymbols = symbols && symbols.length > 0 ? symbols : undefined;
 
   return useQuery({
-    queryKey: ['orderbook-signals', requestSymbols, enabled, page, perPage, strategy], // Include strategy in key to invalidate cache when strategy changes
+    queryKey: ['orderbook-signals', mode, requestSymbols, enabled, page, perPage, strategy],
     queryFn: async () => {
       if (requestSymbols && requestSymbols.length > ORDERBOOK_SYMBOL_CHUNK_SIZE) {
         const chunks = chunkOrderBookSymbols(requestSymbols);
         const chunkRequests = chunks.map((chunk) =>
-          apiClient.getOrderBookSignals(chunk, { page: 1, per_page: page * perPage })
+          apiClient.getOrderBookSignals(chunk, { page: 1, per_page: page * perPage }, mode)
         );
         const responses = await Promise.all(chunkRequests);
 
@@ -300,7 +304,7 @@ export function useOrderBookSignals(
         );
       }
 
-      const response = await apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage });
+      const response = await apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode);
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch order book signals');
       }
@@ -371,13 +375,13 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       // Add to display cache (same logic as before)
       const allQueries = queryClient.getQueryCache().getAll();
       const orderbookQueries = allQueries.filter((q: any) =>
-        q.queryKey[0] === 'orderbook-signals'
+        q.queryKey[0] === 'orderbook-signals' && q.queryKey[1] === 'simulated'
       );
 
       orderbookQueries.forEach((query: any) => {
         const queryKey = query.queryKey;
-        const querySymbols = queryKey[1] as string[] | undefined;
-        const page = queryKey[3] as number;
+        const querySymbols = queryKey[2] as string[] | undefined;
+        const page = queryKey[4] as number;
 
         if (page === 1) {
           const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(nextSignal.symbol);

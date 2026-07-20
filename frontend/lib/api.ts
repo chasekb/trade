@@ -514,15 +514,24 @@ export function buildStartTradingPayload(
     position_size_percent?: number;
     max_positions?: number;
     position_update_interval?: number;
-  }
+  },
+  mode: 'live' | 'simulated' = 'simulated'
 ) {
   const positionSizeFraction =
     typeof config.position_size_percent === 'number'
       ? config.position_size_percent / 100
       : undefined;
   const initialPortfolioSize = parameters.initial_portfolio_size ?? parameters.capital ?? 10000.0;
+  const normalizedParameters = { ...parameters };
+  if (mode === 'live') {
+    delete normalizedParameters.initial_portfolio_size;
+    delete normalizedParameters.initial_balance;
+    delete normalizedParameters.capital;
+  } else {
+    normalizedParameters.initial_portfolio_size = initialPortfolioSize;
+  }
 
-  return {
+  const payload: Record<string, any> = {
     symbols,
     strategy,
     strategy_type: strategy,
@@ -530,14 +539,8 @@ export function buildStartTradingPayload(
     // initial_portfolio_size, position sizing mode, per-strategy tuning, and
     // the ML gate settings). The legacy aliases below are kept for older
     // backend builds.
-    parameters: {
-      ...parameters,
-      initial_portfolio_size: initialPortfolioSize,
-    } as Record<string, any>,
-    strategy_params: parameters,
-    initial_balance: initialPortfolioSize,
-    capital: initialPortfolioSize,
-    initial_portfolio_size: initialPortfolioSize,
+    parameters: normalizedParameters,
+    strategy_params: normalizedParameters,
     max_positions: config.max_positions,
     position_size_percent: config.position_size_percent,
     position_size: positionSizeFraction,
@@ -550,6 +553,12 @@ export function buildStartTradingPayload(
     stop_loss: parameters.stop_loss,
     take_profit: parameters.take_profit,
   };
+  if (mode === 'simulated') {
+    payload.initial_balance = initialPortfolioSize;
+    payload.capital = initialPortfolioSize;
+    payload.initial_portfolio_size = initialPortfolioSize;
+  }
+  return payload;
 }
 
 class ApiClient {
@@ -675,7 +684,7 @@ class ApiClient {
       position_update_interval?: number;
     }
   ): Promise<ApiResponse<{ is_active: boolean; message: string }>> {
-    const basePayload = buildStartTradingPayload(strategy, symbols, parameters, config);
+    const basePayload = buildStartTradingPayload(strategy, symbols, parameters, config, mode);
 
     if (mode === 'simulated' && FORCE_LOCAL_SIM_TRADING) {
       setLocalSimTradingSession(strategy, symbols, parameters);
@@ -759,7 +768,7 @@ class ApiClient {
   }
 
   async stopTrading(mode: 'live' | 'simulated' = 'simulated'): Promise<ApiResponse<{ message: string }>> {
-    if (localSimTradingSession?.active) {
+    if (mode === 'simulated' && localSimTradingSession?.active) {
       clearLocalSimTradingSession();
       return {
         status: 'success',
@@ -831,39 +840,14 @@ class ApiClient {
     }));
   }
 
-  async getLivePortfolioStatus(): Promise<ApiResponse<any>> {
-    if (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active) {
-      const portfolio = localSimTradingSession?.portfolio ?? {
-        initial_capital: 0,
-        cash_balance: 0,
-        total_value: 0,
-        total_positions_value: 0,
-        unrealized_pnl: 0,
-        realized_pnl: 0,
-        net_pnl: 0,
-        total_fees: 0,
-        positions: {},
-        trades: [],
-        recent_trades: [],
-      };
-      return {
-        status: 'success',
-        data: {
-          is_active: true,
-          positions: Object.values(portfolio.positions),
-          total_value: portfolio.total_value,
-          cash: portfolio.cash_balance,
-          unrealized_pnl: portfolio.unrealized_pnl,
-          realized_pnl: portfolio.realized_pnl,
-          net_pnl: portfolio.net_pnl,
-          total_fees: portfolio.total_fees,
-          trades: [...portfolio.trades],
-          recent_trades: [...portfolio.recent_trades],
-        },
-        timestamp: new Date().toISOString(),
-      };
+  async getTradingStatus(mode: 'live' | 'simulated'): Promise<ApiResponse<any>> {
+    if (mode === 'simulated') {
+      return this.getSimulatedTradingStatus();
     }
+    return this.request('/api/trading/live/status');
+  }
 
+  async getLivePortfolioStatus(): Promise<ApiResponse<any>> {
     return this.request('/api/live-portfolio/status').catch(() => ({
       status: 'success',
       data: {
@@ -881,7 +865,8 @@ class ApiClient {
   // Order Book Signals
   async getOrderBookSignals(
     symbols?: string[],
-    params?: { page?: number; per_page?: number }
+    params?: { page?: number; per_page?: number },
+    mode: 'live' | 'simulated' = 'live'
   ): Promise<ApiResponse<{
     signals: OrderBookSignal[];
     pagination?: any;
@@ -890,7 +875,7 @@ class ApiClient {
     last_updated?: string;
     average_strength?: number;
   }>> {
-    if (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active) {
+    if (mode === 'simulated' && (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active)) {
       const page = params?.page || 1;
       const perPage = params?.per_page || 10;
       const signals = buildSyntheticOrderBookSignals(localSimTradingSession!, page, perPage);
@@ -912,7 +897,8 @@ class ApiClient {
     const query = queryParams.toString();
 
     try {
-      const response = await this.request<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; }>(`/api/orderbook/live-signals${query ? `?${query}` : ''}`);
+      const endpoint = mode === 'live' ? 'live-signals' : 'simulated-signals';
+      const response = await this.request<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; }>(`/api/orderbook/${endpoint}${query ? `?${query}` : ''}`);
       return response;
     } catch {
       return {
@@ -1190,8 +1176,11 @@ class ApiClient {
     });
   }
 
-  async updateStrategyParameters(parameters: Record<string, any>): Promise<ApiResponse<any>> {
-    return this.request('/api/trading/simulated/update-strategy-params', {
+  async updateStrategyParameters(
+    parameters: Record<string, any>,
+    mode: 'live' | 'simulated' = 'simulated'
+  ): Promise<ApiResponse<any>> {
+    return this.request(`/api/trading/${mode}/update-strategy-params`, {
       method: 'POST',
       body: JSON.stringify({ parameters }),
     });

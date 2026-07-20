@@ -134,5 +134,18 @@ int main() {
       return 1;
     }
   }
+
+  // Pre-existing Coinbase holdings are visible but never strategy-liquidatable.
+  {
+    using trade::trading::managedSellQuantity;
+    if (!expect_close(managedSellQuantity(10.0, 2.0, 10.0), 2.0,
+                      "managed quantity caps sell") ||
+        !expect_close(managedSellQuantity(10.0, 2.0, 1.25), 1.25,
+                      "available quantity caps sell") ||
+        !expect_close(managedSellQuantity(10.0, 0.0, 10.0), 0.0,
+                      "unmanaged holding cannot be sold")) {
+      return 1;
+    }
+  }
   return 0;
 }

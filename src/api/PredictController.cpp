@@ -3,9 +3,10 @@
 #include "cache/CacheManager.hpp"
 #include "config/Config.hpp"
 #include "db/DatabaseManager.hpp"
-#include "exchange/CoinbaseAdvancedClient.hpp"
+
 #include "ml/ModelTrainer.hpp"
 #include "ml/Types.hpp"
+#include "trading/LiveTradingService.hpp"
 #include "trading/TradingStatsService.hpp"
 #include "trading/SimulatedTradingService.hpp"
 #include "utils/Logger.hpp"
@@ -1163,130 +1164,56 @@ void PredictController::liveOrderBookSignals(
 
   const int page = parse_int_param(req->getParameter("page"), 1);
   const int per_page = parse_int_param(req->getParameter("per_page"), 10);
-  Json::Value response = trade::trading::SimulatedTradingService::getInstance()
+  Json::Value response = trade::trading::LiveTradingService::getInstance()
                              .getOrderBookSignals(symbols, page, per_page);
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 
-namespace {
-
-trade::exchange::CoinbaseCredentials coinbaseCredentialsFromConfig() {
-  auto &cfg = Config::getInstance();
-  trade::exchange::CoinbaseCredentials credentials;
-  credentials.api_key = cfg.get("COINBASE_API_KEY", "");
-  credentials.api_secret = cfg.get("COINBASE_API_SECRET", "");
-  return credentials;
+void PredictController::simulatedOrderBookSignals(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  std::vector<std::string> symbols;
+  std::stringstream ss(req->getParameter("symbols"));
+  std::string item;
+  while (std::getline(ss, item, ',')) {
+    if (!item.empty()) {
+      symbols.push_back(item);
+    }
+  }
+  constexpr std::size_t kMaxSymbolsPerRequest = 100;
+  if (symbols.size() > kMaxSymbolsPerRequest) {
+    symbols.resize(kMaxSymbolsPerRequest);
+  }
+  const int page = parse_int_param(req->getParameter("page"), 1);
+  const int per_page = parse_int_param(req->getParameter("per_page"), 10);
+  Json::Value response = trade::trading::SimulatedTradingService::getInstance()
+                             .getOrderBookSignals(symbols, page, per_page);
+  callback(HttpResponse::newHttpJsonResponse(response));
 }
-
-} // namespace
 
 void PredictController::livePortfolioStatus(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
   (void)req;
 
-  const auto credentials = coinbaseCredentialsFromConfig();
-  if (!credentials.configured()) {
-    Json::Value err;
-    err["error"] = "setup_required";
-    err["message"] =
-        "Configure COINBASE_API_KEY and COINBASE_API_SECRET to view the live portfolio";
-    auto resp = HttpResponse::newHttpJsonResponse(err);
-    resp->setStatusCode(k400BadRequest);
+  Json::Value live_portfolio =
+      trade::trading::LiveTradingService::getInstance().refreshLivePortfolioStatus();
+  if (live_portfolio.get("status", "").asString() == "error") {
+    const std::string error = live_portfolio.get("error", "").asString();
+    const bool setup_required = error.find("credential") != std::string::npos ||
+                                error.find("configured") != std::string::npos;
+    live_portfolio["setup_required"] = setup_required;
+    auto resp = HttpResponse::newHttpJsonResponse(live_portfolio);
+    resp->setStatusCode(setup_required ? k400BadRequest : k502BadGateway);
     callback(resp);
-    return;
+  } else {
+    callback(HttpResponse::newHttpJsonResponse(live_portfolio));
   }
-
-  trade::exchange::CoinbaseAdvancedClient client(credentials);
-  std::vector<trade::exchange::AccountBalance> accounts;
-  std::string error;
-  if (!client.listAccounts(accounts, &error)) {
-    Json::Value err;
-    err["error"] = "Failed to fetch Coinbase accounts: " + error;
-    auto resp = HttpResponse::newHttpJsonResponse(err);
-    resp->setStatusCode(k502BadGateway);
-    callback(resp);
-    return;
-  }
-
-  double cash = 0.0;
-  double positions_value = 0.0;
-  Json::Value positions(Json::arrayValue);
-  constexpr std::size_t kMaxPricedAssets = 12;
-  std::size_t priced_assets = 0;
-
-  for (const auto &account : accounts) {
-    const double total_balance = account.available + account.hold;
-    if (account.currency == "USD" || account.currency == "USDC") {
-      cash += total_balance;
-      continue;
-    }
-    if (total_balance <= 1e-9 || priced_assets >= kMaxPricedAssets) {
-      continue;
-    }
-    ++priced_assets;
-
-    const std::string product_id = account.currency + "-USD";
-    trade::exchange::ProductTicker ticker;
-    std::string ticker_error;
-    const bool priced = client.getTicker(product_id, ticker, &ticker_error);
-    const double price = priced ? ticker.price : 0.0;
-    const double fiat_value = total_balance * price;
-    positions_value += fiat_value;
-
-    Json::Value position;
-    position["symbol"] = product_id;
-    position["asset"] = account.currency;
-    position["quantity"] = total_balance;
-    position["balance_crypto"] = total_balance;
-    position["current_price"] = price;
-    position["balance_fiat"] = fiat_value;
-    position["side"] = "buy";
-    position["status"] = "open";
-    position["unrealized_pnl"] = 0.0;
-    positions.append(position);
-  }
-
-  Json::Value resp;
-  resp["source"] = "coinbase";
-  resp["is_active"] = true;
-  resp["cash_balance"] = cash;
-  resp["available_balance_usd"] = cash;
-  resp["total_positions_value"] = positions_value;
-  resp["total_value"] = cash + positions_value;
-  resp["total_balance_usd"] = cash + positions_value;
-  resp["positions"] = positions;
-  resp["open_positions_count"] = static_cast<int>(positions.size());
-
-  // Session-derived fields (trades, realized/unrealized PnL, fees) come from
-  // the trading session so the statistics widgets stay populated.
-  const Json::Value session =
-      trade::trading::SimulatedTradingService::getInstance().getLivePortfolioStatus();
-  for (const char *key : {"trades", "recent_trades", "realized_pnl", "unrealized_pnl",
-                          "total_fees", "net_pnl", "session_id", "strategy_type", "mode"}) {
-    if (session.isMember(key)) {
-      resp[key] = session[key];
-    }
-  }
-
-  callback(HttpResponse::newHttpJsonResponse(resp));
 }
 
 void PredictController::executeLiveTrade(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
-  const auto credentials = coinbaseCredentialsFromConfig();
-  if (!credentials.configured()) {
-    Json::Value err;
-    err["error"] = "setup_required";
-    err["message"] =
-        "Configure COINBASE_API_KEY and COINBASE_API_SECRET to execute live trades";
-    auto resp = HttpResponse::newHttpJsonResponse(err);
-    resp->setStatusCode(k400BadRequest);
-    callback(resp);
-    return;
-  }
-
   auto json_req = req->getJsonObject();
   if (!json_req || !json_req->isObject()) {
     Json::Value err;
@@ -1296,57 +1223,16 @@ void PredictController::executeLiveTrade(
     callback(resp);
     return;
   }
-
-  const std::string symbol = (*json_req).get("symbol", Json::Value("")).asString();
-  const std::string side = (*json_req).get("side", Json::Value("")).asString();
-  const Json::Value amount_value = (*json_req).get("amount", Json::Value(0.0));
-  const double amount = amount_value.isNumeric() ? amount_value.asDouble() : 0.0;
-  const std::string amount_type =
-      (*json_req).get("amount_type", Json::Value(side == "buy" ? "quote" : "base")).asString();
-
-  if (symbol.empty() || (side != "buy" && side != "sell") || amount <= 0.0) {
-    Json::Value err;
-    err["error"] = "symbol, side (buy|sell), and a positive amount are required";
-    auto resp = HttpResponse::newHttpJsonResponse(err);
-    resp->setStatusCode(k400BadRequest);
-    callback(resp);
-    return;
-  }
-
-  trade::exchange::CoinbaseAdvancedClient client(credentials);
-  const auto result = client.placeMarketOrder(symbol, side, amount, amount_type == "quote");
-
-  Json::Value resp;
-  if (result.accepted) {
-    resp["status"] = result.fill_available ? (result.success ? "success" : "unfilled") : "pending";
-    resp["message"] = result.fill_available
-                          ? (result.success ? "Order filled" : "Order completed without a fill")
-                          : "Order accepted; awaiting Coinbase fill details";
-    resp["order_id"] = result.order_id;
-    resp["client_order_id"] = result.client_order_id;
-    if (result.fill_available) {
-      resp["filled_size"] = result.fill.filled_size;
-      resp["filled_value"] = result.fill.filled_value;
-      resp["average_filled_price"] = result.fill.average_filled_price;
-      resp["fees"] = result.fill.total_fees;
-    }
-    callback(HttpResponse::newHttpJsonResponse(resp));
-    return;
-  }
-
-  resp["status"] = "error";
-  resp["error"] = result.error;
-  resp["message"] = result.error;
-  auto http_resp = HttpResponse::newHttpJsonResponse(resp);
-  http_resp->setStatusCode(k502BadGateway);
-  callback(http_resp);
+  Json::Value response =
+      trade::trading::LiveTradingService::getInstance().submitLiveOrder(*json_req);
+  callback(HttpResponse::newHttpJsonResponse(response));
 }
 
 void PredictController::livePortfolioPositions(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
   (void)req;
-  Json::Value response = trade::trading::SimulatedTradingService::getInstance().getOpenPositions();
+  Json::Value response = trade::trading::LiveTradingService::getInstance().getOpenPositions();
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 
@@ -1367,7 +1253,7 @@ void PredictController::closeLivePosition(
     return;
   }
 
-  Json::Value response = trade::trading::SimulatedTradingService::getInstance().closePosition(symbol);
+  Json::Value response = trade::trading::LiveTradingService::getInstance().closePosition(symbol);
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 
@@ -1379,8 +1265,7 @@ void PredictController::startLiveTrading(
   if (!payload.isObject()) {
     payload = Json::Value(Json::objectValue);
   }
-  Json::Value response = trade::trading::SimulatedTradingService::getInstance()
-                             .startSession(payload, "live");
+  Json::Value response = trade::trading::LiveTradingService::getInstance().startSession(payload);
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 
@@ -1388,7 +1273,25 @@ void PredictController::stopLiveTrading(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
   (void)req;
-  Json::Value response = trade::trading::SimulatedTradingService::getInstance().stopSession();
+  Json::Value response = trade::trading::LiveTradingService::getInstance().stopSession();
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::liveTradingStatus(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  const std::string session_id = req->getParameter("session_id");
+  Json::Value response = trade::trading::LiveTradingService::getInstance().getStatus(session_id);
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
+void PredictController::updateLiveStrategyParameters(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  Json::Value payload = json_req ? *json_req : Json::Value(Json::objectValue);
+  Json::Value response = trade::trading::LiveTradingService::getInstance()
+                             .updateStrategyParameters(payload);
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 
