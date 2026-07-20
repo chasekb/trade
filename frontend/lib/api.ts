@@ -187,10 +187,14 @@ function appendLocalTrade(session: LocalSimTradingSession, trade: LocalSimTrade)
 export function calculateLocalAllocatedUsd(
   totalValue: number,
   initialCapital: number,
-  positionSizePercent: number,
+  positionSizeValue: number,
+  positionSizeMode: 'percent' | 'dollar' = 'percent',
 ): number {
-  if (!Number.isFinite(positionSizePercent)) {
+  if (!Number.isFinite(positionSizeValue)) {
     return 0;
+  }
+  if (positionSizeMode === 'dollar') {
+    return Math.max(0, positionSizeValue);
   }
   const sizingCapital = Number.isFinite(totalValue) && totalValue > 0
     ? totalValue
@@ -198,7 +202,7 @@ export function calculateLocalAllocatedUsd(
   if (!Number.isFinite(sizingCapital) || sizingCapital <= 0) {
     return 0;
   }
-  return sizingCapital * Math.max(0, positionSizePercent) / 100;
+  return sizingCapital * Math.max(0, positionSizeValue) / 100;
 }
 
 function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSignal) {
@@ -208,14 +212,21 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
 
   const portfolio = session.portfolio;
   const existingPosition = portfolio.positions[signal.symbol];
-  const positionSizePercent = Number(session.parameters.position_size_percent ?? 1);
+  const positionSizeMode = session.parameters.position_size_mode === 'dollar' ? 'dollar' : 'percent';
+  const positionSizeValue = Number(
+    positionSizeMode === 'dollar'
+      ? session.parameters.position_size_value ?? 0
+      : session.parameters.position_size_percent ?? session.parameters.position_size_value ?? 1,
+  );
   const maxPositions = Math.max(1, Number(session.parameters.max_positions ?? session.parameters.max_positions_per_session ?? 100));
   const holdTicks = Math.max(3, Number(session.parameters.position_update_interval ?? 5) * 2);
-  // Percent of current total value (compounding), matching the backend engine.
+  // The configured value is the allocation ceiling: exact dollars in dollar
+  // mode, or a percentage of current total value in percent mode.
   const allocatedUsd = calculateLocalAllocatedUsd(
     portfolio.total_value,
     portfolio.initial_capital,
-    positionSizePercent,
+    positionSizeValue,
+    positionSizeMode,
   );
   if (allocatedUsd <= 0 || signal.price <= 0) {
     return;

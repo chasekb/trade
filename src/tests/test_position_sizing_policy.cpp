@@ -57,8 +57,8 @@ int main() {
     std::cerr << "Strong size should exceed weak size" << std::endl;
     return 1;
   }
-  if (!(strong_size > 1000.0)) {
-    std::cerr << "Strong setup should scale above base size" << std::endl;
+  if (strong_size > strong.base_usd) {
+    std::cerr << "Configured position size must remain a hard maximum" << std::endl;
     return 1;
   }
   if (!(weak_size < 1000.0)) {

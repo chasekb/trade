@@ -77,7 +77,10 @@ double derive_position_size_multiplier(const PositionSizingInputs &inputs) {
 
 double calculate_position_size_usd(const PositionSizingInputs &inputs) {
   const double base_usd = std::max(0.0, inputs.base_usd);
-  return base_usd * derive_position_size_multiplier(inputs);
+  // The configured dollar amount or percentage-derived allocation is a hard
+  // risk ceiling. Signal and performance inputs may reduce deployment, but
+  // must never leverage the user's maximum upward.
+  return base_usd * std::min(1.0, derive_position_size_multiplier(inputs));
 }
 
 } // namespace trading

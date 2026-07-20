@@ -6,6 +6,11 @@ describe('calculateLocalAllocatedUsd', () => {
     expect(calculateLocalAllocatedUsd(500, 500, 2)).toBe(10);
   });
 
+  it('uses the configured value as the exact hard maximum in dollar mode', () => {
+    expect(calculateLocalAllocatedUsd(1000, 1000, 10, 'dollar')).toBe(10);
+    expect(calculateLocalAllocatedUsd(5, 5, 10, 'dollar')).toBe(10);
+  });
+
   it('preserves a disabled zero allocation', () => {
     expect(calculateLocalAllocatedUsd(100, 100, 0)).toBe(0);
   });
