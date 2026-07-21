@@ -34,9 +34,12 @@ RUN ARCH=$(uname -m) && \
     ln -sf /opt/cmake/bin/ctest /usr/local/bin/ctest && \
     ln -sf /opt/cmake/bin/cpack /usr/local/bin/cpack
 
-# Fetch vcpkg from a reachable mirror at a pinned release tag.
+# Fetch vcpkg from the pinned upstream release tag. GitHub codeload is already
+# used for other pinned source archives below and avoids intermittent Gitee
+# archive URL failures observed in Actions.
 RUN mkdir -p /opt/vcpkg \
-    && curl -fsSL https://gitee.com/mirrors/vcpkg/repository/archive/2026.01.16.tar.gz \
+    && curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+      https://codeload.github.com/microsoft/vcpkg/tar.gz/refs/tags/2026.01.16 \
       | tar -xz --strip-components=1 -C /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh
 
