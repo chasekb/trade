@@ -587,6 +587,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     if (producerLoading) return 'Loading Coinbase portfolio readiness...';
     if (!producer.credentialsConfigured) return 'Configure Coinbase credentials before starting live trading.';
     if (!producer.accountSnapshotLoaded) return firstLiveTabProducerBlocker(producer) || 'Coinbase account snapshot is not loaded.';
+    if (producer.errors.length > 0) return firstLiveTabProducerBlocker(producer) || 'Coinbase portfolio refresh is currently failing.';
     if (!config.live_order_execution) return 'Confirm that this session may place real Coinbase orders.';
     return null;
   }, [config.live_order_execution, producer, producerLoading]);

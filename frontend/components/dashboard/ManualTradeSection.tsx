@@ -50,8 +50,8 @@ export function ManualTradeSection({ symbols }: ManualTradeSectionProps) {
     if (!portfolio) return 0;
     
     if (side === 'buy') {
-      // Return USD balance
-      return Number(portfolio.cash_balance ?? portfolio.available_balance_usd ?? 0);
+      // Return spendable USD balance net of pending live order reservations.
+      return Number(portfolio.available_balance_usd ?? portfolio.cash_balance ?? 0);
     } else {
       // Return Crypto balance for selected symbol
       const positions = portfolio.positions ?? portfolio.active_positions_data ?? [];

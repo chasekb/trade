@@ -1,7 +1,18 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 
-export function OpenPositionsSection({ positions, onClose }: { positions: any[], onClose?: (symbol: string) => void }) {
+type OpenPositionRow = {
+    symbol?: string;
+    side?: string;
+    quantity?: number | string;
+    entry_price?: number | string | null;
+    current_price?: number | string;
+    unrealized_pnl?: number | string;
+    entry_time?: string;
+    session_managed?: boolean;
+};
+
+export function OpenPositionsSection({ positions, onClose }: { positions: OpenPositionRow[], onClose?: (symbol: string) => void }) {
     const [page, setPage] = useState(1);
     const [perPage, setPerPage] = useState(10);
     const [closingPosition, setClosingPosition] = useState<string | null>(null);
@@ -56,9 +67,13 @@ export function OpenPositionsSection({ positions, onClose }: { positions: any[],
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {pageData.map((pos: any, index: number) => (
-                            <tr key={`${pos.symbol}-${pos.entry_time}-${index}`}>
-                                <td className="px-4 py-2 text-sm text-gray-900">{pos.symbol}</td>
+                        {pageData.map((pos: OpenPositionRow, index: number) => {
+                            const symbol = pos.symbol ?? '';
+                            const canClose = (!onClose || pos.session_managed !== false) && symbol.length > 0;
+
+                            return (
+                            <tr key={`${symbol}-${pos.entry_time}-${index}`}>
+                                <td className="px-4 py-2 text-sm text-gray-900">{symbol}</td>
                                 <td className="px-4 py-2 text-sm">
                                     <span className={`px-2 py-1 rounded-full text-xs ${(pos.side || '').toUpperCase() === 'LONG'
                                         ? 'bg-green-100 text-green-800'
@@ -76,17 +91,22 @@ export function OpenPositionsSection({ positions, onClose }: { positions: any[],
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
                                 <td className="px-4 py-2 text-sm text-gray-900">
-                                    <Button
-                                        size="sm"
-                                        variant="danger"
-                                        disabled={closingPosition === pos.symbol}
-                                        onClick={() => handleClose(pos.symbol)}
-                                    >
-                                        {closingPosition === pos.symbol ? 'Closing...' : 'Close'}
-                                    </Button>
+                                    {canClose ? (
+                                        <Button
+                                            size="sm"
+                                            variant="danger"
+                                            disabled={closingPosition === symbol}
+                                            onClick={() => handleClose(symbol)}
+                                        >
+                                            {closingPosition === symbol ? 'Closing...' : 'Close'}
+                                        </Button>
+                                    ) : (
+                                        <span className="text-xs text-gray-500">Coinbase holding</span>
+                                    )}
                                 </td>
                             </tr>
-                        ))}
+                        );
+                        })}
                     </tbody>
                 </table>
             </div>
