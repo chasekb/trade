@@ -11,6 +11,12 @@ services:
       - REDIS_URL=redis://redis:6379
       - ENV=development
       - TRAINED_MODELS_DIR=/app/data/trained_models
+    dns:
+      # Keep Podman's network-local resolver first for db/redis service names,
+      # then fall back to public DNS for external providers such as Coinbase.
+      - 10.89.3.1
+      - 1.1.1.1
+      - 8.8.8.8
     user: "0:0"
     volumes:
       - ./.env:/app/.env:ro,Z
