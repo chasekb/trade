@@ -26,6 +26,16 @@ int main() {
     return 1;
   }
 
+  const auto json = trade::trading::coinbasePortfolioSnapshotToJson(snapshot);
+  if (!close(json["cash_balance"].asDouble(), 10.0) ||
+      !close(json["cash_hold"].asDouble(), 0.25) ||
+      !close(json["total_positions_value"].asDouble(), 80.0) ||
+      !close(json["total_value"].asDouble(), 90.25) ||
+      json["holdings"].size() != 2) {
+    std::cerr << "Coinbase portfolio JSON did not preserve authoritative account fields" << std::endl;
+    return 1;
+  }
+
   const auto malformed = buildCoinbasePortfolioSnapshot(
       {{"USD", std::nan(""), -2.0}, {"BTC", 1.0, 0.0}}, {{"BTC", std::nan("")}});
   if (!close(malformed.cash_available, 0.0) || !close(malformed.total_value, 0.0)) {

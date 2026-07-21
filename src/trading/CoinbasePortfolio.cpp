@@ -40,5 +40,29 @@ CoinbasePortfolioSnapshot buildCoinbasePortfolioSnapshot(
   return snapshot;
 }
 
+Json::Value coinbasePortfolioSnapshotToJson(
+    const CoinbasePortfolioSnapshot &snapshot) {
+  Json::Value out(Json::objectValue);
+  out["cash_balance"] = snapshot.cash_available;
+  out["cash_available"] = snapshot.cash_available;
+  out["cash_hold"] = snapshot.cash_hold;
+  out["total_positions_value"] = snapshot.positions_value;
+  out["positions_value"] = snapshot.positions_value;
+  out["total_value"] = snapshot.total_value;
+
+  Json::Value holdings(Json::arrayValue);
+  for (const auto &holding : snapshot.holdings) {
+    Json::Value item(Json::objectValue);
+    item["asset"] = holding.asset;
+    item["available"] = holding.available;
+    item["hold"] = holding.hold;
+    item["price_usd"] = holding.price_usd;
+    item["value_usd"] = (holding.available + holding.hold) * holding.price_usd;
+    holdings.append(item);
+  }
+  out["holdings"] = holdings;
+  return out;
+}
+
 } // namespace trading
 } // namespace trade

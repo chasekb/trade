@@ -128,6 +128,12 @@ bool isOrderBookStrategy(const std::string &strategy) {
   return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
 }
 
+bool coinbaseCredentialsConfigured() {
+  auto &cfg = Config::getInstance();
+  return !cfg.get("COINBASE_API_KEY", "").empty() &&
+         !cfg.get("COINBASE_API_SECRET", "").empty();
+}
+
 // Form inputs may deliver numbers as strings; read either representation.
 double paramNumber(const Json::Value &params, const char *key, double fallback) {
   if (!params.isMember(key)) {
@@ -1113,6 +1119,10 @@ bool LiveTradingService::fetchLiveAccountSnapshot(CoinbasePortfolioSnapshot &sna
 
 void LiveTradingService::applyLiveAccountSnapshotLocked(
     const CoinbasePortfolioSnapshot &snapshot, bool establish_baseline) {
+  last_account_snapshot_ = snapshot;
+  last_account_snapshot_loaded_ = true;
+  last_account_snapshot_error_.clear();
+  last_account_snapshot_at_ = nowIsoUtc();
   cash_ = snapshot.cash_available;
   cash_hold_ = snapshot.cash_hold;
   total_positions_value_ = snapshot.positions_value;
@@ -2054,6 +2064,115 @@ Json::Value LiveTradingService::buildStatusJson() const {
   return status;
 }
 
+Json::Value LiveTradingService::buildLiveTabProducerJson(
+    bool credentials_configured) const {
+  Json::Value status = buildStatusJson();
+  status["producer"] = "live_tab_coinbase_portfolio";
+  status["source"] = "coinbase";
+
+  const bool live_execution_enabled = liveOrderExecutionEnabledLocked();
+  const bool account_loaded = last_account_snapshot_loaded_;
+  const bool can_trade = active_ && credentials_configured && account_loaded &&
+                         live_execution_enabled && last_account_snapshot_error_.empty();
+
+  Json::Value positions(Json::arrayValue);
+  Json::Value positions_by_symbol(Json::objectValue);
+  for (const auto &[symbol, position] : positions_) {
+    Json::Value item = positionToJson(position);
+    positions.append(item);
+    positions_by_symbol[symbol] = item;
+  }
+
+  Json::Value pending_orders(Json::arrayValue);
+  for (const auto &intent : pending_orders_) {
+    Json::Value item(Json::objectValue);
+    item["product_id"] = intent.product_id;
+    item["side"] = intent.side;
+    item["amount"] = intent.amount;
+    item["amount_is_quote"] = intent.amount_is_quote;
+    item["reason"] = intent.reason;
+    item["action"] = intent.action;
+    item["reserved_cash"] = intent.reserved_cash;
+    item["accepted"] = false;
+    pending_orders.append(item);
+  }
+  for (const auto &pending : pending_live_orders_) {
+    Json::Value item(Json::objectValue);
+    item["order_id"] = pending.order_id;
+    item["client_order_id"] = pending.client_order_id;
+    item["product_id"] = pending.intent.product_id;
+    item["side"] = pending.intent.side;
+    item["amount"] = pending.intent.amount;
+    item["amount_is_quote"] = pending.intent.amount_is_quote;
+    item["reason"] = pending.intent.reason;
+    item["action"] = pending.intent.action;
+    item["reserved_cash"] = pending.intent.reserved_cash;
+    item["accepted"] = !pending.order_id.empty();
+    item["persisted"] = pending.persisted;
+    item["fill_applied"] = pending.fill_applied;
+    item["account_snapshot_reflects_fill"] = pending.account_snapshot_reflects_fill;
+    pending_orders.append(item);
+  }
+
+  Json::Value portfolio = account_loaded ? coinbasePortfolioSnapshotToJson(last_account_snapshot_)
+                                         : Json::Value(Json::objectValue);
+  if (!account_loaded) {
+    portfolio["cash_balance"] = 0.0;
+    portfolio["cash_hold"] = 0.0;
+    portfolio["total_positions_value"] = 0.0;
+    portfolio["total_value"] = 0.0;
+    portfolio["holdings"] = Json::arrayValue;
+  }
+  portfolio["available_balance_usd"] =
+      account_loaded ? std::max(0.0, cash_ - pending_reserved_cash_) : 0.0;
+  portfolio["pending_reserved_cash"] = pending_reserved_cash_;
+  portfolio["positions"] = positions;
+
+  Json::Value blockers(Json::arrayValue);
+  if (!credentials_configured) {
+    blockers.append("Coinbase credentials are not configured");
+  }
+  if (!account_loaded) {
+    blockers.append(last_account_snapshot_error_.empty()
+                        ? "Coinbase account snapshot is not loaded"
+                        : last_account_snapshot_error_);
+  }
+  if (!active_) {
+    blockers.append("Start live trading before placing manual orders");
+  }
+  if (!live_execution_enabled) {
+    blockers.append("Live order execution must be explicitly confirmed");
+  }
+
+  Json::Value errors(Json::arrayValue);
+  if (!last_account_snapshot_error_.empty()) {
+    errors.append(last_account_snapshot_error_);
+  }
+
+  Json::Value readiness(Json::objectValue);
+  readiness["credentials_configured"] = credentials_configured;
+  readiness["account_snapshot_loaded"] = account_loaded;
+  readiness["live_order_execution_enabled"] = live_execution_enabled;
+  readiness["active_session"] = active_;
+  readiness["pending_order_count"] = static_cast<Json::UInt64>(pending_orders.size());
+  readiness["can_trade"] = can_trade;
+  readiness["blockers"] = blockers;
+
+  status["credentials_configured"] = credentials_configured;
+  status["account_snapshot_loaded"] = account_loaded;
+  status["account_snapshot_at"] = last_account_snapshot_at_;
+  status["live_order_execution_enabled"] = live_execution_enabled;
+  status["can_trade"] = can_trade;
+  status["portfolio"] = portfolio;
+  status["positions"] = positions;
+  status["positions_by_symbol"] = positions_by_symbol;
+  status["pending_orders"] = pending_orders;
+  status["readiness"] = readiness;
+  status["errors"] = errors;
+  status["status"] = "success";
+  return status;
+}
+
 Json::Value LiveTradingService::startSession(const Json::Value &payload) {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
   std::unique_lock<std::mutex> lock(mutex_);
@@ -2180,6 +2299,10 @@ Json::Value LiveTradingService::startSession(const Json::Value &payload) {
   pending_order_symbols_.clear();
   account_available_quantities_.clear();
   managed_quantity_floors_.clear();
+  last_account_snapshot_ = CoinbasePortfolioSnapshot{};
+  last_account_snapshot_loaded_ = false;
+  last_account_snapshot_error_.clear();
+  last_account_snapshot_at_.clear();
   pending_reserved_cash_ = 0.0;
   applyLiveAccountSnapshotLocked(live_account_snapshot, true);
   if (!recoverPendingOrders()) {
@@ -2303,7 +2426,12 @@ Json::Value LiveTradingService::getLivePortfolioStatus() {
 }
 
 Json::Value LiveTradingService::refreshLivePortfolioStatus() {
+  return refreshLiveTabProducerStatus();
+}
+
+Json::Value LiveTradingService::refreshLiveTabProducerStatus() {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+  const bool credentials_configured = coinbaseCredentialsConfigured();
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!exchange_client_) {
@@ -2318,16 +2446,13 @@ Json::Value LiveTradingService::refreshLivePortfolioStatus() {
   CoinbasePortfolioSnapshot snapshot;
   std::string error;
   if (!fetchLiveAccountSnapshot(snapshot, &error)) {
-    Json::Value result;
-    result["status"] = "error";
-    result["error"] = "Unable to refresh Coinbase portfolio: " + error;
-    return result;
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_account_snapshot_error_ = "Unable to refresh Coinbase portfolio: " + error;
+    return buildLiveTabProducerJson(credentials_configured);
   }
   std::lock_guard<std::mutex> lock(mutex_);
   applyLiveAccountSnapshotLocked(snapshot, !active_);
-  Json::Value result = buildStatusJson();
-  result["source"] = "coinbase";
-  return result;
+  return buildLiveTabProducerJson(credentials_configured);
 }
 
 Json::Value LiveTradingService::submitLiveOrder(const Json::Value &payload) {

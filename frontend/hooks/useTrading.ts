@@ -132,6 +132,7 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
         }
         if (mode === 'live') {
           queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+          queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
         }
         queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
       }
@@ -151,6 +152,7 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
         }
         if (mode === 'live') {
           queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+          queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
         }
         queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
       }
@@ -164,6 +166,9 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
       if (mode === 'simulated') {
         queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
       }
+      if (mode === 'live') {
+        queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
+      }
       queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
     },
   });
@@ -173,6 +178,7 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
     onSuccess: () => {
       // Refetch portfolio status to update positions list
       queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+      queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
     },
   });
 
@@ -332,6 +338,23 @@ export function useLivePortfolio(enabled: boolean = true) {
     enabled,
     staleTime: 5 * 1000, // 5 seconds
     refetchInterval: enabled ? 10 * 1000 : false, // Refresh every 10 seconds
+  });
+}
+
+export function useLiveTabProducer(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['live-tab-producer'],
+    queryFn: async () => {
+      const response = await apiClient.getLiveTabProducerStatus();
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch live tab producer status');
+      }
+      return response.data;
+    },
+    enabled,
+    staleTime: 5 * 1000,
+    refetchInterval: enabled ? 10 * 1000 : false,
+    refetchOnWindowFocus: true,
   });
 }
 

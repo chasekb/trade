@@ -862,6 +862,10 @@ class ApiClient {
     }));
   }
 
+  async getLiveTabProducerStatus(): Promise<ApiResponse<any>> {
+    return this.request('/api/live-portfolio/status');
+  }
+
   // Order Book Signals
   async getOrderBookSignals(
     symbols?: string[],

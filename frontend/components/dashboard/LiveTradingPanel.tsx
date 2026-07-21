@@ -8,9 +8,10 @@ import { DataTable } from '@/components/ui/DataTable';
 import Tooltip from '@/components/ui/Tooltip';
 import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLivePortfolio, useMLModels } from '@/hooks/useTrading';
+import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLiveTabProducer, useMLModels } from '@/hooks/useTrading';
 import { useModelTraining } from '@/hooks/useModelTraining';
 import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
+import { firstLiveTabProducerBlocker, normalizeLiveTabProducerSnapshot } from '@/lib/liveTabProducer';
 
 import { OpenPositionsSection } from './OpenPositionsSection';
 import { RecentTradesTable } from './RecentTradesTable';
@@ -343,11 +344,12 @@ function TradingConfiguration({
 function LiveTradingStatistics() {
   const queryClient = useQueryClient();
   const { closePosition } = useLiveTrading('live');
-  const { data: portfolioData, isLoading: portfolioLoading, error: portfolioError } = useLivePortfolio(true);
+  const { data: portfolioData, isLoading: portfolioLoading, error: portfolioError } = useLiveTabProducer(true);
   const sessionData = portfolioData;
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+    queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
     queryClient.invalidateQueries({ queryKey: ['trading-status', 'live'] });
   };
 
@@ -374,24 +376,22 @@ function LiveTradingStatistics() {
     );
   }
 
-  const setupRequired = Boolean(
+  const liveProducer = normalizeLiveTabProducerSnapshot(portfolioData ?? {});
+  const setupRequired = !liveProducer.credentialsConfigured || Boolean(
     portfolioError && (portfolioError.message.includes('400') || portfolioError.message.includes('setup_required'))
   );
 
   const snapshot = normalizeSimulatedTradingSnapshot(sessionData ?? {});
   const statsView = snapshot.stats;
-  const coinbase = !portfolioError && portfolioData && (portfolioData as any).source === 'coinbase'
-    ? (portfolioData as any)
-    : null;
 
-  // Portfolio tiles: real Coinbase account when configured, session otherwise.
-  const cashBalance = coinbase ? (coinbase.cash_balance ?? 0) : snapshot.cashBalance;
-  const totalValue = coinbase ? (coinbase.total_value ?? 0) : snapshot.totalValue;
-  const totalPositionsValue = coinbase ? (coinbase.total_positions_value ?? 0) : snapshot.totalPositionsValue;
+  // Portfolio tiles are produced from the authoritative Coinbase account snapshot.
+  const cashBalance = liveProducer.cashBalance;
+  const totalValue = liveProducer.totalValue;
+  const totalPositionsValue = liveProducer.totalPositionsValue;
 
-  const coinbasePositions: PositionLike[] = coinbase && Array.isArray(coinbase.positions) ? coinbase.positions : [];
-  const openPositions = coinbasePositions.length > 0 ? coinbasePositions : snapshot.openPositions;
-  const activePositions = coinbase ? (coinbase.open_positions_count ?? coinbasePositions.length) : snapshot.activePositions;
+  const coinbasePositions = liveProducer.positions as PositionLike[];
+  const openPositions = coinbasePositions;
+  const activePositions = coinbasePositions.length;
 
   const profitFactor = Number(statsView.profit_factor);
   const formattedProfitFactor = profitFactor >= 999 ? '∞' : profitFactor.toFixed(2);
@@ -441,11 +441,11 @@ function LiveTradingStatistics() {
         {/* Portfolio Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Cash Balance{coinbase ? ' (Coinbase)' : ''}</p>
+            <p className="text-sm text-gray-600">Cash Balance (Coinbase)</p>
             <p className="text-lg font-semibold">${cashBalance.toFixed(2)}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">Total Value{coinbase ? ' (Coinbase)' : ''}</p>
+            <p className="text-sm text-gray-600">Total Value (Coinbase)</p>
             <p className="text-lg font-semibold">${totalValue.toFixed(2)}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded-lg">
@@ -533,7 +533,7 @@ function LiveTradingStatistics() {
         {openPositions.length > 0 && (
           <OpenPositionsSection
             positions={openPositions}
-            {...(coinbasePositions.length > 0 ? {} : { onClose: handleClosePosition })}
+            onClose={handleClosePosition}
           />
         )}
 
@@ -548,6 +548,8 @@ function LiveTradingStatistics() {
 
 export default function LiveTradingPanel({ className = '' }: LiveTradingPanelProps) {
   const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading('live');
+  const { data: producerData, isLoading: producerLoading } = useLiveTabProducer(true);
+  const producer = normalizeLiveTabProducerSnapshot(producerData ?? {});
 
   // Use sessionStorage to persist pagination state across tab switches and component remounts
   const getStoredPage = () => {
@@ -568,7 +570,6 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
 
   const [currentPage, setCurrentPage] = useState(getStoredPage);
   const [pageSize, setPageSize] = useState(getStoredPageSize);
-  const queryClient = useQueryClient();
 
   const [strategy, setStrategy] = useState<TradingStrategy>('ml_enhanced_orderbook');
   const [config, setConfig] = useState<TradingConfigState>({
@@ -582,6 +583,13 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     live_order_execution: false,
   });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
+  const startDisabledReason = useMemo(() => {
+    if (producerLoading) return 'Loading Coinbase portfolio readiness...';
+    if (!producer.credentialsConfigured) return 'Configure Coinbase credentials before starting live trading.';
+    if (!producer.accountSnapshotLoaded) return firstLiveTabProducerBlocker(producer) || 'Coinbase account snapshot is not loaded.';
+    if (!config.live_order_execution) return 'Confirm that this session may place real Coinbase orders.';
+    return null;
+  }, [config.live_order_execution, producer, producerLoading]);
 
   // Use local symbols for polling; fallback to backend status if empty
   // Always pass symbols (even if empty) to enable query when trading is active
@@ -629,7 +637,11 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
         mode: 'live',
         strategy,
         symbols,
-        parameters: { ...config },
+        parameters: Object.fromEntries(
+          Object.entries(config).filter(
+            ([key]) => !['initial_portfolio_size', 'initial_balance', 'capital'].includes(key)
+          )
+        ),
         max_positions: maxPositions,
         position_update_interval: 5,
       };
@@ -731,6 +743,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
             onStart={handleStartTrading}
             onStop={handleStopTrading}
             loading={loading}
+            startDisabledReason={startDisabledReason}
           />
 
           {status.isActive && (

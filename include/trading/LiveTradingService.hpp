@@ -32,6 +32,7 @@ public:
   Json::Value updateStrategyParameters(const Json::Value &payload);
   Json::Value getLivePortfolioStatus();
   Json::Value refreshLivePortfolioStatus();
+  Json::Value refreshLiveTabProducerStatus();
   Json::Value submitLiveOrder(const Json::Value &payload);
   Json::Value getOrderBookSignals(const std::vector<std::string> &symbols,
                                   int page,
@@ -216,6 +217,7 @@ private:
   std::string jsonToString(const Json::Value &value) const;
   Json::Value buildStatusJson() const;
   Json::Value buildPortfolioJson() const;
+  Json::Value buildLiveTabProducerJson(bool credentials_configured) const;
   Json::Value tradeToJson(const TradeRecord &trade) const;
   Json::Value signalToJson(const SignalRecord &signal) const;
   Json::Value positionToJson(const PositionState &position) const;
@@ -263,6 +265,10 @@ private:
   std::map<std::string, double> account_available_quantities_;
   std::map<std::string, std::pair<double, int>> managed_quantity_floors_;
   double pending_reserved_cash_ = 0.0;
+  CoinbasePortfolioSnapshot last_account_snapshot_;
+  bool last_account_snapshot_loaded_ = false;
+  std::string last_account_snapshot_error_;
+  std::string last_account_snapshot_at_;
   std::unique_ptr<exchange::CoinbaseAdvancedClient> exchange_client_;
 };
 

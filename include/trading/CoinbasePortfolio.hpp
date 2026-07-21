@@ -2,6 +2,8 @@
 
 #include "exchange/CoinbaseAdvancedClient.hpp"
 
+#include <json/json.h>
+
 #include <map>
 #include <string>
 #include <vector>
@@ -27,6 +29,9 @@ struct CoinbasePortfolioSnapshot {
 CoinbasePortfolioSnapshot buildCoinbasePortfolioSnapshot(
     const std::vector<exchange::AccountBalance> &accounts,
     const std::map<std::string, double> &prices_usd);
+
+Json::Value coinbasePortfolioSnapshotToJson(
+    const CoinbasePortfolioSnapshot &snapshot);
 
 } // namespace trading
 } // namespace trade
