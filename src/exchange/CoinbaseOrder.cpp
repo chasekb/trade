@@ -11,6 +11,8 @@ namespace exchange {
 
 namespace {
 
+constexpr double kCoinbaseMinQuoteOrderUsd = 1.0;
+
 bool toDouble(const Json::Value &value, double &out) {
   if (value.isNumeric()) {
     out = value.asDouble();
@@ -30,6 +32,12 @@ bool toDouble(const Json::Value &value, double &out) {
 }
 
 } // namespace
+
+double coinbaseMinQuoteOrderUsd() { return kCoinbaseMinQuoteOrderUsd; }
+
+bool coinbaseQuoteOrderMeetsMinimum(double quote_size_usd) {
+  return std::isfinite(quote_size_usd) && quote_size_usd >= kCoinbaseMinQuoteOrderUsd;
+}
 
 bool parseOrderFill(const Json::Value &response, OrderFill &out, std::string *error) {
   if (!response.isObject() || !response["order"].isObject()) {

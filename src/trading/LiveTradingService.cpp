@@ -1613,6 +1613,11 @@ void LiveTradingService::openPositionLocked(const SignalRecord &signal,
   if (allocated_usd <= 0.0 || signal.price <= 0.0) {
     return;
   }
+  if (!exchange::coinbaseQuoteOrderMeetsMinimum(allocated_usd)) {
+    TR_LOG_DEBUG("Skipping buy entry for {}: quote size {} is below Coinbase minimum {}",
+                 signal.symbol, allocated_usd, exchange::coinbaseMinQuoteOrderUsd());
+    return;
+  }
   const double quantity = allocated_usd / signal.price;
   const double fee = signal.price * quantity * kFeeRate;
   const std::string side = sanitizeSide(signal.signal_type);
@@ -1658,6 +1663,11 @@ void LiveTradingService::addToPositionLocked(const SignalRecord &signal,
   PositionState &position = it->second;
   const double allocated_usd = positionSizeUsdForSignal(signal);
   if (allocated_usd <= 0.0 || signal.price <= 0.0) {
+    return;
+  }
+  if (!exchange::coinbaseQuoteOrderMeetsMinimum(allocated_usd)) {
+    TR_LOG_DEBUG("Skipping DCA add for {}: quote size {} is below Coinbase minimum {}",
+                 signal.symbol, allocated_usd, exchange::coinbaseMinQuoteOrderUsd());
     return;
   }
   const double quantity = allocated_usd / signal.price;

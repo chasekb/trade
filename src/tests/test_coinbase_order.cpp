@@ -44,6 +44,13 @@ int main() {
   expect_close(fill.average_filled_price, 100300.0, "average price");
   expect_close(fill.total_fees, 1.37, "actual fees");
 
+  expect_close(trade::exchange::coinbaseMinQuoteOrderUsd(), 1.0,
+               "Coinbase USD market order minimum");
+  expect(!trade::exchange::coinbaseQuoteOrderMeetsMinimum(0.9915366902674372),
+         "sub-dollar generated quote orders are skipped before Coinbase submission");
+  expect(trade::exchange::coinbaseQuoteOrderMeetsMinimum(1.0),
+         "one-dollar quote orders meet Coinbase minimum");
+
   Json::Value pending(Json::objectValue);
   pending["order"]["order_id"] = "order-456";
   pending["order"]["status"] = "OPEN";
