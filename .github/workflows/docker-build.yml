@@ -59,8 +59,11 @@ jobs:
           file: ./Dockerfile.cpp
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/cpp-backend,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=cpp-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=cpp-${{ matrix.arch }}
+          # C++ builds already compile and test successfully before image push,
+          # but gha cache export can fail afterward with BuildKit `not_found`
+          # missing-blob errors and incorrectly fail the delivery run. Keep the
+          # remote build deterministic by avoiding the external cache blob store.
+          no-cache: true
 
       - name: Export digest
         if: github.event_name != 'pull_request'
