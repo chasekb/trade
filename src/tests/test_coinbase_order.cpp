@@ -50,6 +50,10 @@ int main() {
          "sub-dollar generated quote orders are skipped before Coinbase submission");
   expect(trade::exchange::coinbaseQuoteOrderMeetsMinimum(1.0),
          "one-dollar quote orders meet Coinbase minimum");
+  expect(trade::exchange::formatCoinbaseQuoteSizeUsd(9.761472897852519) == "9.76",
+         "Coinbase quote size is formatted to USD cent precision");
+  expect(trade::exchange::formatCoinbaseQuoteSizeUsd(1.009) == "1.00",
+         "Coinbase quote size is rounded down so reserved cash is not exceeded");
 
   Json::Value pending(Json::objectValue);
   pending["order"]["order_id"] = "order-456";

@@ -22,6 +22,7 @@ struct OrderFill {
 // too-small intents that the exchange rejects.
 double coinbaseMinQuoteOrderUsd();
 bool coinbaseQuoteOrderMeetsMinimum(double quote_size_usd);
+std::string formatCoinbaseQuoteSizeUsd(double quote_size_usd);
 
 // Parse Coinbase Advanced Trade's historical-order response. Only an order
 // with a positive fill is considered complete enough for actual fee accounting.

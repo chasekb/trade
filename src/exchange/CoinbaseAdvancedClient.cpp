@@ -314,7 +314,8 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
 
   Json::Value config(Json::objectValue);
   Json::Value market(Json::objectValue);
-  market[amount_is_quote ? "quote_size" : "base_size"] = formatAmount(amount);
+  market[amount_is_quote ? "quote_size" : "base_size"] =
+      amount_is_quote ? formatCoinbaseQuoteSizeUsd(amount) : formatAmount(amount);
   config["market_market_ioc"] = market;
 
   Json::Value order(Json::objectValue);

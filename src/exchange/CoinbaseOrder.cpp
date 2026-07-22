@@ -2,6 +2,7 @@
 
 #include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <set>
 #include <string>
 #include <utility>
@@ -37,6 +38,16 @@ double coinbaseMinQuoteOrderUsd() { return kCoinbaseMinQuoteOrderUsd; }
 
 bool coinbaseQuoteOrderMeetsMinimum(double quote_size_usd) {
   return std::isfinite(quote_size_usd) && quote_size_usd >= kCoinbaseMinQuoteOrderUsd;
+}
+
+std::string formatCoinbaseQuoteSizeUsd(double quote_size_usd) {
+  if (!std::isfinite(quote_size_usd) || quote_size_usd <= 0.0) {
+    return "0.00";
+  }
+  const double cents = std::floor((quote_size_usd * 100.0) + 1e-9) / 100.0;
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "%.2f", cents);
+  return std::string(buffer);
 }
 
 bool parseOrderFill(const Json::Value &response, OrderFill &out, std::string *error) {
