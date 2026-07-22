@@ -376,6 +376,16 @@ OrderResult CoinbaseAdvancedClient::placeMarketOrder(const std::string &product_
   if (message.empty()) {
     message = error_response.get("error", Json::Value("order rejected")).asString();
   }
+  const std::string details =
+      error_response.get("error_details", Json::Value("")).asString();
+  const std::string preview_failure =
+      error_response.get("preview_failure_reason", Json::Value("")).asString();
+  if (!preview_failure.empty() && preview_failure != message) {
+    message += " (preview_failure_reason=" + preview_failure + ")";
+  }
+  if (!details.empty() && details != message) {
+    message += ": " + details;
+  }
   result.definitive_rejection =
       json.isMember("error_response") && json["error_response"].isObject();
   result.error = message;

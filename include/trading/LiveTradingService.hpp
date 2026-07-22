@@ -262,6 +262,11 @@ private:
   std::vector<OrderIntent> pending_orders_;
   std::vector<PendingLiveOrder> pending_live_orders_;
   std::set<std::string> pending_order_symbols_;
+  // Coinbase can reject product/account/order combinations definitively while
+  // returning only a generic reason. Once that happens, fail closed for the
+  // remainder of the live session instead of retrying the same rejected symbol
+  // every tick.
+  std::set<std::string> rejected_order_symbols_;
   std::map<std::string, double> account_available_quantities_;
   std::map<std::string, std::pair<double, int>> managed_quantity_floors_;
   double pending_reserved_cash_ = 0.0;
