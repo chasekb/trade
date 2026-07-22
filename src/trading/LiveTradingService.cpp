@@ -913,9 +913,6 @@ LiveTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
         std::lock_guard<std::mutex> lock(mutex_);
         pending_order_symbols_.erase(intent.product_id);
         pending_reserved_cash_ = std::max(0.0, pending_reserved_cash_ - intent.reserved_cash);
-        if (intent.action == "open" || intent.action == "add") {
-          rejected_order_symbols_.insert(intent.product_id);
-        }
       } else {
         std::lock_guard<std::mutex> lock(mutex_);
         pending_live_orders_.push_back(
@@ -1601,11 +1598,6 @@ void LiveTradingService::openPositionLocked(const SignalRecord &signal,
       pending_order_symbols_.count(signal.symbol) > 0) {
     return;
   }
-  if (rejected_order_symbols_.count(signal.symbol) > 0) {
-    TR_LOG_DEBUG("Skipping {} entry for {}: Coinbase rejected this product earlier in the session",
-                 "buy", signal.symbol);
-    return;
-  }
   const std::size_t pending_entries = std::count_if(
       pending_order_symbols_.begin(), pending_order_symbols_.end(),
       [this](const std::string &symbol) {
@@ -1660,11 +1652,6 @@ void LiveTradingService::openPositionLocked(const SignalRecord &signal,
 void LiveTradingService::addToPositionLocked(const SignalRecord &signal,
                                                   const std::string &reason) {
   if (pending_order_symbols_.count(signal.symbol) > 0) {
-    return;
-  }
-  if (rejected_order_symbols_.count(signal.symbol) > 0) {
-    TR_LOG_DEBUG("Skipping DCA add for {}: Coinbase rejected this product earlier in the session",
-                 signal.symbol);
     return;
   }
   auto it = positions_.find(signal.symbol);
@@ -2320,7 +2307,6 @@ Json::Value LiveTradingService::startSession(const Json::Value &payload) {
   pending_orders_.clear();
   pending_live_orders_.clear();
   pending_order_symbols_.clear();
-  rejected_order_symbols_.clear();
   account_available_quantities_.clear();
   managed_quantity_floors_.clear();
   last_account_snapshot_ = CoinbasePortfolioSnapshot{};

@@ -56,16 +56,6 @@ type PositionLike = {
   unrealized_pnl?: number;
 };
 
-const LIVE_UNIVERSE_SYMBOL_CAP = 10;
-const LIVE_MAJOR_PAIRS = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'ADA-USD', 'DOT-USD', 'XRP-USD', 'LTC-USD'];
-
-function prioritizeLiveUniverseSymbols(symbols: string[]): string[] {
-  const uniqueSymbols = Array.from(new Set(symbols.filter(Boolean)));
-  const majorFirst = LIVE_MAJOR_PAIRS.filter(symbol => uniqueSymbols.includes(symbol));
-  const remainder = uniqueSymbols.filter(symbol => !LIVE_MAJOR_PAIRS.includes(symbol));
-  return [...majorFirst, ...remainder].slice(0, LIVE_UNIVERSE_SYMBOL_CAP);
-}
-
 // Trading Configuration Section
 function TradingConfiguration({
   strategy,
@@ -208,8 +198,6 @@ function TradingConfiguration({
         return;
     }
     }
-
-    filteredSymbols = prioritizeLiveUniverseSymbols(filteredSymbols);
 
     // Update symbols if filtered symbols were found
     if (filteredSymbols.length > 0) {
