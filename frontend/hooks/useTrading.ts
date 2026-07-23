@@ -182,14 +182,24 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
     },
   });
 
+  const liquidateCoinbaseHoldingsMutation = useMutation({
+    mutationFn: (symbols?: string[]) => apiClient.liquidateCoinbaseHoldings(symbols),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+      queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
+      queryClient.invalidateQueries({ queryKey: ['trading-status', 'live'] });
+    },
+  });
+
   return {
     status,
     startTrading: startTradingMutation.mutateAsync,
     stopTrading: stopTradingMutation.mutateAsync,
     updateStrategyParameters: updateStrategyParamsMutation.mutateAsync,
     closePosition: closePositionMutation.mutateAsync,
-    loading: startTradingMutation.isPending || stopTradingMutation.isPending || closePositionMutation.isPending,
-    error: startTradingMutation.error || stopTradingMutation.error || closePositionMutation.error,
+    liquidateCoinbaseHoldings: liquidateCoinbaseHoldingsMutation.mutateAsync,
+    loading: startTradingMutation.isPending || stopTradingMutation.isPending || closePositionMutation.isPending || liquidateCoinbaseHoldingsMutation.isPending,
+    error: startTradingMutation.error || stopTradingMutation.error || closePositionMutation.error || liquidateCoinbaseHoldingsMutation.error,
   };
 }
 
@@ -752,6 +762,9 @@ export function useStrategyParameters() {
         { name: 'sampling_ratio', label: 'Sampling Ratio', type: 'number' as const, default: 0.1, min: 0.01, max: 1.0, step: 0.01 },
         { name: 'max_symbols_per_request', label: 'Max Symbols Per Request', type: 'number' as const, default: 1000, min: 10, max: 10000 },
         { name: 'max_universe_size', label: 'Max Universe Size', type: 'number' as const, default: 500, min: 1, max: 5000 },
+        { name: 'round_trip_fee_percent', label: 'Round-Trip Fee Hurdle (%)', type: 'number' as const, default: 1.5, min: 0, max: 5, step: 0.1 },
+        { name: 'slippage_buffer_percent', label: 'Slippage Buffer (%)', type: 'number' as const, default: 0.2, min: 0, max: 5, step: 0.1 },
+        { name: 'min_orderbook_signal_strength', label: 'Minimum Fee-Adjusted Signal Strength', type: 'number' as const, default: 0.22, min: 0, max: 1, step: 0.01 },
         { name: 'max_positions_per_session', label: 'Max Positions Per Session', type: 'number' as const, default: 100, min: 1, max: 1000 }
       ],
       'dca': [
@@ -775,7 +788,10 @@ export function useStrategyParameters() {
       large_trade_threshold: 10000,
       data_analysis_mode: 'recent',
       recent_data_limit: 50,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.6
     },
     'moderate': {
       order_book_level: 2,
@@ -785,7 +801,10 @@ export function useStrategyParameters() {
       large_trade_threshold: 5000,
       data_analysis_mode: 'recent',
       recent_data_limit: 100,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.4
     },
     'aggressive': {
       order_book_level: 2,
@@ -795,7 +814,10 @@ export function useStrategyParameters() {
       large_trade_threshold: 2000,
       data_analysis_mode: 'all',
       recent_data_limit: 200,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.22
     },
     'very-aggressive': {
       order_book_level: 2,
@@ -805,7 +827,10 @@ export function useStrategyParameters() {
       large_trade_threshold: 1000,
       data_analysis_mode: 'all',
       recent_data_limit: 500,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.15
     }
   });
 

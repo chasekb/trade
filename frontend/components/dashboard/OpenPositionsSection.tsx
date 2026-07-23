@@ -12,10 +12,25 @@ type OpenPositionRow = {
     session_managed?: boolean;
 };
 
-export function OpenPositionsSection({ positions, onClose }: { positions: OpenPositionRow[], onClose?: (symbol: string) => void }) {
+export function OpenPositionsSection({
+    positions,
+    onClose,
+    onLiquidateHolding,
+    onLiquidateAllHoldings,
+    liquidationDisabledReason,
+}: {
+    positions: OpenPositionRow[];
+    onClose?: (symbol: string) => void;
+    onLiquidateHolding?: (symbol: string) => void;
+    onLiquidateAllHoldings?: () => void;
+    liquidationDisabledReason?: string | null;
+}) {
     const [page, setPage] = useState(1);
     const [perPage, setPerPage] = useState(10);
     const [closingPosition, setClosingPosition] = useState<string | null>(null);
+    const [liquidatingPosition, setLiquidatingPosition] = useState<string | null>(null);
+    const [liquidatingAll, setLiquidatingAll] = useState(false);
+    const coinbaseHoldingCount = positions.filter((position) => position.session_managed === false).length;
 
     const handleClose = async (symbol: string) => {
         if (onClose) {
@@ -24,6 +39,28 @@ export function OpenPositionsSection({ positions, onClose }: { positions: OpenPo
                 await onClose(symbol);
             } finally {
                 setClosingPosition(null);
+            }
+        }
+    };
+
+    const handleLiquidateHolding = async (symbol: string) => {
+        if (onLiquidateHolding) {
+            setLiquidatingPosition(symbol);
+            try {
+                await onLiquidateHolding(symbol);
+            } finally {
+                setLiquidatingPosition(null);
+            }
+        }
+    };
+
+    const handleLiquidateAll = async () => {
+        if (onLiquidateAllHoldings) {
+            setLiquidatingAll(true);
+            try {
+                await onLiquidateAllHoldings();
+            } finally {
+                setLiquidatingAll(false);
             }
         }
     };
@@ -38,6 +75,17 @@ export function OpenPositionsSection({ positions, onClose }: { positions: OpenPo
             <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-gray-700">Open Positions</h4>
                 <div className="flex items-center space-x-2 text-sm">
+                    {coinbaseHoldingCount > 0 && onLiquidateAllHoldings && (
+                        <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={Boolean(liquidationDisabledReason) || liquidatingAll}
+                            title={liquidationDisabledReason || undefined}
+                            onClick={handleLiquidateAll}
+                        >
+                            {liquidatingAll ? 'Liquidating...' : `Liquidate all Coinbase holdings (${coinbaseHoldingCount})`}
+                        </Button>
+                    )}
                     <label className="text-gray-700">Show</label>
                     <select
                         value={perPage}
@@ -70,6 +118,7 @@ export function OpenPositionsSection({ positions, onClose }: { positions: OpenPo
                         {pageData.map((pos: OpenPositionRow, index: number) => {
                             const symbol = pos.symbol ?? '';
                             const canClose = (!onClose || pos.session_managed !== false) && symbol.length > 0;
+                            const canLiquidate = pos.session_managed === false && Boolean(onLiquidateHolding) && symbol.length > 0;
 
                             return (
                             <tr key={`${symbol}-${pos.entry_time}-${index}`}>
@@ -99,6 +148,16 @@ export function OpenPositionsSection({ positions, onClose }: { positions: OpenPo
                                             onClick={() => handleClose(symbol)}
                                         >
                                             {closingPosition === symbol ? 'Closing...' : 'Close'}
+                                        </Button>
+                                    ) : canLiquidate ? (
+                                        <Button
+                                            size="sm"
+                                            variant="danger"
+                                            disabled={Boolean(liquidationDisabledReason) || liquidatingPosition === symbol}
+                                            title={liquidationDisabledReason || undefined}
+                                            onClick={() => handleLiquidateHolding(symbol)}
+                                        >
+                                            {liquidatingPosition === symbol ? 'Liquidating...' : 'Liquidate holding'}
                                         </Button>
                                     ) : (
                                         <span className="text-xs text-gray-500">Coinbase holding</span>

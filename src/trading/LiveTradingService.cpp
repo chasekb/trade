@@ -34,6 +34,9 @@ namespace trading {
 
 namespace {
 constexpr double kFeeRate = 0.0005;
+constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
+constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
+constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 constexpr std::size_t kMaxRecentTrades = 100;
 constexpr std::size_t kMaxRecentSignals = 250;
 
@@ -615,6 +618,35 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
     if (position.quantity <= 1e-12) {
       positions_.erase(position_it);
     }
+  } else if (intent.action == "liquidate_holding") {
+    auto position_it = positions_.find(intent.product_id);
+    if (position_it == positions_.end()) {
+      TR_LOG_WARN("Received Coinbase liquidation fill for missing holding {}",
+                  intent.product_id);
+    } else {
+      PositionState &position = position_it->second;
+      const double closed_quantity = account_snapshot_reflects_fill
+                                         ? quantity
+                                         : std::min(quantity, position.quantity);
+      if (!account_snapshot_reflects_fill) {
+        position.quantity = std::max(0.0, position.quantity - closed_quantity);
+      }
+      position.managed_quantity = 0.0;
+      position.session_managed = false;
+      position.unrealized_pnl = 0.0;
+      position.pnl_percentage = 0.0;
+      if (position.quantity <= 1e-12) {
+        positions_.erase(position_it);
+      }
+    }
+    trade.timestamp = nowEpochSeconds();
+    trade.timestamp_iso = nowIsoUtc();
+    trade.quantity = quantity;
+    trade.pnl = 0.0;
+    trade.win_probability = 0.0;
+    trade.expected_return = 0.0;
+    trade.model_confidence = 0.0;
+    trade.trade_type = "live_liquidation";
   } else {
     auto position_it = positions_.find(intent.product_id);
     if (position_it == positions_.end()) {
@@ -1478,6 +1510,45 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
     ml_analysis["confidence"] = generated ? strength : 0.0;
     ml_analysis["model_version"] = "heuristic-fallback";
   }
+
+  if (isOrderBookStrategy(strategy_) && generated) {
+    OrderBookProfitabilityInput gate_input;
+    gate_input.signal_type = signal_type;
+    gate_input.signal_strength = strength;
+    gate_input.expected_return_fraction =
+        ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
+    gate_input.spread_fraction = mid > 0.0 ? spread / mid : 0.0;
+    gate_input.round_trip_fee_fraction =
+        paramNumber(parameters_, "round_trip_fee_percent",
+                    kDefaultOrderBookRoundTripFeeFraction * 100.0) /
+        100.0;
+    gate_input.slippage_buffer_fraction =
+        paramNumber(parameters_, "slippage_buffer_percent",
+                    kDefaultOrderBookSlippageBufferFraction * 100.0) /
+        100.0;
+    gate_input.min_signal_strength =
+        paramNumber(parameters_, "min_orderbook_signal_strength",
+                    kDefaultOrderBookMinSignalStrength);
+    const OrderBookProfitabilityGate gate =
+        evaluateOrderBookProfitabilityGate(gate_input);
+    ml_analysis["fee_adjusted_expected_return"] = gate.net_expected_return_fraction;
+    ml_analysis["required_edge"] = gate.required_edge_fraction;
+    ml_analysis["profitability_gate_passed"] = gate.passes;
+    ml_analysis["profitability_gate_reason"] = gate.reason;
+    if (!gate.passes) {
+      generated = false;
+      signal_type = "hold";
+      signal.signal_type = signal_type;
+      signal.strength = 0.0;
+      payload["signal_type"] = signal.signal_type;
+      payload["signal"] = signal.signal_type;
+      payload["signal_generated"] = false;
+      payload["signal_strength"] = signal.strength;
+      payload["signal_reason"] = gate.reason;
+      payload["data_status"] = "insufficient";
+      payload["prediction"] = "HOLD";
+    }
+  }
   ml_analysis["features_used"] = Json::arrayValue;
   ml_analysis["features_used"].append("bid_ask_imbalance");
   ml_analysis["features_used"].append("spread_percent");
@@ -1744,6 +1815,66 @@ Json::Value LiveTradingService::closePositionLocked(const std::string &symbol,
   result["status"] = "pending";
   result["message"] = "Position close submitted to Coinbase";
   result["symbol"] = symbol;
+  return result;
+}
+
+Json::Value LiveTradingService::liquidateCoinbaseHoldingLocked(const std::string &symbol) {
+  Json::Value result(Json::objectValue);
+  result["symbol"] = symbol;
+
+  auto it = positions_.find(symbol);
+  if (it == positions_.end()) {
+    result["status"] = "skipped";
+    result["reason"] = "No Coinbase holding for symbol";
+    return result;
+  }
+
+  const PositionState position = it->second;
+  if (position.session_managed) {
+    result["status"] = "skipped";
+    result["reason"] = "Position is session-managed; use close position instead";
+    return result;
+  }
+  if (pending_order_symbols_.count(symbol) > 0) {
+    result["status"] = "skipped";
+    result["reason"] = "An exchange order is already pending for this symbol";
+    return result;
+  }
+  if (!active_) {
+    result["status"] = "skipped";
+    result["reason"] = "Start live trading before liquidating Coinbase holdings";
+    return result;
+  }
+  if (!liveOrderExecutionEnabledLocked()) {
+    result["status"] = "skipped";
+    result["reason"] = "Live order execution is disabled";
+    return result;
+  }
+
+  const auto available_it = account_available_quantities_.find(symbol);
+  const double available_quantity = available_it == account_available_quantities_.end()
+                                        ? 0.0
+                                        : available_it->second;
+  const double sell_quantity = std::min(position.quantity, available_quantity);
+  if (!std::isfinite(sell_quantity) || sell_quantity <= 1e-12) {
+    result["status"] = "skipped";
+    result["reason"] = "Coinbase reports no available quantity to sell";
+    return result;
+  }
+
+  OrderIntent intent;
+  intent.product_id = symbol;
+  intent.side = "sell";
+  intent.amount = sell_quantity;
+  intent.amount_is_quote = false;
+  intent.reason = "Liquidate Coinbase holding";
+  intent.action = "liquidate_holding";
+  intent.position = position;
+  queueOrderIntentLocked(std::move(intent));
+
+  result["status"] = "pending";
+  result["message"] = "Coinbase holding liquidation submitted";
+  result["quantity"] = sell_quantity;
   return result;
 }
 
@@ -2549,6 +2680,99 @@ Json::Value LiveTradingService::submitLiveOrder(const Json::Value &payload) {
   result["message"] = "Order queued for Coinbase submission";
   result["symbol"] = symbol;
   result["side"] = side;
+  return result;
+}
+
+Json::Value LiveTradingService::liquidateCoinbaseHoldings(const Json::Value &payload) {
+  Json::Value result(Json::objectValue);
+  Json::Value items(Json::arrayValue);
+  PendingWrites writes;
+  std::vector<OrderIntent> orders;
+  {
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!active_ || worker_finished_) {
+      result["status"] = "error";
+      result["error"] = "An active live session is required";
+      result["results"] = items;
+      return result;
+    }
+    if (!liveOrderExecutionEnabledLocked()) {
+      result["status"] = "error";
+      result["error"] = "Live order execution is disabled";
+      result["results"] = items;
+      return result;
+    }
+
+    std::vector<std::string> symbols;
+    if (payload.isMember("symbol") && payload["symbol"].isString()) {
+      symbols.push_back(payload["symbol"].asString());
+    }
+    if (payload.isMember("symbols") && payload["symbols"].isArray()) {
+      for (const auto &symbol : payload["symbols"]) {
+        if (symbol.isString()) {
+          symbols.push_back(symbol.asString());
+        }
+      }
+    }
+    if (symbols.empty()) {
+      for (const auto &[symbol, position] : positions_) {
+        if (!position.session_managed) {
+          symbols.push_back(symbol);
+        }
+      }
+    }
+    std::sort(symbols.begin(), symbols.end());
+    symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
+
+    for (const auto &symbol : symbols) {
+      if (symbol.empty()) {
+        continue;
+      }
+      items.append(liquidateCoinbaseHoldingLocked(symbol));
+    }
+    writes = takePendingWritesLocked();
+    orders = takePendingOrdersLocked();
+  }
+
+  flushWrites(std::move(writes));
+  const std::size_t queued_count = orders.size();
+  const OrderDispatchResult dispatch_result = dispatchOrders(std::move(orders));
+
+  int pending_count = 0;
+  int skipped_count = 0;
+  for (Json::ArrayIndex i = 0; i < items.size(); ++i) {
+    const std::string status = items[i].get("status", Json::Value("")).asString();
+    if (status == "pending") {
+      ++pending_count;
+    } else if (status == "skipped") {
+      ++skipped_count;
+    }
+  }
+  if (queued_count > 0 && !dispatch_result.accepted) {
+    result["status"] = "error";
+    result["error"] = dispatch_result.attempted
+                            ? dispatch_result.error
+                            : "Holding liquidation was not submitted because trading stopped";
+  } else if (queued_count > 0 && !dispatch_result.error.empty()) {
+    result["status"] = "partial";
+    result["message"] = "Some Coinbase holding liquidation orders were submitted; at least one failed";
+    result["error"] = dispatch_result.error;
+  } else {
+    result["status"] = pending_count > 0 ? "pending" : "skipped";
+    result["message"] = pending_count > 0
+                            ? "Coinbase holding liquidation orders submitted"
+                            : "No Coinbase-only holdings were eligible for liquidation";
+  }
+  result["pending_count"] = pending_count;
+  result["skipped_count"] = skipped_count;
+  result["results"] = items;
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    writes = takePendingWritesLocked();
+  }
+  flushWrites(std::move(writes));
   return result;
 }
 

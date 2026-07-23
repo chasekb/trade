@@ -65,4 +65,23 @@ describe('buildStartTradingPayload', () => {
     expect(payload.capital).toBeUndefined();
     expect(payload.parameters.live_order_execution).toBe(true);
   });
+
+  it('passes fee-aware order-book profitability controls through live parameters', () => {
+    const payload = buildStartTradingPayload(
+      'orderbook',
+      ['ADA-USD'],
+      {
+        initial_portfolio_size: 10000,
+        round_trip_fee_percent: 1.5,
+        slippage_buffer_percent: 0.2,
+        min_orderbook_signal_strength: 0.4,
+      },
+      {},
+      'live',
+    );
+
+    expect(payload.parameters.round_trip_fee_percent).toBe(1.5);
+    expect(payload.parameters.slippage_buffer_percent).toBe(0.2);
+    expect(payload.parameters.min_orderbook_signal_strength).toBe(0.4);
+  });
 });

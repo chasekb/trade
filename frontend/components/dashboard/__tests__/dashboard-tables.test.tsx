@@ -44,6 +44,37 @@ describe('trade dashboard tables', () => {
     expect(within(row).getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 
+  it('renders explicit liquidation controls for Coinbase-only holdings', () => {
+    const liquidateHolding = jest.fn();
+    const liquidateAll = jest.fn();
+
+    render(
+      <OpenPositionsSection
+        positions={[
+          {
+            symbol: 'ADA-USD',
+            side: 'long',
+            quantity: 25,
+            entry_price: 0.5,
+            current_price: 0.51,
+            unrealized_pnl: 0,
+            entry_time: '2026-07-06T12:00:00Z',
+            session_managed: false,
+          },
+        ]}
+        onClose={jest.fn()}
+        onLiquidateHolding={liquidateHolding}
+        onLiquidateAllHoldings={liquidateAll}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Liquidate holding' }));
+    expect(liquidateHolding).toHaveBeenCalledWith('ADA-USD');
+
+    fireEvent.click(screen.getByRole('button', { name: /Liquidate all Coinbase holdings/ }));
+    expect(liquidateAll).toHaveBeenCalled();
+  });
+
   it('renders recent trades values and optional fees column', () => {
     render(
       <RecentTradesTable
@@ -101,6 +132,9 @@ describe('trade dashboard tables', () => {
               ml_enabled: true,
               win_probability: 0.67,
               expected_return: 0.045,
+              fee_adjusted_expected_return: 0.028,
+              required_edge: 0.017,
+              profitability_gate_reason: 'Expected edge exceeds fee/spread/slippage hurdle',
               confidence: 0.82,
               model_version: 'v1.2.3',
               prediction_timestamp: '2026-07-06T12:44:59Z',
@@ -135,10 +169,13 @@ describe('trade dashboard tables', () => {
     expect(within(row).getByText('1234.56')).toBeInTheDocument();
     expect(within(row).getByText('Win Probability: 67.00%')).toBeInTheDocument();
     expect(within(row).getByText('Expected Return: 4.50%')).toBeInTheDocument();
+    expect(within(row).getByText('Fee-Adjusted Edge: 2.80%')).toBeInTheDocument();
+    expect(within(row).getByText('Required Edge: 1.70%')).toBeInTheDocument();
 
     fireEvent.click(within(row).getByRole('button', { name: /Details/i }));
     expect(alertSpy).toHaveBeenCalled();
     expect(String(alertSpy.mock.calls[0][0])).toContain('Confidence: 82.00%');
+    expect(String(alertSpy.mock.calls[0][0])).toContain('Profitability Gate: Expected edge exceeds fee/spread/slippage hurdle');
 
     alertSpy.mockRestore();
   });

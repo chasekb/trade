@@ -1257,6 +1257,19 @@ void PredictController::closeLivePosition(
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 
+void PredictController::liquidateLiveHoldings(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  auto json_req = req->getJsonObject();
+  Json::Value payload = json_req ? *json_req : Json::Value(Json::objectValue);
+  if (!payload.isObject()) {
+    payload = Json::Value(Json::objectValue);
+  }
+  Json::Value response =
+      trade::trading::LiveTradingService::getInstance().liquidateCoinbaseHoldings(payload);
+  callback(HttpResponse::newHttpJsonResponse(response));
+}
+
 void PredictController::startLiveTrading(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {

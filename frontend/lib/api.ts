@@ -823,6 +823,35 @@ class ApiClient {
     }));
   }
 
+  async liquidateCoinbaseHoldings(symbols?: string[]): Promise<ApiResponse<{
+    message?: string;
+    pending_count?: number;
+    skipped_count?: number;
+    results?: Array<Record<string, unknown>>;
+  }>> {
+    return fetch(`${API_BASE_URL}/api/trading/live/liquidate-holdings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(symbols && symbols.length > 0 ? { symbols } : {}),
+    }).then(async (response) => {
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        return {
+          status: 'error',
+          error: errorData.error || `HTTP ${response.status}`,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      return response.json();
+    }).catch(error => ({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
   // Simulated Trading Status
   async getSimulatedTradingStatus(): Promise<ApiResponse<any>> {
     if (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active) {

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <sstream>
 
 namespace trade {
 namespace trading {
@@ -299,6 +300,44 @@ StrategySignalOutcome evaluateStrategySignal(const std::string &strategy,
 
   outcome.reason = "Unknown strategy: " + strategy;
   return outcome;
+}
+
+OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
+    const OrderBookProfitabilityInput &input) {
+  OrderBookProfitabilityGate gate;
+  gate.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
+                                std::max(0.0, input.spread_fraction) +
+                                std::max(0.0, input.slippage_buffer_fraction);
+  double expected_edge = 0.0;
+  if (input.signal_type == "buy") {
+    expected_edge = input.expected_return_fraction;
+  } else if (input.signal_type == "sell") {
+    expected_edge = -input.expected_return_fraction;
+  }
+  gate.net_expected_return_fraction = expected_edge - gate.required_edge_fraction;
+
+  if (input.signal_type == "hold") {
+    gate.reason = "Order book signal is hold";
+    return gate;
+  }
+  if (input.signal_strength < input.min_signal_strength) {
+    std::ostringstream oss;
+    oss << "Signal strength " << input.signal_strength << " below minimum "
+        << input.min_signal_strength;
+    gate.reason = oss.str();
+    return gate;
+  }
+  if (gate.net_expected_return_fraction < 0.0) {
+    std::ostringstream oss;
+    oss << "Expected edge " << expected_edge
+        << " below fee/spread/slippage hurdle " << gate.required_edge_fraction;
+    gate.reason = oss.str();
+    return gate;
+  }
+
+  gate.passes = true;
+  gate.reason = "Expected edge exceeds fee/spread/slippage hurdle";
+  return gate;
 }
 
 } // namespace trading

@@ -49,7 +49,9 @@ type TradeLike = {
 };
 
 type PositionLike = {
+  symbol?: string;
   status?: string;
+  session_managed?: boolean;
   asset?: string;
   balance_crypto?: number;
   balance_fiat?: number;
@@ -343,7 +345,7 @@ function TradingConfiguration({
 // portfolio tiles prefer the real Coinbase account portfolio when configured.
 function LiveTradingStatistics() {
   const queryClient = useQueryClient();
-  const { closePosition } = useLiveTrading('live');
+  const { closePosition, liquidateCoinbaseHoldings } = useLiveTrading('live');
   const { data: portfolioData, isLoading: portfolioLoading, error: portfolioError } = useLiveTabProducer(true);
   const sessionData = portfolioData;
 
@@ -358,6 +360,22 @@ function LiveTradingStatistics() {
       await closePosition(symbol);
     } catch (error) {
       console.error('Failed to close position:', error);
+    }
+  };
+
+  const handleLiquidateHoldings = async (symbols?: string[]) => {
+    const target = symbols && symbols.length === 1 ? symbols[0] : 'all Coinbase holdings';
+    const confirmed = window.confirm(
+      `This will submit real Coinbase sell orders to liquidate ${target}. Continue?`
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await liquidateCoinbaseHoldings(symbols);
+      handleRefresh();
+    } catch (error) {
+      console.error('Failed to liquidate Coinbase holdings:', error);
     }
   };
 
@@ -392,6 +410,9 @@ function LiveTradingStatistics() {
   const coinbasePositions = liveProducer.positions as PositionLike[];
   const openPositions = coinbasePositions;
   const activePositions = coinbasePositions.length;
+  const liquidationDisabledReason = liveProducer.canTrade
+    ? null
+    : firstLiveTabProducerBlocker(liveProducer) || 'Live trading and explicit Coinbase order execution are required.';
 
   const profitFactor = Number(statsView.profit_factor);
   const formattedProfitFactor = profitFactor >= 999 ? '∞' : profitFactor.toFixed(2);
@@ -534,6 +555,9 @@ function LiveTradingStatistics() {
           <OpenPositionsSection
             positions={openPositions}
             onClose={handleClosePosition}
+            onLiquidateHolding={(symbol) => handleLiquidateHoldings([symbol])}
+            onLiquidateAllHoldings={() => handleLiquidateHoldings()}
+            liquidationDisabledReason={liquidationDisabledReason}
           />
         )}
 

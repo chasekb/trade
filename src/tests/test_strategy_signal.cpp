@@ -6,6 +6,8 @@
 #include <string>
 
 using trade::trading::evaluateStrategySignal;
+using trade::trading::evaluateOrderBookProfitabilityGate;
+using trade::trading::OrderBookProfitabilityInput;
 using trade::trading::StrategyParams;
 using trade::trading::StrategySignalOutcome;
 
@@ -130,6 +132,36 @@ int main() {
   // unknown strategies never trade.
   expectSignal(evaluateStrategySignal("mystery", linearSeries(100.0, 1.0, 50), params, false, 0),
                "hold", "unknown strategy holds");
+
+  // order-book live entries must clear a fee/spread/slippage hurdle before
+  // they are eligible for real Coinbase execution.
+  {
+    OrderBookProfitabilityInput gate_input;
+    gate_input.signal_type = "buy";
+    gate_input.signal_strength = 0.8;
+    gate_input.expected_return_fraction = 0.020;
+    gate_input.spread_fraction = 0.001;
+    gate_input.round_trip_fee_fraction = 0.010;
+    gate_input.slippage_buffer_fraction = 0.002;
+    const auto passing = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(passing.passes, "order-book gate passes fee-adjusted edge");
+    expect(passing.net_expected_return_fraction > 0.0,
+           "order-book gate reports positive net edge");
+
+    gate_input.expected_return_fraction = 0.005;
+    const auto failing = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!failing.passes, "order-book gate blocks fee-negative edge");
+    expect(failing.reason.find("fee/spread/slippage") != std::string::npos,
+           "order-book gate explains fee hurdle");
+
+    gate_input.expected_return_fraction = -0.050;
+    const auto negative_buy = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!negative_buy.passes, "order-book gate blocks negative expected return buys");
+
+    gate_input.signal_type = "sell";
+    const auto favorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(favorable_sell.passes, "order-book gate treats negative expected return as favorable for sells");
+  }
 
   if (failures > 0) {
     std::cerr << failures << " strategy signal expectation(s) failed" << std::endl;

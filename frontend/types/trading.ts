@@ -95,6 +95,10 @@ export interface OrderBookSignal {
     ml_enabled: boolean;
     win_probability: number;
     expected_return: number;
+    fee_adjusted_expected_return?: number;
+    required_edge?: number;
+    profitability_gate_passed?: boolean;
+    profitability_gate_reason?: string;
     confidence: number;
     model_version: string;
     features_used?: string[];

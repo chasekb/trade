@@ -43,6 +43,23 @@ struct StrategySignalOutcome {
   std::string reason;
 };
 
+struct OrderBookProfitabilityInput {
+  std::string signal_type = "hold";
+  double signal_strength = 0.0;
+  double expected_return_fraction = 0.0;
+  double spread_fraction = 0.0;
+  double round_trip_fee_fraction = 0.015;
+  double slippage_buffer_fraction = 0.002;
+  double min_signal_strength = 0.22;
+};
+
+struct OrderBookProfitabilityGate {
+  bool passes = false;
+  double net_expected_return_fraction = 0.0;
+  double required_edge_fraction = 0.0;
+  std::string reason;
+};
+
 // Evaluates the indicator-family strategies (sma, ema, rsi, bollinger, macd,
 // stochastic, fibonacci, dca, buyandhold) over a price history ordered oldest
 // to newest (last element = current price). Order-book strategies are handled
@@ -53,6 +70,9 @@ StrategySignalOutcome evaluateStrategySignal(const std::string &strategy,
                                              const StrategyParams &params,
                                              bool has_position,
                                              long long ticks_since_last_entry);
+
+OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
+    const OrderBookProfitabilityInput &input);
 
 } // namespace trading
 } // namespace trade

@@ -34,6 +34,7 @@ public:
   ADD_METHOD_TO(PredictController::livePortfolioStatus, "/api/live-portfolio/status", Get);
   ADD_METHOD_TO(PredictController::livePortfolioPositions, "/api/trading/live/positions", Get);
   ADD_METHOD_TO(PredictController::closeLivePosition, "/api/trading/live/close-position", Post);
+  ADD_METHOD_TO(PredictController::liquidateLiveHoldings, "/api/trading/live/liquidate-holdings", Post);
   ADD_METHOD_TO(PredictController::startLiveTrading, "/api/trading/live/start", Post);
   ADD_METHOD_TO(PredictController::stopLiveTrading, "/api/trading/live/stop", Post);
   ADD_METHOD_TO(PredictController::liveTradingStatus, "/api/trading/live/status", Get);
@@ -87,6 +88,8 @@ public:
                               std::function<void(const HttpResponsePtr &)> &&callback);
   void closeLivePosition(const HttpRequestPtr &req,
                          std::function<void(const HttpResponsePtr &)> &&callback);
+  void liquidateLiveHoldings(const HttpRequestPtr &req,
+                             std::function<void(const HttpResponsePtr &)> &&callback);
   void startLiveTrading(const HttpRequestPtr &req,
                         std::function<void(const HttpResponsePtr &)> &&callback);
   void stopLiveTrading(const HttpRequestPtr &req,

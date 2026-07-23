@@ -34,6 +34,7 @@ public:
   Json::Value refreshLivePortfolioStatus();
   Json::Value refreshLiveTabProducerStatus();
   Json::Value submitLiveOrder(const Json::Value &payload);
+  Json::Value liquidateCoinbaseHoldings(const Json::Value &payload);
   Json::Value getOrderBookSignals(const std::vector<std::string> &symbols,
                                   int page,
                                   int per_page);
@@ -205,6 +206,7 @@ private:
   void openPositionLocked(const SignalRecord &signal, const std::string &reason);
   void addToPositionLocked(const SignalRecord &signal, const std::string &reason);
   Json::Value closePositionLocked(const std::string &symbol, const std::string &reason);
+  Json::Value liquidateCoinbaseHoldingLocked(const std::string &symbol);
   void updateMarkToMarketLocked(const std::map<std::string, double> &prices);
 
   double positionSizeUsdForSignal(const SignalRecord &signal) const;
