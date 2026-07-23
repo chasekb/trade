@@ -372,10 +372,18 @@ function LiveTradingStatistics() {
       return;
     }
     try {
-      await liquidateCoinbaseHoldings(symbols);
+      const response = await liquidateCoinbaseHoldings(symbols) as {
+        status?: string;
+        error?: string;
+        message?: string;
+      };
+      if (response?.status === 'error' || response?.status === 'partial') {
+        throw new Error(response.error || response.message || 'Coinbase holding liquidation did not complete cleanly');
+      }
       handleRefresh();
     } catch (error) {
       console.error('Failed to liquidate Coinbase holdings:', error);
+      window.alert(error instanceof Error ? error.message : 'Failed to liquidate Coinbase holdings');
     }
   };
 
