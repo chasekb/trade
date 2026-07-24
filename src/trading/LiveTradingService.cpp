@@ -15,6 +15,7 @@
 #include "utils/Logger.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -129,6 +130,11 @@ constexpr std::size_t kMaxLiveQuoteSymbols = 10;
 
 bool isOrderBookStrategy(const std::string &strategy) {
   return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
+}
+
+bool isInsufficientDataReason(const std::string &reason) {
+  return reason.find("insufficient price history") != std::string::npos ||
+         reason.find("warming up") != std::string::npos;
 }
 
 bool coinbaseCredentialsConfigured() {
@@ -443,7 +449,7 @@ Json::Value LiveTradingService::signalToJson(const SignalRecord &signal) const {
   out["timestamp"] = signal.timestamp_iso;
   const Json::Value signal_reason = signal.payload.get("signal_reason", Json::Value(""));
   out["signal_reason"] = signal_reason.asString();
-  out["data_status"] = signal.signal_type == "hold" ? "insufficient" : "sufficient";
+  out["data_status"] = signal.payload.get("data_status", Json::Value("sufficient")).asString();
   out["spread"] = signal.spread;
   out["volume"] = signal.volume;
   out["buy_volume"] = signal.payload.get("buy_volume", Json::Value(0.0)).asDouble();
@@ -1415,13 +1421,14 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
   payload["signal_strength"] = signal.strength;
   payload["price"] = signal.price;
   payload["timestamp"] = signal.timestamp_iso;
-  payload["signal_reason"] =
+  const std::string signal_reason =
       !strategy_reason.empty()
           ? strategy_reason
           : (generated ? (signal.signal_type == "buy" ? "Order book imbalance favors upside"
                                                       : "Order book imbalance favors downside")
                        : "Signal below activity threshold");
-  payload["data_status"] = generated ? "sufficient" : "insufficient";
+  payload["signal_reason"] = signal_reason;
+  payload["data_status"] = isInsufficientDataReason(signal_reason) ? "insufficient" : "sufficient";
   payload["spread"] = signal.spread;
   payload["volume"] = signal.volume;
   payload["buy_volume"] = signal_type == "buy" ? signal.volume * (0.55 + strength * 0.25) : signal.volume * 0.4;
@@ -1545,7 +1552,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
       payload["signal_generated"] = false;
       payload["signal_strength"] = signal.strength;
       payload["signal_reason"] = gate.reason;
-      payload["data_status"] = "insufficient";
+      payload["data_status"] = "sufficient";
       payload["prediction"] = "HOLD";
     }
   }
@@ -1859,6 +1866,18 @@ Json::Value LiveTradingService::liquidateCoinbaseHoldingLocked(const std::string
   if (!std::isfinite(sell_quantity) || sell_quantity <= 1e-12) {
     result["status"] = "skipped";
     result["reason"] = "Coinbase reports no available quantity to sell";
+    return result;
+  }
+
+  const double reference_price = position.current_price > 0.0 ? position.current_price : position.entry_price;
+  const double estimated_notional = sell_quantity * reference_price;
+  if (!std::isfinite(estimated_notional) ||
+      !exchange::coinbaseQuoteOrderMeetsMinimum(estimated_notional)) {
+    result["status"] = "skipped";
+    result["reason"] = "Coinbase holding notional is below minimum market order size";
+    result["quantity"] = sell_quantity;
+    result["estimated_notional"] = std::isfinite(estimated_notional) ? estimated_notional : 0.0;
+    result["minimum_notional"] = exchange::coinbaseMinQuoteOrderUsd();
     return result;
   }
 
@@ -2924,7 +2943,12 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
       signal["strength"] = signal["signal_strength"];
       signal["price"] = row["price"].is_null() ? 0.0 : std::stod(row["price"].c_str());
       signal["timestamp"] = row["timestamp"].is_null() ? "" : epochSecondsToIso(row["timestamp"].as<long long>());
-      signal["data_status"] = signal["signal_generated"].asBool() ? "sufficient" : "insufficient";
+      if (!signal.isMember("data_status")) {
+        const std::string signal_reason =
+            signal.get("signal_reason", Json::Value("")).asString();
+        signal["data_status"] =
+            isInsufficientDataReason(signal_reason) ? "insufficient" : "sufficient";
+      }
       signal["spread"] = row["spread"].is_null() ? 0.0 : std::stod(row["spread"].c_str());
       signal["volume"] = row["volume"].is_null() ? 0.0 : std::stod(row["volume"].c_str());
       signal["active_signals"] = signal["signal_generated"].asBool() ? 1 : 0;

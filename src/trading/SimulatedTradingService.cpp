@@ -115,6 +115,11 @@ bool isOrderBookStrategy(const std::string &strategy) {
   return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
 }
 
+bool isInsufficientDataReason(const std::string &reason) {
+  return reason.find("insufficient price history") != std::string::npos ||
+         reason.find("warming up") != std::string::npos;
+}
+
 // Form inputs may deliver numbers as strings; read either representation.
 double paramNumber(const Json::Value &params, const char *key, double fallback) {
   if (!params.isMember(key)) {
@@ -422,7 +427,7 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   out["timestamp"] = signal.timestamp_iso;
   const Json::Value signal_reason = signal.payload.get("signal_reason", Json::Value(""));
   out["signal_reason"] = signal_reason.asString();
-  out["data_status"] = signal.signal_type == "hold" ? "insufficient" : "sufficient";
+  out["data_status"] = signal.payload.get("data_status", Json::Value("sufficient")).asString();
   out["spread"] = signal.spread;
   out["volume"] = signal.volume;
   out["buy_volume"] = signal.payload.get("buy_volume", Json::Value(0.0)).asDouble();
@@ -972,13 +977,14 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   payload["signal_strength"] = signal.strength;
   payload["price"] = signal.price;
   payload["timestamp"] = signal.timestamp_iso;
-  payload["signal_reason"] =
+  const std::string signal_reason =
       !strategy_reason.empty()
           ? strategy_reason
           : (generated ? (signal.signal_type == "buy" ? "Order book imbalance favors upside"
                                                       : "Order book imbalance favors downside")
                        : "Signal below activity threshold");
-  payload["data_status"] = generated ? "sufficient" : "insufficient";
+  payload["signal_reason"] = signal_reason;
+  payload["data_status"] = isInsufficientDataReason(signal_reason) ? "insufficient" : "sufficient";
   payload["spread"] = signal.spread;
   payload["volume"] = signal.volume;
   payload["buy_volume"] = signal_type == "buy" ? signal.volume * (0.55 + strength * 0.25) : signal.volume * 0.4;
@@ -2123,7 +2129,12 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
       signal["strength"] = signal["signal_strength"];
       signal["price"] = row["price"].is_null() ? 0.0 : std::stod(row["price"].c_str());
       signal["timestamp"] = row["timestamp"].is_null() ? "" : epochSecondsToIso(row["timestamp"].as<long long>());
-      signal["data_status"] = signal["signal_generated"].asBool() ? "sufficient" : "insufficient";
+      if (!signal.isMember("data_status")) {
+        const std::string signal_reason =
+            signal.get("signal_reason", Json::Value("")).asString();
+        signal["data_status"] =
+            isInsufficientDataReason(signal_reason) ? "insufficient" : "sufficient";
+      }
       signal["spread"] = row["spread"].is_null() ? 0.0 : std::stod(row["spread"].c_str());
       signal["volume"] = row["volume"].is_null() ? 0.0 : std::stod(row["volume"].c_str());
       signal["active_signals"] = signal["signal_generated"].asBool() ? 1 : 0;
