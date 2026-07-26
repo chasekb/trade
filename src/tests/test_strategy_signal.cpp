@@ -161,6 +161,22 @@ int main() {
     gate_input.signal_type = "sell";
     const auto favorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
     expect(favorable_sell.passes, "order-book gate treats negative expected return as favorable for sells");
+
+    // Regression coverage for the live order-book heuristic fallback: the old
+    // 1.2% maximum edge could never clear the default 1.7%+ fee/spread/slippage
+    // hurdle, so every fallback signal was downgraded to hold in the Live
+    // Trading tab. A strong imbalance at the new 2.4% scale is actionable.
+    gate_input.signal_type = "buy";
+    gate_input.signal_strength = 0.92;
+    gate_input.spread_fraction = 0.0;
+    gate_input.round_trip_fee_fraction = 0.015;
+    gate_input.slippage_buffer_fraction = 0.002;
+    gate_input.expected_return_fraction = 0.012 * 0.92;
+    const auto old_scale = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!old_scale.passes, "old live order-book fallback scale remains below default hurdle");
+    gate_input.expected_return_fraction = 0.024 * 0.92;
+    const auto new_scale = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(new_scale.passes, "new live order-book fallback scale clears default hurdle for strong signals");
   }
 
   if (failures > 0) {

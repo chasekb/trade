@@ -38,6 +38,12 @@ constexpr double kFeeRate = 0.0005;
 constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
 constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
 constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
+// Heuristic fallback must be able to clear the default fee/spread/slippage
+// hurdle for strong live order-book imbalances. The old 1.2% maximum edge was
+// always below the default 1.7%+ hurdle, so every fallback signal was converted
+// back to HOLD and the Live Trading tab could never produce actionable entries
+// unless a regressor/transformer model was loaded.
+constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kMaxRecentTrades = 100;
 constexpr std::size_t kMaxRecentSignals = 250;
 
@@ -1513,7 +1519,16 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
   if (!used_model) {
     ml_analysis["ml_enabled"] = strategy_ == "ml_enhanced_orderbook";
     ml_analysis["win_probability"] = std::clamp(0.5 + (generated ? (imbalance * 0.2) : 0.0), 0.0, 1.0);
-    ml_analysis["expected_return"] = generated ? (imbalance * 0.012) : 0.0;
+    const double fallback_edge_scale_percent =
+        paramNumber(parameters_, "orderbook_expected_return_scale_percent",
+                    kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0);
+    const double fallback_edge_scale =
+        std::clamp(std::isfinite(fallback_edge_scale_percent)
+                       ? fallback_edge_scale_percent
+                       : kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0,
+                   0.0, 5.0) /
+        100.0;
+    ml_analysis["expected_return"] = generated ? (imbalance * fallback_edge_scale) : 0.0;
     ml_analysis["confidence"] = generated ? strength : 0.0;
     ml_analysis["model_version"] = "heuristic-fallback";
   }
