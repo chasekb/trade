@@ -33,6 +33,7 @@ set(SOURCES
     src/ml/Types.cpp
     src/ml/DataCollector.cpp
     src/ml/ExecutionCohorts.cpp
+    src/ml/TrainingValidation.cpp
     src/ml/ModelTrainer.cpp
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
@@ -115,6 +116,23 @@ if(xtensor_INCLUDE_DIRS)
 endif()
 add_test(NAME execution_cohorts COMMAND test_execution_cohorts)
 
+add_executable(test_training_validation
+    src/tests/test_training_validation.cpp
+    src/ml/TrainingValidation.cpp
+    src/ml/Metrics.cpp
+    src/ml/ExecutionCohorts.cpp
+)
+target_include_directories(test_training_validation PRIVATE include)
+target_link_libraries(test_training_validation PRIVATE
+    nlohmann_json::nlohmann_json
+    libpqxx::pqxx
+    xtensor
+)
+if(xtensor_INCLUDE_DIRS)
+    target_include_directories(test_training_validation PRIVATE ${xtensor_INCLUDE_DIRS})
+endif()
+add_test(NAME training_validation COMMAND test_training_validation)
+
 add_executable(test_position_sizing_policy
     src/tests/test_position_sizing_policy.cpp
     src/trading/PositionSizingPolicy.cpp
@@ -178,6 +196,7 @@ add_executable(test_transformer_onnx_export
     src/tests/test_transformer_onnx_export.cpp
     src/ml/DataCollector.cpp
     src/ml/ExecutionCohorts.cpp
+    src/ml/TrainingValidation.cpp
     src/ml/Metrics.cpp
     src/ml/ModelTrainer.cpp
     src/ml/TransformerOnnxExport.cpp

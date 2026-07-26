@@ -83,5 +83,55 @@ double calculate_position_size_usd(const PositionSizingInputs &inputs) {
   return base_usd * std::min(1.0, derive_position_size_multiplier(inputs));
 }
 
+double expected_net_pnl_usd(double notional_usd, const MinimumTradeSizeInputs &inputs) {
+  const double notional = std::max(0.0, notional_usd);
+  const double required_edge = std::max(0.0, inputs.round_trip_fee_fraction) +
+                               std::max(0.0, inputs.slippage_buffer_fraction) +
+                               std::max(0.0, inputs.spread_fraction);
+  return notional * (inputs.expected_return_fraction - required_edge);
+}
+
+MinimumTradeSizeDecision minimum_trade_size_decision(const MinimumTradeSizeInputs &inputs) {
+  MinimumTradeSizeDecision decision;
+  decision.required_edge_fraction = std::max(0.0, inputs.round_trip_fee_fraction) +
+                                    std::max(0.0, inputs.slippage_buffer_fraction) +
+                                    std::max(0.0, inputs.spread_fraction);
+
+  const double cap = std::max(0.0, inputs.configured_max_notional_usd);
+  const double price = std::max(0.0, inputs.price);
+  if (cap <= 0.0 || price <= 0.0) {
+    return decision;
+  }
+
+  const double edge = inputs.expected_return_fraction - decision.required_edge_fraction;
+  if (inputs.allow_unprofitable_trades) {
+    decision.notional_usd = cap;
+    decision.quantity = cap / price;
+    decision.expected_net_pnl_usd = expected_net_pnl_usd(cap, inputs);
+    decision.should_trade = true;
+    return decision;
+  }
+  if (edge <= 0.0) {
+    decision.expected_net_pnl_usd = expected_net_pnl_usd(cap, inputs);
+    return decision;
+  }
+
+  const double minimum_notional = std::max(0.0, inputs.minimum_net_pnl_usd) / edge;
+  const double desired_notional = std::max(minimum_notional, 0.0);
+  if (desired_notional > cap) {
+    decision.notional_usd = cap;
+    decision.expected_net_pnl_usd = expected_net_pnl_usd(cap, inputs);
+    decision.should_trade = decision.expected_net_pnl_usd >= std::max(0.0, inputs.minimum_net_pnl_usd);
+    decision.quantity = decision.should_trade ? cap / price : 0.0;
+    return decision;
+  }
+
+  decision.notional_usd = desired_notional > 0.0 ? desired_notional : cap;
+  decision.quantity = decision.notional_usd / price;
+  decision.expected_net_pnl_usd = expected_net_pnl_usd(decision.notional_usd, inputs);
+  decision.should_trade = decision.expected_net_pnl_usd >= std::max(0.0, inputs.minimum_net_pnl_usd);
+  return decision;
+}
+
 } // namespace trading
 } // namespace trade

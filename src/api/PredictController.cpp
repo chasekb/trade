@@ -799,12 +799,17 @@ void PredictController::train(
           });
 
       if (artifacts_valid) {
+        nlohmann::json metrics_json;
+        trade::ml::to_json(metrics_json, metrics);
         nlohmann::json metadata = {
             {"model_id", model_id},
             {"model_name", config.model_name},
             {"version_id", version_id},
             {"type", model_type_to_string(config.type)},
             {"trained_at", trained_at},
+            {"validation_strategy", metrics.validation_strategy},
+            {"feature_set_version", metrics.feature_set_version},
+            {"metrics", metrics_json},
             {"artifacts_valid", artifacts_valid},
             {"required_artifacts", metadata_required_artifacts},
             {"artifacts", {{"regressor", has_regressor},

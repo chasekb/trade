@@ -84,4 +84,29 @@ describe('buildStartTradingPayload', () => {
     expect(payload.parameters.slippage_buffer_percent).toBe(0.2);
     expect(payload.parameters.min_orderbook_signal_strength).toBe(0.4);
   });
+
+  it('passes ML-enhanced order-book risk caps and profitability controls through live parameters', () => {
+    const payload = buildStartTradingPayload(
+      'ml_enhanced_orderbook',
+      ['BTC-USD'],
+      {
+        max_positions_per_session: 12,
+        round_trip_fee_percent: 1.5,
+        slippage_buffer_percent: 0.2,
+        bid_ask_spread_threshold: 0.15,
+        min_orderbook_signal_strength: 0.35,
+        minimum_net_pnl_usd: 0.5,
+      },
+      { max_positions: 12 },
+      'live',
+    );
+
+    expect(payload.max_positions).toBe(12);
+    expect(payload.parameters.max_positions_per_session).toBe(12);
+    expect(payload.parameters.round_trip_fee_percent).toBe(1.5);
+    expect(payload.parameters.slippage_buffer_percent).toBe(0.2);
+    expect(payload.parameters.bid_ask_spread_threshold).toBe(0.15);
+    expect(payload.parameters.min_orderbook_signal_strength).toBe(0.35);
+    expect(payload.parameters.minimum_net_pnl_usd).toBe(0.5);
+  });
 });

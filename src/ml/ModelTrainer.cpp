@@ -1,6 +1,7 @@
 #include "ml/ModelTrainer.hpp"
 #include "ml/Metrics.hpp"
 #include "ml/ExecutionCohorts.hpp"
+#include "ml/TrainingValidation.hpp"
 #include "ml/TransformerOnnxExport.hpp"
 #include "ml/TransformerModel.hpp"
 #include <algorithm>
@@ -189,6 +190,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
 
       finalize_trading_metrics(pnl_stats);
       metrics.validation_strategy = "streaming_batch";
+      metrics.feature_set_version = order_book_feature_set_version();
       metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
       return metrics;
     }
@@ -252,6 +254,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
 
       finalize_trading_metrics(pnl_stats);
       metrics.validation_strategy = "streaming_batch";
+      metrics.feature_set_version = order_book_feature_set_version();
       metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
       return metrics;
     }
@@ -340,6 +343,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
 
       finalize_trading_metrics(pnl_stats);
       metrics.validation_strategy = "streaming_batch";
+      metrics.feature_set_version = order_book_feature_set_version();
       metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
       return metrics;
     }
@@ -370,15 +374,20 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
     return metrics;
   }
 
-  // 3. Shuffle data
-  std::random_device rd;
-  std::mt19937 g(rd());
-  std::shuffle(paired_data.begin(), paired_data.end(), g);
+  paired_data = sort_training_samples_chronologically(std::move(paired_data));
 
-  // 4. Split data
-  size_t test_size =
-      static_cast<size_t>(paired_data.size() * config.test_split);
+  const auto walk_forward_folds = build_walk_forward_folds(paired_data, config.test_split);
+  size_t test_size = walk_forward_folds.empty()
+                         ? static_cast<size_t>(paired_data.size() * config.test_split)
+                         : walk_forward_folds.back().test_end - walk_forward_folds.back().test_start;
   size_t train_size = paired_data.size() - test_size;
+  if (!walk_forward_folds.empty()) {
+    train_size = walk_forward_folds.back().train_end;
+  }
+  if (train_size == 0) {
+    train_size = paired_data.size() > 1 ? paired_data.size() - 1 : paired_data.size();
+    test_size = paired_data.size() - train_size;
+  }
 
   std::vector<OrderBookFeatures> train_features, test_features;
   std::vector<TradeOutcome> train_outcomes, test_outcomes;
@@ -417,7 +426,12 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
                  static_cast<int>(config.type));
   }
 
-  metrics.validation_strategy = "random_split";
+  metrics.validation_strategy = walk_forward_folds.empty()
+                                    ? "chronological_holdout"
+                                    : "walk_forward";
+  metrics.feature_set_version = order_book_feature_set_version();
+  metrics.walk_forward_folds = walk_forward_folds;
+  metrics.feature_importance = compute_feature_importance(paired_data);
   metrics.cohort_metrics = summarize_execution_cohorts(std::move(validation_samples));
   return metrics;
 }

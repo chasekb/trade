@@ -166,6 +166,9 @@ void to_json(nlohmann::json &j, const ml::ModelMetrics &m) {
                      {"sharpe_ratio", m.sharpe_ratio},
                      {"profit_factor", m.profit_factor},
                      {"validation_strategy", m.validation_strategy},
+                     {"feature_set_version", m.feature_set_version},
+                     {"walk_forward_folds", m.walk_forward_folds},
+                     {"feature_importance", m.feature_importance},
                      {"cohort_metrics", m.cohort_metrics}};
 }
 
@@ -177,7 +180,10 @@ void from_json(const nlohmann::json &j, ml::ModelMetrics &m) {
   m.r2_score = j.value("r2_score", 0.0);
   m.sharpe_ratio = j.value("sharpe_ratio", 0.0);
   m.profit_factor = j.value("profit_factor", 0.0);
-  m.validation_strategy = j.value("validation_strategy", std::string{"random_split"});
+  m.validation_strategy = j.value("validation_strategy", std::string{"walk_forward"});
+  m.feature_set_version = j.value("feature_set_version", std::string{"order_book_features_v1"});
+  m.walk_forward_folds = j.value("walk_forward_folds", nlohmann::json::array());
+  m.feature_importance = j.value("feature_importance", nlohmann::json::array());
   if (j.contains("cohort_metrics") && j["cohort_metrics"].is_array()) {
     m.cohort_metrics = j["cohort_metrics"].get<std::vector<ml::ExecutionCohortMetrics>>();
   } else {

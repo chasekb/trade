@@ -749,7 +749,23 @@ export function useStrategyParameters() {
       'ml_enhanced_orderbook': [
         { name: 'ml_server_url', label: 'ML Server URL', type: 'text' as const, default: 'http://localhost:8002' },
         { name: 'confidence_threshold', label: 'Confidence Threshold', type: 'number' as const, default: 0.6, min: 0, max: 1, step: 0.1 },
-        { name: 'fallback_to_baseline', label: 'Fallback to Baseline', type: 'select' as const, default: 'true', options: ['true', 'false'] }
+        { name: 'fallback_to_baseline', label: 'Fallback to Baseline', type: 'select' as const, default: 'true', options: ['true', 'false'] },
+        { name: 'order_book_level', label: 'Order Book Level', type: 'number' as const, default: 2, min: 1, max: 3 },
+        { name: 'trade_history_limit', label: 'Trade History Limit', type: 'number' as const, default: 1000, min: 10, max: 1000 },
+        { name: 'bid_ask_spread_threshold', label: 'Bid-Ask Spread Threshold (%)', type: 'number' as const, default: 0.5, min: 0.01, max: 1.0, step: 0.01 },
+        { name: 'volume_imbalance_threshold', label: 'Volume Imbalance Threshold', type: 'number' as const, default: 0.3, min: 0.1, max: 0.9, step: 0.1 },
+        { name: 'large_trade_threshold', label: 'Large Trade Threshold ($)', type: 'number' as const, default: 2000, min: 1000, max: 100000 },
+        { name: 'data_analysis_mode', label: 'Data Analysis Mode', type: 'select' as const, default: 'all', options: ['recent', 'all', 'sampled'] },
+        { name: 'recent_data_limit', label: 'Recent Data Limit', type: 'number' as const, default: 200, min: 10, max: 1000 },
+        { name: 'sampling_ratio', label: 'Sampling Ratio', type: 'number' as const, default: 0.1, min: 0.01, max: 1.0, step: 0.01 },
+        { name: 'max_symbols_per_request', label: 'Max Symbols Per Request', type: 'number' as const, default: 1000, min: 10, max: 10000 },
+        { name: 'max_universe_size', label: 'Max Universe Size', type: 'number' as const, default: 500, min: 1, max: 5000 },
+        { name: 'round_trip_fee_percent', label: 'Round-Trip Fee Hurdle (%)', type: 'number' as const, default: 1.5, min: 0, max: 5, step: 0.1 },
+        { name: 'slippage_buffer_percent', label: 'Slippage Buffer (%)', type: 'number' as const, default: 0.2, min: 0, max: 5, step: 0.1 },
+        { name: 'min_orderbook_signal_strength', label: 'Minimum Fee-Adjusted Signal Strength', type: 'number' as const, default: 0.22, min: 0, max: 1, step: 0.01 },
+        { name: 'minimum_net_pnl_usd', label: 'Minimum Net P&L Per Trade ($)', type: 'number' as const, default: 0, min: 0, max: 100, step: 0.01 },
+        { name: 'allow_unprofitable_trades', label: 'Allow Unprofitable Sim Trades', type: 'select' as const, default: 'false', options: ['true', 'false'] },
+        { name: 'max_positions_per_session', label: 'Max Positions Per Session', type: 'number' as const, default: 100, min: 1, max: 1000 }
       ],
       'orderbook': [
         { name: 'order_book_level', label: 'Order Book Level', type: 'number' as const, default: 2, min: 1, max: 3 },
@@ -791,7 +807,10 @@ export function useStrategyParameters() {
       sampling_ratio: 0.1,
       round_trip_fee_percent: 1.5,
       slippage_buffer_percent: 0.2,
-      min_orderbook_signal_strength: 0.6
+      min_orderbook_signal_strength: 0.6,
+      max_positions_per_session: 25,
+      minimum_net_pnl_usd: 0.25,
+      allow_unprofitable_trades: 'false'
     },
     'moderate': {
       order_book_level: 2,
@@ -804,7 +823,10 @@ export function useStrategyParameters() {
       sampling_ratio: 0.1,
       round_trip_fee_percent: 1.5,
       slippage_buffer_percent: 0.2,
-      min_orderbook_signal_strength: 0.4
+      min_orderbook_signal_strength: 0.4,
+      max_positions_per_session: 100,
+      minimum_net_pnl_usd: 0.1,
+      allow_unprofitable_trades: 'false'
     },
     'aggressive': {
       order_book_level: 2,
@@ -817,7 +839,10 @@ export function useStrategyParameters() {
       sampling_ratio: 0.1,
       round_trip_fee_percent: 1.5,
       slippage_buffer_percent: 0.2,
-      min_orderbook_signal_strength: 0.22
+      min_orderbook_signal_strength: 0.22,
+      max_positions_per_session: 100,
+      minimum_net_pnl_usd: 0,
+      allow_unprofitable_trades: 'false'
     },
     'very-aggressive': {
       order_book_level: 2,
@@ -830,7 +855,10 @@ export function useStrategyParameters() {
       sampling_ratio: 0.1,
       round_trip_fee_percent: 1.5,
       slippage_buffer_percent: 0.2,
-      min_orderbook_signal_strength: 0.15
+      min_orderbook_signal_strength: 0.15,
+      max_positions_per_session: 250,
+      minimum_net_pnl_usd: 0,
+      allow_unprofitable_trades: 'false'
     }
   });
 

@@ -205,6 +205,63 @@ export function calculateLocalAllocatedUsd(
   return sizingCapital * Math.max(0, positionSizeValue) / 100;
 }
 
+export function expectedNetPnlUsd(
+  notionalUsd: number,
+  expectedReturnFraction: number,
+  roundTripFeeFraction: number,
+  slippageBufferFraction: number,
+  spreadFraction: number,
+): number {
+  const requiredEdge = Math.max(0, roundTripFeeFraction) + Math.max(0, slippageBufferFraction) + Math.max(0, spreadFraction);
+  return Math.max(0, notionalUsd) * (expectedReturnFraction - requiredEdge);
+}
+
+export function minimumTradeSizeDecision(input: {
+  price: number;
+  expectedReturnFraction: number;
+  roundTripFeeFraction: number;
+  slippageBufferFraction: number;
+  spreadFraction: number;
+  minimumNetPnlUsd: number;
+  configuredMaxNotionalUsd: number;
+  allowUnprofitableTrades?: boolean;
+}) {
+  const requiredEdgeFraction = Math.max(0, input.roundTripFeeFraction)
+    + Math.max(0, input.slippageBufferFraction)
+    + Math.max(0, input.spreadFraction);
+  const cap = Math.max(0, input.configuredMaxNotionalUsd);
+  const price = Math.max(0, input.price);
+  if (cap <= 0 || price <= 0) {
+    return { shouldTrade: false, quantity: 0, notionalUsd: 0, expectedNetPnlUsd: 0, requiredEdgeFraction };
+  }
+  const expectedNetAtCap = expectedNetPnlUsd(
+    cap,
+    input.expectedReturnFraction,
+    input.roundTripFeeFraction,
+    input.slippageBufferFraction,
+    input.spreadFraction,
+  );
+  if (input.allowUnprofitableTrades) {
+    return { shouldTrade: true, quantity: cap / price, notionalUsd: cap, expectedNetPnlUsd: expectedNetAtCap, requiredEdgeFraction };
+  }
+  const edge = input.expectedReturnFraction - requiredEdgeFraction;
+  if (edge <= 0) {
+    return { shouldTrade: false, quantity: 0, notionalUsd: cap, expectedNetPnlUsd: expectedNetAtCap, requiredEdgeFraction };
+  }
+  const minNotional = Math.max(0, input.minimumNetPnlUsd) / edge;
+  if (minNotional > cap) {
+    return { shouldTrade: false, quantity: 0, notionalUsd: cap, expectedNetPnlUsd: expectedNetAtCap, requiredEdgeFraction };
+  }
+  const notionalUsd = minNotional > 0 ? minNotional : cap;
+  return {
+    shouldTrade: true,
+    quantity: notionalUsd / price,
+    notionalUsd,
+    expectedNetPnlUsd: expectedNetPnlUsd(notionalUsd, input.expectedReturnFraction, input.roundTripFeeFraction, input.slippageBufferFraction, input.spreadFraction),
+    requiredEdgeFraction,
+  };
+}
+
 function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSignal) {
   if (!signal.signal_generated || signal.signal === 'hold') {
     return;
@@ -231,12 +288,26 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
   if (allocatedUsd <= 0 || signal.price <= 0) {
     return;
   }
-  const quantity = allocatedUsd / signal.price;
-  const feeRate = 0.0008;
   const signalSide = signal.signal;
   const winProbability = localSignalWinProbability(signal);
   const expectedReturn = signal.ml_analysis?.expected_return ?? ((signal.signal_strength - 0.5) * 0.05);
   const modelConfidence = signal.ml_analysis?.confidence ?? signal.signal_strength;
+  const feeRate = 0.0008;
+  const profitability = minimumTradeSizeDecision({
+    price: signal.price,
+    expectedReturnFraction: expectedReturn,
+    roundTripFeeFraction: Number(session.parameters.round_trip_fee_percent ?? 0.16) / 100,
+    slippageBufferFraction: Number(session.parameters.slippage_buffer_percent ?? 0) / 100,
+    spreadFraction: Number(signal.spread ?? 0) / 100,
+    minimumNetPnlUsd: Number(session.parameters.minimum_net_pnl_usd ?? 0),
+    configuredMaxNotionalUsd: allocatedUsd,
+    allowUnprofitableTrades: session.parameters.allow_unprofitable_trades === true || session.parameters.allow_unprofitable_trades === 'true',
+  });
+  if (!profitability.shouldTrade) {
+    return;
+  }
+  const quantity = profitability.quantity;
+  const tradeNotionalUsd = profitability.notionalUsd;
 
   const openTrade = () => {
     if (Object.keys(portfolio.positions).length >= maxPositions) {
@@ -245,7 +316,7 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
 
     // Cash-sufficiency gate mirroring the backend: reject, never auto-scale.
     const entryFee = signal.price * quantity * feeRate;
-    const requiredCash = signalSide === 'buy' ? allocatedUsd + entryFee : allocatedUsd;
+    const requiredCash = signalSide === 'buy' ? tradeNotionalUsd + entryFee : tradeNotionalUsd;
     if (portfolio.cash_balance < requiredCash) {
       return;
     }
@@ -255,7 +326,7 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
       side: signalSide as 'buy' | 'sell',
       quantity,
       entry_price: signal.price,
-      entry_notional: allocatedUsd,
+      entry_notional: tradeNotionalUsd,
       current_price: signal.price,
       unrealized_pnl: 0,
       pnl_percentage: 0,
@@ -269,7 +340,7 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
 
     const fee = signal.price * quantity * feeRate;
     portfolio.total_fees += fee;
-    portfolio.cash_balance += signalSide === 'buy' ? -(allocatedUsd + fee) : (allocatedUsd - fee);
+    portfolio.cash_balance += signalSide === 'buy' ? -(tradeNotionalUsd + fee) : (tradeNotionalUsd - fee);
     appendLocalTrade(session, {
       id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),
       trade_id: localTradeId(signal.symbol, session.tick, portfolio.trades.length + 1),

@@ -78,11 +78,13 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
     const presets = getOrderBookPresets();
 
     const applyPreset = (presetName: string) => {
-        if (strategy === 'orderbook' && presetName in presets) {
+        if ((strategy === 'orderbook' || strategy === 'ml_enhanced_orderbook') && presetName in presets) {
             const typeSafePresetName = presetName as keyof typeof presets;
             const presetConfig = presets[typeSafePresetName];
             onChange({ ...config, ...presetConfig });
             setSelectedPreset(presetName);
+        } else if (presetName !== 'custom') {
+            setFeedback({ type: 'error', message: `Order-book preset '${presetName}' is not supported by ${strategy}.` });
         }
     };
 
@@ -248,7 +250,7 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                     <MLConfigForm />
                 </div>
             )}
-            {strategy === 'orderbook' && (
+            {(strategy === 'orderbook' || strategy === 'ml_enhanced_orderbook') && (
                 <div className="p-4 bg-gray-50 rounded-lg">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                         Configuration Preset
@@ -269,7 +271,7 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                         <option value="very-aggressive">Very Aggressive (Maximum Signals)</option>
                     </select>
                     <p className="text-xs text-gray-500">
-                        Select a preset to automatically configure parameters for different signal frequencies
+                        Select a preset to automatically configure order-book risk controls, max positions, and fee/slippage profitability hurdles.
                     </p>
                 </div>
             )}
@@ -385,6 +387,11 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                         />
                     </div>
                 </div>
+                {strategy === 'ml_enhanced_orderbook' && (
+                    <p className="text-xs text-gray-500">
+                        ML-enhanced order-book sessions use expected return after round-trip fees, slippage, and spread to skip simulated trades below the configured minimum net P&L, unless explicitly allowed.
+                    </p>
+                )}
             </div>
         </div>
     );

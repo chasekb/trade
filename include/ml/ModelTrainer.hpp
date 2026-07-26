@@ -44,7 +44,10 @@ struct ModelMetrics {
   double r2_score = 0.0;
   double sharpe_ratio = 0.0;
   double profit_factor = 0.0;
-  std::string validation_strategy = "random_split";
+  std::string validation_strategy = "walk_forward";
+  std::string feature_set_version = "order_book_features_v1";
+  nlohmann::json walk_forward_folds = nlohmann::json::array();
+  nlohmann::json feature_importance = nlohmann::json::array();
   std::vector<ExecutionCohortMetrics> cohort_metrics;
 };
 

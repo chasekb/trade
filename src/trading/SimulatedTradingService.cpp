@@ -138,6 +138,24 @@ double paramNumber(const Json::Value &params, const char *key, double fallback) 
   return fallback;
 }
 
+bool paramBool(const Json::Value &params, const char *key, bool fallback) {
+  if (!params.isMember(key)) {
+    return fallback;
+  }
+  const Json::Value &value = params[key];
+  if (value.isBool()) {
+    return value.asBool();
+  }
+  if (value.isString()) {
+    const std::string raw = value.asString();
+    return raw == "true" || raw == "1" || raw == "yes";
+  }
+  if (value.isNumeric()) {
+    return value.asDouble() != 0.0;
+  }
+  return fallback;
+}
+
 StrategyParams buildStrategyParams(const Json::Value &p, const std::string &strategy) {
   StrategyParams sp;
   if (strategy == "sma" || strategy == "ema") {
@@ -410,7 +428,23 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
     }
   }
 
-  return calculate_position_size_usd(inputs);
+  const double capped_notional = calculate_position_size_usd(inputs);
+  MinimumTradeSizeInputs minimum_inputs;
+  minimum_inputs.price = signal.price;
+  minimum_inputs.expected_return_fraction = inputs.expected_return;
+  minimum_inputs.round_trip_fee_fraction =
+      paramNumber(parameters_, "round_trip_fee_percent", 0.16) / 100.0;
+  minimum_inputs.slippage_buffer_fraction =
+      paramNumber(parameters_, "slippage_buffer_percent", 0.0) / 100.0;
+  minimum_inputs.spread_fraction = signal.mid_price > 0.0 ? signal.spread / signal.mid_price : 0.0;
+  minimum_inputs.minimum_net_pnl_usd =
+      paramNumber(parameters_, "minimum_net_pnl_usd", 0.0);
+  minimum_inputs.configured_max_notional_usd = capped_notional;
+  minimum_inputs.allow_unprofitable_trades =
+      paramBool(parameters_, "allow_unprofitable_trades", false);
+
+  const auto decision = minimum_trade_size_decision(minimum_inputs);
+  return decision.should_trade ? decision.notional_usd : 0.0;
 }
 
 Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) const {

@@ -86,5 +86,44 @@ int main() {
     std::cerr << "Zero configured size should remain zero" << std::endl;
     return 1;
   }
+
+  trade::trading::MinimumTradeSizeInputs profitable{};
+  profitable.price = 100.0;
+  profitable.expected_return_fraction = 0.03;
+  profitable.round_trip_fee_fraction = 0.0016;
+  profitable.slippage_buffer_fraction = 0.002;
+  profitable.spread_fraction = 0.001;
+  profitable.minimum_net_pnl_usd = 1.0;
+  profitable.configured_max_notional_usd = 100.0;
+  const auto profitable_decision = trade::trading::minimum_trade_size_decision(profitable);
+  if (!profitable_decision.should_trade || profitable_decision.notional_usd > 100.0) {
+    std::cerr << "Profitable expected-return setup should trade within cap" << std::endl;
+    return 1;
+  }
+
+  trade::trading::MinimumTradeSizeInputs fee_blocked = profitable;
+  fee_blocked.expected_return_fraction = 0.002;
+  const auto fee_blocked_decision = trade::trading::minimum_trade_size_decision(fee_blocked);
+  if (fee_blocked_decision.should_trade) {
+    std::cerr << "Fee/slippage/spread hurdle should block insufficient edge" << std::endl;
+    return 1;
+  }
+
+  trade::trading::MinimumTradeSizeInputs cap_blocked = profitable;
+  cap_blocked.minimum_net_pnl_usd = 10.0;
+  cap_blocked.configured_max_notional_usd = 50.0;
+  const auto cap_blocked_decision = trade::trading::minimum_trade_size_decision(cap_blocked);
+  if (cap_blocked_decision.should_trade) {
+    std::cerr << "Position cap should block trades below minimum profitable notional" << std::endl;
+    return 1;
+  }
+
+  trade::trading::MinimumTradeSizeInputs override = fee_blocked;
+  override.allow_unprofitable_trades = true;
+  const auto override_decision = trade::trading::minimum_trade_size_decision(override);
+  if (!override_decision.should_trade) {
+    std::cerr << "Explicit override should allow unprofitable trades" << std::endl;
+    return 1;
+  }
   return 0;
 }
