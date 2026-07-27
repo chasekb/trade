@@ -179,4 +179,48 @@ describe('trade dashboard tables', () => {
 
     alertSpy.mockRestore();
   });
+
+  it('renders profitability-gated holds as sufficient data instead of waiting', () => {
+    render(
+      <OrderBookSignalsTable
+        signals={[
+          {
+            symbol: 'BTC-USD',
+            timestamp: '2026-07-06T12:50:00Z',
+            price: 64500,
+            signal: 'hold',
+            signal_generated: false,
+            signal_strength: 0,
+            signal_type: 'hold',
+            signal_reason: 'Expected edge 0.006 below fee/spread/slippage hurdle 0.017',
+            data_status: 'sufficient',
+            spread: 0.04,
+            volume: 5000,
+            criteria_analysis: {},
+            ml_analysis: {
+              ml_enabled: true,
+              win_probability: 0.58,
+              expected_return: 0.006,
+              fee_adjusted_expected_return: -0.011,
+              required_edge: 0.017,
+              profitability_gate_passed: false,
+              profitability_gate_reason: 'Expected edge 0.006 below fee/spread/slippage hurdle 0.017',
+              confidence: 0.44,
+              model_version: 'heuristic-fallback',
+              prediction_timestamp: '2026-07-06T12:49:59Z',
+            },
+            strength_composition: {},
+          },
+        ]}
+        currentPage={1}
+        pageSize={10}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /BTC-USD/ });
+    expect(within(row).getByText('HOLD')).toBeInTheDocument();
+    expect(within(row).queryByText('WAITING')).not.toBeInTheDocument();
+    expect(within(row).getByText('Fee-Adjusted Edge: -1.10%')).toBeInTheDocument();
+    expect(within(row).getByText('Required Edge: 1.70%')).toBeInTheDocument();
+  });
 });

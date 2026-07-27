@@ -32,6 +32,13 @@ namespace trading {
 
 namespace {
 constexpr double kFeeRate = 0.0005;
+constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
+constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
+constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
+// Keep the simulated order-book heuristic fallback aligned with live trading so
+// fixture-equivalent strong imbalances can clear the shared fee/spread/slippage
+// profitability gate while weak signals remain HOLD.
+constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kMaxRecentTrades = 100;
 constexpr std::size_t kMaxRecentSignals = 250;
 constexpr double kDefaultInitialCapital = 10000.0;
@@ -1106,9 +1113,57 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   if (!used_model) {
     ml_analysis["ml_enabled"] = strategy_ == "ml_enhanced_orderbook";
     ml_analysis["win_probability"] = std::clamp(0.5 + (generated ? (imbalance * 0.2) : 0.0), 0.0, 1.0);
-    ml_analysis["expected_return"] = generated ? (imbalance * 0.012) : 0.0;
+    const double fallback_edge_scale_percent =
+        paramNumber(parameters_, "orderbook_expected_return_scale_percent",
+                    kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0);
+    const double fallback_edge_scale =
+        std::clamp(std::isfinite(fallback_edge_scale_percent)
+                       ? fallback_edge_scale_percent
+                       : kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0,
+                   0.0, 5.0) /
+        100.0;
+    ml_analysis["expected_return"] = generated ? (imbalance * fallback_edge_scale) : 0.0;
     ml_analysis["confidence"] = generated ? strength : 0.0;
     ml_analysis["model_version"] = "heuristic-fallback";
+  }
+
+  if (isOrderBookStrategy(strategy_) && generated) {
+    OrderBookProfitabilityInput gate_input;
+    gate_input.signal_type = signal_type;
+    gate_input.signal_strength = strength;
+    gate_input.expected_return_fraction =
+        ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
+    gate_input.spread_fraction = mid > 0.0 ? spread / mid : 0.0;
+    gate_input.round_trip_fee_fraction =
+        paramNumber(parameters_, "round_trip_fee_percent",
+                    kDefaultOrderBookRoundTripFeeFraction * 100.0) /
+        100.0;
+    gate_input.slippage_buffer_fraction =
+        paramNumber(parameters_, "slippage_buffer_percent",
+                    kDefaultOrderBookSlippageBufferFraction * 100.0) /
+        100.0;
+    gate_input.min_signal_strength =
+        paramNumber(parameters_, "min_orderbook_signal_strength",
+                    kDefaultOrderBookMinSignalStrength);
+    const OrderBookProfitabilityGate gate =
+        evaluateOrderBookProfitabilityGate(gate_input);
+    ml_analysis["fee_adjusted_expected_return"] = gate.net_expected_return_fraction;
+    ml_analysis["required_edge"] = gate.required_edge_fraction;
+    ml_analysis["profitability_gate_passed"] = gate.passes;
+    ml_analysis["profitability_gate_reason"] = gate.reason;
+    if (!gate.passes) {
+      generated = false;
+      signal_type = "hold";
+      signal.signal_type = signal_type;
+      signal.strength = 0.0;
+      payload["signal_type"] = signal.signal_type;
+      payload["signal"] = signal.signal_type;
+      payload["signal_generated"] = false;
+      payload["signal_strength"] = signal.strength;
+      payload["signal_reason"] = gate.reason;
+      payload["data_status"] = "sufficient";
+      payload["prediction"] = "HOLD";
+    }
   }
   ml_analysis["features_used"] = Json::arrayValue;
   ml_analysis["features_used"].append("bid_ask_imbalance");

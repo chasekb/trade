@@ -177,6 +177,16 @@ int main() {
     gate_input.expected_return_fraction = 0.024 * 0.92;
     const auto new_scale = evaluateOrderBookProfitabilityGate(gate_input);
     expect(new_scale.passes, "new live order-book fallback scale clears default hurdle for strong signals");
+
+    gate_input.signal_strength = 0.10;
+    const auto weak_signal = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!weak_signal.passes, "shared order-book gate blocks weak live/simulated signals");
+
+    gate_input.signal_type = "sell";
+    gate_input.signal_strength = 0.92;
+    gate_input.expected_return_fraction = -0.024 * 0.92;
+    const auto strong_sell = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(strong_sell.passes, "shared order-book gate treats strong negative edge as actionable sell");
   }
 
   if (failures > 0) {

@@ -1495,12 +1495,16 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         const auto pca_features = engineer->preprocess(features);
         const double win_prob =
             models->has_classifier() ? models->predict_win_prob(pca_features) : 0.5;
-        const double expected_pnl =
-            models->has_regressor() ? models->predict_pnl(pca_features) : 0.0;
         double transformer_pnl = 0.0;
         if (models->has_transformer()) {
           transformer_pnl = models->predict_transformer(engineer->get_transformer_sequence());
         }
+        // Transformer-only packs still provide a directional expected return
+        // for the shared order-book profitability gate, matching simulated
+        // trading's producer contract instead of silently gating live to HOLD.
+        const double expected_pnl = models->has_regressor()
+                                        ? models->predict_pnl(pca_features)
+                                        : transformer_pnl;
 
         ml_analysis["ml_enabled"] = true;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
