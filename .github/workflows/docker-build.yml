@@ -150,7 +150,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"ubuntu-latest"}]') }}
+        # Use a native ARM runner for push-time frontend arm64 images; QEMU
+        # Buildx repeatedly hit the 6h Actions cancellation limit here.
+        include: ${{ fromJSON((github.event_name == 'pull_request') && '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"}]' || '[{"platform":"linux/amd64","arch":"amd64","runs_on":"ubuntu-latest"},{"platform":"linux/arm64","arch":"arm64","runs_on":"ubuntu-24.04-arm"}]') }}
     permissions:
       contents: read
       packages: write
