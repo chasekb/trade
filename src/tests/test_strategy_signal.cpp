@@ -7,8 +7,10 @@
 
 using trade::trading::evaluateStrategySignal;
 using trade::trading::evaluateOrderBookProfitabilityGate;
+using trade::trading::evaluateStrategyProfitabilityDiagnostic;
 using trade::trading::OrderBookProfitabilityInput;
 using trade::trading::StrategyParams;
+using trade::trading::StrategyProfitabilityInput;
 using trade::trading::StrategySignalOutcome;
 
 namespace {
@@ -132,6 +134,48 @@ int main() {
   // unknown strategies never trade.
   expectSignal(evaluateStrategySignal("mystery", linearSeries(100.0, 1.0, 50), params, false, 0),
                "hold", "unknown strategy holds");
+
+  // Strategy-neutral profitability diagnostics fail safe until expected-return
+  // data is available, then apply the same directional fee-adjusted edge
+  // factoring that order-book live execution uses.
+  {
+    StrategyProfitabilityInput diagnostic_input;
+    diagnostic_input.signal_type = "buy";
+    diagnostic_input.signal_strength = 0.8;
+    diagnostic_input.min_signal_strength = 0.2;
+    diagnostic_input.expected_return_available = false;
+    diagnostic_input.expected_return_fraction = 0.050;
+    diagnostic_input.round_trip_fee_fraction = 0.010;
+    diagnostic_input.slippage_buffer_fraction = 0.002;
+    const auto unavailable = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(!unavailable.actionable, "missing expected-return diagnostic fails safe");
+    expect(unavailable.factor == "expected_return_unavailable",
+           "missing expected-return diagnostic is explicitly attributed");
+
+    diagnostic_input.expected_return_available = true;
+    diagnostic_input.expected_return_fraction = 0.020;
+    const auto favorable_buy = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(favorable_buy.actionable, "positive fee-adjusted buy diagnostic is actionable");
+    expect(favorable_buy.factor == "fee_adjusted_edge_passed",
+           "passing diagnostic records fee-adjusted factor");
+
+    diagnostic_input.expected_return_fraction = 0.005;
+    const auto weak_edge = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(!weak_edge.actionable, "fee-negative expected return blocks actionability");
+    expect(weak_edge.factor == "negative_fee_adjusted_edge",
+           "fee-negative diagnostic is attributed");
+
+    diagnostic_input.signal_type = "sell";
+    diagnostic_input.expected_return_fraction = -0.020;
+    const auto favorable_sell = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(favorable_sell.actionable,
+           "negative expected return is favorable for sell diagnostics");
+
+    diagnostic_input.signal_strength = 0.1;
+    const auto weak_strength = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(!weak_strength.actionable, "weak strength blocks diagnostic actionability");
+    expect(weak_strength.factor == "weak_strength", "weak strength factor is recorded");
+  }
 
   // order-book live entries must clear a fee/spread/slippage hurdle before
   // they are eligible for real Coinbase execution.

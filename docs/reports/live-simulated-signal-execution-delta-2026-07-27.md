@@ -64,8 +64,9 @@ API/DB evidence window:
    - Added a profitability-gated HOLD payload with `data_status=sufficient`.
    - Asserted it renders as `HOLD`, not `WAITING`, and still shows fee-adjusted/required-edge diagnostics.
 
-5. Preserved the backlog recommendation as the durable execution criteria.
-   - File: `.hermes/plans/2026-07-27_trade-live-simulated-signal-execution-delta-recommendation.md`
+5. Preserved the backlog recommendation as durable execution criteria in the Hermes project backlog.
+   - Backlog: `/home/kahlil/.hermes/backlog/backlog.json`
+   - Project item: `TRADE-BL-0005` (`project_id=trade`)
 
 ## Closeout evidence required after commit
 

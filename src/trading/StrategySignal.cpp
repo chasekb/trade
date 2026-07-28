@@ -340,5 +340,63 @@ OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
   return gate;
 }
 
+StrategyProfitabilityDiagnostic evaluateStrategyProfitabilityDiagnostic(
+    const StrategyProfitabilityInput &input) {
+  StrategyProfitabilityDiagnostic diagnostic;
+  diagnostic.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
+                                      std::max(0.0, input.spread_fraction) +
+                                      std::max(0.0, input.slippage_buffer_fraction);
+
+  if (input.signal_type == "hold") {
+    diagnostic.factor = "hold";
+    diagnostic.reason = "Strategy signal is hold";
+    return diagnostic;
+  }
+
+  if (input.signal_strength < input.min_signal_strength) {
+    diagnostic.factor = "weak_strength";
+    std::ostringstream oss;
+    oss << "Signal strength " << input.signal_strength << " below minimum "
+        << input.min_signal_strength;
+    diagnostic.reason = oss.str();
+    return diagnostic;
+  }
+
+  if (!input.expected_return_available ||
+      !std::isfinite(input.expected_return_fraction)) {
+    diagnostic.factor = "expected_return_unavailable";
+    diagnostic.reason = "Expected-return diagnostic is unavailable";
+    return diagnostic;
+  }
+
+  diagnostic.diagnostics_available = true;
+  if (input.signal_type == "buy") {
+    diagnostic.directional_expected_edge_fraction = input.expected_return_fraction;
+  } else if (input.signal_type == "sell") {
+    diagnostic.directional_expected_edge_fraction = -input.expected_return_fraction;
+  } else {
+    diagnostic.factor = "unsupported_signal";
+    diagnostic.reason = "Unsupported strategy signal type: " + input.signal_type;
+    return diagnostic;
+  }
+
+  diagnostic.fee_adjusted_expected_return_fraction =
+      diagnostic.directional_expected_edge_fraction - diagnostic.required_edge_fraction;
+  if (diagnostic.fee_adjusted_expected_return_fraction < 0.0) {
+    diagnostic.factor = "negative_fee_adjusted_edge";
+    std::ostringstream oss;
+    oss << "Expected edge " << diagnostic.directional_expected_edge_fraction
+        << " below fee/spread/slippage hurdle "
+        << diagnostic.required_edge_fraction;
+    diagnostic.reason = oss.str();
+    return diagnostic;
+  }
+
+  diagnostic.actionable = true;
+  diagnostic.factor = "fee_adjusted_edge_passed";
+  diagnostic.reason = "Expected edge exceeds fee/spread/slippage hurdle";
+  return diagnostic;
+}
+
 } // namespace trading
 } // namespace trade

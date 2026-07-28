@@ -1,0 +1,58 @@
+# Trade Strategy Objective
+
+The trade project objective is to maximize risk-adjusted expectancy in the live trading environment.
+
+Operationally, future strategy, execution, ML, and dashboard decisions should optimize for:
+
+1. Increase average realized win after fees, spread, and slippage.
+2. Minimize average realized loss after fees, spread, and slippage.
+3. Improve net expectancy and profit factor without increasing drawdown beyond the accepted risk budget.
+4. Preserve enough trade frequency to validate the strategy, but never maximize raw signal count or trade count when the added executions worsen expectancy.
+5. Keep live exchange execution fail-closed: account readiness, minimum notional, spot-only constraints, pending orders, explicit live-order enablement, and user-selected universe policy take priority over signal maximization.
+
+## Required decision evidence
+
+Every future change that affects strategy generation, signal strength, expected return, profitability gates, model selection, position sizing, exits, or execution blockers should state its expected impact on:
+
+- generated signal count by strategy and symbol;
+- signal strength distribution;
+- expected return and fee-adjusted expected return;
+- required edge / profitability gate pass rate;
+- executed trades and blocked intents;
+- average win;
+- average loss;
+- net expectancy;
+- profit factor;
+- maximum drawdown;
+- live-only exchange blockers.
+
+## Diagnostics factoring contract
+
+Strategy diagnostics should be factored explicitly, not treated as decorative metadata.
+
+For each strategy, expected-return and profitability diagnostics must be classified as one of:
+
+- `gate`: blocks or allows entry/exit;
+- `size`: scales position sizing;
+- `exit`: participates in close/add/hold decisions;
+- `report`: appears in UI/reports but does not affect execution;
+- `unavailable`: absent or unsupported and therefore fail-safe for any path that requires expected edge.
+
+Directional expected-return semantics are required:
+
+- buy signals need positive expected return;
+- sell signals need negative expected return;
+- both sides must clear fees, spread, and slippage before being considered profitable;
+- unavailable expected return must never be interpreted as high confidence, zero risk, or automatic actionability.
+
+## Review checklist
+
+Before shipping live-affecting strategy work:
+
+- [ ] Compare before/after average win, average loss, expectancy, and drawdown.
+- [ ] Prove any increase in signal/trade count improves expectancy after costs.
+- [ ] Confirm expected-return diagnostics are directional and fee-adjusted.
+- [ ] Confirm missing diagnostics fail safe and remain visible to operators.
+- [ ] Confirm live-only blockers are attributed separately from signal-quality failures.
+- [ ] Run independent review for high-risk trading/accounting changes.
+- [ ] Verify the exact pushed SHA with GitHub Actions Docker Build Validation before closeout.

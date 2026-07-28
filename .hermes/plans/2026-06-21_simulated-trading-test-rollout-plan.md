@@ -7,7 +7,7 @@ Turn the simulated trading tab backlog into a single dependency-aware rollout th
 
 ## Source of truth
 - Live evidence report: `docs/reports/simulated-trading-tab-evidence-2026-06-21.md`
-- Original trade recommendation plan: `.hermes/plans/2026-06-18_105225-trade-backlog-recommendations.md`
+- Original trade recommendation plan has been migrated into the Hermes backlog at `/home/kahlil/.hermes/backlog/backlog.json` (`project_id=trade`, including `TRADE-BL-0001` and `TRADE-BL-0002`).
 
 ## Rollout order
 

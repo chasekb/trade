@@ -11,6 +11,10 @@ A trading bot with two halves:
 
 The root README still describes a Python/FastAPI backend (`app.py`); that no longer exists — the C++ backend replaced it.
 
+## Project objective
+
+The project objective is to maximize risk-adjusted expectancy in the live trading environment: increase average realized win and minimize average realized loss after fees, spread, slippage, and live execution blockers. Do not maximize raw signal count or trade count unless the added executions improve expectancy without unacceptable drawdown. Strategy, ML, position-sizing, execution, and dashboard changes should explain their impact on average win, average loss, expectancy, profit factor, drawdown, and blocked intents. See `docs/STRATEGY_OBJECTIVE.md` for the durable decision checklist and diagnostics factoring contract.
+
 ## Commands
 
 ### Frontend (run from `frontend/`)

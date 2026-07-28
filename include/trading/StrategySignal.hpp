@@ -60,6 +60,27 @@ struct OrderBookProfitabilityGate {
   std::string reason;
 };
 
+struct StrategyProfitabilityInput {
+  std::string signal_type = "hold";
+  double signal_strength = 0.0;
+  bool expected_return_available = false;
+  double expected_return_fraction = 0.0;
+  double spread_fraction = 0.0;
+  double round_trip_fee_fraction = 0.015;
+  double slippage_buffer_fraction = 0.002;
+  double min_signal_strength = 0.0;
+};
+
+struct StrategyProfitabilityDiagnostic {
+  bool actionable = false;
+  bool diagnostics_available = false;
+  double directional_expected_edge_fraction = 0.0;
+  double fee_adjusted_expected_return_fraction = 0.0;
+  double required_edge_fraction = 0.0;
+  std::string factor = "unavailable";
+  std::string reason;
+};
+
 // Evaluates the indicator-family strategies (sma, ema, rsi, bollinger, macd,
 // stochastic, fibonacci, dca, buyandhold) over a price history ordered oldest
 // to newest (last element = current price). Order-book strategies are handled
@@ -73,6 +94,13 @@ StrategySignalOutcome evaluateStrategySignal(const std::string &strategy,
 
 OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
     const OrderBookProfitabilityInput &input);
+
+// Strategy-neutral expected-return/profitability factoring. It keeps the
+// directional semantics used by order-book trading explicit so every strategy
+// can classify diagnostics as actionable, fee-negative, weak, hold, or
+// unavailable before deciding whether to gate, size, exit, or report only.
+StrategyProfitabilityDiagnostic evaluateStrategyProfitabilityDiagnostic(
+    const StrategyProfitabilityInput &input);
 
 } // namespace trading
 } // namespace trade

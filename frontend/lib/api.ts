@@ -290,12 +290,14 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
   }
   const signalSide = signal.signal;
   const winProbability = localSignalWinProbability(signal);
-  const expectedReturn = signal.ml_analysis?.expected_return ?? ((signal.signal_strength - 0.5) * 0.05);
+  const fallbackExpectedReturn = (signal.signal_strength - 0.5) * 0.05 * (signalSide === 'sell' ? -1 : 1);
+  const expectedReturn = signal.ml_analysis?.expected_return ?? fallbackExpectedReturn;
+  const directionalExpectedReturn = signalSide === 'sell' ? -expectedReturn : expectedReturn;
   const modelConfidence = signal.ml_analysis?.confidence ?? signal.signal_strength;
   const feeRate = 0.0008;
   const profitability = minimumTradeSizeDecision({
     price: signal.price,
-    expectedReturnFraction: expectedReturn,
+    expectedReturnFraction: directionalExpectedReturn,
     roundTripFeeFraction: Number(session.parameters.round_trip_fee_percent ?? 0.16) / 100,
     slippageBufferFraction: Number(session.parameters.slippage_buffer_percent ?? 0) / 100,
     spreadFraction: Number(signal.spread ?? 0) / 100,
@@ -430,6 +432,7 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
     const spread = Number((0.01 + index * 0.005 + Math.abs(Math.cos(phase)) * 0.01).toFixed(4));
     const volume = Math.round((1000 + index * 200) * (1 + Math.abs(Math.sin(session.tick / 3 + index)) * 0.5));
     const winProbability = Number((0.5 + (signalStrength - 0.5) * 0.45 + (isBuy ? 0.03 : -0.03)).toFixed(3));
+    const directionalExpectedReturn = Number(((signalStrength - 0.5) * 0.12 * (isBuy ? 1 : -1)).toFixed(4));
 
     return {
       symbol,
@@ -438,7 +441,7 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
       signal: signalType,
       signal_generated: true,
       signal_strength: signalStrength,
-      signal_type: session.strategy,
+      signal_type: signalType,
       signal_reason: syntheticSignalReason(session.strategy),
       data_status: 'sufficient',
       spread,
@@ -462,7 +465,7 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
       ml_analysis: {
         ml_enabled: true,
         win_probability: winProbability,
-        expected_return: Number(((signalStrength - 0.5) * 0.12).toFixed(4)),
+        expected_return: directionalExpectedReturn,
         confidence: Number((0.55 + signalStrength / 3).toFixed(3)),
         model_version: session.strategy === 'ml_enhanced_orderbook' ? 'local-dev-fallback' : 'local-orderbook-fallback',
         features_used: ['order_book_imbalance', 'spread', 'volume'],
