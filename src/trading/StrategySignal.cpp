@@ -327,10 +327,11 @@ OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
     gate.reason = oss.str();
     return gate;
   }
-  if (gate.net_expected_return_fraction < 0.0) {
+  if (gate.net_expected_return_fraction <= 0.0) {
     std::ostringstream oss;
     oss << "Expected edge " << expected_edge
-        << " below fee/spread/slippage hurdle " << gate.required_edge_fraction;
+        << " does not exceed fee/spread/slippage hurdle "
+        << gate.required_edge_fraction;
     gate.reason = oss.str();
     return gate;
   }
@@ -382,11 +383,11 @@ StrategyProfitabilityDiagnostic evaluateStrategyProfitabilityDiagnostic(
 
   diagnostic.fee_adjusted_expected_return_fraction =
       diagnostic.directional_expected_edge_fraction - diagnostic.required_edge_fraction;
-  if (diagnostic.fee_adjusted_expected_return_fraction < 0.0) {
+  if (diagnostic.fee_adjusted_expected_return_fraction <= 0.0) {
     diagnostic.factor = "negative_fee_adjusted_edge";
     std::ostringstream oss;
     oss << "Expected edge " << diagnostic.directional_expected_edge_fraction
-        << " below fee/spread/slippage hurdle "
+        << " does not exceed fee/spread/slippage hurdle "
         << diagnostic.required_edge_fraction;
     diagnostic.reason = oss.str();
     return diagnostic;

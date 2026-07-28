@@ -165,6 +165,11 @@ int main() {
     expect(weak_edge.factor == "negative_fee_adjusted_edge",
            "fee-negative diagnostic is attributed");
 
+    diagnostic_input.expected_return_fraction = 0.012;
+    const auto zero_net_edge = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(!zero_net_edge.actionable,
+           "exactly fee-neutral expected return is not actionable");
+
     diagnostic_input.signal_type = "sell";
     diagnostic_input.expected_return_fraction = -0.020;
     const auto favorable_sell = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
@@ -197,6 +202,11 @@ int main() {
     expect(!failing.passes, "order-book gate blocks fee-negative edge");
     expect(failing.reason.find("fee/spread/slippage") != std::string::npos,
            "order-book gate explains fee hurdle");
+
+    gate_input.expected_return_fraction = 0.013;
+    const auto zero_net_gate = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!zero_net_gate.passes,
+           "order-book gate blocks exactly fee-neutral expected edge");
 
     gate_input.expected_return_fraction = -0.050;
     const auto negative_buy = evaluateOrderBookProfitabilityGate(gate_input);
