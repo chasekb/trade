@@ -12,6 +12,7 @@ import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters
 import { useModelTraining } from '@/hooks/useModelTraining';
 import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 import { firstLiveTabProducerBlocker, normalizeLiveTabProducerSnapshot } from '@/lib/liveTabProducer';
+import { FALLBACK_COINBASE_SYMBOLS, getAllSymbols, parseCustomSymbols, resolveUniverseSymbols, symbolsMatch } from '@/lib/symbolUniverse';
 
 import { OpenPositionsSection } from './OpenPositionsSection';
 import { RecentTradesTable } from './RecentTradesTable';
@@ -85,16 +86,20 @@ function TradingConfiguration({
   const [selectedUniverseType, setSelectedUniverseType] = useState('all_usd');
   const [customInput, setCustomInput] = useState(symbols.join(','));
 
-  // Sync customInput with symbols when symbols change externally
+  // Sync customInput with symbols when symbols change externally, but do not
+  // overwrite the user's custom text while Custom universe mode is selected.
   useEffect(() => {
-    const currentParsed = customInput.split(',').map(s => s.trim()).filter(s => s);
-    const isDifferent = symbols.length !== currentParsed.length ||
-      !symbols.every((s, i) => s === currentParsed[i]);
+    if (symbolMode === 'universe' && selectedUniverseType === 'custom') {
+      return;
+    }
+
+    const currentParsed = parseCustomSymbols(customInput);
+    const isDifferent = !symbolsMatch(symbols, currentParsed);
 
     if (isDifferent) {
       setCustomInput(symbols.join(','));
     }
-  }, [symbols, customInput]);
+  }, [symbols, customInput, symbolMode, selectedUniverseType]);
 
   const handleSymbolModeChange = (mode: 'single' | 'universe') => {
     setSymbolMode(mode);
@@ -104,12 +109,6 @@ function TradingConfiguration({
       // For universe mode, apply the current universe type
       applyUniverseType(selectedUniverseType);
     }
-  };
-
-  // Function to get all available symbols
-  const getAllSymbols = (products: Record<string, string[]> | null | undefined): string[] => {
-    if (!products) return [];
-    return Object.values(products).flat().filter((symbol, index, arr) => arr.indexOf(symbol) === index);
   };
 
   // Fetch products directly from Coinbase API
@@ -144,70 +143,21 @@ function TradingConfiguration({
         allSymbols = symbols;
       } catch (error) {
         console.warn('Failed to fetch Coinbase symbols:', error);
-        allSymbols = ['BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 'DOT-USD', 'XRP-USD'];
+        allSymbols = FALLBACK_COINBASE_SYMBOLS;
       }
     }
 
-
-    let filteredSymbols: string[] = [];
-
-    // First try to use backend categories if available
-    if (products && products[universeType]) {
-      filteredSymbols = products[universeType];
-    } else {
-      // Fallback to client-side filtering
-      switch (universeType) {
-        case 'all_products':
-          filteredSymbols = allSymbols;
-          break;
-        case 'all_usd':
-          filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USD'));
-          break;
-        case 'all_eur':
-          filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-EUR'));
-          break;
-        case 'all_usdt':
-          filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-USDT'));
-          break;
-        case 'all_btc':
-          filteredSymbols = allSymbols.filter(symbol => symbol.endsWith('-BTC'));
-          break;
-        case 'major':
-          // Major crypto pairs (fallback)
-          const majorPairs = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'ADA-USD', 'DOT-USD', 'XRP-USD', 'LTC-USD'];
-          filteredSymbols = allSymbols.filter(symbol => majorPairs.includes(symbol));
-          break;
-      case 'minor':
-        // Minor currency pairs (excluding major pairs)
-        const minorPairs = allSymbols.filter(symbol =>
-          symbol.endsWith('-USD') &&
-          !['EUR-USD', 'GBP-USD', 'AUD-USD', 'NZD-USD'].includes(symbol) &&
-          !symbol.includes('BTC') && !symbol.includes('ETH')
-        ).slice(0, 21); // Limit to 21 as indicated
-        filteredSymbols = minorPairs;
-        break;
-      case 'crypto':
-        // Cryptocurrency pairs
-        filteredSymbols = allSymbols.filter(symbol =>
-          symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('ADA') ||
-          symbol.includes('SOL') || symbol.includes('DOT') || symbol.includes('XRP')
-        ).slice(0, 35); // Limit to 35 as indicated
-        filteredSymbols = filteredSymbols;
-        break;
-      case 'custom':
-      default:
-        // For custom, don't auto-populate
-        return;
-    }
+    const filteredSymbols = resolveUniverseSymbols(universeType, products, allSymbols);
+    if (filteredSymbols === null) {
+      onSymbolsChange(parseCustomSymbols(customInput));
+      return;
     }
 
     // Update symbols if filtered symbols were found
     if (filteredSymbols.length > 0) {
       onSymbolsChange(filteredSymbols);
-    } else {
     }
   };
-
   const handleUniverseTypeChange = (universeType: string) => {
     setSelectedUniverseType(universeType);
     applyUniverseType(universeType);
@@ -314,7 +264,7 @@ function TradingConfiguration({
               onChange={(e) => {
                 const newValue = e.target.value;
                 setCustomInput(newValue);
-                const customSymbols = newValue.split(',').map(s => s.trim()).filter(s => s);
+                const customSymbols = parseCustomSymbols(newValue);
                 onSymbolsChange(customSymbols);
               }}
               className="w-full"
@@ -324,6 +274,11 @@ function TradingConfiguration({
           <p className="text-xs text-gray-500">
             Selected {symbols.length} symbols
           </p>
+          {selectedUniverseType === 'custom' && symbols.length === 0 && (
+            <p className="text-xs text-red-600">
+              Enter one or more custom symbols before starting trading.
+            </p>
+          )}
         </div>
         )}
 
@@ -616,13 +571,14 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
   });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
   const startDisabledReason = useMemo(() => {
+    if (symbols.length === 0) return 'Enter one or more symbols before starting live trading.';
     if (producerLoading) return 'Loading Coinbase portfolio readiness...';
     if (!producer.credentialsConfigured) return 'Configure Coinbase credentials before starting live trading.';
     if (!producer.accountSnapshotLoaded) return firstLiveTabProducerBlocker(producer) || 'Coinbase account snapshot is not loaded.';
     if (producer.errors.length > 0) return firstLiveTabProducerBlocker(producer) || 'Coinbase portfolio refresh is currently failing.';
     if (!config.live_order_execution) return 'Confirm that this session may place real Coinbase orders.';
     return null;
-  }, [config.live_order_execution, producer, producerLoading]);
+  }, [config.live_order_execution, producer, producerLoading, symbols.length]);
 
   // Use local symbols for polling; fallback to backend status if empty
   // Always pass symbols (even if empty) to enable query when trading is active
