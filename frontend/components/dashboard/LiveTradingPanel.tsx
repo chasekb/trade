@@ -12,7 +12,7 @@ import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters
 import { useModelTraining } from '@/hooks/useModelTraining';
 import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 import { firstLiveTabProducerBlocker, normalizeLiveTabProducerSnapshot } from '@/lib/liveTabProducer';
-import { FALLBACK_COINBASE_SYMBOLS, getAllSymbols, parseCustomSymbols, resolveUniverseSymbols, symbolsMatch } from '@/lib/symbolUniverse';
+import { FALLBACK_COINBASE_SYMBOLS, getAllSymbols, hasUsableProductCategories, parseCustomSymbols, resolveUniverseSymbols, symbolsMatch } from '@/lib/symbolUniverse';
 
 import { OpenPositionsSection } from './OpenPositionsSection';
 import { RecentTradesTable } from './RecentTradesTable';
@@ -134,9 +134,11 @@ function TradingConfiguration({
   // Function to filter symbols by universe type
   const applyUniverseType = async (universeType: string) => {
 
-    let allSymbols = getAllSymbols(products);
+    const productCategories = hasUsableProductCategories(products) ? products : undefined;
+    let allSymbols = getAllSymbols(productCategories);
 
-    // If no symbols from hook, try to fetch from Coinbase directly
+    // If categories from the backend are missing or aliased, fetch the full
+    // Coinbase product list and derive uncapped universes locally.
     if (allSymbols.length === 0) {
       try {
         const symbols = await fetchCoinbaseSymbols();
@@ -147,7 +149,7 @@ function TradingConfiguration({
       }
     }
 
-    const filteredSymbols = resolveUniverseSymbols(universeType, products, allSymbols);
+    const filteredSymbols = resolveUniverseSymbols(universeType, productCategories, allSymbols);
     if (filteredSymbols === null) {
       onSymbolsChange(parseCustomSymbols(customInput));
       return;
