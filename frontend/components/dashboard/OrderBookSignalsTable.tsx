@@ -1,7 +1,7 @@
 import React from 'react';
 import { DataTable } from '@/components/ui/DataTable';
 import Tooltip from '@/components/ui/Tooltip';
-import { DataTableColumn, OrderBookSignal } from '@/types/trading';
+import { DataTableColumn, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
 
 // Updated interface to separate server pagination from client pagination state
 export function OrderBookSignalsTable({
@@ -34,6 +34,7 @@ export function OrderBookSignalsTable({
         active_signals?: number;
         average_strength?: number;
         last_updated?: string;
+        diagnostics?: OrderBookSignalDiagnostics;
     };
 }) {
     const activePage = currentPage;
@@ -116,7 +117,7 @@ export function OrderBookSignalsTable({
                 const tooltipContent = (
                     <div>
                         <p className="font-bold mb-1">Signal Strength: {(value || 0).toFixed(2)}</p>
-                        <p className="text-xs mb-2">This is the ML model's confidence in the signal. It is composed of the following features, weighted by their learned importance:</p>
+                        <p className="text-xs mb-2">This is the ML model&apos;s confidence in the signal. It is composed of the following features, weighted by their learned importance:</p>
                         <ul className="list-disc list-inside text-xs">
                             {Object.entries(composition).map(([key, val]) => (
                                 <li key={key}>
@@ -341,6 +342,24 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                     </button>
                 </div>
             </div>
+
+            {summary?.diagnostics && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                    <div className="font-medium mb-1">Live order-book analysis coverage</div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                        <div>Requested: {summary.diagnostics.requested_symbol_count ?? 0}</div>
+                        <div>Attempted this tick: {summary.diagnostics.quote_attempted_symbol_count ?? 0}</div>
+                        <div>Quote successes: {summary.diagnostics.quote_success_symbol_count ?? 0}</div>
+                        <div>Queued for later ticks: {summary.diagnostics.quote_skipped_symbol_count ?? 0}</div>
+                    </div>
+                    <div className="mt-1 text-xs text-blue-800">
+                        Per-tick cap: {summary.diagnostics.live_quote_symbols_per_tick_cap ?? 'n/a'} symbols. Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? signals.length}.
+                    </div>
+                    {summary.diagnostics.contract && (
+                        <div className="mt-1 text-xs text-blue-700">{summary.diagnostics.contract}</div>
+                    )}
+                </div>
+            )}
 
             {/* Data Table */}
             <DataTable

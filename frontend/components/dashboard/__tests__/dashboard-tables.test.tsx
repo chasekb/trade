@@ -223,4 +223,34 @@ describe('trade dashboard tables', () => {
     expect(within(row).getByText('Fee-Adjusted Edge: -1.10%')).toBeInTheDocument();
     expect(within(row).getByText('Required Edge: 1.70%')).toBeInTheDocument();
   });
+
+  it('renders live order-book coverage diagnostics when a per-tick quote cap applies', () => {
+    render(
+      <OrderBookSignalsTable
+        signals={[]}
+        currentPage={1}
+        pageSize={10}
+        summary={{
+          diagnostics: {
+            requested_symbol_count: 32,
+            quote_attempted_symbol_count: 10,
+            quote_success_symbol_count: 9,
+            quote_skipped_symbol_count: 22,
+            live_quote_symbols_per_tick_cap: 10,
+            current_latest_signal_count: 10,
+            recent_signal_record_count: 10,
+            contract: 'Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe.',
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText('Live order-book analysis coverage')).toBeInTheDocument();
+    expect(screen.getByText('Requested: 32')).toBeInTheDocument();
+    expect(screen.getByText('Attempted this tick: 10')).toBeInTheDocument();
+    expect(screen.getByText('Quote successes: 9')).toBeInTheDocument();
+    expect(screen.getByText('Queued for later ticks: 22')).toBeInTheDocument();
+    expect(screen.getByText(/Per-tick cap: 10 symbols/)).toBeInTheDocument();
+    expect(screen.getByText(/rotated across the selected universe/)).toBeInTheDocument();
+  });
 });

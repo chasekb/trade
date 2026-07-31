@@ -264,6 +264,7 @@ function mergeOrderBookSignalResponses(responses: any[], page: number, perPage: 
   const averageStrength = total === 0
     ? 0
     : allSignals.reduce((sum, signal) => sum + (signal.signal_strength ?? 0), 0) / total;
+  const diagnostics = normalizedResponses.find((response) => response.diagnostics)?.diagnostics;
 
   return {
     signals: pageSignals,
@@ -279,6 +280,7 @@ function mergeOrderBookSignalResponses(responses: any[], page: number, perPage: 
     active_signals: activeSignals,
     last_updated: lastUpdated || new Date().toISOString(),
     average_strength: averageStrength,
+    ...(diagnostics ? { diagnostics } : {}),
   };
 }
 

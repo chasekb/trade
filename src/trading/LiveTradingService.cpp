@@ -26,6 +26,7 @@
 #include <memory>
 #include <random>
 
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <ctime>
@@ -130,8 +131,10 @@ std::string makeSessionId() {
 }
 
 constexpr std::size_t kMaxPriceHistory = 512;
-// Live quotes are fetched sequentially over HTTPS each tick; cap the universe
-// so one tick stays within the cadence budget.
+// Live quotes are fetched sequentially over HTTPS each tick. Keep a per-tick
+// cadence cap for Coinbase/API safety, but rotate through the selected universe
+// so a large live universe is fully analyzed across ticks instead of silently
+// pinning the session to the first ten symbols forever.
 constexpr std::size_t kMaxLiveQuoteSymbols = 10;
 
 bool isOrderBookStrategy(const std::string &strategy) {
@@ -1127,6 +1130,35 @@ LiveTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
   return quotes;
 }
 
+std::vector<std::string> LiveTradingService::selectLiveQuoteBatchLocked() {
+  std::vector<std::string> batch;
+  const std::size_t requested = symbols_.size();
+  last_live_quote_requested_symbols_ = static_cast<int>(requested);
+  last_live_quote_batch_symbols_.clear();
+
+  if (requested == 0) {
+    live_quote_cursor_ = 0;
+    last_live_quote_attempted_symbols_ = 0;
+    last_live_quote_succeeded_symbols_ = 0;
+    last_live_quote_skipped_symbols_ = 0;
+    return batch;
+  }
+
+  const std::size_t batch_size = std::min(requested, kMaxLiveQuoteSymbols);
+  live_quote_cursor_ %= requested;
+  batch.reserve(batch_size);
+  for (std::size_t i = 0; i < batch_size; ++i) {
+    batch.push_back(symbols_[(live_quote_cursor_ + i) % requested]);
+  }
+  live_quote_cursor_ = (live_quote_cursor_ + batch_size) % requested;
+
+  last_live_quote_batch_symbols_ = batch;
+  last_live_quote_attempted_symbols_ = static_cast<int>(batch.size());
+  last_live_quote_succeeded_symbols_ = 0;
+  last_live_quote_skipped_symbols_ = static_cast<int>(requested - batch.size());
+  return batch;
+}
+
 bool LiveTradingService::fetchLiveAccountSnapshot(CoinbasePortfolioSnapshot &snapshot,
                                                       std::string *error) {
   if (!exchange_client_ || !exchange_client_->configured()) {
@@ -1637,7 +1669,8 @@ void LiveTradingService::trimHistoryLocked() {
   while (recent_trades_.size() > kMaxRecentTrades) {
     recent_trades_.pop_front();
   }
-  while (recent_signals_.size() > kMaxRecentSignals) {
+  const std::size_t signal_history_limit = std::max(kMaxRecentSignals, symbols_.size());
+  while (recent_signals_.size() > signal_history_limit) {
     recent_signals_.pop_front();
   }
 }
@@ -2027,8 +2060,7 @@ void LiveTradingService::workerLoop() {
         if (stop_requested_) {
           settling = true;
         } else {
-          symbols_snapshot = symbols_;
-
+          symbols_snapshot = selectLiveQuoteBatchLocked();
         }
       }
       if (settling) {
@@ -2057,6 +2089,7 @@ void LiveTradingService::workerLoop() {
           if (account_snapshot_loaded) {
             applyLiveAccountSnapshotLocked(account_snapshot, false);
           }
+          last_live_quote_succeeded_symbols_ = static_cast<int>(quotes.size());
           generateTickLocked(quotes);
           writes = takePendingWritesLocked();
           orders = takePendingOrdersLocked();
@@ -2172,8 +2205,42 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
     recent_signals.append(signalToJson(signal));
   }
   portfolio["recent_signals"] = recent_signals;
+  portfolio["order_book_signal_diagnostics"] = buildOrderBookSignalDiagnosticsLocked();
 
   return portfolio;
+}
+
+Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
+  Json::Value diagnostics(Json::objectValue);
+  std::set<std::string> latest_symbols;
+  int active_latest_signals = 0;
+  for (const auto &signal : recent_signals_) {
+    latest_symbols.insert(signal.symbol);
+    if (signal.signal_type != "hold") {
+      ++active_latest_signals;
+    }
+  }
+
+  Json::Value batch(Json::arrayValue);
+  for (const auto &symbol : last_live_quote_batch_symbols_) {
+    batch.append(symbol);
+  }
+
+  diagnostics["requested_symbol_count"] = last_live_quote_requested_symbols_;
+  diagnostics["quote_attempted_symbol_count"] = last_live_quote_attempted_symbols_;
+  diagnostics["quote_success_symbol_count"] = last_live_quote_succeeded_symbols_;
+  diagnostics["quote_skipped_symbol_count"] = last_live_quote_skipped_symbols_;
+  diagnostics["live_quote_symbols_per_tick_cap"] = static_cast<Json::UInt64>(kMaxLiveQuoteSymbols);
+  diagnostics["current_batch_symbols"] = batch;
+  diagnostics["current_latest_signal_count"] = static_cast<Json::UInt64>(latest_symbols.size());
+  diagnostics["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
+  diagnostics["active_recent_signal_records"] = active_latest_signals;
+  diagnostics["coverage_complete"] =
+      last_live_quote_requested_symbols_ > 0 &&
+      static_cast<int>(latest_symbols.size()) >= last_live_quote_requested_symbols_;
+  diagnostics["contract"] =
+      "Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe; total_signals is the current latest-by-symbol signal count, not cumulative signal history.";
+  return diagnostics;
 }
 
 Json::Value LiveTradingService::buildStatusJson() const {
@@ -2473,6 +2540,12 @@ Json::Value LiveTradingService::startSession(const Json::Value &payload) {
   recent_trades_.clear();
   recent_signals_.clear();
   session_trade_inputs_.clear();
+  live_quote_cursor_ = 0;
+  last_live_quote_requested_symbols_ = static_cast<int>(symbols_.size());
+  last_live_quote_attempted_symbols_ = 0;
+  last_live_quote_succeeded_symbols_ = 0;
+  last_live_quote_skipped_symbols_ = 0;
+  last_live_quote_batch_symbols_.clear();
   pending_orders_.clear();
   pending_live_orders_.clear();
   pending_order_symbols_.clear();
@@ -2830,6 +2903,7 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
   result["pagination"]["total_pages"] = 0;
   result["pagination"]["has_next"] = false;
   result["pagination"]["has_prev"] = false;
+  result["diagnostics"] = buildOrderBookSignalDiagnosticsLocked();
 
   try {
     if (active_ || !recent_signals_.empty()) {
@@ -2895,6 +2969,7 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
       if (latest_ts > 0) {
         result["last_updated"] = epochSecondsToIso(latest_ts);
       }
+      result["diagnostics"] = buildOrderBookSignalDiagnosticsLocked();
       return result;
     }
 

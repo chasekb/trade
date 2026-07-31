@@ -118,6 +118,20 @@ export interface OrderBookSignal {
   prediction?: 'BUY' | 'SELL' | 'HOLD';
 }
 
+export interface OrderBookSignalDiagnostics {
+  requested_symbol_count?: number;
+  quote_attempted_symbol_count?: number;
+  quote_success_symbol_count?: number;
+  quote_skipped_symbol_count?: number;
+  live_quote_symbols_per_tick_cap?: number;
+  current_batch_symbols?: string[];
+  current_latest_signal_count?: number;
+  recent_signal_record_count?: number;
+  active_recent_signal_records?: number;
+  coverage_complete?: boolean;
+  contract?: string;
+}
+
 export interface PriceDataPoint {
   timestamp: string;
   price: number;

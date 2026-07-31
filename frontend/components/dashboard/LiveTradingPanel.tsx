@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DataTable } from '@/components/ui/DataTable';
 import Tooltip from '@/components/ui/Tooltip';
-import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal } from '@/types/trading';
+import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLiveTabProducer, useMLModels } from '@/hooks/useTrading';
 import { useModelTraining } from '@/hooks/useModelTraining';
@@ -674,11 +674,15 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     ...(orderBookData?.active_signals !== undefined ? { active_signals: orderBookData.active_signals as number } : {}),
     ...(orderBookData?.average_strength !== undefined ? { average_strength: orderBookData.average_strength as number } : {}),
     ...(orderBookData?.last_updated ? { last_updated: orderBookData.last_updated as string } : {}),
+    ...(orderBookData && 'diagnostics' in orderBookData && orderBookData.diagnostics
+      ? { diagnostics: orderBookData.diagnostics }
+      : {}),
   } as {
     total_analyzed?: number;
     active_signals?: number;
     average_strength?: number;
     last_updated?: string;
+    diagnostics?: OrderBookSignalDiagnostics;
   };
 
   return (

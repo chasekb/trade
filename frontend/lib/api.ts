@@ -1,5 +1,5 @@
 // API client for trading dashboard
-import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParams, OrderBookSignal } from '@/types/trading';
+import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParams, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
 
 // Always use same-origin requests from the browser and let Next.js rewrites
 // proxy to the appropriate backend target for the current environment.
@@ -981,6 +981,7 @@ class ApiClient {
     active_signals?: number;
     last_updated?: string;
     average_strength?: number;
+    diagnostics?: OrderBookSignalDiagnostics;
   }>> {
     if (mode === 'simulated' && (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active)) {
       const page = params?.page || 1;
@@ -1005,7 +1006,7 @@ class ApiClient {
 
     try {
       const endpoint = mode === 'live' ? 'live-signals' : 'simulated-signals';
-      const response = await this.request<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; }>(`/api/orderbook/${endpoint}${query ? `?${query}` : ''}`);
+      const response = await this.request<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; diagnostics?: OrderBookSignalDiagnostics; }>(`/api/orderbook/${endpoint}${query ? `?${query}` : ''}`);
       return response;
     } catch {
       return {
@@ -1026,7 +1027,7 @@ class ApiClient {
           average_strength: 0,
         },
         timestamp: new Date().toISOString(),
-      } as ApiResponse<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; }>;
+      } as ApiResponse<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; diagnostics?: OrderBookSignalDiagnostics; }>;
     }
   }
 

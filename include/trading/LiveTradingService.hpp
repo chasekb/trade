@@ -175,6 +175,7 @@ private:
   void ensureSchema();
   void startWorkerLocked();
   void workerLoop();
+  std::vector<std::string> selectLiveQuoteBatchLocked();
   void generateTickLocked(const std::map<std::string, MarketQuote> &quotes);
   SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index,
                                        const MarketQuote &quote);
@@ -219,6 +220,7 @@ private:
   std::string jsonToString(const Json::Value &value) const;
   Json::Value buildStatusJson() const;
   Json::Value buildPortfolioJson() const;
+  Json::Value buildOrderBookSignalDiagnosticsLocked() const;
   Json::Value buildLiveTabProducerJson(bool credentials_configured) const;
   Json::Value tradeToJson(const TradeRecord &trade) const;
   Json::Value signalToJson(const SignalRecord &signal) const;
@@ -241,6 +243,12 @@ private:
   std::string updated_at_;
   long long start_epoch_seconds_ = 0;
   long long tick_ = 0;
+  std::size_t live_quote_cursor_ = 0;
+  int last_live_quote_requested_symbols_ = 0;
+  int last_live_quote_attempted_symbols_ = 0;
+  int last_live_quote_succeeded_symbols_ = 0;
+  int last_live_quote_skipped_symbols_ = 0;
+  std::vector<std::string> last_live_quote_batch_symbols_;
 
   int max_positions_ = 100;
   int position_update_interval_ = 5;
