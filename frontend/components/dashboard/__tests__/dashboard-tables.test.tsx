@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import React from 'react';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { OpenPositionsSection } from '../OpenPositionsSection';
 import { RecentTradesTable } from '../RecentTradesTable';
 import { OrderBookSignalsTable } from '../OrderBookSignalsTable';
@@ -31,6 +31,7 @@ describe('trade dashboard tables', () => {
     expect(screen.getByRole('columnheader', { name: 'Entry' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Current' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Unrealized P&L' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Management' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Opened' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Action' })).toBeInTheDocument();
 
@@ -41,10 +42,37 @@ describe('trade dashboard tables', () => {
     expect(within(row).getByText('$100.0000')).toBeInTheDocument();
     expect(within(row).getByText('$125.0000')).toBeInTheDocument();
     expect(within(row).getByText('$37.50')).toBeInTheDocument();
+    expect(within(row).getByText('Session-managed')).toBeInTheDocument();
     expect(within(row).getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 
-  it('renders explicit liquidation controls for Coinbase-only holdings', () => {
+  it('labels account-managed Coinbase holdings distinctly from session positions', () => {
+    render(
+      <OpenPositionsSection
+        positions={[
+          {
+            symbol: 'ETH-USD',
+            side: 'buy',
+            quantity: 0.25,
+            entry_price: 3500,
+            current_price: 3510,
+            unrealized_pnl: 0,
+            entry_time: '2026-07-06T12:00:00Z',
+            session_managed: true,
+            inherited_quantity: 0.25,
+            management_state: 'account_managed',
+          },
+        ]}
+        onClose={jest.fn()}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /ETH-USD/ });
+    expect(within(row).getByText('Account-managed')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+  });
+
+  it('renders explicit liquidation controls for Coinbase-only holdings', async () => {
     const liquidateHolding = jest.fn();
     const liquidateAll = jest.fn();
 
@@ -69,10 +97,10 @@ describe('trade dashboard tables', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Liquidate holding' }));
-    expect(liquidateHolding).toHaveBeenCalledWith('ADA-USD');
+    await waitFor(() => expect(liquidateHolding).toHaveBeenCalledWith('ADA-USD'));
 
     fireEvent.click(screen.getByRole('button', { name: /Liquidate all Coinbase holdings/ }));
-    expect(liquidateAll).toHaveBeenCalled();
+    await waitFor(() => expect(liquidateAll).toHaveBeenCalled());
   });
 
   it('renders recent trades values and optional fees column', () => {

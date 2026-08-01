@@ -63,6 +63,9 @@ private:
     std::string entry_signal_id;
     std::string status = "open";
     bool session_managed = false;
+    double inherited_quantity = 0.0;
+    std::string management_state = "coinbase_unmanaged";
+    bool eligible_for_strategy_management = false;
     std::size_t age_ticks = 0;
     // Prediction-time ML values captured at entry; exit rows persist these so
     // calibration analysis never sees outcome-derived (hindsight) numbers.
@@ -212,6 +215,10 @@ private:
 
   double positionSizeUsdForSignal(const SignalRecord &signal) const;
   std::size_t managedPositionCountLocked() const;
+  std::string accountPositionManagementModeLocked() const;
+  bool accountPositionManagementAllowsExitsLocked() const;
+  bool accountPositionManagementAllowsEntriesLocked() const;
+  std::string positionManagementStateLocked(const PositionState &position) const;
   long long nowEpochSeconds() const;
   std::string nowIsoUtc() const;
   std::string makeId(const std::string &prefix, long long ts, const std::string &symbol,
@@ -272,6 +279,7 @@ private:
   std::vector<OrderIntent> pending_orders_;
   std::vector<PendingLiveOrder> pending_live_orders_;
   std::set<std::string> pending_order_symbols_;
+  std::set<std::string> account_managed_symbols_;
   std::map<std::string, double> account_available_quantities_;
   std::map<std::string, std::pair<double, int>> managed_quantity_floors_;
   double pending_reserved_cash_ = 0.0;

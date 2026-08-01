@@ -570,6 +570,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     // Safety default: signals run on live market data but no exchange orders
     // are placed until this is explicitly enabled.
     live_order_execution: false,
+    account_position_management: 'disabled',
   });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
   const startDisabledReason = useMemo(() => {
@@ -732,6 +733,27 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
             <label htmlFor="live-order-execution" className="text-sm text-gray-700">
               I confirm this session may place real Coinbase orders (required to start live trading)
             </label>
+          </div>
+          <div className="mb-4 p-3 border border-amber-200 bg-amber-50 rounded-md space-y-2">
+            <label htmlFor="account-position-management" className="block text-sm font-medium text-amber-900">
+              Coinbase account position management
+            </label>
+            <select
+              id="account-position-management"
+              value={(config.account_position_management as string) || 'disabled'}
+              onChange={(e) => setConfig((prev) => ({ ...prev, account_position_management: e.target.value }))}
+              disabled={status.isActive}
+              className="w-full border border-amber-300 rounded-md px-3 py-2 bg-white text-sm"
+            >
+              <option value="disabled">Disabled — only manage positions opened by this session</option>
+              <option value="monitor">Monitor — show Coinbase holdings but do not trade them</option>
+              <option value="manage_exits">Manage exits — strategy may sell eligible Coinbase holdings</option>
+              <option value="manage_entries_and_exits">Manage entries and exits — strategy may add to and sell eligible Coinbase holdings</option>
+            </select>
+            <p className="text-xs text-amber-800">
+              Non-session Coinbase holdings are never strategy-traded unless this opt-in is set before starting live trading.
+              Inherited holding exits are labeled separately so session P&L statistics do not treat unknown entry cost as strategy alpha.
+            </p>
           </div>
           <TradingControls
             status={status}

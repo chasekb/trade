@@ -444,6 +444,35 @@ std::size_t LiveTradingService::managedPositionCountLocked() const {
       [](const auto &entry) { return entry.second.session_managed; }));
 }
 
+std::string LiveTradingService::accountPositionManagementModeLocked() const {
+  const std::string mode = parameters_.get("account_position_management", Json::Value("disabled")).asString();
+  if (mode == "monitor" || mode == "manage_exits" ||
+      mode == "manage_entries_and_exits") {
+    return mode;
+  }
+  return "disabled";
+}
+
+bool LiveTradingService::accountPositionManagementAllowsExitsLocked() const {
+  const std::string mode = accountPositionManagementModeLocked();
+  return mode == "manage_exits" || mode == "manage_entries_and_exits";
+}
+
+bool LiveTradingService::accountPositionManagementAllowsEntriesLocked() const {
+  return accountPositionManagementModeLocked() == "manage_entries_and_exits";
+}
+
+std::string LiveTradingService::positionManagementStateLocked(
+    const PositionState &position) const {
+  if (position.session_managed) {
+    return position.inherited_quantity > 1e-12 ? "account_managed" : "session_managed";
+  }
+  if (position.eligible_for_strategy_management) {
+    return "eligible_account_holding";
+  }
+  return "coinbase_unmanaged";
+}
+
 Json::Value LiveTradingService::signalToJson(const SignalRecord &signal) const {
   Json::Value out;
   out["signal_id"] = signal.signal_id;
@@ -507,6 +536,9 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   out["status"] = position.status;
   out["side"] = position.side;
   out["session_managed"] = position.session_managed;
+  out["inherited_quantity"] = position.inherited_quantity;
+  out["management_state"] = positionManagementStateLocked(position);
+  out["eligible_for_strategy_management"] = position.eligible_for_strategy_management;
   return out;
 }
 
@@ -516,6 +548,11 @@ void LiveTradingService::queueSignalWriteLocked(const SignalRecord &signal) {
 
 void LiveTradingService::queueTradeWriteLocked(const TradeRecord &trade) {
   pending_trade_writes_.push_back(trade);
+  if (trade.trade_type == "live_account_managed_add" ||
+      trade.trade_type == "live_account_managed_close" ||
+      trade.trade_type == "live_liquidation") {
+    return;
+  }
   session_trade_inputs_.push_back(TradePerformanceInput{
       trade.pnl, trade.fees, trade.quantity, trade.price, trade.timestamp_iso});
 }
@@ -612,10 +649,17 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
                                        : std::min(quantity, position.quantity);
     const double direction = position.side == "buy" ? 1.0 : -1.0;
     const double managed_closed_quantity = std::min(closed_quantity, position.managed_quantity);
-    const double gross_pnl =
-        (price - position.managed_entry_price) * managed_closed_quantity * direction;
+    const bool inherited_close = position.inherited_quantity > 1e-12;
+    const double gross_pnl = inherited_close
+                                 ? 0.0
+                                 : (price - position.managed_entry_price) *
+                                       managed_closed_quantity * direction;
     trade.quantity = closed_quantity;
     trade.pnl = gross_pnl;
+    if (inherited_close) {
+      trade.trade_type = "live_account_managed_close";
+      trade.signal_reason = intent.reason + " (inherited Coinbase position; PnL excluded)";
+    }
     trade.win_probability = position.entry_win_probability;
     trade.expected_return = position.entry_expected_return;
     trade.model_confidence = position.entry_model_confidence;
@@ -628,8 +672,10 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
                                                         managed_closed_quantity)
                                     : std::max(0.0, position.managed_quantity -
                                                         managed_closed_quantity);
+    position.inherited_quantity = std::max(0.0, position.inherited_quantity - closed_quantity);
     position.managed_quantity = std::min(position.managed_quantity, position.quantity);
     position.session_managed = position.managed_quantity > 1e-12;
+    position.management_state = positionManagementStateLocked(position);
     if (position.quantity <= 1e-12) {
       positions_.erase(position_it);
     }
@@ -647,7 +693,9 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
         position.quantity = std::max(0.0, position.quantity - closed_quantity);
       }
       position.managed_quantity = 0.0;
+      position.inherited_quantity = 0.0;
       position.session_managed = false;
+      position.management_state = "coinbase_unmanaged";
       position.unrealized_pnl = 0.0;
       position.pnl_percentage = 0.0;
       if (position.quantity <= 1e-12) {
@@ -664,6 +712,8 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
     trade.trade_type = "live_liquidation";
   } else {
     auto position_it = positions_.find(intent.product_id);
+    const bool inherited_add = intent.action == "add" &&
+                               intent.position.inherited_quantity > 1e-12;
     if (position_it == positions_.end()) {
       PositionState position;
       position.symbol = intent.product_id;
@@ -713,6 +763,10 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
       position.session_managed = position.managed_quantity > 1e-12;
     }
     trade.pnl = 0.0;
+    if (inherited_add) {
+      trade.trade_type = "live_account_managed_add";
+      trade.signal_reason = intent.reason + " (inherited Coinbase position; PnL excluded)";
+    }
     trade.win_probability = intent.signal.payload["ml_analysis"]
                                 .get("win_probability", Json::Value(0.5))
                                 .asDouble();
@@ -1209,8 +1263,16 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
   std::set<std::string> account_symbols;
   account_available_quantities_.clear();
   unrealized_pnl_ = 0.0;
+  const bool manage_account_exits = accountPositionManagementAllowsExitsLocked();
   for (const auto &holding : snapshot.holdings) {
     const std::string symbol = holding.asset + "-USD";
+    if (manage_account_exits &&
+        std::find(symbols_.begin(), symbols_.end(), symbol) == symbols_.end()) {
+      symbols_.push_back(symbol);
+    }
+    if (manage_account_exits) {
+      account_managed_symbols_.insert(symbol);
+    }
     double quantity = holding.available + holding.hold;
     auto floor_it = managed_quantity_floors_.find(symbol);
     if (floor_it != managed_quantity_floors_.end()) {
@@ -1235,13 +1297,31 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
       position.entry_timestamp = nowEpochSeconds();
       position.entry_time = nowIsoUtc();
       position.status = "coinbase";
+      position.inherited_quantity = quantity;
+      position.eligible_for_strategy_management = manage_account_exits;
+      if (manage_account_exits) {
+        position.managed_quantity = quantity;
+        position.managed_entry_price = holding.price_usd;
+        position.session_managed = true;
+        position.management_state = "account_managed";
+      } else {
+        position.management_state = "coinbase_unmanaged";
+      }
       positions_[symbol] = position;
       continue;
     }
     PositionState &position = position_it->second;
+    const bool inherited_holding = position.inherited_quantity > 1e-12 || !position.session_managed;
     position.quantity = quantity;
     position.managed_quantity = std::min(position.managed_quantity, quantity);
+    if (manage_account_exits && inherited_holding) {
+      position.inherited_quantity = quantity;
+      position.managed_quantity = quantity;
+      position.managed_entry_price = holding.price_usd;
+    }
     position.session_managed = position.managed_quantity > 1e-12;
+    position.eligible_for_strategy_management = manage_account_exits || inherited_holding;
+    position.management_state = positionManagementStateLocked(position);
     position.current_price = holding.price_usd;
     if (position.session_managed && position.managed_entry_price <= 0.0) {
       position.managed_entry_price = holding.price_usd;
@@ -1724,6 +1804,10 @@ void LiveTradingService::updateMarkToMarketLocked(
 
 void LiveTradingService::openPositionLocked(const SignalRecord &signal,
                                                  const std::string &reason) {
+  if (account_managed_symbols_.count(signal.symbol) > 0 &&
+      !accountPositionManagementAllowsEntriesLocked()) {
+    return;
+  }
   if (positions_.find(signal.symbol) != positions_.end() ||
       pending_order_symbols_.count(signal.symbol) > 0) {
     return;
@@ -1791,6 +1875,10 @@ void LiveTradingService::addToPositionLocked(const SignalRecord &signal,
   }
 
   PositionState &position = it->second;
+  if (position.inherited_quantity > 1e-12 &&
+      !accountPositionManagementAllowsEntriesLocked()) {
+    return;
+  }
   const double allocated_usd = positionSizeUsdForSignal(signal);
   if (allocated_usd <= 0.0 || signal.price <= 0.0) {
     return;
@@ -2000,7 +2088,9 @@ void LiveTradingService::generateTickLocked(const std::map<std::string, MarketQu
       continue;
     }
     if (strategy_ == "dca") {
-      if (signal_generated && signal.signal_type == "buy") {
+      if (signal_generated && signal.signal_type == "buy" &&
+          (position.inherited_quantity <= 1e-12 ||
+           accountPositionManagementAllowsEntriesLocked())) {
         addToPositionLocked(signal, "DCA scheduled purchase");
       }
       continue;
@@ -2010,8 +2100,12 @@ void LiveTradingService::generateTickLocked(const std::map<std::string, MarketQu
     const bool age_out = position.age_ticks >= static_cast<std::size_t>(hold_ticks);
 
     if (opposite_signal || age_out) {
+      const bool allow_reopen_after_close =
+          position.inherited_quantity <= 1e-12 ||
+          accountPositionManagementAllowsEntriesLocked();
       closePositionLocked(symbol, opposite_signal ? "Closed on opposite signal" : "Closed after holding period");
-      if (signal_generated && static_cast<int>(managedPositionCountLocked()) < max_positions_ &&
+      if (allow_reopen_after_close && signal_generated &&
+          static_cast<int>(managedPositionCountLocked()) < max_positions_ &&
           signalPassesMlGateLocked(signal)) {
         openPositionLocked(signal, "Re-opened after close");
       }
@@ -2162,8 +2256,19 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
   Json::Value positions(Json::objectValue);
   double directional_positions_value = 0.0;
   double absolute_positions_value = 0.0;
+  int session_managed_count = 0;
+  int account_managed_count = 0;
+  int coinbase_unmanaged_count = 0;
   for (const auto &[symbol, position] : positions_) {
     positions[symbol] = positionToJson(position);
+    const std::string management_state = positionManagementStateLocked(position);
+    if (management_state == "session_managed") {
+      ++session_managed_count;
+    } else if (management_state == "account_managed") {
+      ++account_managed_count;
+    } else {
+      ++coinbase_unmanaged_count;
+    }
     const double market_value =
         signedPositionValue(position.side, position.quantity, position.current_price);
     absolute_positions_value += std::abs(market_value);
@@ -2190,6 +2295,10 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
   portfolio["net_pnl"] = total_value - initial_capital_;
   portfolio["total_fees"] = total_fees_;
   portfolio["open_positions_count"] = static_cast<int>(positions_.size());
+  portfolio["session_managed_positions_count"] = session_managed_count;
+  portfolio["account_managed_positions_count"] = account_managed_count;
+  portfolio["coinbase_unmanaged_positions_count"] = coinbase_unmanaged_count;
+  portfolio["account_position_management"] = accountPositionManagementModeLocked();
   portfolio["tick"] = static_cast<Json::Int64>(tick_);
   portfolio["positions"] = positions;
 
@@ -2267,12 +2376,18 @@ Json::Value LiveTradingService::buildStatusJson() const {
           "SELECT to_regclass('public.individual_trades') AS relname");
       if (!exists.empty() && !exists[0]["relname"].is_null()) {
         std::ostringstream sql;
-        sql << "SELECT size, price, timestamp, pnl, fees "
+        sql << "SELECT size, price, timestamp, pnl, fees, trade_type "
             << "FROM individual_trades WHERE session_id='" << escapeSql(session_id_)
             << "' ORDER BY timestamp ASC";
         auto rows = DatabaseManager::getInstance().query(sql.str());
         trades.reserve(rows.size());
         for (const auto &row : rows) {
+          const std::string trade_type =
+              row["trade_type"].is_null() ? "live" : row["trade_type"].as<std::string>();
+          if (trade_type == "live_account_managed_add" ||
+              trade_type == "live_account_managed_close" || trade_type == "live_liquidation") {
+            continue;
+          }
           trades.push_back(toTradePerformanceInput(row));
         }
       }
@@ -2549,6 +2664,7 @@ Json::Value LiveTradingService::startSession(const Json::Value &payload) {
   pending_orders_.clear();
   pending_live_orders_.clear();
   pending_order_symbols_.clear();
+  account_managed_symbols_.clear();
   account_available_quantities_.clear();
   managed_quantity_floors_.clear();
   last_account_snapshot_ = CoinbasePortfolioSnapshot{};
@@ -2641,6 +2757,13 @@ Json::Value LiveTradingService::updateStrategyParameters(const Json::Value &payl
     }
   }
   for (const auto &member : members) {
+    if (member == "account_position_management" && active_ &&
+        params[member].asString() != accountPositionManagementModeLocked()) {
+      Json::Value resp;
+      resp["status"] = "error";
+      resp["error"] = "Account position management mode can only be changed before starting live trading";
+      return resp;
+    }
     parameters_[member] = params[member];
   }
 

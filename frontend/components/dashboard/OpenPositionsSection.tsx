@@ -10,6 +10,16 @@ type OpenPositionRow = {
     unrealized_pnl?: number | string;
     entry_time?: string;
     session_managed?: boolean;
+    inherited_quantity?: number | string;
+    management_state?: string;
+    eligible_for_strategy_management?: boolean;
+};
+
+const managementLabel = (position: OpenPositionRow) => {
+    if (position.management_state === 'account_managed') return 'Account-managed';
+    if (position.management_state === 'eligible_account_holding') return 'Eligible account holding';
+    if (position.management_state === 'session_managed' || position.session_managed !== false) return 'Session-managed';
+    return 'Coinbase holding';
 };
 
 export function OpenPositionsSection({
@@ -110,6 +120,7 @@ export function OpenPositionsSection({
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Entry</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unrealized P&L</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Management</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Opened</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                         </tr>
@@ -137,6 +148,11 @@ export function OpenPositionsSection({
                                 <td className={`px-4 py-2 text-sm font-medium ${Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                     }`}>
                                     ${Number(pos.unrealized_pnl || 0).toFixed(2)}
+                                </td>
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                    <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                                        {managementLabel(pos)}
+                                    </span>
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
                                 <td className="px-4 py-2 text-sm text-gray-900">
