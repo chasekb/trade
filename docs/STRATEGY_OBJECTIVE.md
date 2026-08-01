@@ -56,3 +56,7 @@ Before shipping live-affecting strategy work:
 - [ ] Confirm live-only blockers are attributed separately from signal-quality failures.
 - [ ] Run independent review for high-risk trading/accounting changes.
 - [ ] Verify the exact pushed SHA with GitHub Actions Docker Build Validation before closeout.
+
+## Review reports
+
+- `docs/reports/trade-strategy-objective-review-2026-08-01.md` inventories every live/simulated strategy, classifies objective alignment, and maps remaining strategy findings to backlog items.
