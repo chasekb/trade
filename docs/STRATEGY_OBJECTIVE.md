@@ -26,6 +26,18 @@ Every future change that affects strategy generation, signal strength, expected 
 - maximum drawdown;
 - live-only exchange blockers.
 
+## Backlog and review contract
+
+Every future strategy, ML, execution, dashboard, or backlog item that can change trading behavior should include an objective-impact note before implementation and closeout. The note should identify:
+
+- the expected direction of average realized win, average realized loss, net expectancy, profit factor, drawdown, fees/spread/slippage drag, and blocked intents;
+- the evidence source that will verify the impact, such as a fixed fixture, live-parity paper run, backtest window, captured live signal window, or post-change dashboard/API snapshot;
+- the rollback or follow-up condition if the change increases raw signal/trade count without improving risk-adjusted expectancy;
+- whether any missing expected-return or profitability diagnostics are `gate`, `size`, `exit`, `report`, or `unavailable` according to the diagnostics factoring contract below;
+- whether live-account safety, explicit user universe selection, secret handling, fail-closed exchange behavior, and no-unapproved-liquidation rules are unchanged.
+
+Review reports and backlog closeout evidence should treat a higher signal count, trade count, or widget throughput as supporting evidence only when it also improves or preserves expectancy after costs and blockers. If objective-impact evidence is unavailable, the backlog item should say so explicitly and leave measurement/calibration work open rather than claiming optimization.
+
 ## Diagnostics factoring contract
 
 Strategy diagnostics should be factored explicitly, not treated as decorative metadata.
