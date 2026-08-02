@@ -472,6 +472,7 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
         prediction_timestamp: new Date().toISOString(),
         analytics: {
           synthetic: true,
+          strategy: session.strategy,
         },
       },
       strength_composition: {
