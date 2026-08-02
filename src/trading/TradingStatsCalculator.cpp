@@ -103,7 +103,10 @@ TradingStats calculateTradingStats(const std::vector<TradePerformanceInput> &tra
     stats.total_fees += fees;
     stats.total_volume += volume;
     stats.total_trades += 1;
-    stats.last_trade_time = trade.timestamp_iso.empty() ? stats.last_trade_time : trade.timestamp_iso;
+    if (!trade.timestamp_iso.empty() &&
+        (stats.last_trade_time.empty() || trade.timestamp_iso > stats.last_trade_time)) {
+      stats.last_trade_time = trade.timestamp_iso;
+    }
 
     pnl_values.push_back(pnl);
 

@@ -1,6 +1,53 @@
 import { normalizeSimulatedTradingSnapshot } from './simulatedTradingStats';
 
 describe('normalizeSimulatedTradingSnapshot', () => {
+  it('derives the documented source-of-truth statistics from a fixed trade fixture', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        cash_balance: 1000,
+        realized_pnl: 8,
+        unrealized_pnl: 12,
+        total_fees: 3.5,
+        positions: [
+          { symbol: 'BTC-USD', side: 'buy', quantity: 1, current_price: 100 },
+          { symbol: 'ETH-USD', side: 'sell', quantity: 2, current_price: 25 },
+        ],
+        trades: [
+          { trade_id: 'win-a', symbol: 'BTC-USD', side: 'sell', quantity: 1, price: 100, pnl: 10, fees: 2, timestamp: '2026-06-18T10:00:00.000Z' },
+          { trade_id: 'loss', symbol: 'ETH-USD', side: 'sell', quantity: 2, price: 120, pnl: -6, fees: 1, timestamp: '2026-06-18T11:00:00.000Z' },
+          { trade_id: 'win-b', symbol: 'SOL-USD', side: 'sell', quantity: 1, price: 50, pnl: 4, fees: 0.5, timestamp: '2026-06-17T12:00:00.000Z' },
+          { trade_id: 'open', symbol: 'ADA-USD', side: 'buy', quantity: 0, price: 0, pnl: 0, fees: 0, timestamp: '2026-06-18T15:00:00.000Z' },
+        ],
+      },
+    });
+
+    const expectedMean = 8 / 4;
+    const expectedVariance = ((10 - expectedMean) ** 2 + (-6 - expectedMean) ** 2 + (4 - expectedMean) ** 2 + (0 - expectedMean) ** 2) / 4;
+    const expectedSharpe = expectedMean / Math.sqrt(expectedVariance);
+
+    expect(snapshot.stats.total_pnl).toBe(8);
+    expect(snapshot.stats.total_fees).toBe(3.5);
+    expect(snapshot.stats.net_pnl).toBe(4.5);
+    expect(snapshot.stats.total_trades).toBe(4);
+    expect(snapshot.stats.winning_trades).toBe(2);
+    expect(snapshot.stats.losing_trades).toBe(1);
+    expect(snapshot.stats.win_rate).toBeCloseTo(66.6666666667, 9);
+    expect(snapshot.stats.avg_win).toBe(7);
+    expect(snapshot.stats.avg_loss).toBe(-6);
+    expect(snapshot.stats.best_trade).toBe(10);
+    expect(snapshot.stats.worst_trade).toBe(-6);
+    expect(snapshot.stats.profit_factor).toBeCloseTo(14 / 6, 9);
+    expect(snapshot.stats.sharpe_ratio).toBeCloseTo(expectedSharpe, 9);
+    expect(snapshot.stats.max_drawdown).toBe(6);
+    expect(snapshot.stats.total_volume).toBe(390);
+    expect(snapshot.stats.avg_trade_size).toBe(97.5);
+    expect(snapshot.stats.last_trade_time).toBe('2026-06-18T15:00:00.000Z');
+    expect(snapshot.cashBalance).toBe(1000);
+    expect(snapshot.totalPositionsValue).toBe(50);
+    expect(snapshot.totalValue).toBe(1050);
+    expect(snapshot.netPnl).toBe(16.5);
+  });
+
   it('prefers backend stats when they are present', () => {
     const snapshot = normalizeSimulatedTradingSnapshot({
       portfolio: {

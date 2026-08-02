@@ -12,6 +12,7 @@ int main() {
       {10.0, 2.0, 1.0, 100.0, "2026-06-18T10:00:00Z"},
       {-6.0, 1.0, 2.0, 120.0, "2026-06-18T11:00:00Z"},
       {4.0, 0.5, 1.0, 50.0, "2026-06-17T12:00:00Z"},
+      {0.0, 0.0, 0.0, 0.0, "2026-06-18T15:00:00Z"},
   };
 
   const auto stats = calculateTradingStats(trades, "2026-06-18");
@@ -24,7 +25,7 @@ int main() {
     return true;
   };
 
-  if (stats.total_trades != 3 || stats.winning_trades != 2 || stats.losing_trades != 1) {
+  if (stats.total_trades != 4 || stats.winning_trades != 2 || stats.losing_trades != 1) {
     std::cerr << "Unexpected trade counts" << std::endl;
     return 1;
   }
@@ -37,7 +38,7 @@ int main() {
       !expect_close(stats.best_trade, 10.0, 1e-9, "best_trade") ||
       !expect_close(stats.worst_trade, -6.0, 1e-9, "worst_trade") ||
       !expect_close(stats.total_volume, 390.0, 1e-9, "total_volume") ||
-      !expect_close(stats.avg_trade_size, 130.0, 1e-9, "avg_trade_size") ||
+      !expect_close(stats.avg_trade_size, 97.5, 1e-9, "avg_trade_size") ||
       !expect_close(stats.max_drawdown, 6.0, 1e-9, "max_drawdown") ||
       !expect_close(stats.profit_factor, 14.0 / 6.0, 1e-9, "profit_factor")) {
     return 1;
@@ -45,22 +46,22 @@ int main() {
 
   // Sharpe is per-trade mean/std of PnL with no annualization factor.
   {
-    const double mean = 8.0 / 3.0;
+    const double mean = 8.0 / 4.0;
     const double variance =
         ((10.0 - mean) * (10.0 - mean) + (-6.0 - mean) * (-6.0 - mean) +
-         (4.0 - mean) * (4.0 - mean)) /
-        3.0;
+         (4.0 - mean) * (4.0 - mean) + (0.0 - mean) * (0.0 - mean)) /
+        4.0;
     const double expected_sharpe = mean / std::sqrt(variance);
     if (!expect_close(stats.sharpe_ratio, expected_sharpe, 1e-9, "sharpe_ratio")) {
       return 1;
     }
   }
 
-  if (stats.trades_today != 2) {
+  if (stats.trades_today != 3) {
     std::cerr << "Unexpected trades_today: " << stats.trades_today << std::endl;
     return 1;
   }
-  if (stats.last_trade_time != "2026-06-17T12:00:00Z") {
+  if (stats.last_trade_time != "2026-06-18T15:00:00Z") {
     std::cerr << "Unexpected last_trade_time: " << stats.last_trade_time << std::endl;
     return 1;
   }
