@@ -253,7 +253,7 @@ RUN ARCH=$(uname -m) && \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j$(nproc) && \
     ctest --test-dir build --output-on-failure \
-      -R "transformer_onnx_export|portfolio_accounting|trading_stats_calculator|position_sizing_policy|strategy_signal|coinbase_auth|coinbase_order|coinbase_portfolio"
+      -R "transformer_onnx_export|portfolio_accounting|trading_stats_calculator|position_sizing_policy|strategy_signal|strategy_expectancy_harness|coinbase_auth|coinbase_order|coinbase_portfolio"
 
 # --- STAGE 2: Runtime ---
 # Use a plain Ubuntu runtime image so CI does not depend on MCR availability.
