@@ -42,6 +42,7 @@ set(SOURCES
     src/exchange/CoinbaseOrder.cpp
     src/trading/PositionSizingPolicy.cpp
     src/trading/StrategySignal.cpp
+    src/trading/StrategyExpectancyHarness.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
     src/trading/LiveTradingService.cpp
@@ -152,6 +153,14 @@ add_executable(test_strategy_signal
 )
 target_include_directories(test_strategy_signal PRIVATE include)
 add_test(NAME strategy_signal COMMAND test_strategy_signal)
+
+add_executable(test_strategy_expectancy_harness
+    src/tests/test_strategy_expectancy_harness.cpp
+    src/trading/StrategyExpectancyHarness.cpp
+    src/trading/StrategySignal.cpp
+)
+target_include_directories(test_strategy_expectancy_harness PRIVATE include)
+add_test(NAME strategy_expectancy_harness COMMAND test_strategy_expectancy_harness)
 
 add_executable(test_coinbase_auth
     src/tests/test_coinbase_auth.cpp
