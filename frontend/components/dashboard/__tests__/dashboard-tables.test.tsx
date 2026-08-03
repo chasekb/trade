@@ -260,13 +260,17 @@ describe('trade dashboard tables', () => {
         pageSize={10}
         summary={{
           diagnostics: {
+            selected_symbol_count: 32,
             requested_symbol_count: 32,
             quote_attempted_symbol_count: 10,
             quote_success_symbol_count: 9,
             quote_skipped_symbol_count: 22,
             live_quote_symbols_per_tick_cap: 10,
             current_latest_signal_count: 10,
+            missing_latest_signal_count: 22,
+            missing_latest_signal_symbols: ['ADA-USD', 'DOT-USD'],
             recent_signal_record_count: 10,
+            widget_coverage_contract: 'Signals include response-only missing rows for selected symbols without a latest live quote so widget pagination represents the full selected universe.',
             contract: 'Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe.',
           },
         }}
@@ -274,11 +278,13 @@ describe('trade dashboard tables', () => {
     );
 
     expect(screen.getByText('Live order-book analysis coverage')).toBeInTheDocument();
-    expect(screen.getByText('Requested: 32')).toBeInTheDocument();
+    expect(screen.getByText('Selected: 32')).toBeInTheDocument();
     expect(screen.getByText('Attempted this tick: 10')).toBeInTheDocument();
     expect(screen.getByText('Quote successes: 9')).toBeInTheDocument();
-    expect(screen.getByText('Queued for later ticks: 22')).toBeInTheDocument();
+    expect(screen.getByText('Missing latest rows: 22')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting latest quote/signal: ADA-USD, DOT-USD')).toBeInTheDocument();
     expect(screen.getByText(/Per-tick cap: 10 symbols/)).toBeInTheDocument();
+    expect(screen.getByText(/pagination represents the full selected universe/)).toBeInTheDocument();
     expect(screen.getByText(/rotated across the selected universe/)).toBeInTheDocument();
   });
 });

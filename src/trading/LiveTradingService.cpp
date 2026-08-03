@@ -3043,9 +3043,39 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
       }
 
       std::vector<SignalRecord> filtered;
-      filtered.reserve(latest_by_symbol.size());
+      filtered.reserve(symbols.empty() ? latest_by_symbol.size() : symbols.size());
       for (const auto &entry : latest_by_symbol) {
         filtered.push_back(entry.second);
+      }
+
+      // When the live Coinbase quote cadence is intentionally bounded, the
+      // widget must still represent the full selected universe rather than only
+      // the symbols fetched in the current tick. Add response-only placeholder
+      // rows for selected symbols that have not produced a latest signal yet;
+      // these are never persisted and never create order intents.
+      Json::Value missing_symbols(Json::arrayValue);
+      if (!symbols.empty()) {
+        for (const auto &symbol : symbols) {
+          if (symbol.empty() || latest_by_symbol.find(symbol) != latest_by_symbol.end()) {
+            continue;
+          }
+          SignalRecord missing;
+          missing.signal_id = "missing_" + symbol;
+          missing.session_id = session_id_;
+          missing.symbol = symbol;
+          missing.signal_type = "hold";
+          missing.strength = 0.0;
+          missing.price = 0.0;
+          missing.timestamp = 0;
+          missing.timestamp_iso = "1970-01-01T00:00:00Z";
+          missing.payload = Json::Value(Json::objectValue);
+          missing.payload["data_status"] = "missing";
+          missing.payload["signal_reason"] =
+              "No latest live quote/signal is available for this selected symbol yet; Coinbase quote fetches are rotated across the selected universe.";
+          missing.payload["prediction"] = "HOLD";
+          filtered.push_back(missing);
+          missing_symbols.append(symbol);
+        }
       }
 
       std::sort(filtered.begin(), filtered.end(), [](const SignalRecord &left, const SignalRecord &right) {
@@ -3075,24 +3105,32 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
       int active_count = 0;
       long long latest_ts = 0;
 
-      for (int i = offset; i < std::min(offset + safe_per_page, total); ++i) {
-        const auto &signal = filtered[static_cast<std::size_t>(i)];
-        Json::Value signal_json = signalToJson(signal);
-        result["signals"].append(signal_json);
-        strength_sum += signal_json["signal_strength"].asDouble();
-        if (signal_json["signal_generated"].asBool()) {
+      for (const auto &signal : filtered) {
+        strength_sum += signal.strength;
+        if (signal.signal_type != "hold") {
           ++active_count;
         }
         latest_ts = std::max(latest_ts, signal.timestamp);
       }
 
+      for (int i = offset; i < std::min(offset + safe_per_page, total); ++i) {
+        const auto &signal = filtered[static_cast<std::size_t>(i)];
+        Json::Value signal_json = signalToJson(signal);
+        result["signals"].append(signal_json);
+      }
+
       result["total_analyzed"] = total;
       result["active_signals"] = active_count;
-      result["average_strength"] = result["signals"].size() > 0 ? strength_sum / static_cast<double>(result["signals"].size()) : 0.0;
+      result["average_strength"] = total > 0 ? strength_sum / static_cast<double>(total) : 0.0;
       if (latest_ts > 0) {
         result["last_updated"] = epochSecondsToIso(latest_ts);
       }
       result["diagnostics"] = buildOrderBookSignalDiagnosticsLocked();
+      result["diagnostics"]["selected_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
+      result["diagnostics"]["missing_latest_signal_count"] = missing_symbols.size();
+      result["diagnostics"]["missing_latest_signal_symbols"] = missing_symbols;
+      result["diagnostics"]["widget_coverage_contract"] =
+          "Signals include response-only missing rows for selected symbols without a latest live quote so widget pagination represents the full selected universe; missing rows do not submit orders.";
       return result;
     }
 

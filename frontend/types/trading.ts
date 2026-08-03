@@ -119,6 +119,7 @@ export interface OrderBookSignal {
 }
 
 export interface OrderBookSignalDiagnostics {
+  selected_symbol_count?: number;
   requested_symbol_count?: number;
   quote_attempted_symbol_count?: number;
   quote_success_symbol_count?: number;
@@ -126,9 +127,12 @@ export interface OrderBookSignalDiagnostics {
   live_quote_symbols_per_tick_cap?: number;
   current_batch_symbols?: string[];
   current_latest_signal_count?: number;
+  missing_latest_signal_count?: number;
+  missing_latest_signal_symbols?: string[];
   recent_signal_record_count?: number;
   active_recent_signal_records?: number;
   coverage_complete?: boolean;
+  widget_coverage_contract?: string;
   contract?: string;
 }
 

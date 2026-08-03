@@ -347,14 +347,22 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                 <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
                     <div className="font-medium mb-1">Live order-book analysis coverage</div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <div>Requested: {summary.diagnostics.requested_symbol_count ?? 0}</div>
+                        <div>Selected: {summary.diagnostics.selected_symbol_count ?? summary.diagnostics.requested_symbol_count ?? 0}</div>
                         <div>Attempted this tick: {summary.diagnostics.quote_attempted_symbol_count ?? 0}</div>
                         <div>Quote successes: {summary.diagnostics.quote_success_symbol_count ?? 0}</div>
-                        <div>Queued for later ticks: {summary.diagnostics.quote_skipped_symbol_count ?? 0}</div>
+                        <div>Missing latest rows: {summary.diagnostics.missing_latest_signal_count ?? summary.diagnostics.quote_skipped_symbol_count ?? 0}</div>
                     </div>
                     <div className="mt-1 text-xs text-blue-800">
                         Per-tick cap: {summary.diagnostics.live_quote_symbols_per_tick_cap ?? 'n/a'} symbols. Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? signals.length}.
                     </div>
+                    {summary.diagnostics.missing_latest_signal_symbols && summary.diagnostics.missing_latest_signal_symbols.length > 0 && (
+                        <div className="mt-1 text-xs text-blue-800">
+                            Awaiting latest quote/signal: {summary.diagnostics.missing_latest_signal_symbols.slice(0, 8).join(', ')}{summary.diagnostics.missing_latest_signal_symbols.length > 8 ? ` +${summary.diagnostics.missing_latest_signal_symbols.length - 8} more` : ''}
+                        </div>
+                    )}
+                    {summary.diagnostics.widget_coverage_contract && (
+                        <div className="mt-1 text-xs text-blue-700">{summary.diagnostics.widget_coverage_contract}</div>
+                    )}
                     {summary.diagnostics.contract && (
                         <div className="mt-1 text-xs text-blue-700">{summary.diagnostics.contract}</div>
                     )}

@@ -7,6 +7,7 @@ import {
   SymbolMode,
   UniverseType,
   OrderBookSignal,
+  OrderBookSignalDiagnostics,
 } from '@/types/trading';
 
 // Live Trading Hooks
@@ -264,7 +265,35 @@ function mergeOrderBookSignalResponses(responses: any[], page: number, perPage: 
   const averageStrength = total === 0
     ? 0
     : allSignals.reduce((sum, signal) => sum + (signal.signal_strength ?? 0), 0) / total;
-  const diagnostics = normalizedResponses.find((response) => response.diagnostics)?.diagnostics;
+  const diagnosticRows = normalizedResponses
+    .map((response) => response.diagnostics)
+    .filter(Boolean) as OrderBookSignalDiagnostics[];
+  const diagnostics = diagnosticRows.length === 0 ? undefined : diagnosticRows.reduce((merged, current) => ({
+    ...merged,
+    ...current,
+    selected_symbol_count: (merged.selected_symbol_count ?? 0) + (current.selected_symbol_count ?? current.requested_symbol_count ?? 0),
+    requested_symbol_count: (merged.requested_symbol_count ?? 0) + (current.requested_symbol_count ?? 0),
+    quote_attempted_symbol_count: (merged.quote_attempted_symbol_count ?? 0) + (current.quote_attempted_symbol_count ?? 0),
+    quote_success_symbol_count: (merged.quote_success_symbol_count ?? 0) + (current.quote_success_symbol_count ?? 0),
+    quote_skipped_symbol_count: (merged.quote_skipped_symbol_count ?? 0) + (current.quote_skipped_symbol_count ?? 0),
+    current_latest_signal_count: (merged.current_latest_signal_count ?? 0) + (current.current_latest_signal_count ?? 0),
+    recent_signal_record_count: (merged.recent_signal_record_count ?? 0) + (current.recent_signal_record_count ?? 0),
+    active_recent_signal_records: (merged.active_recent_signal_records ?? 0) + (current.active_recent_signal_records ?? 0),
+    missing_latest_signal_count: (merged.missing_latest_signal_count ?? 0) + (current.missing_latest_signal_count ?? 0),
+    missing_latest_signal_symbols: [
+      ...((merged.missing_latest_signal_symbols as string[] | undefined) ?? []),
+      ...((current.missing_latest_signal_symbols as string[] | undefined) ?? []),
+    ],
+    current_batch_symbols: [
+      ...((merged.current_batch_symbols as string[] | undefined) ?? []),
+      ...((current.current_batch_symbols as string[] | undefined) ?? []),
+    ],
+    live_quote_symbols_per_tick_cap: Math.max(
+      merged.live_quote_symbols_per_tick_cap ?? 0,
+      current.live_quote_symbols_per_tick_cap ?? 0
+    ),
+    coverage_complete: (merged.coverage_complete ?? true) && (current.coverage_complete ?? true),
+  }), {} as OrderBookSignalDiagnostics);
 
   return {
     signals: pageSignals,
@@ -304,7 +333,10 @@ export function useOrderBookSignals(
       if (requestSymbols && requestSymbols.length > ORDERBOOK_SYMBOL_CHUNK_SIZE) {
         const chunks = chunkOrderBookSymbols(requestSymbols);
         const chunkRequests = chunks.map((chunk) =>
-          apiClient.getOrderBookSignals(chunk, { page: 1, per_page: page * perPage }, mode)
+          // Fetch every selected symbol in each request chunk, then apply widget
+          // pagination after merging. The page size controls display only; it
+          // must not cap selected-universe signal coverage.
+          apiClient.getOrderBookSignals(chunk, { page: 1, per_page: chunk.length }, mode)
         );
         const responses = await Promise.all(chunkRequests);
 

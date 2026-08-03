@@ -597,8 +597,8 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
   );
   const [configHidden, setConfigHidden] = useState(false);
 
-  // The client-side merging logic has been removed.
-  // The useOrderBookSignals hook will now refetch from the backend cache when the component mounts.
+  // useOrderBookSignals fetches/merges all request chunks when the selected
+  // universe is larger than one backend request and keeps pagination display-only.
 
 
   // Handle pagination changes with persistence
