@@ -64,7 +64,7 @@ function DefaultErrorFallback({ error, retry }: DefaultErrorFallbackProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-gray-600">
-            We're sorry, but something unexpected happened. Please try refreshing the page.
+            We&apos;re sorry, but something unexpected happened. Please try refreshing the page.
           </p>
           <details className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
             <summary className="cursor-pointer font-medium">Error Details</summary>
