@@ -27,6 +27,7 @@ type RawSimulatedTradingSnapshot = {
   realized_pnl?: unknown;
   total_fees?: unknown;
   total_positions_value?: unknown;
+  total_positions_exposure?: unknown;
   total_value?: unknown;
   open_positions_count?: unknown;
   active_positions?: unknown;
@@ -58,6 +59,7 @@ export interface NormalizedSimulatedTradingSnapshot {
   cashBalance: number;
   totalValue: number;
   totalPositionsValue: number;
+  totalPositionsExposure: number;
   activePositions: number;
   unrealizedPnl: number;
   realizedPnl: number;
@@ -263,21 +265,37 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
   const rawTotalFees = portfolio.total_fees ?? rawStats.total_fees;
   const totalFees = toNumber(rawTotalFees, 0);
   // Signed market value (shorts negative), matching the backend convention so
-  // the Total Value = Cash + Positions Value identity holds either way.
-  const totalPositionsValue = toNumber(
-    portfolio.total_positions_value,
-    openPositions.reduce(
-      (sum, pos) => {
-        const notional = toNumber(pos.current_price ?? pos.price ?? pos.entry_price, 0) * toNumber(pos.quantity ?? pos.size, 0);
-        return sum + (pos.side === 'sell' ? -Math.abs(notional) : Math.abs(notional));
-      },
-      0,
-    ),
+  // the Total Value = Cash + Positions Value identity holds either way. Gross
+  // exposure is tracked separately for display/diagnostics and never mixed into
+  // the reconciliation identity.
+  const derivedSignedPositionsValue = openPositions.reduce(
+    (sum, pos) => {
+      const notional = toNumber(pos.current_price ?? pos.price ?? pos.entry_price, 0) * toNumber(pos.quantity ?? pos.size, 0);
+      return sum + (pos.side === 'sell' ? -Math.abs(notional) : Math.abs(notional));
+    },
+    0,
   );
+  const derivedPositionsExposure = openPositions.reduce(
+    (sum, pos) => {
+      const notional = toNumber(pos.current_price ?? pos.price ?? pos.entry_price, 0) * toNumber(pos.quantity ?? pos.size, 0);
+      return sum + Math.abs(notional);
+    },
+    0,
+  );
+  const backendPositionsValue = portfolio.total_positions_value;
+  const backendTotalValue = portfolio.total_value;
+  const parsedBackendPositionsValue = toNumber(backendPositionsValue, derivedSignedPositionsValue);
+  const parsedBackendTotalValue = toNumber(backendTotalValue, cashBalance + parsedBackendPositionsValue);
+  const reconcilesWithBackendPositionValue = Math.abs((cashBalance + parsedBackendPositionsValue) - parsedBackendTotalValue) < 1e-6;
+  const hasDerivedPositions = openPositions.length > 0;
+  const totalPositionsValue = reconcilesWithBackendPositionValue || !hasDerivedPositions
+    ? parsedBackendPositionsValue
+    : derivedSignedPositionsValue;
   // Keep the identity Total Value = Cash + Positions Value so the tiles reconcile.
-  const totalValue = toNumber(
-    portfolio.total_value,
-    cashBalance + totalPositionsValue,
+  const totalValue = cashBalance + totalPositionsValue;
+  const totalPositionsExposure = toNumber(
+    portfolio.total_positions_exposure ?? rawStats.total_positions_exposure,
+    derivedPositionsExposure,
   );
   const activePositions = Math.trunc(toNumber(
     portfolio.open_positions_count ?? portfolio.active_positions ?? rawStats.open_positions,
@@ -298,6 +316,7 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
     cashBalance,
     totalValue,
     totalPositionsValue,
+    totalPositionsExposure,
     activePositions,
     unrealizedPnl,
     realizedPnl,

@@ -6,6 +6,7 @@
 
 using trade::trading::closeCashDelta;
 using trade::trading::openCashDelta;
+using trade::trading::absolutePositionExposure;
 using trade::trading::signedPositionValue;
 
 namespace {
@@ -78,6 +79,14 @@ int main() {
 
   if (!expect_close(signedPositionValue("sell", 2.0, 50.0), -100.0,
                     "short signed value")) {
+    return 1;
+  }
+  if (!expect_close(absolutePositionExposure(2.0, 50.0), 100.0,
+                    "short absolute exposure")) {
+    return 1;
+  }
+  if (!expect_close(1000.0 + signedPositionValue("sell", 2.0, 50.0), 900.0,
+                    "cash plus short signed value identity")) {
     return 1;
   }
 

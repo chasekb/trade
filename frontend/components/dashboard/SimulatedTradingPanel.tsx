@@ -394,7 +394,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
             <p className="text-lg font-semibold tracking-tight text-slate-900">${totalValue.toFixed(2)}</p>
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-            <p className="text-sm font-medium text-slate-700">Positions Value</p>
+            <p className="text-sm font-medium text-slate-700">Net Positions Value</p>
             <p className="text-lg font-semibold tracking-tight text-amber-700">${totalPositionsValue.toFixed(2)}</p>
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">

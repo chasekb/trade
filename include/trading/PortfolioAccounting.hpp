@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace trade {
@@ -24,6 +25,10 @@ inline double closeCashDelta(const std::string &side, double exit_notional, doub
 inline double signedPositionValue(const std::string &side, double quantity, double price) {
   const double market_value = quantity * price;
   return side == "buy" ? market_value : -market_value;
+}
+
+inline double absolutePositionExposure(double quantity, double price) {
+  return std::abs(quantity * price);
 }
 
 // Base capital for percent position sizing: percent of the *current* total

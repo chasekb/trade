@@ -267,6 +267,60 @@ describe('normalizeSimulatedTradingSnapshot', () => {
     });
 
     expect(snapshot.totalPositionsValue).toBe(0);
+    expect(snapshot.totalPositionsExposure).toBe(200);
     expect(snapshot.totalValue).toBe(snapshot.cashBalance + snapshot.totalPositionsValue);
+  });
+
+  it('repairs legacy unsigned backend position value when it conflicts with total value', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        cash_balance: 1099,
+        // Legacy/local fallback bug: short exposure was emitted as positive even
+        // though backend total_value used cash plus signed positions value.
+        total_positions_value: 100,
+        total_value: 999,
+        positions: [
+          { symbol: 'SHORT-USD', side: 'sell', quantity: 2, current_price: 50 },
+        ],
+      },
+    });
+
+    expect(snapshot.totalPositionsValue).toBe(-100);
+    expect(snapshot.totalPositionsExposure).toBe(100);
+    expect(snapshot.totalValue).toBe(999);
+    expect(snapshot.totalValue).toBe(snapshot.cashBalance + snapshot.totalPositionsValue);
+  });
+
+  it('keeps a deterministic buy/sell/open-position portfolio fixture reconciled', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        cash_balance: 9400,
+        total_positions_value: 250,
+        total_positions_exposure: 750,
+        total_value: 9650,
+        realized_pnl: 20,
+        unrealized_pnl: -350,
+        total_fees: 5,
+        positions: [
+          { symbol: 'LONG-USD', side: 'buy', quantity: 5, current_price: 100 },
+          { symbol: 'SHORT-USD', side: 'sell', quantity: 2, current_price: 125 },
+        ],
+        trades: [
+          { trade_id: 'buy-open', symbol: 'LONG-USD', side: 'buy', quantity: 5, price: 100, pnl: 0, fees: 1, timestamp: '2026-06-18T10:00:00.000Z' },
+          { trade_id: 'sell-open', symbol: 'SHORT-USD', side: 'sell', quantity: 2, price: 125, pnl: 0, fees: 1, timestamp: '2026-06-18T10:01:00.000Z' },
+          { trade_id: 'closed-win', symbol: 'SOL-USD', side: 'sell', quantity: 3, price: 20, pnl: 20, fees: 3, timestamp: '2026-06-18T10:02:00.000Z' },
+        ],
+      },
+    });
+
+    expect(snapshot.cashBalance).toBe(9400);
+    expect(snapshot.totalPositionsValue).toBe(250);
+    expect(snapshot.totalPositionsExposure).toBe(750);
+    expect(snapshot.totalValue).toBe(9650);
+    expect(snapshot.totalValue).toBe(snapshot.cashBalance + snapshot.totalPositionsValue);
+    expect(snapshot.stats.total_trades).toBe(3);
+    expect(snapshot.stats.winning_trades).toBe(1);
+    expect(snapshot.stats.losing_trades).toBe(0);
+    expect(snapshot.stats.win_rate).toBe(100);
   });
 });

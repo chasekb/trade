@@ -43,6 +43,7 @@ type LocalSimPortfolio = {
   cash_balance: number;
   total_value: number;
   total_positions_value: number;
+  total_positions_exposure: number;
   unrealized_pnl: number;
   realized_pnl: number;
   net_pnl: number;
@@ -81,6 +82,7 @@ function setLocalSimTradingSession(strategy: string, symbols: string[], paramete
       cash_balance: initialCapital,
       total_value: initialCapital,
       total_positions_value: 0,
+      total_positions_exposure: 0,
       unrealized_pnl: 0,
       realized_pnl: 0,
       net_pnl: 0,
@@ -142,8 +144,8 @@ function localTradeId(symbol: string, tick: number, sequence: number): string {
 function updateLocalPortfolioMarkToMarket(session: LocalSimTradingSession, prices: Record<string, number>) {
   const portfolio = session.portfolio;
   let unrealizedPnl = 0;
-  let totalPositionsValue = 0;
   let signedPositionsValue = 0;
+  let totalPositionsExposure = 0;
 
   Object.values(portfolio.positions).forEach((position) => {
     const currentPrice = prices[position.symbol] ?? position.current_price;
@@ -160,12 +162,16 @@ function updateLocalPortfolioMarkToMarket(session: LocalSimTradingSession, price
       : 0;
     position.age_ticks += 1;
     unrealizedPnl += position.unrealized_pnl;
-    totalPositionsValue += Math.abs(currentNotional);
     signedPositionsValue += direction * currentNotional;
+    totalPositionsExposure += Math.abs(currentNotional);
   });
 
   portfolio.unrealized_pnl = unrealizedPnl;
-  portfolio.total_positions_value = totalPositionsValue;
+  // Canonical accounting convention shared with the C++ backend:
+  // total_value = cash_balance + signed total_positions_value. Gross exposure
+  // is reported separately so shorts are never silently mixed as positive value.
+  portfolio.total_positions_value = signedPositionsValue;
+  portfolio.total_positions_exposure = totalPositionsExposure;
   portfolio.total_fees = portfolio.total_fees || 0;
   portfolio.total_value = portfolio.cash_balance + signedPositionsValue;
   portfolio.net_pnl = portfolio.realized_pnl + portfolio.unrealized_pnl - portfolio.total_fees;
@@ -530,6 +536,7 @@ function buildLocalSimulatedTradingStatus() {
         cash_balance: 0,
         total_value: 0,
         total_positions_value: 0,
+        total_positions_exposure: 0,
         unrealized_pnl: 0,
         realized_pnl: 0,
         net_pnl: 0,

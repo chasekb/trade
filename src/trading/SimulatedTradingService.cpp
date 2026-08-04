@@ -1735,7 +1735,7 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
     positions[symbol] = positionToJson(position);
     const double market_value =
         signedPositionValue(position.side, position.quantity, position.current_price);
-    absolute_positions_value += std::abs(market_value);
+    absolute_positions_value += absolutePositionExposure(position.quantity, position.current_price);
     directional_positions_value += market_value;
   }
   const double total_value = cash_ + directional_positions_value;
