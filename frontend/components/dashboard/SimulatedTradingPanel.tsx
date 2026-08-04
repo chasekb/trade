@@ -30,15 +30,6 @@ type CoinbaseProduct = {
   id?: string;
 };
 
-type RecentTradeRow = {
-  timestamp?: string;
-  symbol?: string;
-  side?: string;
-  quantity?: number | string;
-  price?: number | string;
-  pnl?: number | string;
-};
-
 // Trading Configuration Section
 function TradingConfiguration({
   strategy,

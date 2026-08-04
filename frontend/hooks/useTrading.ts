@@ -4,11 +4,62 @@ import { apiClient } from '@/lib/api';
 import {
   TradingMode,
   TradingStrategy,
-  SymbolMode,
-  UniverseType,
   OrderBookSignal,
   OrderBookSignalDiagnostics,
 } from '@/types/trading';
+
+type TradingParameterValue = string | number | boolean | undefined;
+type TradingParameters = Record<string, TradingParameterValue>;
+
+type TradingStatusPayload = {
+  status?: string;
+  isActive?: boolean;
+  is_active?: boolean;
+  is_trading?: boolean;
+  mode?: TradingMode;
+  strategy?: TradingStrategy;
+  strategy_type?: TradingStrategy;
+  symbols?: string[];
+  session_id?: string;
+  data?: TradingStatusPayload;
+  portfolio?: unknown;
+  stats?: unknown;
+  recent_trades?: unknown;
+  current_capital?: unknown;
+};
+
+type OrderBookSignalsData = {
+  signals: OrderBookSignal[];
+  pagination?: {
+    current_page?: number;
+    page?: number;
+    per_page?: number;
+    limit?: number;
+    total_signals?: number;
+    total_pages?: number;
+    has_next?: boolean;
+    has_prev?: boolean;
+  };
+  total_analyzed?: number;
+  active_signals?: number;
+  last_updated?: string;
+  average_strength?: number;
+  diagnostics?: OrderBookSignalDiagnostics;
+};
+
+type WebSocketPayload = {
+  type?: string;
+  data?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseWebSocketPayload(raw: string): WebSocketPayload {
+  const parsed: unknown = JSON.parse(raw || '{}');
+  return isRecord(parsed) ? parsed : {};
+}
 
 // Live Trading Hooks
 
@@ -37,29 +88,22 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
   });
 
-  // Update local status when backend status changes.
-  useEffect(() => {
-    if (!backendStatus) {
-      return;
-    }
-
-    const backendIsActive = backendStatus.isActive ?? backendStatus.is_active ?? backendStatus.is_trading ?? false;
-    setStatus(() => ({
-        isActive: backendIsActive,
-        // The session's real mode comes from the backend; fall back to the
-        // tab's own mode rather than assuming simulated.
-        mode: (backendStatus.mode as TradingMode) || mode,
-        strategy: backendStatus.strategy_type || backendStatus.strategy || 'orderbook',
-        symbols: backendStatus.symbols || [],
-      }));
-  }, [backendStatus, mode]);
+  const backendPayload = backendStatus as TradingStatusPayload | undefined;
+  const displayStatus = backendPayload ? {
+    isActive: backendPayload.isActive ?? backendPayload.is_active ?? backendPayload.is_trading ?? false,
+    // The session's real mode comes from the backend; fall back to the tab's
+    // own mode rather than assuming simulated.
+    mode: backendPayload.mode || mode,
+    strategy: backendPayload.strategy_type || backendPayload.strategy || 'orderbook' as TradingStrategy,
+    symbols: backendPayload.symbols || [],
+  } : status;
 
   const startTradingMutation = useMutation({
     mutationFn: async (config: {
       mode: TradingMode;
       strategy: TradingStrategy;
       symbols: string[];
-      parameters: Record<string, any>;
+      parameters: TradingParameters;
       position_size_percent?: number;
       max_positions?: number;
       position_update_interval?: number;
@@ -88,26 +132,26 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
         apiConfig
       );
 
-      if ((response as any)?.status === 'error') {
-        throw new Error((response as any)?.error || 'Failed to start trading');
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to start trading');
       }
 
       return response;
     },
     onSuccess: (response, variables) => {
-      const responseData = (response as any)?.data ?? response;
+      const responseData: TradingStatusPayload = response.data ?? response;
       // Accept multiple response shapes from backend variants:
       // - { status: 'started', is_active: true }
       // - { status: 'success', session_id: '...' }
       // - ApiResponse-wrapped payloads with data.is_active/session_id
       const isStarted =
-        (responseData as any)?.status === 'started' ||
-        (responseData as any)?.status === 'success' ||
-        (responseData as any)?.is_active === true ||
-        (responseData as any)?.isActive === true ||
-        (responseData as any)?.session_id ||
-        (responseData as any)?.data?.is_active === true ||
-        (responseData as any)?.data?.session_id;
+        responseData.status === 'started' ||
+        responseData.status === 'success' ||
+        responseData.is_active === true ||
+        responseData.isActive === true ||
+        Boolean(responseData.session_id) ||
+        responseData.data?.is_active === true ||
+        Boolean(responseData.data?.session_id);
 
       if (isStarted) {
         setStatus({
@@ -161,7 +205,7 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
   });
 
   const updateStrategyParamsMutation = useMutation({
-    mutationFn: (params: Record<string, any>) => apiClient.updateStrategyParameters(params, mode),
+    mutationFn: (params: TradingParameters) => apiClient.updateStrategyParameters(params, mode),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
       if (mode === 'simulated') {
@@ -193,7 +237,7 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
   });
 
   return {
-    status,
+    status: displayStatus,
     startTrading: startTradingMutation.mutateAsync,
     stopTrading: stopTradingMutation.mutateAsync,
     updateStrategyParameters: updateStrategyParamsMutation.mutateAsync,
@@ -227,9 +271,9 @@ function mergeCountMap(left?: Record<string, number>, right?: Record<string, num
   return merged;
 }
 
-function mergeOrderBookSignalResponses(responses: any[], page: number, perPage: number) {
-  const normalizedResponses = responses.filter(Boolean) as Array<any>;
-  const allSignals = normalizedResponses.flatMap((response: any) => response?.signals ?? []);
+function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: number, perPage: number) {
+  const normalizedResponses = responses.filter(Boolean);
+  const allSignals = normalizedResponses.flatMap((response) => response.signals ?? []);
   allSignals.sort((left, right) => {
     const strengthDiff = (right.signal_strength ?? 0) - (left.signal_strength ?? 0);
     if (strengthDiff !== 0) {
@@ -360,7 +404,7 @@ export function useOrderBookSignals(
         return mergeOrderBookSignalResponses(
           responses
             .map((response) => response.data)
-            .filter((data) => Boolean(data)) as any[],
+            .filter((data): data is OrderBookSignalsData => Boolean(data)),
           page,
           perPage
         );
@@ -453,11 +497,11 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
       // Add to display cache (same logic as before)
       const allQueries = queryClient.getQueryCache().getAll();
-      const orderbookQueries = allQueries.filter((q: any) =>
+      const orderbookQueries = allQueries.filter((q) =>
         q.queryKey[0] === 'orderbook-signals' && q.queryKey[1] === 'simulated'
       );
 
-      orderbookQueries.forEach((query: any) => {
+      orderbookQueries.forEach((query) => {
         const queryKey = query.queryKey;
         const querySymbols = queryKey[2] as string[] | undefined;
         const page = queryKey[4] as number;
@@ -466,7 +510,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(nextSignal.symbol);
 
           if (isRelevant) {
-            queryClient.setQueryData(queryKey, (oldData: any) => {
+            queryClient.setQueryData<OrderBookSignalsData>(queryKey, (oldData) => {
               // If no data exists yet (initial load), initialize with the new signal
               if (!oldData) {
                 return {
@@ -537,7 +581,8 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
   useEffect(() => {
     // Auto-process queue when signals are added and not currently processing
     if (signalQueue.length > 0 && !processingSignal) {
-      processNextSignal();
+      const processTimer = setTimeout(processNextSignal, 0);
+      return () => clearTimeout(processTimer);
     }
   }, [signalQueue, processingSignal, processNextSignal]);
 
@@ -601,7 +646,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
     const onMessage = (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data || '{}');
+        const payload = parseWebSocketPayload(event.data);
         const type = payload?.type;
         const data = payload?.data;
 
@@ -635,14 +680,16 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         if (type === 'orderbook_signals_update' && data) {
           try {
             // Handle both array of signals (from signals key) or single signal object
-            const signalsList = Array.isArray(data.signals) ? data.signals : (Array.isArray(data) ? data : [data]);
+            const signalsList = isRecord(data) && Array.isArray(data.signals)
+              ? data.signals
+              : (Array.isArray(data) ? data : [data]);
 
             if (!signalsList || signalsList.length === 0) return;
 
             // Add signals to queue (FIFO)
             setSignalQueue(prevQueue => {
-              const filteredSignals = signalsList.filter((newSignal: OrderBookSignal) => {
-                if (!newSignal || !newSignal.symbol) return false;
+              const filteredSignals = signalsList.filter((newSignal): newSignal is OrderBookSignal => {
+                if (!isRecord(newSignal) || typeof newSignal.symbol !== 'string') return false;
 
                 // Avoid duplicates in queue
                 const isDuplicate = prevQueue.some(queuedSignal =>
@@ -747,7 +794,7 @@ export function useBacktest() {
     mutationFn: (config: {
       strategy: TradingStrategy;
       symbols: string[];
-      parameters: Record<string, any>;
+      parameters: TradingParameters;
       start_date: string;
       end_date: string;
     }) => apiClient.runBacktest(config),

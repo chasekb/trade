@@ -103,6 +103,8 @@ export interface OrderBookSignal {
     model_version: string;
     features_used?: string[];
     prediction_timestamp: string;
+    // Backend analytics are model-version specific and intentionally opaque to the table layer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     analytics?: any;
   };
   strength_composition?: {
@@ -229,6 +231,8 @@ export interface StatCardProps {
 export interface DataTableColumn<T> {
   key: keyof T;
   header: React.ReactNode;
+  // Column renderers are key-specific but the table stores them in a shared array.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render?: (value: any, item: T) => React.ReactNode;
   sortable?: boolean;
   className?: string;
@@ -258,6 +262,7 @@ export interface StrategyParameter {
   name: string;
   label: string;
   type: 'number' | 'text' | 'select';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default: any;
   min?: number;
   max?: number;
@@ -295,6 +300,7 @@ export interface TradingConfig {
   symbols: string[];
   universeType?: UniverseType;
   customSymbols?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parameters: Record<string, any>;
   positionSizePercent?: number;
   maxPositions?: number;
@@ -304,6 +310,7 @@ export interface TradingConfig {
 export interface OrderBookPreset {
   name: string;
   label: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
 }
 
@@ -334,7 +341,9 @@ export interface TradingControlsProps {
 
 export interface StrategyConfigFormProps {
   strategy: TradingStrategy;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onChange: (config: Record<string, any>) => void;
   className?: string;
 }
@@ -347,6 +356,7 @@ export interface BacktestFormProps {
     symbols: string[];
     startDate: string;
     endDate: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     config: Record<string, any>;
   };
   onChange: (parameters: Partial<BacktestFormProps['parameters']>) => void;
@@ -360,6 +370,7 @@ export interface BacktestControlsProps {
 }
 
 export interface BacktestResultsProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   results: any;
   loading: boolean;
 }

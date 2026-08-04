@@ -1,6 +1,5 @@
 import React from 'react';
 import { DataTable } from '@/components/ui/DataTable';
-import Tooltip from '@/components/ui/Tooltip';
 import { DataTableColumn, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
 
 const formatCounts = (counts?: Record<string, number>) => {
@@ -120,22 +119,7 @@ export function OrderBookSignalsTable({
             header: 'Strength',
             sortable: true,
             className: "px-2 py-2",
-            render: (value, row) => {
-                const composition = row.strength_composition || {};
-                const tooltipContent = (
-                    <div>
-                        <p className="font-bold mb-1">Signal Strength: {(value || 0).toFixed(2)}</p>
-                        <p className="text-xs mb-2">This is the ML model&apos;s confidence in the signal. It is composed of the following features, weighted by their learned importance:</p>
-                        <ul className="list-disc list-inside text-xs">
-                            {Object.entries(composition).map(([key, val]) => (
-                                <li key={key}>
-                                    <span className="font-semibold">{key.replace(/_/g, ' ')}:</span> {val.importance_percent.toFixed(1)}%
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                );
-
+            render: (value) => {
                 return (
                     <div className="flex items-center">
                         <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
@@ -168,7 +152,7 @@ export function OrderBookSignalsTable({
             key: 'criteria_analysis',
             header: 'Criteria',
             className: "px-2 py-2",
-            render: (value, row) => {
+            render: (value) => {
                 const criteria = value || {};
                 const squeeze = criteria.bid_ask_squeeze || {};
                 const imbalanceBuy = criteria.volume_imbalance_buy || {};
@@ -202,7 +186,7 @@ export function OrderBookSignalsTable({
             key: 'ml_analysis',
             header: 'ML Analysis',
             className: "px-2 py-2",
-            render: (value, row) => {
+            render: (value) => {
                 const ml = value || {};
                 if (!ml.ml_enabled) {
                     return <span className="text-xs text-gray-400">No ML</span>;

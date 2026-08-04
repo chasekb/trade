@@ -4,12 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { DataTable } from '@/components/ui/DataTable';
-import Tooltip from '@/components/ui/Tooltip';
-import { LiveTradingPanelProps, TradingStrategy, TradingMode, SymbolMode, UniverseType, DataTableColumn, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
+import { LiveTradingPanelProps, TradingStrategy, OrderBookSignalDiagnostics } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLiveTrading, useOrderBookSignals, useProducts, useStrategyParameters, useLiveTabProducer, useMLModels } from '@/hooks/useTrading';
-import { useModelTraining } from '@/hooks/useModelTraining';
+import { useLiveTrading, useOrderBookSignals, useProducts, useLiveTabProducer } from '@/hooks/useTrading';
 import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 import { firstLiveTabProducerBlocker, normalizeLiveTabProducerSnapshot } from '@/lib/liveTabProducer';
 import { FALLBACK_COINBASE_SYMBOLS, getAllSymbols, hasUsableProductCategories, parseCustomSymbols, resolveUniverseSymbols, symbolsMatch } from '@/lib/symbolUniverse';
@@ -35,18 +32,6 @@ type CoinbaseProduct = {
   status?: string;
   trading_disabled?: boolean;
   id?: string;
-};
-
-type TradeLike = {
-  id?: string;
-  trade_id?: string;
-  symbol?: string;
-  side?: string;
-  quantity?: number;
-  price?: number;
-  fee?: number;
-  pnl?: number;
-  timestamp?: string | number;
 };
 
 type PositionLike = {
@@ -223,7 +208,7 @@ function TradingConfiguration({
             }}
             className="w-full border border-gray-300 rounded-md px-3 py-2"
           >
-            {Object.entries(products || {}).map(([category, categorySymbols]) =>
+            {Object.entries(products || {}).map(([, categorySymbols]) =>
               categorySymbols.map((symbol: string) => (
                 <option key={symbol} value={symbol}>
                   {symbol}
@@ -588,7 +573,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
   const activeSymbols = (status.isActive && status.symbols && status.symbols.length > 0)
     ? status.symbols
     : (symbols && symbols.length > 0 ? symbols : []);
-  const { data: orderBookData, isLoading: signalsLoading } = useOrderBookSignals(
+  const { data: orderBookData } = useOrderBookSignals(
     activeSymbols,
     status.isActive,
     currentPage,
