@@ -111,6 +111,26 @@ export interface OrderBookSignal {
       importance_percent: number;
     };
   };
+  execution_analysis?: {
+    strategy?: string;
+    symbol?: string;
+    signal_generated?: boolean;
+    intended_action?: string;
+    intended_side?: string;
+    executable_intent?: boolean;
+    blocked?: boolean;
+    blocker_reason?: string;
+    diagnostic_factor?: string;
+    strength_bucket?: string;
+    expected_return_bucket?: string;
+    expected_return?: number;
+    fee_adjusted_expected_return?: number;
+    required_edge?: number;
+    allocated_usd?: number;
+    available_cash?: number;
+    estimated_fee?: number;
+    minimum_notional?: number;
+  };
   // Legacy properties for backward compatibility
   buy_volume?: number;
   sell_volume?: number;
@@ -131,6 +151,10 @@ export interface OrderBookSignalDiagnostics {
   missing_latest_signal_symbols?: string[];
   recent_signal_record_count?: number;
   active_recent_signal_records?: number;
+  executable_order_intent_count?: number;
+  execution_blocker_counts?: Record<string, number>;
+  execution_strength_bucket_counts?: Record<string, number>;
+  execution_expected_return_bucket_counts?: Record<string, number>;
   coverage_complete?: boolean;
   widget_coverage_contract?: string;
   contract?: string;

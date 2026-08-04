@@ -3,6 +3,14 @@ import { DataTable } from '@/components/ui/DataTable';
 import Tooltip from '@/components/ui/Tooltip';
 import { DataTableColumn, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
 
+const formatCounts = (counts?: Record<string, number>) => {
+    if (!counts || Object.keys(counts).length === 0) return 'none';
+    return Object.entries(counts)
+        .sort(([, left], [, right]) => right - left)
+        .map(([key, value]) => `${key.replace(/_/g, ' ')}: ${value}`)
+        .join(', ');
+};
+
 // Updated interface to separate server pagination from client pagination state
 export function OrderBookSignalsTable({
     signals,
@@ -265,6 +273,15 @@ ${typeof row.ml_analysis.fee_adjusted_expected_return === 'number' ? `- Fee-Adju
 - Confidence: ${(row.ml_analysis.confidence * 100).toFixed(2)}%
 - Model: ${row.ml_analysis.model_version || 'N/A'}
 
+Execution Analysis:
+${row.execution_analysis ? `- Executable Intent: ${row.execution_analysis.executable_intent ? 'yes' : 'no'}
+- Blocker: ${row.execution_analysis.blocker_reason || 'N/A'}
+- Intended Side: ${row.execution_analysis.intended_side || 'N/A'}
+- Strength Bucket: ${row.execution_analysis.strength_bucket || 'N/A'}
+- Expected Return Bucket: ${row.execution_analysis.expected_return_bucket || 'N/A'}
+- Allocated USD: ${typeof row.execution_analysis.allocated_usd === 'number' ? `$${row.execution_analysis.allocated_usd.toFixed(2)}` : 'N/A'}
+` : 'No execution analysis available'}
+
 Analytics:
 ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 0) ? JSON.stringify(row.ml_analysis.analytics, null, 2) : 'No detailed analytics available (Empty/Null)'}
 ` : 'ML Analysis: Not enabled'}
@@ -354,6 +371,12 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                     </div>
                     <div className="mt-1 text-xs text-blue-800">
                         Per-tick cap: {summary.diagnostics.live_quote_symbols_per_tick_cap ?? 'n/a'} symbols. Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? signals.length}.
+                    </div>
+                    <div className="mt-1 text-xs text-blue-800">
+                        Executable intents: {summary.diagnostics.executable_order_intent_count ?? 0}. Blockers: {formatCounts(summary.diagnostics.execution_blocker_counts)}.
+                    </div>
+                    <div className="mt-1 text-xs text-blue-800">
+                        Strength buckets: {formatCounts(summary.diagnostics.execution_strength_bucket_counts)}. Expected-return buckets: {formatCounts(summary.diagnostics.execution_expected_return_bucket_counts)}.
                     </div>
                     {summary.diagnostics.missing_latest_signal_symbols && summary.diagnostics.missing_latest_signal_symbols.length > 0 && (
                         <div className="mt-1 text-xs text-blue-800">

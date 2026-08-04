@@ -171,6 +171,13 @@ describe('trade dashboard tables', () => {
             strength_composition: {
               momentum: { value: 0.7, importance_percent: 60 },
             },
+            execution_analysis: {
+              executable_intent: false,
+              blocker_reason: 'spot_cannot_open_short',
+              intended_side: 'sell',
+              strength_bucket: 'strong',
+              expected_return_bucket: 'negative_high',
+            },
           },
         ]}
         currentPage={1}
@@ -204,6 +211,7 @@ describe('trade dashboard tables', () => {
     expect(alertSpy).toHaveBeenCalled();
     expect(String(alertSpy.mock.calls[0][0])).toContain('Confidence: 82.00%');
     expect(String(alertSpy.mock.calls[0][0])).toContain('Profitability Gate: Expected edge exceeds fee/spread/slippage hurdle');
+    expect(String(alertSpy.mock.calls[0][0])).toContain('Blocker: spot_cannot_open_short');
 
     alertSpy.mockRestore();
   });
@@ -270,6 +278,10 @@ describe('trade dashboard tables', () => {
             missing_latest_signal_count: 22,
             missing_latest_signal_symbols: ['ADA-USD', 'DOT-USD'],
             recent_signal_record_count: 10,
+            executable_order_intent_count: 1,
+            execution_blocker_counts: { spot_cannot_open_short: 7, live_execution_disabled: 2, would_submit_order: 1 },
+            execution_strength_bucket_counts: { strong: 8, medium: 2 },
+            execution_expected_return_bucket_counts: { negative_high: 7, positive_high: 3 },
             widget_coverage_contract: 'Signals include response-only missing rows for selected symbols without a latest live quote so widget pagination represents the full selected universe.',
             contract: 'Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe.',
           },
@@ -284,6 +296,11 @@ describe('trade dashboard tables', () => {
     expect(screen.getByText('Missing latest rows: 22')).toBeInTheDocument();
     expect(screen.getByText('Awaiting latest quote/signal: ADA-USD, DOT-USD')).toBeInTheDocument();
     expect(screen.getByText(/Per-tick cap: 10 symbols/)).toBeInTheDocument();
+    expect(screen.getByText(/Executable intents: 1/)).toBeInTheDocument();
+    expect(screen.getByText(/spot cannot open short: 7/)).toBeInTheDocument();
+    expect(screen.getByText(/live execution disabled: 2/)).toBeInTheDocument();
+    expect(screen.getByText(/Strength buckets: strong: 8, medium: 2/)).toBeInTheDocument();
+    expect(screen.getByText(/Expected-return buckets: negative high: 7, positive high: 3/)).toBeInTheDocument();
     expect(screen.getByText(/pagination represents the full selected universe/)).toBeInTheDocument();
     expect(screen.getByText(/rotated across the selected universe/)).toBeInTheDocument();
   });

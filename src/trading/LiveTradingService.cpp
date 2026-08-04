@@ -224,6 +224,39 @@ std::string sanitizeSide(const std::string &side) {
   return "buy";
 }
 
+std::string strengthBucket(double strength) {
+  if (strength >= 0.75) {
+    return "strong";
+  }
+  if (strength >= 0.45) {
+    return "medium";
+  }
+  if (strength > 0.0) {
+    return "weak";
+  }
+  return "none";
+}
+
+std::string expectedReturnBucket(double expected_return) {
+  if (expected_return > 0.01) {
+    return "positive_high";
+  }
+  if (expected_return > 0.0) {
+    return "positive_low";
+  }
+  if (expected_return < -0.01) {
+    return "negative_high";
+  }
+  if (expected_return < 0.0) {
+    return "negative_low";
+  }
+  return "zero";
+}
+
+void incrementJsonCounter(Json::Value &counts, const std::string &key) {
+  counts[key] = counts.get(key, Json::Value(0)).asInt() + 1;
+}
+
 TradePerformanceInput toTradePerformanceInput(const pqxx::row &row) {
   TradePerformanceInput input;
   try {
@@ -497,6 +530,7 @@ Json::Value LiveTradingService::signalToJson(const SignalRecord &signal) const {
   out["criteria_analysis"] = signal.payload.get("criteria_analysis", Json::Value(Json::objectValue));
   out["ml_analysis"] = signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
   out["strength_composition"] = signal.payload.get("strength_composition", Json::Value(Json::objectValue));
+  out["execution_analysis"] = signal.payload.get("execution_analysis", Json::Value(Json::objectValue));
   return out;
 }
 
@@ -1745,6 +1779,105 @@ bool LiveTradingService::signalPassesMlGateLocked(const SignalRecord &signal) co
   return false;
 }
 
+Json::Value LiveTradingService::buildEntryExecutionAnalysisLocked(
+    const SignalRecord &signal) const {
+  Json::Value analysis(Json::objectValue);
+  const Json::Value ml_analysis =
+      signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
+  const bool signal_generated = signal.signal_type != "hold";
+  const std::string side = sanitizeSide(signal.signal_type);
+  const double expected_return =
+      ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
+  const double fee_adjusted_expected_return =
+      ml_analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble();
+
+  analysis["strategy"] = strategy_;
+  analysis["symbol"] = signal.symbol;
+  analysis["signal_generated"] = signal_generated;
+  analysis["intended_action"] = signal_generated ? "open" : "none";
+  analysis["intended_side"] = signal_generated ? side : "none";
+  analysis["strength_bucket"] = strengthBucket(signal.strength);
+  analysis["expected_return_bucket"] = expectedReturnBucket(expected_return);
+  analysis["expected_return"] = expected_return;
+  analysis["fee_adjusted_expected_return"] = fee_adjusted_expected_return;
+  analysis["diagnostic_factor"] = ml_analysis.get(
+      "profitability_gate_reason", Json::Value(signal.payload.get("signal_reason", "").asString())).asString();
+  analysis["required_edge"] = ml_analysis.get("required_edge", Json::Value(0.0)).asDouble();
+  analysis["blocked"] = true;
+  analysis["blocker_reason"] = "no_signal";
+  analysis["executable_intent"] = false;
+
+  if (!signal_generated) {
+    if (ml_analysis.isMember("profitability_gate_passed") &&
+        !ml_analysis.get("profitability_gate_passed", Json::Value(true)).asBool()) {
+      analysis["blocker_reason"] = "profitability_gate";
+    }
+    return analysis;
+  }
+
+  if (!signalPassesMlGateLocked(signal)) {
+    analysis["blocker_reason"] = "ml_confidence_gate";
+    return analysis;
+  }
+  if (account_managed_symbols_.count(signal.symbol) > 0 &&
+      !accountPositionManagementAllowsEntriesLocked()) {
+    analysis["blocker_reason"] = "account_position_management_disabled";
+    return analysis;
+  }
+  if (positions_.find(signal.symbol) != positions_.end()) {
+    analysis["blocker_reason"] = "existing_position";
+    return analysis;
+  }
+  if (pending_order_symbols_.count(signal.symbol) > 0) {
+    analysis["blocker_reason"] = "pending_order";
+    return analysis;
+  }
+  const std::size_t pending_entries = std::count_if(
+      pending_order_symbols_.begin(), pending_order_symbols_.end(),
+      [this](const std::string &symbol) {
+        const auto it = positions_.find(symbol);
+        return it == positions_.end() || !it->second.session_managed;
+      });
+  if (managedPositionCountLocked() + pending_entries >=
+      static_cast<std::size_t>(max_positions_)) {
+    analysis["blocker_reason"] = "max_positions";
+    return analysis;
+  }
+
+  const double allocated_usd = positionSizeUsdForSignal(signal);
+  analysis["allocated_usd"] = allocated_usd;
+  if (allocated_usd <= 0.0 || signal.price <= 0.0) {
+    analysis["blocker_reason"] = "nonpositive_position_size_or_price";
+    return analysis;
+  }
+  if (!exchange::coinbaseQuoteOrderMeetsMinimum(allocated_usd)) {
+    analysis["blocker_reason"] = "below_minimum_notional";
+    analysis["minimum_notional"] = exchange::coinbaseMinQuoteOrderUsd();
+    return analysis;
+  }
+  if (side != "buy") {
+    analysis["blocker_reason"] = "spot_cannot_open_short";
+    return analysis;
+  }
+  const double fee = signal.price * (allocated_usd / signal.price) * kFeeRate;
+  const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
+  analysis["available_cash"] = available_cash;
+  analysis["estimated_fee"] = fee;
+  if (!hasSufficientCash(side, available_cash, allocated_usd, fee)) {
+    analysis["blocker_reason"] = "insufficient_cash";
+    return analysis;
+  }
+  if (!liveOrderExecutionEnabledLocked()) {
+    analysis["blocker_reason"] = "live_execution_disabled";
+    return analysis;
+  }
+
+  analysis["blocked"] = false;
+  analysis["blocker_reason"] = "would_submit_order";
+  analysis["executable_intent"] = true;
+  return analysis;
+}
+
 void LiveTradingService::trimHistoryLocked() {
   while (recent_trades_.size() > kMaxRecentTrades) {
     recent_trades_.pop_front();
@@ -2058,16 +2191,17 @@ void LiveTradingService::generateTickLocked(const std::map<std::string, MarketQu
     }
     auto signal = buildSignalRecordLocked(symbol, index, *quote);
     prices[symbol] = signal.price;
-    recent_signals_.push_back(signal);
-    queueSignalWriteLocked(signal);
 
     auto position_it = positions_.find(symbol);
     const bool signal_generated = signal.signal_type != "hold";
+    const Json::Value entry_execution_analysis = buildEntryExecutionAnalysisLocked(signal);
+    signal.payload["execution_analysis"] = entry_execution_analysis;
+    recent_signals_.push_back(signal);
+    queueSignalWriteLocked(signal);
     const std::size_t hold_ticks = std::max(3, position_update_interval_ * 2);
 
     if (position_it == positions_.end()) {
-      if (signal_generated && static_cast<int>(managedPositionCountLocked()) < max_positions_ &&
-          signalPassesMlGateLocked(signal)) {
+      if (entry_execution_analysis.get("executable_intent", Json::Value(false)).asBool()) {
         openPositionLocked(signal, "Opened on generated signal");
       }
       continue;
@@ -2323,10 +2457,29 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
   Json::Value diagnostics(Json::objectValue);
   std::set<std::string> latest_symbols;
   int active_latest_signals = 0;
+  int executable_intents = 0;
+  Json::Value blocker_counts(Json::objectValue);
+  Json::Value strength_bucket_counts(Json::objectValue);
+  Json::Value expected_return_bucket_counts(Json::objectValue);
   for (const auto &signal : recent_signals_) {
     latest_symbols.insert(signal.symbol);
     if (signal.signal_type != "hold") {
       ++active_latest_signals;
+    }
+    const Json::Value execution =
+        signal.payload.get("execution_analysis", Json::Value(Json::objectValue));
+    if (!execution.isObject() || execution.empty()) {
+      continue;
+    }
+    const std::string blocker =
+        execution.get("blocker_reason", Json::Value("unknown")).asString();
+    incrementJsonCounter(blocker_counts, blocker.empty() ? "unknown" : blocker);
+    incrementJsonCounter(strength_bucket_counts,
+                         execution.get("strength_bucket", Json::Value("unknown")).asString());
+    incrementJsonCounter(expected_return_bucket_counts,
+                         execution.get("expected_return_bucket", Json::Value("unknown")).asString());
+    if (execution.get("executable_intent", Json::Value(false)).asBool()) {
+      ++executable_intents;
     }
   }
 
@@ -2344,11 +2497,15 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
   diagnostics["current_latest_signal_count"] = static_cast<Json::UInt64>(latest_symbols.size());
   diagnostics["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
   diagnostics["active_recent_signal_records"] = active_latest_signals;
+  diagnostics["executable_order_intent_count"] = executable_intents;
+  diagnostics["execution_blocker_counts"] = blocker_counts;
+  diagnostics["execution_strength_bucket_counts"] = strength_bucket_counts;
+  diagnostics["execution_expected_return_bucket_counts"] = expected_return_bucket_counts;
   diagnostics["coverage_complete"] =
       last_live_quote_requested_symbols_ > 0 &&
       static_cast<int>(latest_symbols.size()) >= last_live_quote_requested_symbols_;
   diagnostics["contract"] =
-      "Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe; total_signals is the current latest-by-symbol signal count, not cumulative signal history.";
+      "Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe; total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.";
   return diagnostics;
 }
 

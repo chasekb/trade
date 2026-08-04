@@ -219,6 +219,14 @@ function chunkOrderBookSymbols(symbols?: string[]) {
   return chunks;
 }
 
+function mergeCountMap(left?: Record<string, number>, right?: Record<string, number>) {
+  const merged: Record<string, number> = { ...(left ?? {}) };
+  for (const [key, value] of Object.entries(right ?? {})) {
+    merged[key] = (merged[key] ?? 0) + value;
+  }
+  return merged;
+}
+
 function mergeOrderBookSignalResponses(responses: any[], page: number, perPage: number) {
   const normalizedResponses = responses.filter(Boolean) as Array<any>;
   const allSignals = normalizedResponses.flatMap((response: any) => response?.signals ?? []);
@@ -279,6 +287,10 @@ function mergeOrderBookSignalResponses(responses: any[], page: number, perPage: 
     current_latest_signal_count: (merged.current_latest_signal_count ?? 0) + (current.current_latest_signal_count ?? 0),
     recent_signal_record_count: (merged.recent_signal_record_count ?? 0) + (current.recent_signal_record_count ?? 0),
     active_recent_signal_records: (merged.active_recent_signal_records ?? 0) + (current.active_recent_signal_records ?? 0),
+    executable_order_intent_count: (merged.executable_order_intent_count ?? 0) + (current.executable_order_intent_count ?? 0),
+    execution_blocker_counts: mergeCountMap(merged.execution_blocker_counts, current.execution_blocker_counts),
+    execution_strength_bucket_counts: mergeCountMap(merged.execution_strength_bucket_counts, current.execution_strength_bucket_counts),
+    execution_expected_return_bucket_counts: mergeCountMap(merged.execution_expected_return_bucket_counts, current.execution_expected_return_bucket_counts),
     missing_latest_signal_count: (merged.missing_latest_signal_count ?? 0) + (current.missing_latest_signal_count ?? 0),
     missing_latest_signal_symbols: [
       ...((merged.missing_latest_signal_symbols as string[] | undefined) ?? []),
