@@ -260,6 +260,63 @@ describe('trade dashboard tables', () => {
     expect(within(row).getByText('Required Edge: 1.70%')).toBeInTheDocument();
   });
 
+  it('renders unavailable non-order-book expected-return diagnostics explicitly', () => {
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+
+    render(
+      <OrderBookSignalsTable
+        signals={[
+          {
+            symbol: 'ETH-USD',
+            timestamp: '2026-07-06T12:55:00Z',
+            price: 3300,
+            signal: 'buy',
+            signal_generated: true,
+            signal_strength: 0.74,
+            signal_type: 'buy',
+            signal_reason: 'RSI oversold',
+            data_status: 'sufficient',
+            spread: 0.03,
+            volume: 4200,
+            criteria_analysis: {},
+            ml_analysis: {
+              ml_enabled: true,
+              win_probability: 0.5,
+              expected_return: 0,
+              expected_return_available: false,
+              diagnostics_available: false,
+              fee_adjusted_expected_return: 0,
+              required_edge: 0.017,
+              profitability_gate_passed: false,
+              profitability_gate_reason: 'Expected-return diagnostic is unavailable',
+              diagnostic_factor: 'expected_return_unavailable',
+              factoring_semantics: 'unavailable',
+              confidence: 0,
+              model_version: 'strategy-diagnostic-unavailable',
+              prediction_timestamp: '2026-07-06T12:54:59Z',
+            },
+            strength_composition: {},
+          },
+        ]}
+        currentPage={1}
+        pageSize={10}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /ETH-USD/ });
+    expect(within(row).getByText('Expected Return: Unavailable')).toBeInTheDocument();
+    expect(within(row).getByText('Factor: expected return unavailable')).toBeInTheDocument();
+    expect(within(row).getByText('Required Edge: 1.70%')).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole('button', { name: /Details/i }));
+    expect(String(alertSpy.mock.calls[0][0])).toContain('Expected Return: Unavailable');
+    expect(String(alertSpy.mock.calls[0][0])).toContain('Diagnostic Factor: expected_return_unavailable');
+    expect(String(alertSpy.mock.calls[0][0])).toContain('Factoring Semantics: unavailable');
+    expect(String(alertSpy.mock.calls[0][0])).toContain('Profitability Gate: Expected-return diagnostic is unavailable');
+
+    alertSpy.mockRestore();
+  });
+
   it('renders live order-book coverage diagnostics when a per-tick quote cap applies', () => {
     render(
       <OrderBookSignalsTable

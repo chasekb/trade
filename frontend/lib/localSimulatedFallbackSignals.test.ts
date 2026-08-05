@@ -40,5 +40,10 @@ describe('local simulated fallback order-book signal contract', () => {
     expect(signal.signal_type).toBe(signal.signal);
     expect(signal.signal_type).not.toBe('rsi');
     expect(signal.ml_analysis?.analytics?.strategy).toBe('rsi');
+    expect(signal.ml_analysis?.expected_return_available).toBe(false);
+    expect(signal.ml_analysis?.diagnostic_factor).toBe('expected_return_unavailable');
+    expect(signal.ml_analysis?.factoring_semantics).toBe('unavailable');
+    expect(signal.ml_analysis?.profitability_gate_passed).toBe(false);
+    expect(signal.ml_analysis?.profitability_gate_reason).toBe('Expected-return diagnostic is unavailable');
   });
 });

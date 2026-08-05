@@ -1667,20 +1667,50 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
   }
 
   if (!used_model) {
-    ml_analysis["ml_enabled"] = strategy_ == "ml_enhanced_orderbook";
-    ml_analysis["win_probability"] = std::clamp(0.5 + (generated ? (imbalance * 0.2) : 0.0), 0.0, 1.0);
-    const double fallback_edge_scale_percent =
-        paramNumber(parameters_, "orderbook_expected_return_scale_percent",
-                    kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0);
-    const double fallback_edge_scale =
-        std::clamp(std::isfinite(fallback_edge_scale_percent)
-                       ? fallback_edge_scale_percent
-                       : kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0,
-                   0.0, 5.0) /
-        100.0;
-    ml_analysis["expected_return"] = generated ? (imbalance * fallback_edge_scale) : 0.0;
-    ml_analysis["confidence"] = generated ? strength : 0.0;
-    ml_analysis["model_version"] = "heuristic-fallback";
+    ml_analysis["ml_enabled"] = true;
+    if (isOrderBookStrategy(strategy_)) {
+      ml_analysis["win_probability"] = std::clamp(0.5 + (generated ? (imbalance * 0.2) : 0.0), 0.0, 1.0);
+      const double fallback_edge_scale_percent =
+          paramNumber(parameters_, "orderbook_expected_return_scale_percent",
+                      kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0);
+      const double fallback_edge_scale =
+          std::clamp(std::isfinite(fallback_edge_scale_percent)
+                         ? fallback_edge_scale_percent
+                         : kDefaultOrderBookHeuristicEdgeScaleFraction * 100.0,
+                     0.0, 5.0) /
+          100.0;
+      ml_analysis["expected_return"] = generated ? (imbalance * fallback_edge_scale) : 0.0;
+      ml_analysis["expected_return_available"] = true;
+      ml_analysis["confidence"] = generated ? strength : 0.0;
+      ml_analysis["model_version"] = "heuristic-fallback";
+    } else {
+      StrategyProfitabilityInput diagnostic_input;
+      diagnostic_input.signal_type = signal_type;
+      diagnostic_input.signal_strength = strength;
+      diagnostic_input.expected_return_available = false;
+      diagnostic_input.spread_fraction = mid > 0.0 ? spread / mid : 0.0;
+      diagnostic_input.round_trip_fee_fraction =
+          paramNumber(parameters_, "round_trip_fee_percent",
+                      kDefaultOrderBookRoundTripFeeFraction * 100.0) /
+          100.0;
+      diagnostic_input.slippage_buffer_fraction =
+          paramNumber(parameters_, "slippage_buffer_percent",
+                      kDefaultOrderBookSlippageBufferFraction * 100.0) /
+          100.0;
+      const auto diagnostic = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+      ml_analysis["win_probability"] = 0.5;
+      ml_analysis["expected_return"] = 0.0;
+      ml_analysis["expected_return_available"] = false;
+      ml_analysis["diagnostics_available"] = diagnostic.diagnostics_available;
+      ml_analysis["fee_adjusted_expected_return"] = diagnostic.fee_adjusted_expected_return_fraction;
+      ml_analysis["required_edge"] = diagnostic.required_edge_fraction;
+      ml_analysis["profitability_gate_passed"] = false;
+      ml_analysis["profitability_gate_reason"] = diagnostic.reason;
+      ml_analysis["diagnostic_factor"] = diagnostic.factor;
+      ml_analysis["factoring_semantics"] = diagnostic.factor == "hold" ? "report" : "unavailable";
+      ml_analysis["confidence"] = 0.0;
+      ml_analysis["model_version"] = "strategy-diagnostic-unavailable";
+    }
   }
 
   if (isOrderBookStrategy(strategy_) && generated) {
@@ -1722,16 +1752,21 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
     }
   }
   ml_analysis["features_used"] = Json::arrayValue;
-  ml_analysis["features_used"].append("bid_ask_imbalance");
-  ml_analysis["features_used"].append("spread_percent");
-  ml_analysis["features_used"].append("momentum");
+  if (isOrderBookStrategy(strategy_)) {
+    ml_analysis["features_used"].append("bid_ask_imbalance");
+    ml_analysis["features_used"].append("spread_percent");
+    ml_analysis["features_used"].append("momentum");
+  } else {
+    ml_analysis["features_used"].append("price_history");
+    ml_analysis["features_used"].append(strategy_);
+  }
   ml_analysis["prediction_timestamp"] = signal.timestamp_iso;
 
   Json::Value composition(Json::objectValue);
   Json::Value comp_strength(Json::objectValue);
-  comp_strength["value"] = std::abs(imbalance);
+  comp_strength["value"] = isOrderBookStrategy(strategy_) ? std::abs(imbalance) : signal.strength;
   comp_strength["importance_percent"] = 60.0;
-  composition["order_book_imbalance"] = comp_strength;
+  composition[isOrderBookStrategy(strategy_) ? "order_book_imbalance" : "strategy_signal_strength"] = comp_strength;
   Json::Value comp_spread(Json::objectValue);
   comp_spread["value"] = signal.spread;
   comp_spread["importance_percent"] = 25.0;

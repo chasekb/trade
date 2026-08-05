@@ -6,9 +6,11 @@ const formatCounts = (counts?: Record<string, number>) => {
     if (!counts || Object.keys(counts).length === 0) return 'none';
     return Object.entries(counts)
         .sort(([, left], [, right]) => right - left)
-        .map(([key, value]) => `${key.replace(/_/g, ' ')}: ${value}`)
+        .map(([key, value]) => `${formatLabel(key)}: ${value}`)
         .join(', ');
 };
+
+const formatLabel = (value: string) => value.replace(/_/g, ' ');
 
 // Updated interface to separate server pagination from client pagination state
 export function OrderBookSignalsTable({
@@ -195,6 +197,7 @@ export function OrderBookSignalsTable({
                 const rawWinProb = ml.win_probability || 0;
                 const winProb = Math.min(rawWinProb * 100, 100);
                 const expectedReturn = (ml.expected_return || 0) * 100;
+                const expectedReturnAvailable = ml.expected_return_available !== false;
                 const feeAdjustedReturn = typeof ml.fee_adjusted_expected_return === 'number'
                     ? ml.fee_adjusted_expected_return * 100
                     : null;
@@ -213,8 +216,13 @@ export function OrderBookSignalsTable({
                             </span>
                         </div>
                         <div className="text-gray-500">
-                            Expected Return: {expectedReturn.toFixed(2)}%
+                            Expected Return: {expectedReturnAvailable ? `${expectedReturn.toFixed(2)}%` : 'Unavailable'}
                         </div>
+                        {ml.diagnostic_factor && (
+                            <div className="text-gray-500">
+                                Factor: {formatLabel(ml.diagnostic_factor)}
+                            </div>
+                        )}
                         {feeAdjustedReturn !== null && (
                             <div className={feeAdjustedReturn >= 0 ? 'text-green-600' : 'text-red-600'}>
                                 Fee-Adjusted Edge: {feeAdjustedReturn.toFixed(2)}%
@@ -252,8 +260,8 @@ Criteria Analysis:
 ${row.ml_analysis?.ml_enabled ? `
 ML Analysis:
 - Win Probability: ${(row.ml_analysis.win_probability * 100).toFixed(2)}%
-- Expected Return: ${(row.ml_analysis.expected_return * 100).toFixed(2)}%
-${typeof row.ml_analysis.fee_adjusted_expected_return === 'number' ? `- Fee-Adjusted Edge: ${(row.ml_analysis.fee_adjusted_expected_return * 100).toFixed(2)}%\n` : ''}${typeof row.ml_analysis.required_edge === 'number' ? `- Required Edge: ${(row.ml_analysis.required_edge * 100).toFixed(2)}%\n` : ''}${row.ml_analysis.profitability_gate_reason ? `- Profitability Gate: ${row.ml_analysis.profitability_gate_reason}\n` : ''}
+- Expected Return: ${row.ml_analysis.expected_return_available === false ? 'Unavailable' : `${(row.ml_analysis.expected_return * 100).toFixed(2)}%`}
+${typeof row.ml_analysis.fee_adjusted_expected_return === 'number' ? `- Fee-Adjusted Edge: ${(row.ml_analysis.fee_adjusted_expected_return * 100).toFixed(2)}%\n` : ''}${typeof row.ml_analysis.required_edge === 'number' ? `- Required Edge: ${(row.ml_analysis.required_edge * 100).toFixed(2)}%\n` : ''}${row.ml_analysis.diagnostic_factor ? `- Diagnostic Factor: ${row.ml_analysis.diagnostic_factor}\n` : ''}${row.ml_analysis.factoring_semantics ? `- Factoring Semantics: ${row.ml_analysis.factoring_semantics}\n` : ''}${row.ml_analysis.profitability_gate_reason ? `- Profitability Gate: ${row.ml_analysis.profitability_gate_reason}\n` : ''}
 - Confidence: ${(row.ml_analysis.confidence * 100).toFixed(2)}%
 - Model: ${row.ml_analysis.model_version || 'N/A'}
 

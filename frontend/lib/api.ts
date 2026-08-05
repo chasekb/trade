@@ -114,6 +114,10 @@ function syntheticSignalReason(strategy: string): string {
     : 'Synthetic order book imbalance detected';
 }
 
+function isLocalOrderBookStrategy(strategy: string): boolean {
+  return strategy === 'orderbook' || strategy === 'ml_enhanced_orderbook';
+}
+
 function localSignalWinProbability(signal: OrderBookSignal): number {
   const fromMl = signal.ml_analysis?.win_probability;
   if (typeof fromMl === 'number' && Number.isFinite(fromMl)) {
@@ -439,6 +443,16 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
     const volume = Math.round((1000 + index * 200) * (1 + Math.abs(Math.sin(session.tick / 3 + index)) * 0.5));
     const winProbability = Number((0.5 + (signalStrength - 0.5) * 0.45 + (isBuy ? 0.03 : -0.03)).toFixed(3));
     const directionalExpectedReturn = Number(((signalStrength - 0.5) * 0.12 * (isBuy ? 1 : -1)).toFixed(4));
+    const orderBookStrategy = isLocalOrderBookStrategy(session.strategy);
+    const expectedReturnAvailable = orderBookStrategy;
+    const expectedReturn = expectedReturnAvailable ? directionalExpectedReturn : 0;
+    const directionalExpectedEdge = isBuy ? expectedReturn : -expectedReturn;
+    const feeAdjustedExpectedReturn = directionalExpectedEdge - 0.017;
+    const diagnosticReason = expectedReturnAvailable
+      ? feeAdjustedExpectedReturn > 0
+        ? 'Expected edge exceeds fee/spread/slippage hurdle'
+        : 'Expected edge does not exceed fee/spread/slippage hurdle'
+      : 'Expected-return diagnostic is unavailable';
 
     return {
       symbol,
@@ -471,9 +485,23 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
       ml_analysis: {
         ml_enabled: true,
         win_probability: winProbability,
-        expected_return: directionalExpectedReturn,
-        confidence: Number((0.55 + signalStrength / 3).toFixed(3)),
-        model_version: session.strategy === 'ml_enhanced_orderbook' ? 'local-dev-fallback' : 'local-orderbook-fallback',
+        expected_return: expectedReturn,
+        expected_return_available: expectedReturnAvailable,
+        diagnostics_available: expectedReturnAvailable,
+        fee_adjusted_expected_return: expectedReturnAvailable ? feeAdjustedExpectedReturn : 0,
+        required_edge: 0.017,
+        profitability_gate_passed: expectedReturnAvailable ? feeAdjustedExpectedReturn > 0 : false,
+        profitability_gate_reason: diagnosticReason,
+        diagnostic_factor: expectedReturnAvailable
+          ? feeAdjustedExpectedReturn > 0 ? 'fee_adjusted_edge_passed' : 'negative_fee_adjusted_edge'
+          : 'expected_return_unavailable',
+        factoring_semantics: expectedReturnAvailable ? 'gate' : 'unavailable',
+        confidence: expectedReturnAvailable ? Number((0.55 + signalStrength / 3).toFixed(3)) : 0,
+        model_version: session.strategy === 'ml_enhanced_orderbook'
+          ? 'local-dev-fallback'
+          : orderBookStrategy
+            ? 'local-orderbook-fallback'
+            : 'local-strategy-diagnostic-unavailable',
         features_used: ['order_book_imbalance', 'spread', 'volume'],
         prediction_timestamp: new Date().toISOString(),
         analytics: {
