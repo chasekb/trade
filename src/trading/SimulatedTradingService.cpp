@@ -2169,20 +2169,23 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
       int active_count = 0;
       long long latest_ts = 0;
 
-      for (int i = offset; i < std::min(offset + safe_per_page, total); ++i) {
-        const auto &signal = filtered[static_cast<std::size_t>(i)];
-        Json::Value signal_json = signalToJson(signal);
-        result["signals"].append(signal_json);
-        strength_sum += signal_json["signal_strength"].asDouble();
-        if (signal_json["signal_generated"].asBool()) {
+      for (const auto &signal : filtered) {
+        strength_sum += signal.strength;
+        if (signal.signal_type != "hold") {
           ++active_count;
         }
         latest_ts = std::max(latest_ts, signal.timestamp);
       }
 
+      for (int i = offset; i < std::min(offset + safe_per_page, total); ++i) {
+        const auto &signal = filtered[static_cast<std::size_t>(i)];
+        Json::Value signal_json = signalToJson(signal);
+        result["signals"].append(signal_json);
+      }
+
       result["total_analyzed"] = total;
       result["active_signals"] = active_count;
-      result["average_strength"] = result["signals"].size() > 0 ? strength_sum / static_cast<double>(result["signals"].size()) : 0.0;
+      result["average_strength"] = total > 0 ? strength_sum / static_cast<double>(total) : 0.0;
       if (latest_ts > 0) {
         result["last_updated"] = epochSecondsToIso(latest_ts);
       }
