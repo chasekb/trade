@@ -479,112 +479,91 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 
 // Simulated Trading WebSocket Hook
 
-// Simulated Trading WebSocket Hook with FIFO Signal Queue
-
 export function useSimTradingWebSocket(enabled: boolean = true) {
   const [connected, setConnected] = useState(false);
-  const [signalQueue, setSignalQueue] = useState<OrderBookSignal[]>([]);
-  const [processingSignal, setProcessingSignal] = useState<OrderBookSignal | null>(null);
   const queryClient = useQueryClient();
 
-  // Queue processing function - processes one signal at a time with delay
-  const processNextSignal = useCallback(() => {
-    if (signalQueue.length > 0 && !processingSignal) {
-      const nextSignal = signalQueue[0];
-      setProcessingSignal(nextSignal);
-      setSignalQueue(prev => prev.slice(1));
+  // Apply every incoming signal to the display cache immediately. Coinbase
+  // pacing is enforced server-side; the UI must not throttle signal updates.
+  const applySignals = useCallback((incomingSignals: OrderBookSignal[]) => {
+    if (incomingSignals.length === 0) {
+      return;
+    }
 
+    const allQueries = queryClient.getQueryCache().getAll();
+    const orderbookQueries = allQueries.filter((q) =>
+      q.queryKey[0] === 'orderbook-signals' && q.queryKey[1] === 'simulated'
+    );
 
-      // Add to display cache (same logic as before)
-      const allQueries = queryClient.getQueryCache().getAll();
-      const orderbookQueries = allQueries.filter((q) =>
-        q.queryKey[0] === 'orderbook-signals' && q.queryKey[1] === 'simulated'
+    orderbookQueries.forEach((query) => {
+      const queryKey = query.queryKey;
+      const querySymbols = queryKey[2] as string[] | undefined;
+      const page = queryKey[4] as number;
+
+      if (page !== 1) {
+        return;
+      }
+
+      const relevantSignals = incomingSignals.filter((signal) =>
+        !querySymbols || querySymbols.length === 0 || querySymbols.includes(signal.symbol)
       );
+      if (relevantSignals.length === 0) {
+        return;
+      }
 
-      orderbookQueries.forEach((query) => {
-        const queryKey = query.queryKey;
-        const querySymbols = queryKey[2] as string[] | undefined;
-        const page = queryKey[4] as number;
+      queryClient.setQueryData<OrderBookSignalsData>(queryKey, (oldData) => {
+        const currentSignals = oldData?.signals || [];
 
-        if (page === 1) {
-          const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(nextSignal.symbol);
-
-          if (isRelevant) {
-            queryClient.setQueryData<OrderBookSignalsData>(queryKey, (oldData) => {
-              // If no data exists yet (initial load), initialize with the new signal
-              if (!oldData) {
-                return {
-                  signals: [nextSignal],
-                  total_analyzed: 1,
-                  active_signals: nextSignal.signal_generated ? 1 : 0,
-                  average_strength: nextSignal.signal_strength || 0,
-                  last_updated: new Date().toISOString(),
-                  pagination: {
-                    current_page: 1,
-                    per_page: 100, // Default to larger page size for live view
-                    total_signals: 1,
-                    total_pages: 1,
-                    has_next: false,
-                    has_prev: false
-                  }
-                };
-              }
-
-              const currentSignals = oldData.signals || [];
-
-              // Create a map of existing signals by symbol for easy lookup and update
-              const signalMap = new Map<string, OrderBookSignal>();
-              currentSignals.forEach((s: OrderBookSignal) => signalMap.set(s.symbol, s));
-
-              // Update or add the new signal
-              const existingSignal = signalMap.get(nextSignal.symbol);
-
-              // Only update if the new signal is fresher (newer timestamp) or if the symbol doesn't exist
-              if (!existingSignal || new Date(nextSignal.timestamp) > new Date(existingSignal.timestamp)) {
-                signalMap.set(nextSignal.symbol, nextSignal);
-              }
-
-              // Convert map back to array and sort by timestamp descending
-              const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-              );
-
-              return {
-                ...oldData,
-                signals: updatedSignals,
-                total_analyzed: updatedSignals.length,
-                active_signals: updatedSignals.filter(s => s.signal_generated).length,
-                last_updated: new Date().toISOString(),
-                pagination: {
-                  ...oldData.pagination,
-                  total_signals: updatedSignals.length,
-                  // Update total pages based on current per_page setting
-                  total_pages: Math.ceil(updatedSignals.length / (oldData.pagination?.per_page || 10))
-                }
-              };
-            });
+        // Merge by symbol, keeping whichever signal has the freshest timestamp
+        const signalMap = new Map<string, OrderBookSignal>();
+        currentSignals.forEach((s: OrderBookSignal) => signalMap.set(s.symbol, s));
+        relevantSignals.forEach((signal) => {
+          const existingSignal = signalMap.get(signal.symbol);
+          if (!existingSignal || new Date(signal.timestamp) > new Date(existingSignal.timestamp)) {
+            signalMap.set(signal.symbol, signal);
           }
+        });
+
+        const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+
+        if (!oldData) {
+          return {
+            signals: updatedSignals,
+            total_analyzed: updatedSignals.length,
+            active_signals: updatedSignals.filter(s => s.signal_generated).length,
+            average_strength: updatedSignals.length === 0
+              ? 0
+              : updatedSignals.reduce((sum, s) => sum + (s.signal_strength ?? 0), 0) / updatedSignals.length,
+            last_updated: new Date().toISOString(),
+            pagination: {
+              current_page: 1,
+              per_page: 100, // Default to larger page size for live view
+              total_signals: updatedSignals.length,
+              total_pages: 1,
+              has_next: false,
+              has_prev: false
+            }
+          };
         }
+
+        return {
+          ...oldData,
+          signals: updatedSignals,
+          total_analyzed: updatedSignals.length,
+          active_signals: updatedSignals.filter(s => s.signal_generated).length,
+          last_updated: new Date().toISOString(),
+          pagination: {
+            ...oldData.pagination,
+            total_signals: updatedSignals.length,
+            // Update total pages based on current per_page setting
+            total_pages: Math.ceil(updatedSignals.length / (oldData.pagination?.per_page || 10))
+          }
+        };
       });
-
-      // Process next signal after delay (configurable, default 1 second)
-      const processingDelay = parseInt(process.env.NEXT_PUBLIC_SIGNAL_PROCESSING_DELAY || '1000');
-      setTimeout(() => {
-        setProcessingSignal(null);
-        // Continue processing queue if more signals exist
-        // The useEffect hook will trigger the next processing cycle when processingSignal becomes null
-
-      }, processingDelay);
-    }
-  }, [signalQueue, processingSignal, queryClient]);
-
-  useEffect(() => {
-    // Auto-process queue when signals are added and not currently processing
-    if (signalQueue.length > 0 && !processingSignal) {
-      const processTimer = setTimeout(processNextSignal, 0);
-      return () => clearTimeout(processTimer);
-    }
-  }, [signalQueue, processingSignal, processNextSignal]);
+    });
+  }, [queryClient]);
 
   useEffect(() => {
     if (!enabled) {
@@ -676,7 +655,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           window.dispatchEvent(new CustomEvent('bot-log-message', { detail: data }));
         }
 
-        // ENQUEUE orderbook signals into FIFO queue for sequential processing
+        // Apply orderbook signals to the display cache as soon as they arrive
         if (type === 'orderbook_signals_update' && data) {
           try {
             // Handle both array of signals (from signals key) or single signal object
@@ -686,25 +665,13 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
             if (!signalsList || signalsList.length === 0) return;
 
-            // Add signals to queue (FIFO)
-            setSignalQueue(prevQueue => {
-              const filteredSignals = signalsList.filter((newSignal): newSignal is OrderBookSignal => {
-                if (!isRecord(newSignal) || typeof newSignal.symbol !== 'string') return false;
+            const validSignals = signalsList.filter((newSignal): newSignal is OrderBookSignal =>
+              isRecord(newSignal) && typeof newSignal.symbol === 'string'
+            );
 
-                // Avoid duplicates in queue
-                const isDuplicate = prevQueue.some(queuedSignal =>
-                  queuedSignal.symbol === newSignal.symbol && queuedSignal.timestamp === newSignal.timestamp
-                );
-                return !isDuplicate;
-              });
-
-              const updatedQueue = [...prevQueue, ...filteredSignals];
-
-              return updatedQueue;
-            });
-
+            applySignals(validSignals);
           } catch (e) {
-            console.error('❌ Failed to enqueue orderbook signals:', e);
+            console.error('❌ Failed to apply orderbook signals:', e);
           }
         }
       } catch (e) {
@@ -742,13 +709,10 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       try { ws.removeEventListener('message', onMessage); } catch { }
       try { ws.close(); } catch { }
     };
-  }, [enabled, queryClient]);
+  }, [enabled, queryClient, applySignals]);
 
   return {
     connected,
-    signalQueue,
-    processingSignal,
-    queueLength: signalQueue.length
   };
 }
 
