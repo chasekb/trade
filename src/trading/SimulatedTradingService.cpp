@@ -114,9 +114,6 @@ std::string makeSessionId() {
 }
 
 constexpr std::size_t kMaxPriceHistory = 512;
-// Live quotes are fetched sequentially over HTTPS each tick; cap the universe
-// so one tick stays within the cadence budget.
-constexpr std::size_t kMaxLiveQuoteSymbols = 10;
 
 bool isOrderBookStrategy(const std::string &strategy) {
   return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
@@ -762,7 +759,6 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
     return quotes;
   }
 
-  std::size_t fetched = 0;
   for (const auto &symbol : symbols) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -770,12 +766,6 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
         break;
       }
     }
-    if (fetched >= kMaxLiveQuoteSymbols) {
-      TR_LOG_WARN("Live quote universe capped at {} symbols; {} requested",
-                  kMaxLiveQuoteSymbols, symbols.size());
-      break;
-    }
-    ++fetched;
 
     exchange::OrderBookSummary book;
     std::string error;

@@ -317,7 +317,7 @@ describe('trade dashboard tables', () => {
     alertSpy.mockRestore();
   });
 
-  it('renders live order-book coverage diagnostics when a per-tick quote cap applies', () => {
+  it('renders live order-book coverage diagnostics', () => {
     render(
       <OrderBookSignalsTable
         signals={[]}
@@ -330,7 +330,6 @@ describe('trade dashboard tables', () => {
             quote_attempted_symbol_count: 10,
             quote_success_symbol_count: 9,
             quote_skipped_symbol_count: 22,
-            live_quote_symbols_per_tick_cap: 10,
             current_latest_signal_count: 10,
             missing_latest_signal_count: 22,
             missing_latest_signal_symbols: ['ADA-USD', 'DOT-USD'],
@@ -340,7 +339,7 @@ describe('trade dashboard tables', () => {
             execution_strength_bucket_counts: { strong: 8, medium: 2 },
             execution_expected_return_bucket_counts: { negative_high: 7, positive_high: 3 },
             widget_coverage_contract: 'Signals include response-only missing rows for selected symbols without a latest live quote so widget pagination represents the full selected universe.',
-            contract: 'Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe.',
+            contract: 'Live order-book quotes cover the full selected universe each tick.',
           },
         }}
       />
@@ -352,13 +351,13 @@ describe('trade dashboard tables', () => {
     expect(screen.getByText('Quote successes: 9')).toBeInTheDocument();
     expect(screen.getByText('Missing latest rows: 22')).toBeInTheDocument();
     expect(screen.getByText('Awaiting latest quote/signal: ADA-USD, DOT-USD')).toBeInTheDocument();
-    expect(screen.getByText(/Per-tick cap: 10 symbols/)).toBeInTheDocument();
+    expect(screen.getByText(/Current latest-by-symbol signals: 10/)).toBeInTheDocument();
     expect(screen.getByText(/Executable intents: 1/)).toBeInTheDocument();
     expect(screen.getByText(/spot cannot open short: 7/)).toBeInTheDocument();
     expect(screen.getByText(/live execution disabled: 2/)).toBeInTheDocument();
     expect(screen.getByText(/Strength buckets: strong: 8, medium: 2/)).toBeInTheDocument();
     expect(screen.getByText(/Expected-return buckets: negative high: 7, positive high: 3/)).toBeInTheDocument();
     expect(screen.getByText(/pagination represents the full selected universe/)).toBeInTheDocument();
-    expect(screen.getByText(/rotated across the selected universe/)).toBeInTheDocument();
+    expect(screen.getByText(/cover the full selected universe each tick/)).toBeInTheDocument();
   });
 });

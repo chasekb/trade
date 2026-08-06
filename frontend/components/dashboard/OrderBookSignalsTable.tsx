@@ -362,7 +362,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                         <div>Missing latest rows: {summary.diagnostics.missing_latest_signal_count ?? summary.diagnostics.quote_skipped_symbol_count ?? 0}</div>
                     </div>
                     <div className="mt-1 text-xs text-blue-800">
-                        Per-tick cap: {summary.diagnostics.live_quote_symbols_per_tick_cap ?? 'n/a'} symbols. Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? signals.length}.
+                        Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? signals.length}.
                     </div>
                     <div className="mt-1 text-xs text-blue-800">
                         Executable intents: {summary.diagnostics.executable_order_intent_count ?? 0}. Blockers: {formatCounts(summary.diagnostics.execution_blocker_counts)}.

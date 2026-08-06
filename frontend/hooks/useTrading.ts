@@ -344,10 +344,6 @@ function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: 
       ...((merged.current_batch_symbols as string[] | undefined) ?? []),
       ...((current.current_batch_symbols as string[] | undefined) ?? []),
     ],
-    live_quote_symbols_per_tick_cap: Math.max(
-      merged.live_quote_symbols_per_tick_cap ?? 0,
-      current.live_quote_symbols_per_tick_cap ?? 0
-    ),
     coverage_complete: (merged.coverage_complete ?? true) && (current.coverage_complete ?? true),
   }), {} as OrderBookSignalDiagnostics);
 

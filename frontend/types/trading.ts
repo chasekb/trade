@@ -150,7 +150,6 @@ export interface OrderBookSignalDiagnostics {
   quote_attempted_symbol_count?: number;
   quote_success_symbol_count?: number;
   quote_skipped_symbol_count?: number;
-  live_quote_symbols_per_tick_cap?: number;
   current_batch_symbols?: string[];
   current_latest_signal_count?: number;
   missing_latest_signal_count?: number;

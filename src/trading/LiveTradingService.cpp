@@ -131,11 +131,6 @@ std::string makeSessionId() {
 }
 
 constexpr std::size_t kMaxPriceHistory = 512;
-// Live quotes are fetched sequentially over HTTPS each tick. Keep a per-tick
-// cadence cap for Coinbase/API safety, but rotate through the selected universe
-// so a large live universe is fully analyzed across ticks instead of silently
-// pinning the session to the first ten symbols forever.
-constexpr std::size_t kMaxLiveQuoteSymbols = 10;
 
 bool isOrderBookStrategy(const std::string &strategy) {
   return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
@@ -1182,7 +1177,6 @@ LiveTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
     return quotes;
   }
 
-  std::size_t fetched = 0;
   for (const auto &symbol : symbols) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -1190,12 +1184,6 @@ LiveTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
         break;
       }
     }
-    if (fetched >= kMaxLiveQuoteSymbols) {
-      TR_LOG_WARN("Live quote universe capped at {} symbols; {} requested",
-                  kMaxLiveQuoteSymbols, symbols.size());
-      break;
-    }
-    ++fetched;
 
     exchange::OrderBookSummary book;
     std::string error;
@@ -1232,18 +1220,13 @@ std::vector<std::string> LiveTradingService::selectLiveQuoteBatchLocked() {
     return batch;
   }
 
-  const std::size_t batch_size = std::min(requested, kMaxLiveQuoteSymbols);
-  live_quote_cursor_ %= requested;
-  batch.reserve(batch_size);
-  for (std::size_t i = 0; i < batch_size; ++i) {
-    batch.push_back(symbols_[(live_quote_cursor_ + i) % requested]);
-  }
-  live_quote_cursor_ = (live_quote_cursor_ + batch_size) % requested;
+  batch = symbols_;
+  live_quote_cursor_ = 0;
 
   last_live_quote_batch_symbols_ = batch;
   last_live_quote_attempted_symbols_ = static_cast<int>(batch.size());
   last_live_quote_succeeded_symbols_ = 0;
-  last_live_quote_skipped_symbols_ = static_cast<int>(requested - batch.size());
+  last_live_quote_skipped_symbols_ = 0;
   return batch;
 }
 
@@ -2527,7 +2510,6 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
   diagnostics["quote_attempted_symbol_count"] = last_live_quote_attempted_symbols_;
   diagnostics["quote_success_symbol_count"] = last_live_quote_succeeded_symbols_;
   diagnostics["quote_skipped_symbol_count"] = last_live_quote_skipped_symbols_;
-  diagnostics["live_quote_symbols_per_tick_cap"] = static_cast<Json::UInt64>(kMaxLiveQuoteSymbols);
   diagnostics["current_batch_symbols"] = batch;
   diagnostics["current_latest_signal_count"] = static_cast<Json::UInt64>(latest_symbols.size());
   diagnostics["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
@@ -2540,7 +2522,7 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
       last_live_quote_requested_symbols_ > 0 &&
       static_cast<int>(latest_symbols.size()) >= last_live_quote_requested_symbols_;
   diagnostics["contract"] =
-      "Live order-book quotes are capped per tick for Coinbase cadence safety and rotated across the selected universe; total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.";
+      "Live order-book quotes cover the full selected universe each tick; Coinbase rate limiting is the exchange connection's responsibility. total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.";
   return diagnostics;
 }
 
