@@ -479,7 +479,95 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   out["criteria_analysis"] = signal.payload.get("criteria_analysis", Json::Value(Json::objectValue));
   out["ml_analysis"] = signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
   out["strength_composition"] = signal.payload.get("strength_composition", Json::Value(Json::objectValue));
+  out["execution_analysis"] =
+      signal.payload.get("execution_analysis", Json::Value(Json::objectValue));
   return out;
+}
+
+Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
+    const SignalRecord &signal) const {
+  Json::Value analysis(Json::objectValue);
+  const Json::Value ml_analysis =
+      signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
+  const bool signal_generated = signal.signal_type != "hold";
+  const std::string side = sanitizeSide(signal.signal_type);
+  const double expected_return =
+      ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
+  const double fee_adjusted_expected_return =
+      ml_analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble();
+
+  analysis["strategy"] = strategy_;
+  analysis["symbol"] = signal.symbol;
+  analysis["signal_generated"] = signal_generated;
+  analysis["intended_action"] = signal_generated ? "open" : "none";
+  analysis["intended_side"] = signal_generated ? side : "none";
+  analysis["expected_return"] = expected_return;
+  analysis["fee_adjusted_expected_return"] = fee_adjusted_expected_return;
+  analysis["required_edge"] = ml_analysis.get("required_edge", Json::Value(0.0)).asDouble();
+  analysis["diagnostic_factor"] = ml_analysis.get(
+      "profitability_gate_reason", Json::Value(signal.payload.get("signal_reason", "").asString())).asString();
+  analysis["blocked"] = true;
+  analysis["blocker_reason"] = "no_signal";
+  analysis["executable_intent"] = false;
+
+  if (!signal_generated) {
+    if (ml_analysis.isMember("profitability_gate_passed") &&
+        !ml_analysis.get("profitability_gate_passed", Json::Value(true)).asBool()) {
+      analysis["blocker_reason"] = "profitability_gate";
+    }
+    return analysis;
+  }
+  if (!signalPassesMlGateLocked(signal)) {
+    analysis["blocker_reason"] = "ml_confidence_gate";
+    return analysis;
+  }
+  if (positions_.find(signal.symbol) != positions_.end()) {
+    analysis["blocker_reason"] = "existing_position";
+    return analysis;
+  }
+  if (pending_order_symbols_.count(signal.symbol) > 0) {
+    analysis["blocker_reason"] = "pending_order";
+    return analysis;
+  }
+  if (positions_.size() >= static_cast<std::size_t>(max_positions_)) {
+    analysis["blocker_reason"] = "max_positions";
+    return analysis;
+  }
+
+  const double allocated_usd = positionSizeUsdForSignal(signal);
+  analysis["allocated_usd"] = allocated_usd;
+  if (allocated_usd <= 0.0 || signal.price <= 0.0) {
+    analysis["blocker_reason"] = "nonpositive_position_size_or_price";
+    return analysis;
+  }
+
+  // Live-parity paper mode must use the same spot/minimum/cash gates as live
+  // mode. Synthetic simulation intentionally retains its existing short-capable
+  // behavior and does not pretend that a paper blocker is an exchange blocker.
+  if (mode_ == "live_parity") {
+    if (!exchange::coinbaseQuoteOrderMeetsMinimum(allocated_usd)) {
+      analysis["blocker_reason"] = "below_minimum_notional";
+      analysis["minimum_notional"] = exchange::coinbaseMinQuoteOrderUsd();
+      return analysis;
+    }
+    if (side != "buy") {
+      analysis["blocker_reason"] = "spot_cannot_open_short";
+      return analysis;
+    }
+    const double fee = signal.price * (allocated_usd / signal.price) * kFeeRate;
+    const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
+    analysis["available_cash"] = available_cash;
+    analysis["estimated_fee"] = fee;
+    if (!hasSufficientCash(side, available_cash, allocated_usd, fee)) {
+      analysis["blocker_reason"] = "insufficient_cash";
+      return analysis;
+    }
+  }
+
+  analysis["blocked"] = false;
+  analysis["blocker_reason"] = "paper_fill";
+  analysis["executable_intent"] = true;
+  return analysis;
 }
 
 Json::Value SimulatedTradingService::tradeToJson(const TradeRecord &trade) const {
@@ -1582,6 +1670,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     }
     auto signal = buildSignalRecordLocked(symbol, index, quote);
     prices[symbol] = signal.price;
+    signal.payload["execution_analysis"] = buildExecutionAnalysisLocked(signal);
     recent_signals_.push_back(signal);
     queueSignalWriteLocked(signal);
 
@@ -1590,6 +1679,15 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     const std::size_t hold_ticks = std::max(3, position_update_interval_ * 2);
 
     if (position_it == positions_.end()) {
+      if (mode_ == "live_parity") {
+        const Json::Value analysis = signal.payload["execution_analysis"];
+        if (analysis.get("executable_intent", Json::Value(false)).asBool()) {
+          openPositionLocked(signal, "Opened on live-parity paper signal");
+        } else if (signal_generated) {
+          ++execution_blocker_counts_[analysis.get("blocker_reason", Json::Value("unknown")).asString()];
+        }
+        continue;
+      }
       if (signal_generated) {
         std::string blocker;
         if (!signalPassesMlGateLocked(signal)) {

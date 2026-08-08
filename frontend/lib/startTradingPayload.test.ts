@@ -109,4 +109,17 @@ describe('buildStartTradingPayload', () => {
     expect(payload.parameters.min_orderbook_signal_strength).toBe(0.35);
     expect(payload.parameters.minimum_net_pnl_usd).toBe(0.5);
   });
+
+  it('preserves the explicit live-parity paper execution mode', () => {
+    const payload = buildStartTradingPayload(
+      'ml_enhanced_orderbook',
+      ['BTC-USD', 'ETH-USD'],
+      { execution_mode: 'live_parity', initial_portfolio_size: 10000 },
+      { max_positions: 4 },
+      'simulated',
+    );
+
+    expect(payload.parameters.execution_mode).toBe('live_parity');
+    expect(payload.symbols).toEqual(['BTC-USD', 'ETH-USD']);
+  });
 });

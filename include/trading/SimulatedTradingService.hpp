@@ -166,6 +166,7 @@ private:
   SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index,
                                        const MarketQuote *quote);
   bool signalPassesMlGateLocked(const SignalRecord &signal) const;
+  Json::Value buildExecutionAnalysisLocked(const SignalRecord &signal) const;
   void queueSignalWriteLocked(const SignalRecord &signal);
   void queueTradeWriteLocked(const TradeRecord &trade);
   PendingWrites takePendingWritesLocked();
