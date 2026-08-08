@@ -534,6 +534,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     position_size_value: 1,
     initial_portfolio_size: 10000,
   });
+  const [executionMode, setExecutionMode] = useState<'simulated' | 'live_parity'>('simulated');
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
 
   // Use local symbols for polling; fallback to backend status if empty
@@ -591,7 +592,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         mode: 'simulated',
         strategy,
         symbols,
-        parameters: { ...config },
+        parameters: { ...config, execution_mode: executionMode },
         max_positions: maxPositions,
         position_update_interval: 5,
       };
@@ -644,6 +645,35 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   return (
     <div className={`space-y-6 ${className}`}>
+      <Card>
+        <CardHeader>
+          <CardTitle>Simulation mode</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <label className="block text-sm font-medium" htmlFor="simulated-execution-mode">
+            Market-data and execution mode
+          </label>
+          <select
+            id="simulated-execution-mode"
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+            value={executionMode}
+            onChange={(event) => setExecutionMode(event.target.value as 'simulated' | 'live_parity')}
+            disabled={status.isActive}
+          >
+            <option value="simulated">Synthetic simulation</option>
+            <option value="live_parity">Coinbase live-data paper mode</option>
+          </select>
+          {executionMode === 'live_parity' && (
+            <p className="text-xs text-amber-700">
+              Uses Coinbase public order-book data, applies live spot/minimum/cash/position gates,
+              and never submits Coinbase orders.
+            </p>
+          )}
+          {status.isActive && String(status.mode) === 'live_parity' && (
+            <p className="text-xs font-medium text-amber-700">Live-data paper session active.</p>
+          )}
+        </CardContent>
+      </Card>
       {/* Trading Configuration */}
       {!configHidden && (
         <TradingConfiguration

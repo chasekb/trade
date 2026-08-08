@@ -65,6 +65,7 @@ type LocalSimTradingSession = {
 };
 
 let localSimTradingSession: LocalSimTradingSession | null = null;
+let liveParitySessionActive = false;
 
 function setLocalSimTradingSession(strategy: string, symbols: string[], parameters: Record<string, any>) {
   const now = new Date().toISOString();
@@ -796,7 +797,7 @@ class ApiClient {
   ): Promise<ApiResponse<{ is_active: boolean; message: string }>> {
     const basePayload = buildStartTradingPayload(strategy, symbols, parameters, config, mode);
 
-    if (mode === 'simulated' && FORCE_LOCAL_SIM_TRADING) {
+    if (mode === 'simulated' && FORCE_LOCAL_SIM_TRADING && parameters.execution_mode !== 'live_parity') {
       setLocalSimTradingSession(strategy, symbols, parameters);
       return {
         status: 'success',
@@ -852,6 +853,7 @@ class ApiClient {
         }
 
         const data = await response.json();
+        liveParitySessionActive = parameters.execution_mode === 'live_parity';
         return data;
       } catch (error) {
         lastError = {
@@ -862,7 +864,7 @@ class ApiClient {
       }
     }
 
-    if (mode === 'simulated') {
+    if (mode === 'simulated' && parameters.execution_mode !== 'live_parity') {
       setLocalSimTradingSession(strategy, symbols, parameters);
       return {
         status: 'success',
@@ -878,7 +880,7 @@ class ApiClient {
   }
 
   async stopTrading(mode: 'live' | 'simulated' = 'simulated'): Promise<ApiResponse<{ message: string }>> {
-    if (mode === 'simulated' && localSimTradingSession?.active) {
+    if (mode === 'simulated' && localSimTradingSession?.active && !liveParitySessionActive) {
       clearLocalSimTradingSession();
       return {
         status: 'success',
@@ -901,6 +903,7 @@ class ApiClient {
           timestamp: new Date().toISOString(),
         };
       }
+      liveParitySessionActive = false;
       return response.json();
     }).catch(error => ({
       status: 'error',
@@ -964,7 +967,7 @@ class ApiClient {
 
   // Simulated Trading Status
   async getSimulatedTradingStatus(): Promise<ApiResponse<any>> {
-    if (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active) {
+    if (!liveParitySessionActive && (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active)) {
       return {
         status: 'success',
         data: buildLocalSimulatedTradingStatus(),
@@ -1019,7 +1022,7 @@ class ApiClient {
     average_strength?: number;
     diagnostics?: OrderBookSignalDiagnostics;
   }>> {
-    if (mode === 'simulated' && (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active)) {
+    if (mode === 'simulated' && !liveParitySessionActive && (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active)) {
       const page = params?.page || 1;
       const perPage = params?.per_page || 10;
       const signals = buildSyntheticOrderBookSignals(localSimTradingSession!, page, perPage);

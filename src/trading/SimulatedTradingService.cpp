@@ -119,6 +119,10 @@ bool isOrderBookStrategy(const std::string &strategy) {
   return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
 }
 
+bool usesLiveMarketData(const std::string &mode) {
+  return mode == "live" || mode == "live_parity";
+}
+
 bool isInsufficientDataReason(const std::string &reason) {
   return reason.find("insufficient price history") != std::string::npos ||
          reason.find("warming up") != std::string::npos;
@@ -1562,7 +1566,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
   }
 
   tick_ += 1;
-  const bool live_mode = mode_ == "live";
+  const bool live_mode = usesLiveMarketData(mode_);
   std::map<std::string, double> prices;
 
   for (std::size_t index = 0; index < symbols_.size(); ++index) {
@@ -1572,7 +1576,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     if (quote_it != quotes.end() && quote_it->second.valid) {
       quote = &quote_it->second;
     }
-    // Live mode never trades on synthetic data: no quote, no tick action.
+    // Live-data modes never trade on synthetic data: no quote, no tick action.
     if (live_mode && quote == nullptr) {
       continue;
     }
@@ -1586,9 +1590,22 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     const std::size_t hold_ticks = std::max(3, position_update_interval_ * 2);
 
     if (position_it == positions_.end()) {
-      if (signal_generated && static_cast<int>(positions_.size()) < max_positions_ &&
-          signalPassesMlGateLocked(signal)) {
-        openPositionLocked(signal, "Opened on generated signal");
+      if (signal_generated) {
+        std::string blocker;
+        if (!signalPassesMlGateLocked(signal)) {
+          blocker = "ml_confidence_gate";
+        } else if (static_cast<int>(positions_.size()) >= max_positions_) {
+          blocker = "max_positions";
+        } else if (positionSizeUsdForSignal(signal) <= 0.0) {
+          blocker = "profitability_or_position_size";
+        } else if (sanitizeSide(signal.signal_type) != "buy") {
+          blocker = "spot_cannot_open_short";
+        }
+        if (!blocker.empty()) {
+          ++execution_blocker_counts_[blocker];
+        } else {
+          openPositionLocked(signal, "Opened on generated signal");
+        }
       }
       continue;
     }
@@ -1663,7 +1680,7 @@ void SimulatedTradingService::workerLoop() {
           settling = true;
         } else {
           symbols_snapshot = symbols_;
-          live_mode = mode_ == "live";
+          live_mode = usesLiveMarketData(mode_);
         }
       }
       if (settling) {
@@ -1746,6 +1763,14 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   portfolio["status"] = active_ ? "active" : "stopped";
   portfolio["session_id"] = session_id_;
   portfolio["mode"] = mode_;
+  portfolio["execution_mode"] = mode_;
+  portfolio["execution_is_paper"] = !liveOrderExecutionEnabledLocked();
+  portfolio["market_data_source"] = usesLiveMarketData(mode_) ? "coinbase_public" : "synthetic";
+  Json::Value blocker_counts(Json::objectValue);
+  for (const auto &[reason, count] : execution_blocker_counts_) {
+    blocker_counts[reason] = count;
+  }
+  portfolio["execution_blocker_counts"] = blocker_counts;
   portfolio["strategy_type"] = strategy_;
   portfolio["started_at"] = started_at_;
   portfolio["updated_at"] = updated_at_;
@@ -1808,6 +1833,9 @@ Json::Value SimulatedTradingService::buildStatusJson() const {
   status["is_active"] = active_;
   status["is_trading"] = active_;
   status["mode"] = mode_;
+  status["execution_mode"] = mode_;
+  status["execution_is_paper"] = !liveOrderExecutionEnabledLocked();
+  status["market_data_source"] = usesLiveMarketData(mode_) ? "coinbase_public" : "synthetic";
   status["strategy_type"] = strategy_;
   status["session_id"] = session_id_;
   status["symbols"] = Json::arrayValue;
@@ -1907,7 +1935,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
 
   session_id_ = payload.isMember("session_id") ? payload["session_id"].asString() : makeSessionId();
   mode_ = mode;
-  if (mode_ == "live") {
+  if (usesLiveMarketData(mode_)) {
     // Public market data works without credentials; order execution and the
     // account portfolio additionally need COINBASE_API_KEY / COINBASE_API_SECRET.
     auto &cfg = Config::getInstance();
@@ -1986,6 +2014,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   market_state_.clear();
   recent_trades_.clear();
   recent_signals_.clear();
+  execution_blocker_counts_.clear();
   session_trade_inputs_.clear();
   pending_orders_.clear();
   pending_live_orders_.clear();
@@ -2004,7 +2033,9 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   resp["status"] = "started";
   resp["is_active"] = true;
   resp["is_trading"] = true;
-  resp["message"] = "Simulated trading started";
+  resp["message"] = mode_ == "live_parity"
+                        ? "Live-parity paper trading started; Coinbase orders are disabled"
+                        : "Simulated trading started";
   return resp;
 }
 

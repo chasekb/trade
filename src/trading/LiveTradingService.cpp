@@ -568,6 +568,27 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   out["inherited_quantity"] = position.inherited_quantity;
   out["management_state"] = positionManagementStateLocked(position);
   out["eligible_for_strategy_management"] = position.eligible_for_strategy_management;
+  bool account_snapshot_present = false;
+  for (const auto &holding : last_account_snapshot_.holdings) {
+    if (holding.asset + "-USD" == position.symbol) {
+      account_snapshot_present = true;
+      break;
+    }
+  }
+  out["account_snapshot_present"] = account_snapshot_present;
+  out["account_snapshot_loaded"] = last_account_snapshot_loaded_;
+  out["account_snapshot_at"] = last_account_snapshot_at_;
+  out["pending_order_present"] = pending_order_symbols_.count(position.symbol) > 0;
+  const auto floor_it = managed_quantity_floors_.find(position.symbol);
+  out["managed_quantity_floor_remaining"] =
+      floor_it == managed_quantity_floors_.end() ? 0.0 : floor_it->second.first;
+  out["reconciliation_status"] = account_snapshot_present
+                                      ? "coinbase_confirmed"
+                                      : (pending_order_symbols_.count(position.symbol) > 0
+                                             ? "pending_settlement"
+                                             : (floor_it != managed_quantity_floors_.end()
+                                                    ? "awaiting_snapshot_reconciliation"
+                                                    : "stale_internal"));
   return out;
 }
 

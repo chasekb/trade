@@ -1114,8 +1114,20 @@ void PredictController::startSimulatedTrading(
   if (!payload.isObject()) {
     payload = Json::Value(Json::objectValue);
   }
+  const Json::Value parameters = payload.get("parameters", Json::Value(Json::objectValue));
+  const std::string execution_mode = payload.get(
+      "execution_mode", parameters.get("execution_mode", Json::Value("simulated"))).asString();
+  if (execution_mode != "simulated" && execution_mode != "live_parity") {
+    Json::Value error;
+    error["status"] = "error";
+    error["error"] = "execution_mode must be simulated or live_parity";
+    auto response = HttpResponse::newHttpJsonResponse(error);
+    response->setStatusCode(k400BadRequest);
+    callback(response);
+    return;
+  }
   Json::Value response = trade::trading::SimulatedTradingService::getInstance()
-                             .startSession(payload, "simulated");
+                             .startSession(payload, execution_mode);
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 

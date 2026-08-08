@@ -205,6 +205,9 @@ private:
   bool worker_finished_ = true;
   std::string session_id_;
   std::string mode_ = "simulated";
+  // `live_parity` consumes Coinbase public market data and applies the same
+  // spot/minimum/cash/position gates as live mode, but always settles paper
+  // fills locally and never dispatches an exchange order.
   std::string strategy_ = "orderbook";
   std::vector<std::string> symbols_;
   Json::Value parameters_ = Json::objectValue;
@@ -224,6 +227,7 @@ private:
   std::map<std::string, PositionState> positions_;
   std::deque<TradeRecord> recent_trades_;
   std::deque<SignalRecord> recent_signals_;
+  std::map<std::string, int> execution_blocker_counts_;
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).
   std::vector<TradePerformanceInput> session_trade_inputs_;
