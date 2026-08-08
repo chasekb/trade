@@ -6,6 +6,7 @@
 
 #include "ml/ModelTrainer.hpp"
 #include "ml/Types.hpp"
+#include "trading/ExecutionReconciliation.hpp"
 #include "trading/LiveTradingService.hpp"
 #include "trading/TradingStatsService.hpp"
 #include "trading/SimulatedTradingService.hpp"
@@ -56,6 +57,75 @@ int parse_int_param(const std::string &raw, int default_value) {
   } catch (const std::exception &) {
     return default_value;
   }
+}
+
+int clamp_int(int value, int low, int high) {
+  return std::max(low, std::min(high, value));
+}
+
+// Query parameters are interpolated into diagnostic SQL, so restrict them to
+// the identifier characters the trading services actually emit.
+std::string sanitize_sql_literal(const std::string &raw) {
+  std::string out;
+  out.reserve(raw.size());
+  for (const char c : raw) {
+    const unsigned char uc = static_cast<unsigned char>(c);
+    if (std::isalnum(uc) || c == '-' || c == '_' || c == '.') {
+      out.push_back(c);
+    }
+  }
+  return out;
+}
+
+Json::Value parse_json_object(const std::string &text) {
+  Json::Value parsed;
+  if (text.empty()) {
+    return Json::Value(Json::objectValue);
+  }
+  Json::CharReaderBuilder builder;
+  std::string errs;
+  std::istringstream stream(text);
+  if (!Json::parseFromStream(builder, stream, &parsed, &errs) || !parsed.isObject()) {
+    return Json::Value(Json::objectValue);
+  }
+  return parsed;
+}
+
+Json::Value reconciliation_to_json(const trade::trading::StrategyReconciliation &metrics) {
+  Json::Value out(Json::objectValue);
+  out["strategy"] = metrics.strategy;
+  out["signals_evaluated"] = static_cast<Json::UInt64>(metrics.signals_evaluated);
+  out["signals_generated"] = static_cast<Json::UInt64>(metrics.signals_generated);
+  out["executable_intents"] = static_cast<Json::UInt64>(metrics.executable_intents);
+  out["blocked_intents"] = static_cast<Json::UInt64>(metrics.blocked_intents);
+  out["closing_legs"] = static_cast<Json::UInt64>(metrics.closing_legs);
+  out["winners"] = static_cast<Json::UInt64>(metrics.winners);
+  out["losers"] = static_cast<Json::UInt64>(metrics.losers);
+  out["win_rate"] = metrics.win_rate;
+  out["average_win"] = metrics.average_win;
+  out["average_loss"] = metrics.average_loss;
+  out["expectancy"] = metrics.expectancy;
+  // jsoncpp cannot serialize a non-finite double; an all-winners window is
+  // reported as an explicit flag instead of a bogus number.
+  out["profit_factor"] = std::isfinite(metrics.profit_factor) ? metrics.profit_factor : 0.0;
+  out["profit_factor_undefined"] = !std::isfinite(metrics.profit_factor);
+  out["total_pnl"] = metrics.total_pnl;
+  out["total_fees"] = metrics.total_fees;
+  out["intent_conversion_rate"] = metrics.intent_conversion_rate;
+  out["outcome_coverage"] = metrics.outcome_coverage;
+  out["outcomes_unexplained"] = metrics.outcomes_unexplained;
+  out["negative_expectancy_flag"] = metrics.negative_expectancy_flag;
+  out["dominant_blocker"] = metrics.dominant_blocker;
+  out["blockers"] = Json::arrayValue;
+  for (const auto &bucket : metrics.blockers) {
+    Json::Value row(Json::objectValue);
+    row["reason"] = bucket.reason;
+    row["count"] = static_cast<Json::UInt64>(bucket.count);
+    row["share"] = bucket.share;
+    row["blocked_expected_return_sum"] = bucket.blocked_expected_return_sum;
+    out["blockers"].append(row);
+  }
+  return out;
 }
 
 std::string model_type_to_string(const trade::ml::ModelType type) {
@@ -1608,6 +1678,125 @@ void PredictController::resetMlDatabases(
     callback(error_resp);
     return;
   }
+
+  callback(HttpResponse::newHttpJsonResponse(resp));
+}
+
+void PredictController::executionReconciliation(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  using trade::trading::OutcomeAttribution;
+  using trade::trading::SignalAttribution;
+
+  const std::string session_id = sanitize_sql_literal(req->getParameter("session_id"));
+  const std::string trade_type = sanitize_sql_literal(req->getParameter("trade_type"));
+  const int hours = clamp_int(parse_int_param(req->getParameter("hours"), 24), 1, 24 * 30);
+  const int max_signals =
+      clamp_int(parse_int_param(req->getParameter("max_signals"), 20000), 100, 200000);
+  const long long window_start =
+      static_cast<long long>(std::time(nullptr)) - static_cast<long long>(hours) * 3600LL;
+
+  Json::Value resp;
+  resp["window_hours"] = hours;
+  resp["window_start_timestamp"] = static_cast<Json::Int64>(window_start);
+  resp["session_id"] = session_id;
+  resp["trade_type"] = trade_type;
+  resp["signal_rows"] = 0;
+  resp["outcome_rows"] = 0;
+  resp["signal_rows_truncated"] = false;
+  resp["by_strategy"] = Json::arrayValue;
+
+  std::vector<SignalAttribution> signals;
+  std::vector<OutcomeAttribution> outcomes;
+
+  try {
+    auto tableExists = [](const char *table) {
+      auto exists = DatabaseManager::getInstance().query(
+          std::string("SELECT to_regclass('public.") + table + "') AS relname");
+      return !exists.empty() && !exists[0]["relname"].is_null();
+    };
+
+    if (tableExists("order_book_signals")) {
+      std::ostringstream sql;
+      sql << "SELECT symbol, signal_type, signal_data FROM order_book_signals WHERE timestamp >= "
+          << window_start;
+      if (!session_id.empty()) {
+        sql << " AND session_id = '" << session_id << "'";
+      }
+      sql << " ORDER BY timestamp DESC LIMIT " << (max_signals + 1);
+
+      std::size_t fetched = 0;
+      for (const auto &row : DatabaseManager::getInstance().query(sql.str())) {
+        if (++fetched > static_cast<std::size_t>(max_signals)) {
+          resp["signal_rows_truncated"] = true;
+          break;
+        }
+        const Json::Value payload =
+            row["signal_data"].is_null() ? Json::Value(Json::objectValue)
+                                         : parse_json_object(row["signal_data"].c_str());
+        const Json::Value analysis =
+            payload.get("execution_analysis", Json::Value(Json::objectValue));
+
+        SignalAttribution attribution;
+        attribution.symbol = row["symbol"].is_null() ? "" : row["symbol"].c_str();
+        attribution.strategy = analysis.get("strategy", Json::Value("")).asString();
+        const std::string signal_type =
+            row["signal_type"].is_null() ? "" : row["signal_type"].c_str();
+        attribution.signal_generated =
+            analysis.isMember("signal_generated")
+                ? analysis["signal_generated"].asBool()
+                : (!signal_type.empty() && signal_type != "hold");
+        attribution.executable_intent =
+            analysis.get("executable_intent", Json::Value(false)).asBool();
+        attribution.blocker_reason = analysis.get("blocker_reason", Json::Value("")).asString();
+        attribution.intended_side = analysis.get("intended_side", Json::Value("")).asString();
+        attribution.diagnostic_factor =
+            analysis.get("diagnostic_factor", Json::Value("")).asString();
+        attribution.expected_return = analysis.get("expected_return", Json::Value(0.0)).asDouble();
+        attribution.fee_adjusted_expected_return =
+            analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble();
+        signals.push_back(std::move(attribution));
+      }
+    }
+
+    if (tableExists("individual_trades")) {
+      std::ostringstream sql;
+      sql << "SELECT symbol, strategy_type, pnl, fees FROM individual_trades WHERE timestamp >= "
+          << window_start;
+      if (!session_id.empty()) {
+        sql << " AND session_id = '" << session_id << "'";
+      }
+      if (!trade_type.empty()) {
+        sql << " AND trade_type = '" << trade_type << "'";
+      }
+      for (const auto &row : DatabaseManager::getInstance().query(sql.str())) {
+        OutcomeAttribution outcome;
+        outcome.symbol = row["symbol"].is_null() ? "" : row["symbol"].c_str();
+        outcome.strategy = row["strategy_type"].is_null() ? "" : row["strategy_type"].c_str();
+        const double gross_pnl = row["pnl"].is_null() ? 0.0 : row["pnl"].as<double>();
+        outcome.fees = row["fees"].is_null() ? 0.0 : row["fees"].as<double>();
+        // `individual_trades` has no explicit leg flag: entries are written with
+        // zero PnL and exits with the gross PnL of the round trip, so a non-zero
+        // PnL identifies a closing leg. Realized PnL is reported net of fees to
+        // match the objective's after-fee expectancy definition.
+        outcome.is_closing_leg = gross_pnl != 0.0;
+        outcome.realized_pnl = outcome.is_closing_leg ? gross_pnl - outcome.fees : 0.0;
+        outcomes.push_back(std::move(outcome));
+      }
+    }
+  } catch (const std::exception &e) {
+    TR_LOG_WARN("Failed to build execution reconciliation: {}", e.what());
+    resp["error"] = e.what();
+  }
+
+  resp["signal_rows"] = static_cast<Json::UInt64>(signals.size());
+  resp["outcome_rows"] = static_cast<Json::UInt64>(outcomes.size());
+
+  const auto report = trade::trading::reconcileExecution(signals, outcomes);
+  for (const auto &[strategy, metrics] : report.by_strategy) {
+    resp["by_strategy"].append(reconciliation_to_json(metrics));
+  }
+  resp["overall"] = reconciliation_to_json(report.overall);
 
   callback(HttpResponse::newHttpJsonResponse(resp));
 }
