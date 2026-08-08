@@ -43,6 +43,7 @@ set(SOURCES
     src/trading/PositionSizingPolicy.cpp
     src/trading/StrategySignal.cpp
     src/trading/StrategyExpectancyHarness.cpp
+    src/trading/ExecutionReconciliation.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
     src/trading/LiveTradingService.cpp
@@ -161,6 +162,13 @@ add_executable(test_strategy_expectancy_harness
 )
 target_include_directories(test_strategy_expectancy_harness PRIVATE include)
 add_test(NAME strategy_expectancy_harness COMMAND test_strategy_expectancy_harness)
+
+add_executable(test_execution_reconciliation
+    src/tests/test_execution_reconciliation.cpp
+    src/trading/ExecutionReconciliation.cpp
+)
+target_include_directories(test_execution_reconciliation PRIVATE include)
+add_test(NAME execution_reconciliation COMMAND test_execution_reconciliation)
 
 add_executable(test_coinbase_auth
     src/tests/test_coinbase_auth.cpp
