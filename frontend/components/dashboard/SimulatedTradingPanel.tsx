@@ -15,6 +15,8 @@ import { StrategySelector } from './StrategySelector';
 import { TradingControls } from './TradingControls';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { OrderBookSignalsTable } from './OrderBookSignalsTable';
+import { ExecutionReconciliationTable } from './ExecutionReconciliationTable';
+import { useExecutionReconciliation } from '@/hooks/useExecutionReconciliation';
 
 type TradingConfigState = {
   position_size_mode: 'percent' | 'dollar' | string;
@@ -630,6 +632,15 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   const signalsToDisplay = orderBookData?.signals || [];
 
+  // Diagnostic read of the trailing signal-to-outcome window. The panel status
+  // does not carry a session id, so this reports the last day across sessions;
+  // a stopped session therefore still explains its blockers and outcomes.
+  const {
+    reconciliation,
+    isLoading: isReconciliationLoading,
+    error: reconciliationError,
+  } = useExecutionReconciliation({ hours: 24 });
+
   // Normalize optional summary fields for order book signals (prefer WebSocket data for real-time updates)
   const signalsSummary = {
     ...(orderBookData?.total_analyzed !== undefined ? { total_analyzed: orderBookData.total_analyzed as number } : {}),
@@ -756,6 +767,20 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           </CardContent>
         </Card>
       )}
+
+      {/* Signal-to-outcome reconciliation by strategy and blocker bucket */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Execution Reconciliation</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ExecutionReconciliationTable
+            reconciliation={reconciliation}
+            isLoading={isReconciliationLoading}
+            error={reconciliationError}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

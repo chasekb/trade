@@ -1266,6 +1266,21 @@ class ApiClient {
     }));
   }
 
+  // Signal-to-outcome reconciliation by strategy and blocker bucket. Callers
+  // should pass the payload through `normalizeExecutionReconciliation`.
+  async getExecutionReconciliation(params?: {
+    hours?: number | undefined;
+    sessionId?: string | undefined;
+    tradeType?: string | undefined;
+  }): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams();
+    if (params?.hours !== undefined) query.set('hours', String(params.hours));
+    if (params?.sessionId) query.set('session_id', params.sessionId);
+    if (params?.tradeType) query.set('trade_type', params.tradeType);
+    const suffix = query.toString();
+    return this.request(`/api/trading/execution-reconciliation${suffix ? `?${suffix}` : ''}`);
+  }
+
   async getPnlTrades(sortBy: string = 'pnl'): Promise<ApiResponse<any>> {
     return this.request(`/api/ml/pnl-trades?sort_by=${sortBy}`);
   }
