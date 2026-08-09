@@ -106,6 +106,30 @@ Non-build checks only, per the standing verification contract:
   toolchain exists for them. Backend compilation is verified only by the pushed
   `Docker Build Validation` run.
 
+## CI evidence
+
+Closeout gate: the `Docker Build Validation` run whose `headSha` exactly matches
+the pushed commit.
+
+- Commit: `d5a21160f24fe1ea6b6729a1bbac7611d12f20f2` on `dev`
+- Run ID: `31274960164` (event: `push`)
+- URL: https://github.com/chasekb/trade/actions/runs/31274960164
+- Conclusion: `success`
+- Job conclusions:
+  - Build C++ Backend (amd64): success
+  - Build C++ Backend (arm64): success
+  - Build Frontend (amd64): success
+  - Build Frontend (arm64): success
+  - Publish C++ Backend manifest: success
+  - Publish Frontend manifest: success
+- Verified: 2026-08-09T06:13:44Z
+
+The backend build stage runs `ctest -R`, which now includes the
+`execution_reconciliation` target, so the new C++ test executed on both
+architectures as part of this run. A second run on the same SHA
+(`31274961701`, event `pull_request`) also succeeded but builds amd64 only and
+skips manifest publication; it does not satisfy the gate on its own.
+
 ## Still open
 
 Unchanged from the prior closeout, and not claimed here: `TRADE-BL-0007`,
