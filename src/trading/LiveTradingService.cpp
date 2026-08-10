@@ -365,9 +365,12 @@ void LiveTradingService::ensureSchema() {
         win_probability DOUBLE PRECISION,
         expected_return DOUBLE PRECISION,
         model_confidence DOUBLE PRECISION,
-        trade_type TEXT DEFAULT 'live'
+        trade_type TEXT DEFAULT 'live',
+        is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE
       )
     )SQL");
+    DatabaseManager::getInstance().query(
+        "ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE");
 
     DatabaseManager::getInstance().query(R"SQL(
       CREATE TABLE IF NOT EXISTS live_coinbase_orders (
@@ -671,6 +674,7 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
   trade.signal_reason = intent.reason;
   trade.fees = fill.total_fees;
   trade.trade_type = "live";
+  trade.is_closing_leg = intent.action == "close";
 
   if (intent.action == "close") {
     auto position_it = positions_.find(intent.product_id);
@@ -1453,7 +1457,7 @@ bool LiveTradingService::flushWrites(PendingWrites &&writes) {
     std::ostringstream sql;
     sql << "INSERT INTO individual_trades ("
         << "trade_id, session_id, symbol, side, size, price, timestamp, strategy_type, signal_reason, pnl, fees, "
-        << "win_probability, expected_return, model_confidence, trade_type"
+        << "win_probability, expected_return, model_confidence, trade_type, is_closing_leg"
         << ") VALUES ";
     bool first = true;
     for (const auto &[trade_id, trade] : unique_trades) {
@@ -1476,7 +1480,8 @@ bool LiveTradingService::flushWrites(PendingWrites &&writes) {
           << trade->win_probability << ","
           << trade->expected_return << ","
           << trade->model_confidence << ","
-          << "'" << escapeSql(trade->trade_type) << "'"
+          << "'" << escapeSql(trade->trade_type) << "',"
+          << (trade->is_closing_leg ? "TRUE" : "FALSE")
           << ")";
     }
     sql << " ON CONFLICT (trade_id) DO UPDATE SET "
@@ -1484,7 +1489,7 @@ bool LiveTradingService::flushWrites(PendingWrites &&writes) {
         << "timestamp = EXCLUDED.timestamp, strategy_type = EXCLUDED.strategy_type, signal_reason = EXCLUDED.signal_reason, "
         << "pnl = EXCLUDED.pnl, fees = EXCLUDED.fees, win_probability = EXCLUDED.win_probability, "
         << "expected_return = EXCLUDED.expected_return, model_confidence = EXCLUDED.model_confidence, "
-        << "trade_type = EXCLUDED.trade_type";
+        << "trade_type = EXCLUDED.trade_type, is_closing_leg = EXCLUDED.is_closing_leg";
 
     DatabaseManager::getInstance().query(sql.str());
   }
@@ -1783,6 +1788,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
   payload["criteria_analysis"] = criteria;
   payload["ml_analysis"] = ml_analysis;
   payload["strength_composition"] = composition;
+  payload["trade_type"] = "live";
 
   signal.payload = payload;
   return signal;

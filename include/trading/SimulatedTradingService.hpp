@@ -79,6 +79,7 @@ private:
     double expected_return = 0.0;
     double model_confidence = 0.0;
     std::string trade_type = "simulated";
+    bool is_closing_leg = false;
   };
 
   // Per-symbol synthetic market state. Imbalance follows a persistent AR(1)

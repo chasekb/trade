@@ -91,6 +91,7 @@ private:
     double expected_return = 0.0;
     double model_confidence = 0.0;
     std::string trade_type = "live";
+    bool is_closing_leg = false;
   };
 
   // Per-symbol rolling state derived only from Coinbase market data.

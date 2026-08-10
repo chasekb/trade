@@ -1241,14 +1241,6 @@ void PredictController::liveOrderBookSignals(
       }
     }
   }
-  constexpr std::size_t kMaxSymbolsPerRequest = 100;
-  if (symbols.size() > kMaxSymbolsPerRequest) {
-    TR_LOG_WARN("Trimming live order book symbol filter from {} to {} symbols to avoid oversized requests",
-                symbols.size(),
-                kMaxSymbolsPerRequest);
-    symbols.resize(kMaxSymbolsPerRequest);
-  }
-
   const int page = parse_int_param(req->getParameter("page"), 1);
   const int per_page = parse_int_param(req->getParameter("per_page"), 10);
   Json::Value response = trade::trading::LiveTradingService::getInstance()
@@ -1266,10 +1258,6 @@ void PredictController::simulatedOrderBookSignals(
     if (!item.empty()) {
       symbols.push_back(item);
     }
-  }
-  constexpr std::size_t kMaxSymbolsPerRequest = 100;
-  if (symbols.size() > kMaxSymbolsPerRequest) {
-    symbols.resize(kMaxSymbolsPerRequest);
   }
   const int page = parse_int_param(req->getParameter("page"), 1);
   const int per_page = parse_int_param(req->getParameter("per_page"), 10);
@@ -1723,6 +1711,9 @@ void PredictController::executionReconciliation(
       if (!session_id.empty()) {
         sql << " AND session_id = '" << session_id << "'";
       }
+      if (!trade_type.empty()) {
+        sql << " AND COALESCE(signal_data::jsonb ->> 'trade_type', '') = '" << trade_type << "'";
+      }
       sql << " ORDER BY timestamp DESC LIMIT " << (max_signals + 1);
 
       std::size_t fetched = 0;
@@ -1761,7 +1752,7 @@ void PredictController::executionReconciliation(
 
     if (tableExists("individual_trades")) {
       std::ostringstream sql;
-      sql << "SELECT symbol, strategy_type, pnl, fees FROM individual_trades WHERE timestamp >= "
+      sql << "SELECT symbol, strategy_type, pnl, fees, is_closing_leg FROM individual_trades WHERE timestamp >= "
           << window_start;
       if (!session_id.empty()) {
         sql << " AND session_id = '" << session_id << "'";
@@ -1775,11 +1766,13 @@ void PredictController::executionReconciliation(
         outcome.strategy = row["strategy_type"].is_null() ? "" : row["strategy_type"].c_str();
         const double gross_pnl = row["pnl"].is_null() ? 0.0 : row["pnl"].as<double>();
         outcome.fees = row["fees"].is_null() ? 0.0 : row["fees"].as<double>();
-        // `individual_trades` has no explicit leg flag: entries are written with
-        // zero PnL and exits with the gross PnL of the round trip, so a non-zero
-        // PnL identifies a closing leg. Realized PnL is reported net of fees to
-        // match the objective's after-fee expectancy definition.
-        outcome.is_closing_leg = gross_pnl != 0.0;
+        // New rows persist the leg explicitly, including exact-flat exits.
+        // Fall back to the historical non-zero-PnL convention for rows written
+        // before the column was introduced. Realized PnL is reported net of
+        // fees to match the objective's after-fee expectancy definition.
+        outcome.is_closing_leg = row["is_closing_leg"].is_null()
+                                     ? gross_pnl != 0.0
+                                     : row["is_closing_leg"].as<bool>();
         outcome.realized_pnl = outcome.is_closing_leg ? gross_pnl - outcome.fees : 0.0;
         outcomes.push_back(std::move(outcome));
       }

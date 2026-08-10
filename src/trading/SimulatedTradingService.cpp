@@ -329,9 +329,12 @@ void SimulatedTradingService::ensureSchema() {
         win_probability DOUBLE PRECISION,
         expected_return DOUBLE PRECISION,
         model_confidence DOUBLE PRECISION,
-        trade_type TEXT DEFAULT 'simulated'
+        trade_type TEXT DEFAULT 'simulated',
+        is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE
       )
     )SQL");
+    DatabaseManager::getInstance().query(
+        "ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE");
   } catch (const std::exception &e) {
     TR_LOG_WARN("Failed to ensure simulated trading schema: {}", e.what());
   }
@@ -674,6 +677,7 @@ void SimulatedTradingService::applyLiveFillLocked(const OrderIntent &intent,
   trade.signal_reason = intent.reason;
   trade.fees = fill.total_fees;
   trade.trade_type = "live";
+  trade.is_closing_leg = intent.action == "close";
 
   if (intent.action == "close") {
     auto position_it = positions_.find(intent.product_id);
@@ -939,7 +943,7 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
     std::ostringstream sql;
     sql << "INSERT INTO individual_trades ("
         << "trade_id, session_id, symbol, side, size, price, timestamp, strategy_type, signal_reason, pnl, fees, "
-        << "win_probability, expected_return, model_confidence, trade_type"
+        << "win_probability, expected_return, model_confidence, trade_type, is_closing_leg"
         << ") VALUES ";
     bool first = true;
     for (const auto &[trade_id, trade] : unique_trades) {
@@ -962,7 +966,8 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
           << trade->win_probability << ","
           << trade->expected_return << ","
           << trade->model_confidence << ","
-          << "'" << escapeSql(trade->trade_type) << "'"
+          << "'" << escapeSql(trade->trade_type) << "',"
+          << (trade->is_closing_leg ? "TRUE" : "FALSE")
           << ")";
     }
     sql << " ON CONFLICT (trade_id) DO UPDATE SET "
@@ -970,7 +975,7 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
         << "timestamp = EXCLUDED.timestamp, strategy_type = EXCLUDED.strategy_type, signal_reason = EXCLUDED.signal_reason, "
         << "pnl = EXCLUDED.pnl, fees = EXCLUDED.fees, win_probability = EXCLUDED.win_probability, "
         << "expected_return = EXCLUDED.expected_return, model_confidence = EXCLUDED.model_confidence, "
-        << "trade_type = EXCLUDED.trade_type";
+        << "trade_type = EXCLUDED.trade_type, is_closing_leg = EXCLUDED.is_closing_leg";
 
     DatabaseManager::getInstance().query(sql.str());
   }
@@ -1305,6 +1310,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   payload["criteria_analysis"] = criteria;
   payload["ml_analysis"] = ml_analysis;
   payload["strength_composition"] = composition;
+  payload["trade_type"] = mode_;
 
   signal.payload = payload;
   return signal;
@@ -1464,6 +1470,7 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   trade.signal_reason = reason;
   trade.pnl = 0.0;
   trade.fees = fee;
+  trade.is_closing_leg = false;
   trade.win_probability = signal.payload["ml_analysis"].get("win_probability", Json::Value(0.5)).asDouble();
   trade.expected_return = signal.payload["ml_analysis"].get("expected_return", Json::Value(0.0)).asDouble();
   trade.model_confidence = signal.payload["ml_analysis"].get("confidence", Json::Value(0.0)).asDouble();
@@ -1540,6 +1547,7 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
   trade.signal_reason = reason;
   trade.pnl = 0.0;
   trade.fees = fee;
+  trade.is_closing_leg = false;
   trade.win_probability = signal.payload["ml_analysis"].get("win_probability", Json::Value(0.5)).asDouble();
   trade.expected_return = signal.payload["ml_analysis"].get("expected_return", Json::Value(0.0)).asDouble();
   trade.model_confidence = signal.payload["ml_analysis"].get("confidence", Json::Value(0.0)).asDouble();
@@ -1623,6 +1631,7 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   trade.signal_reason = reason;
   trade.pnl = gross_pnl;
   trade.fees = fee;
+  trade.is_closing_leg = true;
   // Persist the prediction-time values captured at entry; deriving them from
   // the realized outcome would poison calibration and training data.
   trade.win_probability = position.entry_win_probability;
