@@ -330,11 +330,17 @@ void SimulatedTradingService::ensureSchema() {
         expected_return DOUBLE PRECISION,
         model_confidence DOUBLE PRECISION,
         trade_type TEXT DEFAULT 'simulated',
-        is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE
+        is_closing_leg BOOLEAN
       )
     )SQL");
     DatabaseManager::getInstance().query(
-        "ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE");
+        "ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS is_closing_leg BOOLEAN");
+    DatabaseManager::getInstance().query(
+        "ALTER TABLE individual_trades ALTER COLUMN is_closing_leg DROP DEFAULT");
+    DatabaseManager::getInstance().query(
+        "ALTER TABLE individual_trades ALTER COLUMN is_closing_leg DROP NOT NULL");
+    DatabaseManager::getInstance().query(
+        "UPDATE individual_trades SET is_closing_leg = NULL WHERE is_closing_leg = FALSE AND pnl <> 0");
   } catch (const std::exception &e) {
     TR_LOG_WARN("Failed to ensure simulated trading schema: {}", e.what());
   }

@@ -1711,20 +1711,24 @@ void PredictController::executionReconciliation(
       if (!session_id.empty()) {
         sql << " AND session_id = '" << session_id << "'";
       }
-      if (!trade_type.empty()) {
-        sql << " AND COALESCE(signal_data::jsonb ->> 'trade_type', '') = '" << trade_type << "'";
+      sql << " ORDER BY timestamp DESC";
+      if (trade_type.empty()) {
+        sql << " LIMIT " << (max_signals + 1);
       }
-      sql << " ORDER BY timestamp DESC LIMIT " << (max_signals + 1);
 
       std::size_t fetched = 0;
       for (const auto &row : DatabaseManager::getInstance().query(sql.str())) {
+        const Json::Value payload =
+            row["signal_data"].is_null() ? Json::Value(Json::objectValue)
+                                         : parse_json_object(row["signal_data"].c_str());
+        if (!trade_type.empty() &&
+            payload.get("trade_type", Json::Value("")).asString() != trade_type) {
+          continue;
+        }
         if (++fetched > static_cast<std::size_t>(max_signals)) {
           resp["signal_rows_truncated"] = true;
           break;
         }
-        const Json::Value payload =
-            row["signal_data"].is_null() ? Json::Value(Json::objectValue)
-                                         : parse_json_object(row["signal_data"].c_str());
         const Json::Value analysis =
             payload.get("execution_analysis", Json::Value(Json::objectValue));
 

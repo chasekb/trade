@@ -366,11 +366,17 @@ void LiveTradingService::ensureSchema() {
         expected_return DOUBLE PRECISION,
         model_confidence DOUBLE PRECISION,
         trade_type TEXT DEFAULT 'live',
-        is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE
+        is_closing_leg BOOLEAN
       )
     )SQL");
     DatabaseManager::getInstance().query(
-        "ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS is_closing_leg BOOLEAN NOT NULL DEFAULT FALSE");
+        "ALTER TABLE individual_trades ADD COLUMN IF NOT EXISTS is_closing_leg BOOLEAN");
+    DatabaseManager::getInstance().query(
+        "ALTER TABLE individual_trades ALTER COLUMN is_closing_leg DROP DEFAULT");
+    DatabaseManager::getInstance().query(
+        "ALTER TABLE individual_trades ALTER COLUMN is_closing_leg DROP NOT NULL");
+    DatabaseManager::getInstance().query(
+        "UPDATE individual_trades SET is_closing_leg = NULL WHERE is_closing_leg = FALSE AND pnl <> 0");
 
     DatabaseManager::getInstance().query(R"SQL(
       CREATE TABLE IF NOT EXISTS live_coinbase_orders (
@@ -674,7 +680,7 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
   trade.signal_reason = intent.reason;
   trade.fees = fill.total_fees;
   trade.trade_type = "live";
-  trade.is_closing_leg = intent.action == "close";
+  trade.is_closing_leg = intent.action == "close" || intent.action == "liquidate_holding";
 
   if (intent.action == "close") {
     auto position_it = positions_.find(intent.product_id);
