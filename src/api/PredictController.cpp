@@ -1705,52 +1705,57 @@ void PredictController::executionReconciliation(
     };
 
     if (tableExists("order_book_signals")) {
-      std::ostringstream sql;
-      sql << "SELECT symbol, signal_type, signal_data FROM order_book_signals WHERE timestamp >= "
-          << window_start;
-      if (!session_id.empty()) {
-        sql << " AND session_id = '" << session_id << "'";
-      }
-      sql << " ORDER BY timestamp DESC";
-      if (trade_type.empty()) {
-        sql << " LIMIT " << (max_signals + 1);
-      }
-
+      constexpr std::size_t kSignalPageSize = 5000;
+      std::size_t page_offset = 0;
       std::size_t fetched = 0;
-      for (const auto &row : DatabaseManager::getInstance().query(sql.str())) {
-        const Json::Value payload =
-            row["signal_data"].is_null() ? Json::Value(Json::objectValue)
-                                         : parse_json_object(row["signal_data"].c_str());
-        if (!trade_type.empty() &&
-            payload.get("trade_type", Json::Value("")).asString() != trade_type) {
-          continue;
+      bool exhausted = false;
+      while (!exhausted && !resp["signal_rows_truncated"].asBool()) {
+        std::ostringstream sql;
+        sql << "SELECT symbol, signal_type, signal_data FROM order_book_signals WHERE timestamp >= "
+            << window_start;
+        if (!session_id.empty()) {
+          sql << " AND session_id = '" << session_id << "'";
         }
-        if (++fetched > static_cast<std::size_t>(max_signals)) {
-          resp["signal_rows_truncated"] = true;
-          break;
-        }
-        const Json::Value analysis =
-            payload.get("execution_analysis", Json::Value(Json::objectValue));
+        sql << " ORDER BY timestamp DESC LIMIT " << kSignalPageSize << " OFFSET " << page_offset;
 
-        SignalAttribution attribution;
-        attribution.symbol = row["symbol"].is_null() ? "" : row["symbol"].c_str();
-        attribution.strategy = analysis.get("strategy", Json::Value("")).asString();
-        const std::string signal_type =
-            row["signal_type"].is_null() ? "" : row["signal_type"].c_str();
-        attribution.signal_generated =
-            analysis.isMember("signal_generated")
-                ? analysis["signal_generated"].asBool()
-                : (!signal_type.empty() && signal_type != "hold");
-        attribution.executable_intent =
-            analysis.get("executable_intent", Json::Value(false)).asBool();
-        attribution.blocker_reason = analysis.get("blocker_reason", Json::Value("")).asString();
-        attribution.intended_side = analysis.get("intended_side", Json::Value("")).asString();
-        attribution.diagnostic_factor =
-            analysis.get("diagnostic_factor", Json::Value("")).asString();
-        attribution.expected_return = analysis.get("expected_return", Json::Value(0.0)).asDouble();
-        attribution.fee_adjusted_expected_return =
-            analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble();
-        signals.push_back(std::move(attribution));
+        const auto rows = DatabaseManager::getInstance().query(sql.str());
+        exhausted = rows.size() < kSignalPageSize;
+        for (const auto &row : rows) {
+          const Json::Value payload =
+              row["signal_data"].is_null() ? Json::Value(Json::objectValue)
+                                           : parse_json_object(row["signal_data"].c_str());
+          if (!trade_type.empty() &&
+              payload.get("trade_type", Json::Value("")).asString() != trade_type) {
+            continue;
+          }
+          if (++fetched > static_cast<std::size_t>(max_signals)) {
+            resp["signal_rows_truncated"] = true;
+            break;
+          }
+          const Json::Value analysis =
+              payload.get("execution_analysis", Json::Value(Json::objectValue));
+
+          SignalAttribution attribution;
+          attribution.symbol = row["symbol"].is_null() ? "" : row["symbol"].c_str();
+          attribution.strategy = analysis.get("strategy", Json::Value("")).asString();
+          const std::string signal_type =
+              row["signal_type"].is_null() ? "" : row["signal_type"].c_str();
+          attribution.signal_generated =
+              analysis.isMember("signal_generated")
+                  ? analysis["signal_generated"].asBool()
+                  : (!signal_type.empty() && signal_type != "hold");
+          attribution.executable_intent =
+              analysis.get("executable_intent", Json::Value(false)).asBool();
+          attribution.blocker_reason = analysis.get("blocker_reason", Json::Value("")).asString();
+          attribution.intended_side = analysis.get("intended_side", Json::Value("")).asString();
+          attribution.diagnostic_factor =
+              analysis.get("diagnostic_factor", Json::Value("")).asString();
+          attribution.expected_return = analysis.get("expected_return", Json::Value(0.0)).asDouble();
+          attribution.fee_adjusted_expected_return =
+              analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble();
+          signals.push_back(std::move(attribution));
+        }
+        page_offset += rows.size();
       }
     }
 
