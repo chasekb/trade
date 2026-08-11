@@ -75,6 +75,16 @@ OutcomeAttribution open(const std::string &strategy, double fees) {
   return outcome;
 }
 
+OutcomeAttribution flatClose(const std::string &strategy, double fees) {
+  OutcomeAttribution outcome;
+  outcome.strategy = strategy;
+  outcome.symbol = "BTC-USD";
+  outcome.realized_pnl = -fees;
+  outcome.fees = fees;
+  outcome.is_closing_leg = true;
+  return outcome;
+}
+
 } // namespace
 
 int main() {
@@ -160,7 +170,7 @@ int main() {
   // An exact-flat close is still a closing leg; fees make its realized result
   // negative after costs even though gross PnL is zero.
   const auto flat = reconcileExecution({executable("orderbook")},
-                                        {close("orderbook", 0.0, 0.25)});
+                                        {flatClose("orderbook", 0.25)});
   const auto &flat_orderbook = flat.by_strategy.at("orderbook");
   expect(flat_orderbook.closing_legs == 1, "exact-flat close remains a closing leg");
   expect(flat_orderbook.losers == 1, "flat gross close is a fee-negative loser");
