@@ -1943,11 +1943,11 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
       recent_signals_.begin(), recent_signals_.end(),
       [](const auto &entry) { return entry.second.signal_type != "hold"; }));
   signal_diagnostics["executable_order_intent_count"] = 0;
-  Json::Value blocker_counts(Json::objectValue);
+  Json::Value signal_blocker_counts(Json::objectValue);
   for (const auto &[reason, count] : execution_blocker_counts_) {
-    blocker_counts[reason] = count;
+    signal_blocker_counts[reason] = count;
   }
-  signal_diagnostics["execution_blocker_counts"] = blocker_counts;
+  signal_diagnostics["execution_blocker_counts"] = signal_blocker_counts;
   signal_diagnostics["coverage_complete"] =
       symbols_.empty() || recent_signals_.size() >= symbols_.size();
   signal_diagnostics["contract"] =
