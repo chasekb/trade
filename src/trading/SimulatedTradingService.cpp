@@ -40,7 +40,7 @@ constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // profitability gate while weak signals remain HOLD.
 constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kMaxRecentTrades = 100;
-constexpr std::size_t kMaxRecentSignals = 250;
+
 constexpr double kDefaultInitialCapital = 10000.0;
 
 std::string formatNowIsoUtc() {
@@ -1356,9 +1356,7 @@ void SimulatedTradingService::trimHistoryLocked() {
   while (recent_trades_.size() > kMaxRecentTrades) {
     recent_trades_.pop_front();
   }
-  while (recent_signals_.size() > kMaxRecentSignals) {
-    recent_signals_.pop_front();
-  }
+
 }
 
 void SimulatedTradingService::updateMarkToMarketLocked(
@@ -1686,7 +1684,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     auto signal = buildSignalRecordLocked(symbol, index, quote);
     prices[symbol] = signal.price;
     signal.payload["execution_analysis"] = buildExecutionAnalysisLocked(signal);
-    recent_signals_.push_back(signal);
+    recent_signals_[signal.symbol] = signal;
     queueSignalWriteLocked(signal);
 
     auto position_it = positions_.find(symbol);
@@ -1932,10 +1930,29 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   portfolio["trades"] = recent_trades;
 
   Json::Value recent_signals(Json::arrayValue);
-  for (const auto &signal : recent_signals_) {
+  for (const auto &[symbol, signal] : recent_signals_) {
+    (void)symbol;
     recent_signals.append(signalToJson(signal));
   }
   portfolio["recent_signals"] = recent_signals;
+  Json::Value signal_diagnostics(Json::objectValue);
+  signal_diagnostics["selected_symbol_count"] = static_cast<Json::UInt64>(symbols_.size());
+  signal_diagnostics["current_latest_signal_count"] = static_cast<Json::UInt64>(recent_signals_.size());
+  signal_diagnostics["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
+  signal_diagnostics["active_recent_signal_records"] = static_cast<Json::UInt64>(std::count_if(
+      recent_signals_.begin(), recent_signals_.end(),
+      [](const auto &entry) { return entry.second.signal_type != "hold"; }));
+  signal_diagnostics["executable_order_intent_count"] = 0;
+  Json::Value blocker_counts(Json::objectValue);
+  for (const auto &[reason, count] : execution_blocker_counts_) {
+    blocker_counts[reason] = count;
+  }
+  signal_diagnostics["execution_blocker_counts"] = blocker_counts;
+  signal_diagnostics["coverage_complete"] =
+      symbols_.empty() || recent_signals_.size() >= symbols_.size();
+  signal_diagnostics["contract"] =
+      "Simulated order-book signals are generated once per worker tick and retain the latest record for every selected symbol; display pagination is separate from signal coverage.";
+  portfolio["order_book_signal_diagnostics"] = signal_diagnostics;
 
   return portfolio;
 }
@@ -2255,11 +2272,16 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
   result["pagination"]["total_pages"] = 0;
   result["pagination"]["has_next"] = false;
   result["pagination"]["has_prev"] = false;
+  result["diagnostics"]["requested_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
+  result["diagnostics"]["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
+  result["diagnostics"]["contract"] =
+      "The simulated worker updates every selected symbol once per tick; the response is latest-by-symbol and pagination only controls display rows.";
 
   try {
     if (active_ || !recent_signals_.empty()) {
       std::map<std::string, SignalRecord> latest_by_symbol;
-      for (const auto &signal : recent_signals_) {
+      for (const auto &[symbol, signal] : recent_signals_) {
+        (void)symbol;
         if (!symbols.empty() && std::find(symbols.begin(), symbols.end(), signal.symbol) == symbols.end()) {
           continue;
         }
@@ -2319,6 +2341,9 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
 
       result["total_analyzed"] = total;
       result["active_signals"] = active_count;
+      result["diagnostics"]["selected_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
+      result["diagnostics"]["current_latest_signal_count"] = static_cast<Json::UInt64>(total);
+      result["diagnostics"]["coverage_complete"] = symbols.empty() || total >= static_cast<int>(symbols.size());
       result["average_strength"] = total > 0 ? strength_sum / static_cast<double>(total) : 0.0;
       if (latest_ts > 0) {
         result["last_updated"] = epochSecondsToIso(latest_ts);
@@ -2412,6 +2437,9 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
 
     result["total_analyzed"] = total;
     result["active_signals"] = active_count;
+    result["diagnostics"]["selected_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
+    result["diagnostics"]["current_latest_signal_count"] = static_cast<Json::UInt64>(rows.size());
+    result["diagnostics"]["coverage_complete"] = symbols.empty() || total >= static_cast<int>(symbols.size());
     result["average_strength"] = rows.empty() ? 0.0 : strength_sum / static_cast<double>(rows.size());
     if (latest_ts > 0) {
       result["last_updated"] = epochSecondsToIso(latest_ts);

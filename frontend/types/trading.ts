@@ -154,6 +154,8 @@ export interface OrderBookSignalDiagnostics {
   current_latest_signal_count?: number;
   missing_latest_signal_count?: number;
   missing_latest_signal_symbols?: string[];
+  failed_request_symbol_count?: number;
+  failed_request_symbols?: string[];
   recent_signal_record_count?: number;
   active_recent_signal_records?: number;
   executable_order_intent_count?: number;
@@ -400,12 +402,34 @@ export interface MLPerformanceMetrics {
   win_rate?: number;
   total_feature_vectors?: number;
   total_used_samples?: number;
+  validation_strategy?: string;
+  feature_set_version?: string;
+  walk_forward_folds?: Array<{
+    fold_index?: number;
+    train_start_timestamp?: number;
+    train_end_timestamp?: number;
+    test_start_timestamp?: number;
+    test_end_timestamp?: number;
+    metrics?: Record<string, number | string>;
+  }>;
+  cohort_metrics?: Array<{
+    regime?: string;
+    sample_count?: number;
+    winning_trades?: number;
+    losing_trades?: number;
+    win_rate?: number;
+    avg_pnl?: number;
+    profit_factor?: number;
+    max_drawdown?: number;
+  }>;
   error?: string;
 }
 
-export interface MLFeatureImportance {
-  [featureName: string]: number;
-}
+export type MLFeatureImportance = Record<string, number> | Array<{
+  name?: string;
+  importance?: number;
+  correlation_to_pnl?: number;
+}>;
 
 export interface MLDashboardData {
   status: MLModelStatus;

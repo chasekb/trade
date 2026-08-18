@@ -381,6 +381,13 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                     {summary.diagnostics.contract && (
                         <div className="mt-1 text-xs text-blue-700">{summary.diagnostics.contract}</div>
                     )}
+                    {(summary.diagnostics.failed_request_symbol_count ?? 0) > 0 && (
+                        <div className="mt-1 text-xs text-red-700">
+                            Request failures: {summary.diagnostics.failed_request_symbol_count} selected symbols were not refreshed.
+                            {summary.diagnostics.failed_request_symbols?.slice(0, 8).join(', ')}
+                            {(summary.diagnostics.failed_request_symbols?.length ?? 0) > 8 ? '…' : ''}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -416,7 +423,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                     </div>
                     <div className="text-center">
                         <div className="text-lg font-semibold text-gray-900">
-                            {(summary?.last_updated ? new Date(summary.last_updated) : new Date()).toLocaleTimeString()}
+                            {summary?.last_updated ? new Date(summary.last_updated).toLocaleTimeString() : 'Unavailable'}
                         </div>
                         <div className="text-sm text-gray-600">Last Updated</div>
                     </div>

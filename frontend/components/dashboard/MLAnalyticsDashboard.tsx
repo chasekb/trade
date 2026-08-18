@@ -151,12 +151,20 @@ function PerformanceMetricsCard({ metrics }: PerformanceMetricsProps) {
 }
 
 interface FeatureImportanceChartProps {
-  features: Record<string, number>;
+  features: import('@/types/trading').MLFeatureImportance;
 }
 
 function FeatureImportanceChart({ features }: FeatureImportanceChartProps) {
+  const normalizedFeatures = Array.isArray(features)
+    ? features.reduce<Record<string, number>>((result, feature) => {
+      if (feature.name) {
+        result[feature.name] = feature.importance ?? feature.correlation_to_pnl ?? 0;
+      }
+      return result;
+    }, {})
+    : features;
   // Sort features by importance and take top 10
-  const sortedFeatures = Object.entries(features)
+  const sortedFeatures = Object.entries(normalizedFeatures)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
 
@@ -280,7 +288,7 @@ function ModelControls() {
                 {isLoadingModels ? (
                   <option>Loading models...</option>
                 ) : (
-                  availableModels?.map((model: any) => (
+                  availableModels?.map((model: { model_id?: string; model_name?: string; version_id?: string }) => (
                     <option key={model.model_id || model.model_name} value={model.model_id || model.model_name}>
                       {model.model_name} {model.version_id ? `(${model.version_id})` : ''}
                     </option>
@@ -333,6 +341,49 @@ function ModelControls() {
               </Button>
             </div>
           </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ValidationArtifactsCard({ metrics }: { metrics: import('@/types/trading').MLPerformanceMetrics }) {
+  const folds = metrics.walk_forward_folds ?? [];
+  const cohorts = metrics.cohort_metrics ?? [];
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Validation Artifacts</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div><span className="text-muted-foreground">Strategy</span><div className="font-medium">{metrics.validation_strategy || 'Not reported'}</div></div>
+          <div><span className="text-muted-foreground">Feature set</span><div className="font-medium">{metrics.feature_set_version || 'Not reported'}</div></div>
+        </div>
+        <div>
+          <h4 className="font-medium mb-2">Walk-forward folds ({folds.length})</h4>
+          {folds.length === 0 ? <p className="text-sm text-muted-foreground">No walk-forward fold data available.</p> : (
+            <div className="space-y-1 text-sm">
+              {folds.map((fold, index) => (
+                <div key={`${fold.fold_index ?? index}`} className="flex justify-between border-b py-1">
+                  <span>Fold {fold.fold_index ?? index + 1}</span>
+                  <span className="text-muted-foreground">{fold.metrics?.profit_factor !== undefined ? `PF ${Number(fold.metrics.profit_factor).toFixed(2)}` : 'Metrics available'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <h4 className="font-medium mb-2">Execution cohorts ({cohorts.length})</h4>
+          {cohorts.length === 0 ? <p className="text-sm text-muted-foreground">No cohort metrics available.</p> : (
+            <div className="space-y-1 text-sm">
+              {cohorts.slice(0, 8).map((cohort, index) => (
+                <div key={`${cohort.regime ?? 'cohort'}-${index}`} className="flex justify-between border-b py-1">
+                  <span className="truncate max-w-[65%]" title={cohort.regime}>{cohort.regime || `Cohort ${index + 1}`}</span>
+                  <span className="text-muted-foreground">{cohort.sample_count ?? 0} samples · {cohort.win_rate?.toFixed(1) ?? '0.0'}%</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -460,8 +511,10 @@ export default function MLAnalyticsDashboard({ className }: MLAnalyticsDashboard
 
       <DashboardGrid className="grid-cols-1 lg:grid-cols-2">
         <FeatureImportanceChart features={mlData.feature_importance} />
-        <ModelControls />
+        <ValidationArtifactsCard metrics={mlData.performance} />
       </DashboardGrid>
+
+      <ModelControls />
 
       <ConfigControls />
 

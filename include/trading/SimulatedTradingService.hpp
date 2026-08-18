@@ -228,7 +228,10 @@ private:
   std::map<std::string, SymbolMarketState> market_state_;
   std::map<std::string, PositionState> positions_;
   std::deque<TradeRecord> recent_trades_;
-  std::deque<SignalRecord> recent_signals_;
+  // Keep the latest generated signal for every selected symbol. This is a
+  // current-state view, not a capped history, so large universes are not
+  // silently truncated by an arbitrary record count.
+  std::map<std::string, SignalRecord> recent_signals_;
   std::map<std::string, int> execution_blocker_counts_;
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).

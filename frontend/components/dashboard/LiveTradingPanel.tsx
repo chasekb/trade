@@ -558,6 +558,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     account_position_management: 'disabled',
   });
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
+  const [actionError, setActionError] = useState<string | null>(null);
   const startDisabledReason = useMemo(() => {
     if (symbols.length === 0) return 'Enter one or more symbols before starting live trading.';
     if (producerLoading) return 'Loading Coinbase portfolio readiness...';
@@ -604,6 +605,7 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
   };
 
   const handleStartTrading = async () => {
+    setActionError(null);
     try {
       // Get max_positions from config, defaulting to 100 (max_positions_per_session default)
       const maxPositions = config.max_positions_per_session
@@ -633,14 +635,17 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
       setConfigHidden(true);
     } catch (error) {
       console.error('Failed to start trading:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to start live trading');
     }
   };
 
   const handleStopTrading = async () => {
+    setActionError(null);
     try {
       await stopTrading();
     } catch (error) {
       console.error('Failed to stop trading:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to stop live trading');
     }
   };
 
@@ -747,6 +752,13 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
             loading={loading}
             startDisabledReason={startDisabledReason}
           />
+
+          {actionError && (
+            <div role="alert" className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
+              <i className="fas fa-exclamation-triangle mr-2"></i>
+              Live trading action failed: {actionError}
+            </div>
+          )}
 
           {status.isActive && (
             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">

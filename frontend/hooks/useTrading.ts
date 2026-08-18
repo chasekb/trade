@@ -185,7 +185,13 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
   });
 
   const stopTradingMutation = useMutation({
-    mutationFn: () => apiClient.stopTrading(mode),
+    mutationFn: async () => {
+      const response = await apiClient.stopTrading(mode);
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to stop trading');
+      }
+      return response;
+    },
     onSuccess: (response) => {
       const responseStatus = (response as { status: string }).status;
       if (responseStatus === 'success' || responseStatus === 'settling') {
@@ -359,7 +365,7 @@ function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: 
     },
     total_analyzed: totalAnalyzed,
     active_signals: activeSignals,
-    last_updated: lastUpdated || new Date().toISOString(),
+    last_updated: lastUpdated,
     average_strength: averageStrength,
     ...(diagnostics ? { diagnostics } : {}),
   };
@@ -390,20 +396,38 @@ export function useOrderBookSignals(
           // must not cap selected-universe signal coverage.
           apiClient.getOrderBookSignals(chunk, { page: 1, per_page: chunk.length }, mode)
         );
-        const responses = await Promise.all(chunkRequests);
+        const settled = await Promise.allSettled(chunkRequests);
+        const successfulResponses = settled
+          .filter((result): result is PromiseFulfilledResult<Awaited<typeof chunkRequests[number]>> => result.status === 'fulfilled')
+          .map((result) => result.value)
+          .filter((response) => response.status === 'success' && response.data);
+        const failedChunks = settled.flatMap((result, index) => {
+          if (result.status === 'rejected' || result.value.status === 'error') {
+            return chunks[index];
+          }
+          return [];
+        });
 
-        const firstError = responses.find((response) => response.status === 'error');
-        if (firstError) {
-          throw new Error(firstError.error || 'Failed to fetch order book signals');
+        if (successfulResponses.length === 0 && failedChunks.length > 0) {
+          throw new Error(`Order-book signal requests failed for ${failedChunks.length} selected symbols`);
         }
 
-        return mergeOrderBookSignalResponses(
-          responses
+        const merged = mergeOrderBookSignalResponses(
+          successfulResponses
             .map((response) => response.data)
             .filter((data): data is OrderBookSignalsData => Boolean(data)),
           page,
           perPage
         );
+        if (failedChunks.length > 0) {
+          merged.diagnostics = {
+            ...(merged.diagnostics ?? {}),
+            failed_request_symbol_count: failedChunks.length,
+            failed_request_symbols: failedChunks,
+            coverage_complete: false,
+          };
+        }
+        return merged;
       }
 
       const response = await apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode);
@@ -523,6 +547,11 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         );
+        const latestTimestamp = updatedSignals.reduce((latest, signal) => {
+          return !latest || new Date(signal.timestamp).getTime() > new Date(latest).getTime()
+            ? signal.timestamp
+            : latest;
+        }, '');
 
         if (!oldData) {
           return {
@@ -532,7 +561,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
             average_strength: updatedSignals.length === 0
               ? 0
               : updatedSignals.reduce((sum, s) => sum + (s.signal_strength ?? 0), 0) / updatedSignals.length,
-            last_updated: new Date().toISOString(),
+            last_updated: latestTimestamp,
             pagination: {
               current_page: 1,
               per_page: 100, // Default to larger page size for live view
@@ -549,7 +578,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           signals: updatedSignals,
           total_analyzed: updatedSignals.length,
           active_signals: updatedSignals.filter(s => s.signal_generated).length,
-          last_updated: new Date().toISOString(),
+          last_updated: latestTimestamp,
           pagination: {
             ...oldData.pagination,
             total_signals: updatedSignals.length,
