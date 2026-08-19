@@ -135,6 +135,14 @@ private:
     int depth = 0;
   };
 
+  struct MarketDataStatus {
+    std::string status = "unavailable";
+    std::string category = "not_requested";
+    std::string error;
+    int retries = 0;
+    std::string last_success_at;
+  };
+
   // Exchange order produced by a live tick with order execution enabled;
   // dispatched outside the mutex.
   struct OrderIntent {
@@ -226,6 +234,7 @@ private:
   double total_fees_ = 0.0;
   double total_positions_value_ = 0.0;
   std::map<std::string, SymbolMarketState> market_state_;
+  std::map<std::string, MarketDataStatus> market_data_status_;
   std::map<std::string, PositionState> positions_;
   std::deque<TradeRecord> recent_trades_;
   // Keep the latest generated signal for every selected symbol. This is a

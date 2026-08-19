@@ -84,6 +84,37 @@ int main() {
     }
   }
 
+  ml::OrderBookFeatures symbol_a;
+  symbol_a.timestamp = 1;
+  symbol_a.symbol = "A-USD";
+  symbol_a.bid_ask_imbalance = 0.1;
+  symbol_a.spread_percent = 0.01;
+  symbol_a.mid_price = 100.0;
+  symbol_a.bid_volume = 10.0;
+  symbol_a.ask_volume = 9.0;
+  symbol_a.order_book_depth = 20;
+  symbol_a.large_bid_wall = false;
+  symbol_a.large_ask_wall = false;
+  symbol_a.wall_size = 0.0;
+  symbol_a.volume_weighted_price = 100.0;
+  symbol_a.price_momentum = 0.0;
+  symbol_a.volatility = 0.01;
+  ml::OrderBookFeatures symbol_b = symbol_a;
+  symbol_b.symbol = "B-USD";
+  fe.preprocess(symbol_a);
+  fe.preprocess(symbol_b);
+  fe.preprocess(symbol_a);
+  fe.preprocess(symbol_b);
+  const bool per_symbol_history_isolated =
+      fe.get_transformer_sequence("A-USD").size() == 2 &&
+      fe.get_transformer_sequence("B-USD").size() == 2;
+  if (!per_symbol_history_isolated) {
+    std::cerr << "FAIL: transformer history leaked across symbols" << std::endl;
+    all_passed = false;
+  } else {
+    std::cout << "PASS: transformer history is isolated per symbol" << std::endl;
+  }
+
   if (all_passed) {
     std::cout << "\nALL FEATURE ENGINEERING TESTS PASSED!" << std::endl;
     return 0;

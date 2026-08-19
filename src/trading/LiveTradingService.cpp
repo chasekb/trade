@@ -1658,7 +1658,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
             models->has_classifier() ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
         if (models->has_transformer()) {
-          transformer_pnl = models->predict_transformer(engineer->get_transformer_sequence());
+          transformer_pnl = models->predict_transformer(engineer->get_transformer_sequence(symbol));
         }
         // Transformer-only packs still provide a directional expected return
         // for the shared order-book profitability gate, matching simulated

@@ -76,6 +76,28 @@ long long currentEpochSeconds() {
       .count();
 }
 
+std::string classifyMarketDataError(const std::string &error) {
+  std::string lower = error;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (lower.find("tls") != std::string::npos || lower.find("certificate") != std::string::npos) {
+    return "tls";
+  }
+  if (lower.find("dns") != std::string::npos || lower.find("resolve") != std::string::npos) {
+    return "dns";
+  }
+  if (lower.find("timeout") != std::string::npos) {
+    return "timeout";
+  }
+  if (lower.find("cancel") != std::string::npos || lower.find("shutdown") != std::string::npos) {
+    return "cancellation_or_shutdown";
+  }
+  if (lower.find("http ") != std::string::npos) {
+    return "exchange_response";
+  }
+  return "network";
+}
+
 std::string joinStrings(const std::vector<std::string> &items, const char *sep = ",") {
   std::ostringstream oss;
   for (std::size_t i = 0; i < items.size(); ++i) {
@@ -871,8 +893,27 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
 
     exchange::OrderBookSummary book;
     std::string error;
-    if (!exchange_client_->getOrderBook(symbol, book, &error)) {
-      TR_LOG_WARN("Failed to fetch order book for {}: {}", symbol, error);
+    int retries = 0;
+    bool fetched = false;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      if (exchange_client_->getOrderBook(symbol, book, &error)) {
+        fetched = true;
+        break;
+      }
+      retries = attempt + 1;
+      const std::string category = classifyMarketDataError(error);
+      if (category == "tls" || category == "dns" || category == "exchange_response") {
+        break;
+      }
+    }
+    if (!fetched) {
+      auto &status = market_data_status_[symbol];
+      status.status = "failed";
+      status.category = classifyMarketDataError(error);
+      status.error = error;
+      status.retries = retries;
+      TR_LOG_WARN("Failed to fetch order book for {}: {} (category={}, retries={})",
+                  symbol, error, status.category, status.retries);
       continue;
     }
 
@@ -886,6 +927,12 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
     quote.volume = book.bid_volume + book.ask_volume;
     quote.depth = book.depth;
     quotes[symbol] = quote;
+    auto &status = market_data_status_[symbol];
+    status.status = "refreshed";
+    status.category = "ok";
+    status.error.clear();
+    status.retries = retries;
+    status.last_success_at = nowIsoUtc();
   }
   return quotes;
 }
@@ -1177,11 +1224,14 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         features.volatility = std::abs(state.last_return);
 
         const auto pca_features = engineer->preprocess(features);
+        const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
+        const bool transformer_ready =
+            !models->has_transformer() || models->transformer_input_ready(transformer_sequence);
         const double win_prob =
             models->has_classifier() ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
-        if (models->has_transformer()) {
-          transformer_pnl = models->predict_transformer(engineer->get_transformer_sequence());
+        if (models->has_transformer() && transformer_ready) {
+          transformer_pnl = models->predict_transformer(transformer_sequence);
         }
         // Transformer-only packs still surface a genuine expected return on
         // signal and trade rows instead of a constant zero.
@@ -1189,13 +1239,24 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
                                         ? models->predict_pnl(pca_features)
                                         : transformer_pnl;
 
-        ml_analysis["ml_enabled"] = true;
+        ml_analysis["ml_enabled"] = transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
-        ml_analysis["expected_return"] = expected_pnl;
+        ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
-        ml_analysis["confidence"] = std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0);
-        ml_analysis["model_version"] =
-            CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack");
+        ml_analysis["confidence"] = transformer_ready
+                                         ? std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0)
+                                         : 0.0;
+        ml_analysis["model_version"] = transformer_ready
+                                            ? CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack")
+                                            : "transformer-warming-up";
+        ml_analysis["inference_status"] = transformer_ready ? "ready" : "warming_up";
+        ml_analysis["transformer_expected_lookback"] = 60;
+        ml_analysis["transformer_sequence_length"] =
+            static_cast<Json::UInt64>(transformer_sequence.size());
+        ml_analysis["transformer_feature_width"] =
+            transformer_sequence.empty()
+                ? 0
+                : static_cast<Json::UInt64>(transformer_sequence.front().size());
         used_model = true;
       } catch (const std::exception &e) {
         TR_LOG_WARN("ML inference failed for {}; using heuristic fallback: {}", symbol, e.what());
@@ -1330,6 +1391,9 @@ bool SimulatedTradingService::signalPassesMlGateLocked(const SignalRecord &signa
   const Json::Value ml_analysis =
       signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
   const std::string model_version = ml_analysis.get("model_version", Json::Value("")).asString();
+  if (model_version == "transformer-warming-up") {
+    return false;
+  }
   if (model_version == "heuristic-fallback") {
     // Models unavailable: honor the fallback_to_baseline strategy parameter.
     const Json::Value fallback = parameters_.get("fallback_to_baseline", Json::Value(true));
@@ -1948,6 +2012,36 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
     signal_blocker_counts[reason] = count;
   }
   signal_diagnostics["execution_blocker_counts"] = signal_blocker_counts;
+  Json::Value market_data(Json::objectValue);
+  Json::Value market_data_failures(Json::arrayValue);
+  std::size_t refreshed_count = 0;
+  std::size_t failed_count = 0;
+  for (const auto &symbol : symbols_) {
+    const auto it = market_data_status_.find(symbol);
+    if (it == market_data_status_.end()) {
+      continue;
+    }
+    const auto &data = it->second;
+    Json::Value entry(Json::objectValue);
+    entry["status"] = data.status;
+    entry["category"] = data.category;
+    entry["error"] = data.error;
+    entry["retries"] = data.retries;
+    entry["last_success_at"] = data.last_success_at;
+    market_data[symbol] = entry;
+    if (data.status == "refreshed") {
+      ++refreshed_count;
+    } else if (data.status == "failed") {
+      ++failed_count;
+      market_data_failures.append(symbol);
+    }
+  }
+  signal_diagnostics["market_data"] = market_data;
+  signal_diagnostics["market_data_refreshed_count"] = static_cast<Json::UInt64>(refreshed_count);
+  signal_diagnostics["market_data_failed_count"] = static_cast<Json::UInt64>(failed_count);
+  signal_diagnostics["market_data_failures"] = market_data_failures;
+  signal_diagnostics["market_data_contract"] =
+      "Failed or unavailable market-data symbols are excluded from signal and execution counts and remain visible with category, retry count, and last success timestamp.";
   signal_diagnostics["coverage_complete"] =
       symbols_.empty() || recent_signals_.size() >= symbols_.size();
   signal_diagnostics["contract"] =
@@ -2142,6 +2236,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   total_positions_value_ = 0.0;
   positions_.clear();
   market_state_.clear();
+  market_data_status_.clear();
   recent_trades_.clear();
   recent_signals_.clear();
   execution_blocker_counts_.clear();

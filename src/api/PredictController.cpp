@@ -585,7 +585,7 @@ void PredictController::predict(
     double win_prob = models_ready ? model_manager_->predict_win_prob(pca_features) : 0.5;
 
     // Phase 6: Transformer Prediction
-    auto sequence = feature_engineer_->get_transformer_sequence();
+    auto sequence = feature_engineer_->get_transformer_sequence(features.symbol);
     double transformer_pnl = models_ready ? model_manager_->predict_transformer(sequence) : 0.0;
 
     Json::Value result;
@@ -1569,7 +1569,7 @@ void PredictController::predictionComparison(
       throw std::runtime_error("feature engineering is not initialized");
     }
     pca_features = feature_engineer_->preprocess(features);
-    sequence = feature_engineer_->get_transformer_sequence();
+    sequence = feature_engineer_->get_transformer_sequence(features.symbol);
   } catch (const std::exception &e) {
     Json::Value err;
     err["error"] = std::string("Invalid features payload: ") + e.what();

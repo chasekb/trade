@@ -32,8 +32,8 @@ void FeatureEngineer::initialize_default_parameters() {
   }
 
   transformer_feature_dim_ = kFallbackFeatureDim;
-  history_window.clear();
-  transformer_sequence_window.clear();
+  history_windows_.clear();
+  transformer_sequence_windows_.clear();
   parameters_loaded = true;
 }
 
@@ -76,8 +76,8 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
         j["pca"]["mean"].get<std::vector<double>>();
     pca_params.mean = xt::adapt(pc_mean_vec, {pc_mean_vec.size()});
     transformer_feature_dim_ = rows;
-    history_window.clear();
-    transformer_sequence_window.clear();
+    history_windows_.clear();
+    transformer_sequence_windows_.clear();
 
     parameters_loaded = true;
     spdlog::info("Loaded feature parameters from {}. PCA components: {}x{}",
@@ -101,27 +101,34 @@ FeatureEngineer::preprocess(const OrderBookFeatures &features) {
 
   auto base = extract_base_features(features);
   auto imputed = impute(base);
-  auto ts = add_time_series_features(imputed);
+  const std::string sequence_key = features.symbol.empty() ? "__default__" : features.symbol;
+  auto ts = add_time_series_features(imputed, sequence_key);
   auto interactions = add_interaction_features(ts);
   auto scaled = scale(interactions);
   auto final_pca = apply_pca(scaled);
 
   {
     std::lock_guard<std::mutex> lock(history_mutex);
-    transformer_sequence_window.push_back(final_pca);
-    if (transformer_sequence_window.size() > transformer_lookback) {
-      transformer_sequence_window.pop_front();
+    auto &sequence = transformer_sequence_windows_[sequence_key];
+    sequence.push_back(final_pca);
+    if (sequence.size() > transformer_lookback) {
+      sequence.pop_front();
     }
   }
 
   return final_pca;
 }
 
-std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence() {
+std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence(const std::string &sequence_key) {
   std::lock_guard<std::mutex> lock(history_mutex);
+  const std::string key = sequence_key.empty() ? "__default__" : sequence_key;
   std::vector<std::vector<double>> sequence;
-  sequence.reserve(transformer_sequence_window.size());
-  for (const auto &vec : transformer_sequence_window) {
+  const auto it = transformer_sequence_windows_.find(key);
+  if (it == transformer_sequence_windows_.end()) {
+    return sequence;
+  }
+  sequence.reserve(it->second.size());
+  for (const auto &vec : it->second) {
     sequence.push_back(vec);
   }
   return sequence;
@@ -212,8 +219,11 @@ std::vector<double> FeatureEngineer::impute(const std::vector<double> &base) {
 }
 
 std::vector<double>
-FeatureEngineer::add_time_series_features(const std::vector<double> &imputed) {
+FeatureEngineer::add_time_series_features(const std::vector<double> &imputed,
+                                           const std::string &sequence_key) {
   std::lock_guard<std::mutex> lock(history_mutex);
+
+  auto &history_window = history_windows_[sequence_key];
 
   // Add current to history
   history_window.push_back(imputed);

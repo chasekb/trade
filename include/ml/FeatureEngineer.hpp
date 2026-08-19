@@ -2,6 +2,7 @@
 #pragma once
 #include "ml/Types.hpp"
 #include <deque>
+#include <map>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -21,7 +22,7 @@ public:
   std::vector<double> preprocess(const OrderBookFeatures &features);
 
   // Get sequence of model-ready PCA features for transformer.
-  std::vector<std::vector<double>> get_transformer_sequence();
+  std::vector<std::vector<double>> get_transformer_sequence(const std::string &sequence_key = "");
   size_t transformer_feature_dim() const { return transformer_feature_dim_; }
 
 private:
@@ -31,7 +32,8 @@ private:
   std::vector<double> extract_base_features(const OrderBookFeatures &f);
   std::vector<double> impute(const std::vector<double> &base);
   std::vector<double>
-  add_time_series_features(const std::vector<double> &imputed);
+  add_time_series_features(const std::vector<double> &imputed,
+                           const std::string &sequence_key);
   std::vector<double> add_interaction_features(const std::vector<double> &ts);
   std::vector<double> scale(const std::vector<double> &interactions);
   std::vector<double> apply_pca(const std::vector<double> &scaled);
@@ -45,8 +47,8 @@ private:
   double calculate_atr_like(double volatility);
 
   // State for rolling stats
-  std::deque<std::vector<double>> history_window;
-  std::deque<std::vector<double>> transformer_sequence_window;
+  std::map<std::string, std::deque<std::vector<double>>> history_windows_;
+  std::map<std::string, std::deque<std::vector<double>>> transformer_sequence_windows_;
   const std::vector<size_t> windows = {5, 10, 20, 50, 90, 200};
   const size_t transformer_lookback = 60;
   std::mutex history_mutex;

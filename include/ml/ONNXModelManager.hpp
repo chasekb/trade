@@ -33,6 +33,7 @@ public:
   bool has_regressor() const { return regressor_session_ != nullptr; }
   bool has_classifier() const { return classifier_session_ != nullptr; }
   bool has_transformer() const { return transformer_session_ != nullptr; }
+  bool transformer_input_ready(const std::vector<std::vector<double>> &sequence) const;
 
 private:
   std::vector<float> run_inference(Ort::Session &session,

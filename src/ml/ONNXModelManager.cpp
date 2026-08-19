@@ -219,6 +219,18 @@ double ONNXModelManager::predict_win_prob(const std::vector<double> &features) {
   return outputs.empty() ? 0.5 : static_cast<double>(outputs[0]);
 }
 
+bool ONNXModelManager::transformer_input_ready(
+    const std::vector<std::vector<double>> &sequence) const {
+  if (!transformer_session_ || transformer_lookback_ == 0 ||
+      transformer_features_ == 0 || sequence.size() != transformer_lookback_) {
+    return false;
+  }
+  return std::all_of(sequence.begin(), sequence.end(),
+                     [this](const auto &row) {
+                       return row.size() == transformer_features_;
+                     });
+}
+
 double ONNXModelManager::predict_transformer(
     const std::vector<std::vector<double>> &sequence) {
   if (!transformer_session_)
@@ -233,8 +245,7 @@ double ONNXModelManager::predict_transformer(
     size_t seq_len = sequence.size();
     size_t n_features = sequence.empty() ? 0 : sequence[0].size();
 
-    if (seq_len != transformer_lookback_ ||
-        n_features != transformer_features_) {
+    if (!transformer_input_ready(sequence)) {
       spdlog::warn("Transformer input mismatch: expected {}x{}, got {}x{}",
                    transformer_lookback_, transformer_features_, seq_len,
                    n_features);
