@@ -158,6 +158,10 @@ export interface OrderBookSignalDiagnostics {
   failed_request_symbols?: string[];
   recent_signal_record_count?: number;
   active_recent_signal_records?: number;
+  signals_evaluated?: number;
+  signals_generated?: number;
+  transformer_warming_symbols?: number;
+  transformer_rejected_inputs?: number;
   executable_order_intent_count?: number;
   execution_blocker_counts?: Record<string, number>;
   execution_strength_bucket_counts?: Record<string, number>;

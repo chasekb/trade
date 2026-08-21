@@ -242,6 +242,11 @@ private:
   // silently truncated by an arbitrary record count.
   std::map<std::string, SignalRecord> recent_signals_;
   std::map<std::string, int> execution_blocker_counts_;
+  std::size_t signals_evaluated_ = 0;
+  std::size_t signals_generated_ = 0;
+  std::size_t executable_order_intents_ = 0;
+  std::size_t transformer_warming_symbols_ = 0;
+  std::size_t transformer_rejected_inputs_ = 0;
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).
   std::vector<TradePerformanceInput> session_trade_inputs_;

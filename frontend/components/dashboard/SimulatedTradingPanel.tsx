@@ -764,6 +764,30 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
               onPageSizeChange={handlePageSizeChange}
               summary={signalsSummary}
             />
+            {orderBookData?.diagnostics && (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p className="font-semibold text-slate-800">Execution diagnostics</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
+                  <span>Evaluated: {orderBookData.diagnostics.signals_evaluated ?? 0}</span>
+                  <span>Generated: {orderBookData.diagnostics.signals_generated ?? 0}</span>
+                  <span>Executable: {orderBookData.diagnostics.executable_order_intent_count ?? 0}</span>
+                  <span>Transformer warming: {orderBookData.diagnostics.transformer_warming_symbols ?? 0}</span>
+                  <span>Rejected inputs: {orderBookData.diagnostics.transformer_rejected_inputs ?? 0}</span>
+                </div>
+                {Object.keys(orderBookData.diagnostics.execution_blocker_counts ?? {}).length > 0 && (
+                  <p className="mt-2 text-amber-800">
+                    Blockers: {Object.entries(orderBookData.diagnostics.execution_blocker_counts ?? {})
+                      .map(([reason, count]) => `${reason}=${count}`).join(', ')}
+                  </p>
+                )}
+                {(orderBookData.diagnostics.signals_generated ?? 0) > 0 &&
+                  (orderBookData.diagnostics.executable_order_intent_count ?? 0) === 0 && (
+                    <p className="mt-2 font-medium text-red-700">
+                      Signals were generated but none were executable; inspect blocker counts before changing the universe.
+                    </p>
+                  )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

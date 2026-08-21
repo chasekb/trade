@@ -1227,6 +1227,9 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
         const bool transformer_ready =
             !models->has_transformer() || models->transformer_input_ready(transformer_sequence);
+        if (models->has_transformer() && !transformer_ready) {
+          ++transformer_warming_symbols_;
+        }
         const double win_prob =
             models->has_classifier() ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
@@ -1259,6 +1262,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
                 : static_cast<Json::UInt64>(transformer_sequence.front().size());
         used_model = true;
       } catch (const std::exception &e) {
+        ++transformer_rejected_inputs_;
         TR_LOG_WARN("ML inference failed for {}; using heuristic fallback: {}", symbol, e.what());
       }
     }
@@ -1745,6 +1749,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     if (live_mode && quote == nullptr) {
       continue;
     }
+    ++signals_evaluated_;
     auto signal = buildSignalRecordLocked(symbol, index, quote);
     prices[symbol] = signal.price;
     signal.payload["execution_analysis"] = buildExecutionAnalysisLocked(signal);
@@ -1753,12 +1758,16 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
 
     auto position_it = positions_.find(symbol);
     const bool signal_generated = signal.signal_type != "hold";
+    if (signal_generated) {
+      ++signals_generated_;
+    }
     const std::size_t hold_ticks = std::max(3, position_update_interval_ * 2);
 
     if (position_it == positions_.end()) {
       if (mode_ == "live_parity") {
         const Json::Value analysis = signal.payload["execution_analysis"];
         if (analysis.get("executable_intent", Json::Value(false)).asBool()) {
+          ++executable_order_intents_;
           openPositionLocked(signal, "Opened on live-parity paper signal");
         } else if (signal_generated) {
           ++execution_blocker_counts_[analysis.get("blocker_reason", Json::Value("unknown")).asString()];
@@ -1779,6 +1788,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
         if (!blocker.empty()) {
           ++execution_blocker_counts_[blocker];
         } else {
+          ++executable_order_intents_;
           openPositionLocked(signal, "Opened on generated signal");
         }
       }
@@ -2003,10 +2013,15 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   signal_diagnostics["selected_symbol_count"] = static_cast<Json::UInt64>(symbols_.size());
   signal_diagnostics["current_latest_signal_count"] = static_cast<Json::UInt64>(recent_signals_.size());
   signal_diagnostics["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
+  signal_diagnostics["signals_evaluated"] = static_cast<Json::UInt64>(signals_evaluated_);
+  signal_diagnostics["signals_generated"] = static_cast<Json::UInt64>(signals_generated_);
+  signal_diagnostics["executable_order_intent_count"] = static_cast<Json::UInt64>(executable_order_intents_);
+  signal_diagnostics["transformer_warming_symbols"] = static_cast<Json::UInt64>(transformer_warming_symbols_);
+  signal_diagnostics["transformer_rejected_inputs"] = static_cast<Json::UInt64>(transformer_rejected_inputs_);
   signal_diagnostics["active_recent_signal_records"] = static_cast<Json::UInt64>(std::count_if(
       recent_signals_.begin(), recent_signals_.end(),
       [](const auto &entry) { return entry.second.signal_type != "hold"; }));
-  signal_diagnostics["executable_order_intent_count"] = 0;
+
   Json::Value signal_blocker_counts(Json::objectValue);
   for (const auto &[reason, count] : execution_blocker_counts_) {
     signal_blocker_counts[reason] = count;
@@ -2240,6 +2255,11 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   recent_trades_.clear();
   recent_signals_.clear();
   execution_blocker_counts_.clear();
+  signals_evaluated_ = 0;
+  signals_generated_ = 0;
+  executable_order_intents_ = 0;
+  transformer_warming_symbols_ = 0;
+  transformer_rejected_inputs_ = 0;
   session_trade_inputs_.clear();
   pending_orders_.clear();
   pending_live_orders_.clear();
@@ -2438,6 +2458,16 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
       result["active_signals"] = active_count;
       result["diagnostics"]["selected_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
       result["diagnostics"]["current_latest_signal_count"] = static_cast<Json::UInt64>(total);
+      result["diagnostics"]["signals_evaluated"] = static_cast<Json::UInt64>(signals_evaluated_);
+      result["diagnostics"]["signals_generated"] = static_cast<Json::UInt64>(signals_generated_);
+      result["diagnostics"]["executable_order_intent_count"] = static_cast<Json::UInt64>(executable_order_intents_);
+      result["diagnostics"]["transformer_warming_symbols"] = static_cast<Json::UInt64>(transformer_warming_symbols_);
+      result["diagnostics"]["transformer_rejected_inputs"] = static_cast<Json::UInt64>(transformer_rejected_inputs_);
+      Json::Value blocker_counts(Json::objectValue);
+      for (const auto &[reason, count] : execution_blocker_counts_) {
+        blocker_counts[reason] = count;
+      }
+      result["diagnostics"]["execution_blocker_counts"] = blocker_counts;
       result["diagnostics"]["coverage_complete"] = symbols.empty() || total >= static_cast<int>(symbols.size());
       result["average_strength"] = total > 0 ? strength_sum / static_cast<double>(total) : 0.0;
       if (latest_ts > 0) {
