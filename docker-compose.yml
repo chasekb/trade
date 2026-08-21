@@ -81,7 +81,9 @@ services:
     volumes:
       - ./data/databases/postgres:/var/lib/postgresql/data:Z
     ports:
-      - "5432:5432"
+      # Keep the host binding configurable so this stack can coexist with
+      # another local PostgreSQL service. Containers still use db:5432.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     networks:
       - trading-network
     restart: unless-stopped
