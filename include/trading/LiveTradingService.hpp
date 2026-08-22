@@ -252,7 +252,6 @@ private:
   std::string updated_at_;
   long long start_epoch_seconds_ = 0;
   long long tick_ = 0;
-  std::size_t live_quote_cursor_ = 0;
   int last_live_quote_requested_symbols_ = 0;
   int last_live_quote_attempted_symbols_ = 0;
   int last_live_quote_succeeded_symbols_ = 0;

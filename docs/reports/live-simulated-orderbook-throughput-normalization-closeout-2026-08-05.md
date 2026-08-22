@@ -75,7 +75,7 @@ Current live contract:
    - Generated order-book candidates use the shared profitability gate before remaining actionable, matching the simulated contract from `TRADE-BL-0005`.
 
 4. Live cadence diagnostics
-   - The live diagnostics expose request/attempt/success/skip counts, `live_quote_symbols_per_tick_cap`, current batch symbols, latest-signal count, recent record count, active recent records, executable order-intent count, execution blocker counts, strength buckets, expected-return buckets, coverage completeness, and a human-readable contract (`src/trading/LiveTradingService.cpp:2491-2544`).
+   - This historical report predates the later explicit user request to remove the live quote cap and cadence sleep. Current diagnostics expose request/attempt/success/skip counts, `live_quote_symbols_per_tick_cap=0`, `quote_fanout_limit_enforced=false`, warning threshold, current batch symbols, latest-signal count, recent record count, active recent records, executable order-intent count, execution blocker counts, strength buckets, expected-return buckets, coverage completeness, and a human-readable contract (`src/trading/LiveTradingService.cpp`).
 
 5. Selected-universe widget coverage
    - For active/in-memory reads with selected symbols, live adds response-only placeholder rows for selected symbols without a latest quote/signal yet (`src/trading/LiveTradingService.cpp:3243-3270`).
@@ -105,7 +105,7 @@ Current frontend contract:
 | Delta | Classification | Current handling |
 | --- | --- | --- |
 | Coinbase live quotes versus synthetic simulated quotes | Required/intended data-source difference | Simulated may synthesize state; live uses Coinbase live quote snapshots. Reports must not claim synthetic rows are live market data. |
-| Live per-tick quote cadence cap | Required live-exchange/API safety deviation | Live keeps `kMaxLiveQuoteSymbols` cadence safety visible via `live_quote_symbols_per_tick_cap`, quote attempted/success/skipped counts, current batch symbols, and contract text. |
+| Live per-tick quote cadence cap | Explicitly removed at user request; operational risk is observable rather than enforced | Live requests the full selected universe without a hard cap or normal cadence sleep; each batch logs fan-out, elapsed fetch time, estimated request rate, and warning-threshold crossings. `live_quote_symbols_per_tick_cap=0` and `quote_fanout_limit_enforced=false` make the absence of enforcement explicit. |
 | Selected-universe widget coverage | Prior widget/read artifact, now normalized safely | Live read responses include response-only missing rows for selected symbols without latest quotes so pagination and totals represent the selected universe without changing quote cadence or order dispatch. |
 | Frontend page size affecting coverage | Prior frontend artifact, now normalized | Chunked selected-universe requests fetch all symbols per chunk before merge; page size is display-only. |
 | Latest-by-symbol total semantics | Shared active/read behavior | Both paths report latest-by-symbol counts for signal-widget totals rather than cumulative historical signal row counts. |

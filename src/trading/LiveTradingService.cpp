@@ -47,10 +47,10 @@ constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kMaxRecentTrades = 100;
 constexpr std::size_t kMaxRecentSignals = 250;
-// Keep Coinbase public quote requests bounded per worker tick. The cursor
-// rotates through the full user-selected universe across ticks; this is an
-// exchange/API cadence guard, not a frontend symbol-selection cap.
-constexpr std::size_t kMaxLiveQuoteSymbols = 10;
+// This is a warning threshold only. It does not cap the user-selected
+// universe or prevent quote requests; it flags the former batch size so API
+// fan-out can be correlated with provider errors and rate limits.
+constexpr std::size_t kQuoteFanoutWarningThreshold = 10;
 
 std::string randomClientOrderId() {
   static thread_local std::mt19937_64 rng(std::random_device{}());
@@ -1248,24 +1248,18 @@ std::vector<std::string> LiveTradingService::selectLiveQuoteBatchLocked() {
   last_live_quote_batch_symbols_.clear();
 
   if (requested == 0) {
-    live_quote_cursor_ = 0;
     last_live_quote_attempted_symbols_ = 0;
     last_live_quote_succeeded_symbols_ = 0;
     last_live_quote_skipped_symbols_ = 0;
     return batch;
   }
 
-  const std::size_t batch_size = std::min(requested, kMaxLiveQuoteSymbols);
-  batch.reserve(batch_size);
-  for (std::size_t index = 0; index < batch_size; ++index) {
-    batch.push_back(symbols_[(live_quote_cursor_ + index) % requested]);
-  }
-  live_quote_cursor_ = (live_quote_cursor_ + batch_size) % requested;
+  batch = symbols_;
 
   last_live_quote_batch_symbols_ = batch;
   last_live_quote_attempted_symbols_ = static_cast<int>(batch.size());
   last_live_quote_succeeded_symbols_ = 0;
-  last_live_quote_skipped_symbols_ = static_cast<int>(requested - batch.size());
+  last_live_quote_skipped_symbols_ = 0;
   return batch;
 }
 
@@ -2355,10 +2349,28 @@ void LiveTradingService::workerLoop() {
         continue;
       }
 
+      const auto quote_batch_started = std::chrono::steady_clock::now();
       std::map<std::string, MarketQuote> quotes;
       CoinbasePortfolioSnapshot account_snapshot;
       bool account_snapshot_loaded = false;
       quotes = fetchLiveQuotes(symbols_snapshot);
+      const auto quote_fetch_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - quote_batch_started).count();
+      const double quote_fetch_seconds =
+          std::max(0.001, static_cast<double>(quote_fetch_elapsed_ms) / 1000.0);
+      const double quote_requests_per_second =
+          static_cast<double>(symbols_snapshot.size()) / quote_fetch_seconds;
+      TR_LOG_INFO(
+          "Live quote fan-out: session={} requested={} attempted={} succeeded={} skipped={} "
+          "fetch_ms={} quote_requests_per_second={:.2f}",
+          session_id_, symbols_snapshot.size(), symbols_snapshot.size(), quotes.size(), 0,
+          quote_fetch_elapsed_ms, quote_requests_per_second);
+      if (symbols_snapshot.size() > kQuoteFanoutWarningThreshold) {
+        TR_LOG_WARN(
+            "Live quote fan-out warning: session={} requested={} exceeds warning threshold={} "
+            "(logging only; no request cap enforced)",
+            session_id_, symbols_snapshot.size(), kQuoteFanoutWarningThreshold);
+      }
       std::string account_error;
       account_snapshot_loaded = fetchLiveAccountSnapshot(account_snapshot, &account_error);
       if (!account_snapshot_loaded) {
@@ -2395,7 +2407,6 @@ void LiveTradingService::workerLoop() {
       TR_LOG_ERROR("Live trading worker tick failed for session {}: unknown exception", session_id_);
     }
 
-    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
   {
@@ -2551,8 +2562,10 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
   diagnostics["quote_attempted_symbol_count"] = last_live_quote_attempted_symbols_;
   diagnostics["quote_success_symbol_count"] = last_live_quote_succeeded_symbols_;
   diagnostics["quote_skipped_symbol_count"] = last_live_quote_skipped_symbols_;
-  diagnostics["live_quote_symbols_per_tick_cap"] =
-      static_cast<Json::UInt64>(kMaxLiveQuoteSymbols);
+  diagnostics["live_quote_symbols_per_tick_cap"] = 0;
+  diagnostics["quote_fanout_limit_enforced"] = false;
+  diagnostics["quote_fanout_warning_threshold"] =
+      static_cast<Json::UInt64>(kQuoteFanoutWarningThreshold);
   diagnostics["current_batch_symbols"] = batch;
   diagnostics["current_latest_signal_count"] = static_cast<Json::UInt64>(latest_symbols.size());
   diagnostics["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
@@ -2565,7 +2578,7 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
       last_live_quote_requested_symbols_ > 0 &&
       static_cast<int>(latest_symbols.size()) >= last_live_quote_requested_symbols_;
   diagnostics["contract"] =
-      "Live order-book quotes use a bounded rotating Coinbase request batch per tick and cover the full selected universe across successive ticks; the cap is an exchange/API safety guard, not a frontend symbol cap. total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.";
+      "Live order-book quotes request the full selected universe each worker iteration with no enforced symbol cap or cadence sleep; fan-out counts, fetch duration, estimated request rate, and warning-threshold crossings are logged for API-limit detection. total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.";
   return diagnostics;
 }
 
@@ -2872,7 +2885,6 @@ Json::Value LiveTradingService::startSession(const Json::Value &payload) {
   recent_trades_.clear();
   recent_signals_.clear();
   session_trade_inputs_.clear();
-  live_quote_cursor_ = 0;
   last_live_quote_requested_symbols_ = static_cast<int>(symbols_.size());
   last_live_quote_attempted_symbols_ = 0;
   last_live_quote_succeeded_symbols_ = 0;
