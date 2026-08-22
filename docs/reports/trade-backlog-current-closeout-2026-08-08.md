@@ -80,11 +80,13 @@ Before push, only non-build checks are permitted:
 
 After push, the closeout gate is the `Docker Build Validation` run whose `headSha` exactly matches the pushed commit. Required push-run jobs are the C++ backend amd64/arm64 builds, frontend amd64/arm64 builds, and both manifest publication jobs. The final delivery record must include the exact SHA, run ID, URL, job conclusions, and verification timestamp.
 
-## Latest exact-SHA delivery verification
+## Historical exact-SHA delivery verification
 
-The branch is currently at `dc9960123611f4126fdef50e9f8e7257fc5e5eb6`, which is
-also `origin/dev`. The push-triggered Docker Build Validation run for that
-exact SHA completed successfully:
+The following evidence is historical and applies only to commit
+`dc9960123611f4126fdef50e9f8e7257fc5e5eb6`. It must not be used as evidence
+for a later `dev` HEAD or as a backlog closeout gate for subsequent changes.
+The push-triggered Docker Build Validation run for that exact SHA completed
+successfully:
 
 - Run ID: `31298425045`
 - URL: https://github.com/chasekb/trade/actions/runs/31298425045
@@ -97,4 +99,6 @@ exact SHA completed successfully:
 - Publish C++ Backend manifest: success
 - Publish Frontend manifest: success
 
-No local Docker, CMake, C++ backend, or production image build was run.
+No local Docker, CMake, C++ backend, or production image build was run for
+that historical verification. Every later implementation requires a fresh
+push-triggered run whose `headSha` exactly matches the delivered commit.
