@@ -47,6 +47,10 @@ constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kMaxRecentTrades = 100;
 constexpr std::size_t kMaxRecentSignals = 250;
+// Keep Coinbase public quote requests bounded per worker tick. The cursor
+// rotates through the full user-selected universe across ticks; this is an
+// exchange/API cadence guard, not a frontend symbol-selection cap.
+constexpr std::size_t kMaxLiveQuoteSymbols = 10;
 
 std::string randomClientOrderId() {
   static thread_local std::mt19937_64 rng(std::random_device{}());
@@ -1251,13 +1255,17 @@ std::vector<std::string> LiveTradingService::selectLiveQuoteBatchLocked() {
     return batch;
   }
 
-  batch = symbols_;
-  live_quote_cursor_ = 0;
+  const std::size_t batch_size = std::min(requested, kMaxLiveQuoteSymbols);
+  batch.reserve(batch_size);
+  for (std::size_t index = 0; index < batch_size; ++index) {
+    batch.push_back(symbols_[(live_quote_cursor_ + index) % requested]);
+  }
+  live_quote_cursor_ = (live_quote_cursor_ + batch_size) % requested;
 
   last_live_quote_batch_symbols_ = batch;
   last_live_quote_attempted_symbols_ = static_cast<int>(batch.size());
   last_live_quote_succeeded_symbols_ = 0;
-  last_live_quote_skipped_symbols_ = 0;
+  last_live_quote_skipped_symbols_ = static_cast<int>(requested - batch.size());
   return batch;
 }
 
@@ -2543,6 +2551,8 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
   diagnostics["quote_attempted_symbol_count"] = last_live_quote_attempted_symbols_;
   diagnostics["quote_success_symbol_count"] = last_live_quote_succeeded_symbols_;
   diagnostics["quote_skipped_symbol_count"] = last_live_quote_skipped_symbols_;
+  diagnostics["live_quote_symbols_per_tick_cap"] =
+      static_cast<Json::UInt64>(kMaxLiveQuoteSymbols);
   diagnostics["current_batch_symbols"] = batch;
   diagnostics["current_latest_signal_count"] = static_cast<Json::UInt64>(latest_symbols.size());
   diagnostics["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
@@ -2555,7 +2565,7 @@ Json::Value LiveTradingService::buildOrderBookSignalDiagnosticsLocked() const {
       last_live_quote_requested_symbols_ > 0 &&
       static_cast<int>(latest_symbols.size()) >= last_live_quote_requested_symbols_;
   diagnostics["contract"] =
-      "Live order-book quotes cover the full selected universe each tick; Coinbase rate limiting is the exchange connection's responsibility. total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.";
+      "Live order-book quotes use a bounded rotating Coinbase request batch per tick and cover the full selected universe across successive ticks; the cap is an exchange/API safety guard, not a frontend symbol cap. total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.";
   return diagnostics;
 }
 
@@ -3382,7 +3392,7 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
         << "SELECT signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
         << "spread, imbalance, mid_price, best_bid, best_ask, order_book_depth, volume, total_signals "
         << "FROM latest_signals "
-        << "ORDER BY strength DESC, COALESCE((signal_data::jsonb -> 'ml_analysis' ->> 'win_probability')::double precision, 0.5) DESC, timestamp DESC "
+        << "ORDER BY strength DESC, COALESCE(CASE WHEN pg_input_is_valid(signal_data, 'jsonb') THEN CASE WHEN pg_input_is_valid((signal_data::jsonb -> 'ml_analysis' ->> 'win_probability'), 'double precision') THEN (signal_data::jsonb -> 'ml_analysis' ->> 'win_probability')::double precision ELSE 0.5 END ELSE 0.5 END, 0.5) DESC, timestamp DESC "
         << "LIMIT " << safe_per_page << " OFFSET " << offset;
 
     auto rows = DatabaseManager::getInstance().execParams(sql.str(), bound_symbols);

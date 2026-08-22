@@ -2517,7 +2517,7 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
         << "SELECT signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
         << "spread, imbalance, mid_price, best_bid, best_ask, order_book_depth, volume, total_signals "
         << "FROM latest_signals "
-        << "ORDER BY strength DESC, COALESCE((signal_data::jsonb -> 'ml_analysis' ->> 'win_probability')::double precision, 0.5) DESC, timestamp DESC "
+        << "ORDER BY strength DESC, COALESCE(CASE WHEN pg_input_is_valid(signal_data, 'jsonb') THEN CASE WHEN pg_input_is_valid((signal_data::jsonb -> 'ml_analysis' ->> 'win_probability'), 'double precision') THEN (signal_data::jsonb -> 'ml_analysis' ->> 'win_probability')::double precision ELSE 0.5 END ELSE 0.5 END, 0.5) DESC, timestamp DESC "
         << "LIMIT " << safe_per_page << " OFFSET " << offset;
 
     auto rows = DatabaseManager::getInstance().execParams(sql.str(), bound_symbols);
