@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-08-23T05:05:49.122690Z",
+  "base_url": "http://127.0.0.1:8081",
+  "duration_seconds": 5.0,
+  "poll_interval_seconds": 1.0,
+  "scenarios": {
+    "normal-3-symbol": {
+      "samples": 3,
+      "active_samples": 2,
+      "selected_symbols": 3,
+      "tick_first_last": [
+        0,
+        8
+      ],
+      "ticks_per_active_second_estimate": 8.0,
+      "request_latency_ms": {
+        "min": 24.422,
+        "mean": 5531.913,
+        "p50": 4075.518,
+        "p95": 11653.771,
+        "max": 12495.799
+      },
+      "max_pending_order_count": 0,
+      "max_signals_generated_per_snapshot": 0,
+      "all_samples_http_2xx": true,
+      "all_paper_execution": true
+    },
+    "overload-64-symbol": {
+      "samples": 7,
+      "active_samples": 0,
+      "selected_symbols": 0,
+      "tick_first_last": [],
+      "ticks_per_active_second_estimate": null,
+      "request_latency_ms": {
+        "min": 22.203,
+        "mean": 160.464,
+        "p50": 24.003,
+        "p95": 693.393,
+        "max": 979.69
+      },
+      "max_pending_order_count": 0,
+      "max_signals_generated_per_snapshot": 0,
+      "all_samples_http_2xx": true,
+      "all_paper_execution": true
+    }
+  },
+  "safety": {
+    "live_start_called": false,
+    "live_order_execution_enabled": false,
+    "max_requested_symbols": 64,
+    "unbounded_fanout_in_benchmark": false,
+    "note": "The overload scenario is a bounded 64-symbol synthetic session; it is not evidence of Coinbase capacity or live rate-limit compliance."
+  }
+}
