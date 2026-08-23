@@ -72,14 +72,15 @@ validation.
 
 - Repository: [`chasekb/trade`](https://github.com/chasekb/trade).
 - Exact `origin/dev` SHA at this evidence capture:
-  `d0b259a456a97974d7ae3c74a1bc438c02dd97c7`.
+  `96597a8c01c6e70221600ec6dad203afebbbcb3f`.
 - Authoritative push-triggered Docker Build Validation run for this head:
-  [run 32627613611](https://github.com/chasekb/trade/actions/runs/32627613611),
-  head SHA `d0b259a456a97974d7ae3c74a1bc438c02dd97c7`, remains `pending` with
+  [run 32627652407](https://github.com/chasekb/trade/actions/runs/32627652407),
+  head SHA `96597a8c01c6e70221600ec6dad203afebbbcb3f`, remains `pending` with
   no jobs materialized. No completion or success is claimed here.
-- No matching pull-request run for this head was materialized at this evidence
-  capture. Any pull-request run is non-authoritative because pull requests
-  intentionally run only the amd64 build jobs and do not publish manifests.
+- A matching pull-request run,
+  [run 32627654702](https://github.com/chasekb/trade/actions/runs/32627654702),
+  is also `pending` with only the two amd64 jobs queued. It is non-authoritative
+  because pull requests do not run the arm64 or manifest-publish jobs.
 
 The preceding push run,
 [run 32627531425](https://github.com/chasekb/trade/actions/runs/32627531425),
@@ -99,7 +100,7 @@ but are historical evidence only:
 - `Publish Frontend manifest`
 - `Publish C++ Backend manifest`
 
-For the authoritative push run `32627613611`, the required job status snapshot
+For the authoritative push run `32627652407`, the required job status snapshot
 was:
 
 - `Build Frontend (amd64)`: pending/not materialized.
@@ -114,7 +115,7 @@ The prior green run,
 remains historical evidence only: all six jobs above succeeded there for
 head SHA `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not this report's SHA.
 Therefore, a fresh successful Docker Build Validation run for
-`d0b259a456a97974d7ae3c74a1bc438c02dd97c7` remains the CI closeout gate.
+`96597a8c01c6e70221600ec6dad203afebbbcb3f` remains the CI closeout gate.
 
 ### Fresh recreation and smoke evidence
 
