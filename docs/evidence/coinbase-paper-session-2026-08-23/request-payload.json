@@ -1,0 +1,48 @@
+{
+  "symbols": [
+    "BTC-USD",
+    "ETH-USD",
+    "SOL-USD",
+    "ADA-USD",
+    "DOT-USD",
+    "XRP-USD",
+    "LTC-USD"
+  ],
+  "strategy": "ml_enhanced_orderbook",
+  "strategy_type": "ml_enhanced_orderbook",
+  "parameters": {
+    "position_size_mode": "percent",
+    "position_size_value": 1,
+    "initial_portfolio_size": 10000,
+    "execution_mode": "live_parity",
+    "training_model_type": "transformer",
+    "confidence_threshold": 0.6,
+    "order_prioritization": "signal_strength",
+    "fallback_to_baseline": true,
+    "max_positions_per_session": 100,
+    "position_update_interval": 5,
+    "min_orderbook_signal_strength": 0.22
+  },
+  "strategy_params": {
+    "position_size_mode": "percent",
+    "position_size_value": 1,
+    "initial_portfolio_size": 10000,
+    "execution_mode": "live_parity",
+    "training_model_type": "transformer",
+    "confidence_threshold": 0.6,
+    "order_prioritization": "signal_strength",
+    "fallback_to_baseline": true,
+    "max_positions_per_session": 100,
+    "position_update_interval": 5,
+    "min_orderbook_signal_strength": 0.22
+  },
+  "max_positions": 100,
+  "position_size_percent": 1,
+  "position_size": 0.01,
+  "position_update_interval": 5,
+  "immediate_start": true,
+  "batch_size": 3,
+  "initial_balance": 10000,
+  "capital": 10000,
+  "initial_portfolio_size": 10000
+}
