@@ -498,6 +498,15 @@ std::unique_ptr<ml::ONNXModelManager> PredictController::model_manager_ =
     nullptr;
 std::string PredictController::model_dir_;
 std::string PredictController::trained_models_dir_;
+std::mutex PredictController::training_mutex_;
+std::thread PredictController::training_thread_;
+
+void PredictController::waitForTraining() {
+  std::lock_guard<std::mutex> lock(training_mutex_);
+  if (training_thread_.joinable()) {
+    training_thread_.join();
+  }
+}
 
 void PredictController::init(const std::string &param_path,
                              const std::string &model_dir) {
@@ -757,7 +766,7 @@ void PredictController::train(
   }
 
   // Trigger real training in a background thread
-  std::thread training_thread([config, db_url, auto_set_active]() {
+  std::thread next_training_thread([config, db_url, auto_set_active]() {
     auto &cache = CacheManager::getInstance();
     TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, batch_training={}, max_training_rows={}, test_split={}, days_back={}",
                 config.model_name, config.epochs, config.batch_size,
@@ -940,7 +949,15 @@ void PredictController::train(
       TR_LOG_ERROR("ML training progress: failed");
     }
   });
-  training_thread.detach();
+  {
+    std::lock_guard<std::mutex> lock(training_mutex_);
+    // A completed worker remains joinable until reclaimed. Reap it before
+    // replacing it so shutdown can always join the active worker safely.
+    if (training_thread_.joinable()) {
+      training_thread_.join();
+    }
+    training_thread_ = std::move(next_training_thread);
+  }
 
   Json::Value resp;
   resp["status"] = "training_started";
