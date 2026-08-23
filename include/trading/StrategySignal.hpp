@@ -1,5 +1,7 @@
 #pragma once
 
+#include "trading/DiagnosticsContract.hpp"
+
 #include <deque>
 #include <string>
 #include <vector>
