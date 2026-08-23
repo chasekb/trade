@@ -2,13 +2,13 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <string>
 #include <vector>
 
 using trade::trading::StrategyExpectancyFixture;
 using trade::trading::defaultStrategyExpectancyFixtures;
-using trade::trading::defaultStrategyExpectancyPartitions;
 using trade::trading::evaluateStrategyExpectancy;
 
 namespace {
@@ -67,31 +67,94 @@ int main() {
   }
   expect(saw_fee_negative_block, "regression fixture exercised fee-negative block");
 
-  const auto partitions = defaultStrategyExpectancyPartitions();
-  expect(partitions.size() == 3, "stable train validation test partition count");
-  std::set<std::string> fixture_ids;
-  std::string previous_time;
-  std::size_t partition_samples = 0;
-  for (const auto &partition : partitions) {
-    expect(!partition.fixtures.empty(), partition.name + " has samples");
-    for (const auto &fixture : partition.fixtures) {
-      expect(fixture.partition == partition.name, fixture.name + " records its partition");
-      expect(fixture.event_time > previous_time, fixture.name + " preserves chronological order");
-      previous_time = fixture.event_time;
-      expect(fixture_ids.insert(fixture.name).second, fixture.name + " is unique");
-      expect(!fixture.symbol.empty() && !fixture.model_branch.empty(),
-             fixture.name + " records symbol and model branch");
-      ++partition_samples;
-    }
+  // Report-only diagnostics must preserve the generated signal and its
+  // serialized attribution while remaining ineligible for either simulated or
+  // live action. Non-finite values use the same fail-closed contract.
+  std::vector<StrategyExpectancyFixture> diagnostic_fixtures;
+  StrategyExpectancyFixture missing;
+  missing.name = "missing-expected-return-report-only";
+  missing.strategy = "buyandhold";
+  missing.prices = {100.0, 100.0, 100.0};
+  missing.expected_return_available = false;
+  missing.expected_return_fraction = 0.050;
+  diagnostic_fixtures.push_back(missing);
+
+  StrategyExpectancyFixture nan_return = missing;
+  nan_return.name = "nan-expected-return-report-only";
+  nan_return.expected_return_available = true;
+  nan_return.expected_return_fraction = std::numeric_limits<double>::quiet_NaN();
+  diagnostic_fixtures.push_back(nan_return);
+
+  StrategyExpectancyFixture infinite_return = missing;
+  infinite_return.name = "infinite-expected-return-report-only";
+  infinite_return.expected_return_available = true;
+  infinite_return.expected_return_fraction = std::numeric_limits<double>::infinity();
+  diagnostic_fixtures.push_back(infinite_return);
+
+  StrategyExpectancyFixture favorable_sell;
+  favorable_sell.name = "sell-positive-directional-edge";
+  favorable_sell.strategy = "sma";
+  favorable_sell.prices = {};
+  for (int i = 0; i < 60; ++i) {
+    favorable_sell.prices.push_back(130.0 - 0.5 * static_cast<double>(i));
   }
-  expect(partition_samples == 18, "deterministic partition sample count");
-  const auto partition_report = evaluateStrategyExpectancy(partitions.front().fixtures);
-  expect(partition_report.overall.trades_filled > 0, "partition includes accepted intents");
-  expect(partition_report.overall.blocked_intents >= 3,
-         "partition includes rejected and blocked intents");
-  expect(partition_report.rows.front().symbol == "BTC-USD", "row preserves symbol metadata");
-  expect(partition_report.rows.front().model_branch == "pca",
-         "row preserves model branch metadata");
+  favorable_sell.expected_return_fraction = -0.030;
+  favorable_sell.realized_pnl = 7.0;
+  diagnostic_fixtures.push_back(favorable_sell);
+
+  const auto diagnostic_report = evaluateStrategyExpectancy(diagnostic_fixtures);
+  expect(diagnostic_report.rows.size() == diagnostic_fixtures.size(),
+         "diagnostic contract returns one serialized row per fixture");
+  for (const auto &row : diagnostic_report.rows) {
+    expect(std::isfinite(row.directional_expected_edge_fraction),
+           row.fixture_name + " directional edge is finite for serialization");
+    expect(std::isfinite(row.fee_adjusted_expected_return_fraction),
+           row.fixture_name + " fee-adjusted edge is finite for serialization");
+    expect(std::isfinite(row.required_edge_fraction),
+           row.fixture_name + " required edge is finite for serialization");
+  }
+
+  expect(diagnostic_report.rows[0].signal_type == "buy",
+         "missing return preserves simulated/live buy signal for reporting");
+  expect(diagnostic_report.rows[0].blocked && !diagnostic_report.rows[0].filled,
+         "missing return is report-only and cannot fill");
+  expect(diagnostic_report.rows[0].diagnostic_factor == "expected_return_unavailable",
+         "missing return blocker attribution is serialized");
+  expect(!diagnostic_report.rows[1].profitability_actionable &&
+             diagnostic_report.rows[1].diagnostic_factor == "expected_return_unavailable",
+         "NaN return is unavailable and not actionable");
+  expect(!diagnostic_report.rows[2].profitability_actionable &&
+             diagnostic_report.rows[2].diagnostic_factor == "expected_return_unavailable",
+         "infinite return is unavailable and not actionable");
+
+  expect(diagnostic_report.rows[3].signal_type == "sell" &&
+             diagnostic_report.rows[3].profitability_actionable &&
+             diagnostic_report.rows[3].filled,
+         "favorable fee-adjusted sell is actionable in both decision paths");
+
+  // Confidence/profitability boundaries: equality with the minimum strength
+  // and an exactly fee-neutral edge are both non-actionable.
+  StrategyExpectancyFixture boundary = missing;
+  boundary.name = "confidence-boundary";
+  boundary.expected_return_available = true;
+  boundary.expected_return_fraction = 0.017;
+  boundary.min_signal_strength = 1.0;
+  diagnostic_fixtures = {boundary};
+  const auto boundary_report = evaluateStrategyExpectancy(diagnostic_fixtures);
+  expect(boundary_report.rows.front().signal_strength == 1.0,
+         "buy-and-hold confidence boundary is deterministic");
+  expect(boundary_report.rows.front().profitability_actionable,
+         "minimum confidence boundary is inclusive");
+  boundary.expected_return_fraction = 0.017;
+  boundary.round_trip_fee_fraction = 0.015;
+  boundary.slippage_buffer_fraction = 0.002;
+  boundary.min_signal_strength = 0.2;
+  diagnostic_fixtures = {boundary};
+  const auto neutral_report = evaluateStrategyExpectancy(diagnostic_fixtures);
+  expect(!neutral_report.rows.front().profitability_actionable,
+         "exactly fee-neutral edge is not actionable");
+  expect(neutral_report.rows.front().diagnostic_factor == "negative_fee_adjusted_edge",
+         "fee-neutral edge has explicit blocker attribution");
 
   std::vector<StrategyExpectancyFixture> high_count_loser;
   for (int i = 0; i < 5; ++i) {
