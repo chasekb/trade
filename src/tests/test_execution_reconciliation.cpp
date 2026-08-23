@@ -7,6 +7,7 @@
 
 using trade::trading::OutcomeAttribution;
 using trade::trading::SignalAttribution;
+using trade::trading::closingLegFromPersistedValue;
 using trade::trading::reconcileExecution;
 
 namespace {
@@ -88,6 +89,15 @@ OutcomeAttribution flatClose(const std::string &strategy, double fees) {
 } // namespace
 
 int main() {
+  expect(closingLegFromPersistedValue(true, true, 0.0),
+         "explicit true marks an exact-flat exit as closing");
+  expect(!closingLegFromPersistedValue(true, false, 12.0),
+         "explicit false overrides the legacy non-zero-PnL convention");
+  expect(closingLegFromPersistedValue(false, false, 12.0),
+         "legacy non-zero PnL remains a closing leg");
+  expect(!closingLegFromPersistedValue(false, true, 0.0),
+         "legacy zero PnL remains an opening leg");
+
   // Empty input is a valid, all-zero report rather than an error.
   const auto empty = reconcileExecution({}, {});
   expect(empty.by_strategy.empty(), "empty input yields no strategy rows");

@@ -84,5 +84,11 @@ ExecutionReconciliationReport
 reconcileExecution(const std::vector<SignalAttribution> &signals,
                    const std::vector<OutcomeAttribution> &outcomes);
 
+// Legacy rows predate the explicit column and use non-zero gross PnL as the
+// closing-leg marker. An explicit value, including false, always wins.
+bool closingLegFromPersistedValue(bool has_explicit_value,
+                                  bool persisted_value,
+                                  double gross_pnl);
+
 } // namespace trading
 } // namespace trade

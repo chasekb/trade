@@ -1703,6 +1703,12 @@ void PredictController::executionReconciliation(
           std::string("SELECT to_regclass('public.") + table + "') AS relname");
       return !exists.empty() && !exists[0]["relname"].is_null();
     };
+    auto columnExists = [](const char *table, const char *column) {
+      auto exists = DatabaseManager::getInstance().query(
+          std::string("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '") +
+          table + "' AND column_name = '" + column + "' LIMIT 1");
+      return !exists.empty();
+    };
 
     if (tableExists("order_book_signals")) {
       constexpr std::size_t kSignalPageSize = 5000;
@@ -1760,8 +1766,13 @@ void PredictController::executionReconciliation(
     }
 
     if (tableExists("individual_trades")) {
+      const bool has_closing_leg_column =
+          columnExists("individual_trades", "is_closing_leg");
       std::ostringstream sql;
-      sql << "SELECT symbol, strategy_type, pnl, fees, is_closing_leg FROM individual_trades WHERE timestamp >= "
+      sql << "SELECT symbol, strategy_type, pnl, fees, "
+          << (has_closing_leg_column ? "is_closing_leg"
+                                     : "NULL::boolean AS is_closing_leg")
+          << " FROM individual_trades WHERE timestamp >= "
           << window_start;
       if (!session_id.empty()) {
         sql << " AND session_id = '" << session_id << "'";
@@ -1779,9 +1790,12 @@ void PredictController::executionReconciliation(
         // Fall back to the historical non-zero-PnL convention for rows written
         // before the column was introduced. Realized PnL is reported net of
         // fees to match the objective's after-fee expectancy definition.
-        outcome.is_closing_leg = row["is_closing_leg"].is_null()
-                                     ? gross_pnl != 0.0
-                                     : row["is_closing_leg"].as<bool>();
+        outcome.is_closing_leg = trade::trading::closingLegFromPersistedValue(
+            !row["is_closing_leg"].is_null(),
+            row["is_closing_leg"].is_null()
+                ? false
+                : row["is_closing_leg"].as<bool>(),
+            gross_pnl);
         outcome.realized_pnl = outcome.is_closing_leg ? gross_pnl - outcome.fees : 0.0;
         outcomes.push_back(std::move(outcome));
       }

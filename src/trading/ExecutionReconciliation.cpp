@@ -115,6 +115,12 @@ StrategyReconciliation finalize(const Accumulator &acc) {
 
 } // namespace
 
+bool closingLegFromPersistedValue(bool has_explicit_value,
+                                  bool persisted_value,
+                                  double gross_pnl) {
+  return has_explicit_value ? persisted_value : gross_pnl != 0.0;
+}
+
 ExecutionReconciliationReport
 reconcileExecution(const std::vector<SignalAttribution> &signals,
                    const std::vector<OutcomeAttribution> &outcomes) {
