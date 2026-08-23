@@ -7,6 +7,11 @@ import {
   OrderBookSignal,
   OrderBookSignalDiagnostics,
 } from '@/types/trading';
+import {
+  mergeNormalizedOrderBookSignals,
+  normalizeOrderBookSignalsResponse,
+  NormalizedOrderBookSignals,
+} from '@/lib/orderBookSignals';
 
 type TradingParameterValue = string | number | boolean | undefined;
 type TradingParameters = Record<string, TradingParameterValue>;
@@ -31,20 +36,23 @@ type TradingStatusPayload = {
 type OrderBookSignalsData = {
   signals: OrderBookSignal[];
   pagination?: {
-    current_page?: number;
-    page?: number;
-    per_page?: number;
-    limit?: number;
-    total_signals?: number;
-    total_pages?: number;
-    has_next?: boolean;
-    has_prev?: boolean;
+    current_page?: number | undefined;
+    page?: number | undefined;
+    per_page?: number | undefined;
+    limit?: number | undefined;
+    total_signals?: number | undefined;
+    total_pages?: number | undefined;
+    has_next?: boolean | undefined;
+    has_prev?: boolean | undefined;
   };
-  total_analyzed?: number;
-  active_signals?: number;
-  last_updated?: string;
-  average_strength?: number;
+  total_analyzed?: number | undefined;
+  active_signals?: number | undefined;
+  last_updated?: string | undefined;
+  average_strength?: number | undefined;
   diagnostics?: OrderBookSignalDiagnostics;
+  mode?: 'live' | 'simulated';
+  unavailable_fields?: string[];
+  live_execution_blockers_visible?: boolean;
 };
 
 type WebSocketPayload = {
@@ -269,105 +277,54 @@ function chunkOrderBookSymbols(symbols?: string[]) {
   return chunks;
 }
 
-function mergeCountMap(left?: Record<string, number>, right?: Record<string, number>) {
-  const merged: Record<string, number> = { ...(left ?? {}) };
-  for (const [key, value] of Object.entries(right ?? {})) {
-    merged[key] = (merged[key] ?? 0) + value;
-  }
-  return merged;
+function toLegacyOrderBookSignals(response: NormalizedOrderBookSignals): OrderBookSignalsData {
+  return {
+    signals: response.signals,
+    pagination: {
+      page: response.pagination.page,
+      limit: response.pagination.limit,
+      total: response.pagination.total,
+      total_pages: response.pagination.totalPages,
+      has_next: response.pagination.hasNext,
+      has_prev: response.pagination.hasPrev,
+    },
+    total_analyzed: response.summary.totalAnalyzed,
+    active_signals: response.summary.activeSignals,
+    last_updated: response.summary.lastUpdated,
+    average_strength: response.summary.averageStrength,
+    diagnostics: response.diagnostics,
+    mode: response.mode,
+    unavailable_fields: response.deviations.unavailableFields,
+    live_execution_blockers_visible: response.deviations.liveExecutionBlockersVisible,
+  };
 }
 
-function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: number, perPage: number) {
-  const normalizedResponses = responses.filter(Boolean);
-  const allSignals = normalizedResponses.flatMap((response) => response.signals ?? []);
-  allSignals.sort((left, right) => {
-    const strengthDiff = (right.signal_strength ?? 0) - (left.signal_strength ?? 0);
-    if (strengthDiff !== 0) {
-      return strengthDiff;
-    }
-
-    const timeDiff = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
-    if (timeDiff !== 0) {
-      return timeDiff;
-    }
-
-    return left.symbol.localeCompare(right.symbol);
-  });
-
-  const total = allSignals.length;
-  const totalPages = total === 0 ? 0 : Math.ceil(total / perPage);
-  const currentPage = Math.max(1, page);
-  const startIndex = (currentPage - 1) * perPage;
-  const pageSignals = allSignals.slice(startIndex, startIndex + perPage);
-
-  const lastUpdated = responses.reduce((latest, response) => {
-    if (!response.last_updated) {
-      return latest;
-    }
-    if (!latest) {
-      return response.last_updated;
-    }
-    return new Date(response.last_updated).getTime() > new Date(latest).getTime()
-      ? response.last_updated
-      : latest;
-  }, '' as string);
-
-  const totalAnalyzed = responses.reduce((sum, response) => sum + (response.total_analyzed ?? response.signals?.length ?? 0), 0);
-  const activeSignals = responses.reduce((sum, response) => {
-    const computedActiveSignals = response.signals?.reduce(
-      (count: number, signal: OrderBookSignal) => count + (signal.signal_generated ? 1 : 0),
-      0
-    );
-    return sum + (response.active_signals ?? computedActiveSignals ?? 0);
-  }, 0);
-  const averageStrength = total === 0
-    ? 0
-    : allSignals.reduce((sum, signal) => sum + (signal.signal_strength ?? 0), 0) / total;
-  const diagnosticRows = normalizedResponses
-    .map((response) => response.diagnostics)
-    .filter(Boolean) as OrderBookSignalDiagnostics[];
-  const diagnostics = diagnosticRows.length === 0 ? undefined : diagnosticRows.reduce((merged, current) => ({
-    ...merged,
-    ...current,
-    selected_symbol_count: (merged.selected_symbol_count ?? 0) + (current.selected_symbol_count ?? current.requested_symbol_count ?? 0),
-    requested_symbol_count: (merged.requested_symbol_count ?? 0) + (current.requested_symbol_count ?? 0),
-    quote_attempted_symbol_count: (merged.quote_attempted_symbol_count ?? 0) + (current.quote_attempted_symbol_count ?? 0),
-    quote_success_symbol_count: (merged.quote_success_symbol_count ?? 0) + (current.quote_success_symbol_count ?? 0),
-    quote_skipped_symbol_count: (merged.quote_skipped_symbol_count ?? 0) + (current.quote_skipped_symbol_count ?? 0),
-    current_latest_signal_count: (merged.current_latest_signal_count ?? 0) + (current.current_latest_signal_count ?? 0),
-    recent_signal_record_count: (merged.recent_signal_record_count ?? 0) + (current.recent_signal_record_count ?? 0),
-    active_recent_signal_records: (merged.active_recent_signal_records ?? 0) + (current.active_recent_signal_records ?? 0),
-    executable_order_intent_count: (merged.executable_order_intent_count ?? 0) + (current.executable_order_intent_count ?? 0),
-    execution_blocker_counts: mergeCountMap(merged.execution_blocker_counts, current.execution_blocker_counts),
-    execution_strength_bucket_counts: mergeCountMap(merged.execution_strength_bucket_counts, current.execution_strength_bucket_counts),
-    execution_expected_return_bucket_counts: mergeCountMap(merged.execution_expected_return_bucket_counts, current.execution_expected_return_bucket_counts),
-    missing_latest_signal_count: (merged.missing_latest_signal_count ?? 0) + (current.missing_latest_signal_count ?? 0),
-    missing_latest_signal_symbols: [
-      ...((merged.missing_latest_signal_symbols as string[] | undefined) ?? []),
-      ...((current.missing_latest_signal_symbols as string[] | undefined) ?? []),
-    ],
-    current_batch_symbols: [
-      ...((merged.current_batch_symbols as string[] | undefined) ?? []),
-      ...((current.current_batch_symbols as string[] | undefined) ?? []),
-    ],
-    coverage_complete: (merged.coverage_complete ?? true) && (current.coverage_complete ?? true),
-  }), {} as OrderBookSignalDiagnostics);
-
+function mergeOrderBookSignalResponses(
+  responses: OrderBookSignalsData[],
+  page: number,
+  perPage: number,
+  mode: 'live' | 'simulated',
+): OrderBookSignalsData {
+  const merged = mergeNormalizedOrderBookSignals(
+    responses.map((response) => normalizeOrderBookSignalsResponse(response, mode)),
+    page,
+    perPage,
+  );
   return {
-    signals: pageSignals,
+    signals: merged.signals,
     pagination: {
-      page: currentPage,
-      limit: perPage,
-      total,
-      total_pages: totalPages,
-      has_next: currentPage < totalPages,
-      has_prev: currentPage > 1,
+      page: merged.pagination.page,
+      limit: merged.pagination.limit,
+      total: merged.pagination.total,
+      total_pages: merged.pagination.totalPages,
+      has_next: merged.pagination.hasNext,
+      has_prev: merged.pagination.hasPrev,
     },
-    total_analyzed: totalAnalyzed,
-    active_signals: activeSignals,
-    last_updated: lastUpdated,
-    average_strength: averageStrength,
-    ...(diagnostics ? { diagnostics } : {}),
+    total_analyzed: merged.summary.totalAnalyzed,
+    active_signals: merged.summary.activeSignals,
+    last_updated: merged.summary.lastUpdated,
+    average_strength: merged.summary.averageStrength,
+    diagnostics: merged.diagnostics,
   };
 }
 
@@ -417,7 +374,8 @@ export function useOrderBookSignals(
             .map((response) => response.data)
             .filter((data): data is OrderBookSignalsData => Boolean(data)),
           page,
-          perPage
+          perPage,
+          mode,
         );
         if (failedChunks.length > 0) {
           merged.diagnostics = {
@@ -434,7 +392,7 @@ export function useOrderBookSignals(
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch order book signals');
       }
-      return response.data;
+      return toLegacyOrderBookSignals(normalizeOrderBookSignalsResponse(response.data, mode));
     },
     enabled: isEnabled,
     staleTime: 3000, // Consider data fresh for 3 seconds

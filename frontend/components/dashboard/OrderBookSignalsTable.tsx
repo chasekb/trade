@@ -28,11 +28,11 @@ export function OrderBookSignalsTable({
         page?: number;
         per_page?: number;
         limit?: number;
-        total_pages: number;
+        total_pages?: number;
         total_signals?: number;
         total?: number;
-        has_next: boolean;
-        has_prev: boolean;
+        has_next?: boolean;
+        has_prev?: boolean;
     };
     currentPage: number;
     pageSize: number;
@@ -48,10 +48,10 @@ export function OrderBookSignalsTable({
 }) {
     const activePage = currentPage;
     const activePageSize = pageSize;
-    // Page math must use the actual signal count; summary.total_analyzed counts
-    // analyzed symbols, which is a different (usually larger) population.
-    const totalSignals = pagination?.total_signals ?? pagination?.total ?? signals.length;
-    const totalPages = pagination?.total_pages || Math.max(1, Math.ceil(totalSignals / Math.max(activePageSize, 1)));
+    // Backend totals and page semantics are authoritative. Missing legacy
+    // metadata stays unavailable rather than being inferred from this page.
+    const totalSignals = pagination?.total_signals ?? pagination?.total;
+    const totalPages = pagination?.total_pages;
 
     const handlePageChange = (page: number) => {
         onPageChange?.(page);
@@ -310,20 +310,21 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                 </div>
 
                 <div className="text-sm text-gray-600">
-                    Page {activePage} of {totalPages} ({totalSignals} total signals)
+                    Page {activePage} of {totalPages ?? 'Unavailable'} ({totalSignals ?? 'Unavailable'} total signals)
                 </div>
 
                 <div className="flex items-center space-x-2">
                     <button
                         onClick={() => handlePageChange(activePage - 1)}
-                        disabled={activePage <= 1}
+                        disabled={activePage <= 1 || pagination?.has_prev === false}
                         className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                     >
                         <i className="fas fa-chevron-left mr-1"></i>Prev
                     </button>
 
                     <div className="flex items-center space-x-1">
-                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        {Array.from({ length: totalPages === undefined ? 0 : Math.min(5, totalPages) }, (_, i) => {
+                            if (totalPages === undefined) return null;
                             const pageNum = Math.max(1, Math.min(totalPages - 4, activePage - 2)) + i;
                             if (pageNum > totalPages) return null;
 
@@ -344,7 +345,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
 
                     <button
                         onClick={() => handlePageChange(activePage + 1)}
-                        disabled={activePage >= totalPages}
+                        disabled={totalPages === undefined || activePage >= totalPages || pagination?.has_next === false}
                         className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                     >
                         Next<i className="fas fa-chevron-right ml-1"></i>
@@ -362,7 +363,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                         <div>Missing latest rows: {summary.diagnostics.missing_latest_signal_count ?? summary.diagnostics.quote_skipped_symbol_count ?? 0}</div>
                     </div>
                     <div className="mt-1 text-xs text-blue-800">
-                        Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? signals.length}.
+                        Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals ?? 'Unavailable'}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? 'Unavailable'}.
                     </div>
                     <div className="mt-1 text-xs text-blue-800">
                         Executable intents: {summary.diagnostics.executable_order_intent_count ?? 0}. Blockers: {formatCounts(summary.diagnostics.execution_blocker_counts)}.
@@ -403,21 +404,20 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
             {signals.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
                     <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{summary?.total_analyzed ?? totalSignals}</div>
+                        <div className="text-lg font-semibold text-gray-900">{summary?.total_analyzed ?? 'Unavailable'}</div>
                         <div className="text-sm text-gray-600">Total Analyzed</div>
                     </div>
                     <div className="text-center">
                         <div className="text-lg font-semibold text-green-600">
-                            {summary?.active_signals ?? signals.filter(s => s.signal_generated === true).length}
+                            {summary?.active_signals ?? 'Unavailable'}
                         </div>
                         <div className="text-sm text-gray-600">Active Signals</div>
                     </div>
                     <div className="text-center">
                         <div className="text-lg font-semibold text-blue-600">
                             {(
-                                summary?.average_strength ??
-                                (signals.length > 0 ? (signals.reduce((sum, s) => sum + (s.signal_strength || 0), 0) / signals.length) : 0)
-                            ).toFixed(2)}
+                                typeof summary?.average_strength === 'number' ? summary.average_strength.toFixed(2) : 'Unavailable'
+                            }
                         </div>
                         <div className="text-sm text-gray-600">Avg Strength</div>
                     </div>
