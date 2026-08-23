@@ -517,9 +517,12 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   // blocked rows consumable without requiring clients to know the storage
   // representation.
   const Json::Value execution_analysis = out["execution_analysis"];
+  const bool signal_generated = out["signal_generated"].asBool();
   out["executable_intent"] = execution_analysis.get("executable_intent", Json::Value(false));
-  out["blocked"] = execution_analysis.get("blocked", Json::Value(false));
-  out["blocker_reason"] = execution_analysis.get("blocker_reason", Json::Value(""));
+  out["blocked"] = signal_generated && execution_analysis.get("blocked", Json::Value(false)).asBool();
+  out["blocker_reason"] = signal_generated
+                              ? execution_analysis.get("blocker_reason", Json::Value(""))
+                              : Json::Value("");
   return out;
 }
 
