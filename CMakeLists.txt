@@ -45,6 +45,7 @@ set(SOURCES
     src/trading/StrategySignal.cpp
     src/trading/StrategyExpectancyHarness.cpp
     src/trading/ExecutionReconciliation.cpp
+    src/trading/ReconciliationDiagnostics.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
     src/trading/LiveTradingService.cpp
@@ -177,6 +178,14 @@ add_executable(test_execution_reconciliation
 )
 target_include_directories(test_execution_reconciliation PRIVATE include)
 add_test(NAME execution_reconciliation COMMAND test_execution_reconciliation)
+
+add_executable(test_reconciliation_diagnostics
+    src/tests/test_reconciliation_diagnostics.cpp
+    src/trading/ReconciliationDiagnostics.cpp
+)
+target_include_directories(test_reconciliation_diagnostics PRIVATE include)
+target_link_libraries(test_reconciliation_diagnostics PRIVATE JsonCpp::JsonCpp)
+add_test(NAME reconciliation_diagnostics COMMAND test_reconciliation_diagnostics)
 
 add_executable(test_coinbase_auth
     src/tests/test_coinbase_auth.cpp

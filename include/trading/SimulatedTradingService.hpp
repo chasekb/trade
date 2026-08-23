@@ -2,6 +2,7 @@
 
 #include "exchange/CoinbaseAdvancedClient.hpp"
 #include "trading/TradingStatsCalculator.hpp"
+#include "trading/ReconciliationDiagnostics.hpp"
 
 #include <drogon/drogon.h>
 
@@ -247,6 +248,8 @@ private:
   std::size_t executable_order_intents_ = 0;
   std::size_t transformer_warming_symbols_ = 0;
   std::size_t transformer_rejected_inputs_ = 0;
+  bool diagnostics_enabled_ = false;
+  ReconciliationDiagnostics reconciliation_diagnostics_;
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).
   std::vector<TradePerformanceInput> session_trade_inputs_;

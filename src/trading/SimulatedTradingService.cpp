@@ -880,10 +880,13 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
     int retries = 0;
     bool fetched = false;
     for (int attempt = 0; attempt < 2; ++attempt) {
+      reconciliation_diagnostics_.recordFetchAttempt(symbol);
       if (exchange_client_->getOrderBook(symbol, book, &error)) {
         fetched = true;
+        reconciliation_diagnostics_.recordFetchResult(symbol, true, nowEpochSeconds());
         break;
       }
+      reconciliation_diagnostics_.recordFetchResult(symbol, false, 0);
       retries = attempt + 1;
       const std::string category = classifyMarketDataError(error);
       if (category == "tls" || category == "dns" || category == "exchange_response") {
@@ -1537,6 +1540,8 @@ void SimulatedTradingService::openPositionLocked(const SignalRecord &signal,
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
   market_state_[signal.symbol].last_entry_tick = tick_;
+  reconciliation_diagnostics_.recordPaperIntent();
+  reconciliation_diagnostics_.recordFill();
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -1614,6 +1619,8 @@ void SimulatedTradingService::addToPositionLocked(const SignalRecord &signal,
   total_fees_ += fee;
   cash_ += openCashDelta(position.side, allocated_usd, fee);
   market_state_[signal.symbol].last_entry_tick = tick_;
+  reconciliation_diagnostics_.recordPaperIntent();
+  reconciliation_diagnostics_.recordFill();
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
   updated_at_ = nowIsoUtc();
@@ -1698,6 +1705,8 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
                          : mode_;
 
   queueTradeWriteLocked(trade);
+  reconciliation_diagnostics_.recordPaperIntent();
+  reconciliation_diagnostics_.recordFill();
   recent_trades_.push_back(trade);
   positions_.erase(it);
   updated_at_ = nowIsoUtc();
@@ -1742,6 +1751,12 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
 
     auto position_it = positions_.find(symbol);
     const bool signal_generated = signal.signal_type != "hold";
+    reconciliation_diagnostics_.recordSignal(signal_generated);
+    const Json::Value execution_analysis = signal.payload["execution_analysis"];
+    reconciliation_diagnostics_.recordGateOutcome(
+        execution_analysis.get("executable_intent", Json::Value(false)).asBool()
+            ? "passed"
+            : execution_analysis.get("blocker_reason", Json::Value("no_signal")).asString());
     if (signal_generated) {
       ++signals_generated_;
     }
@@ -1755,6 +1770,8 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
           openPositionLocked(signal, "Opened on live-parity paper signal");
         } else if (signal_generated) {
           ++execution_blocker_counts_[analysis.get("blocker_reason", Json::Value("unknown")).asString()];
+          reconciliation_diagnostics_.recordBlocker(
+              analysis.get("blocker_reason", Json::Value("unknown")).asString());
         }
         continue;
       }
@@ -1771,6 +1788,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
         }
         if (!blocker.empty()) {
           ++execution_blocker_counts_[blocker];
+          reconciliation_diagnostics_.recordBlocker(blocker);
         } else {
           ++executable_order_intents_;
           openPositionLocked(signal, "Opened on generated signal");
@@ -2046,6 +2064,10 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   signal_diagnostics["contract"] =
       "Simulated order-book signals are generated once per worker tick and retain the latest record for every selected symbol; display pagination is separate from signal coverage.";
   portfolio["order_book_signal_diagnostics"] = signal_diagnostics;
+  if (diagnostics_enabled_) {
+    portfolio["reconciliation_diagnostics"] =
+        reconciliation_diagnostics_.toJson(nowEpochSeconds());
+  }
 
   return portfolio;
 }
@@ -2182,6 +2204,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   if (symbols_.empty()) {
     symbols_ = defaultSymbols();
   }
+  reconciliation_diagnostics_.reset(symbols_);
 
   // Canonical key is `parameters`; older frontends sent the same object as
   // `strategy_params`, so accept that alias too.
@@ -2192,6 +2215,9 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   } else {
     parameters_ = Json::Value(Json::objectValue);
   }
+  diagnostics_enabled_ = paramBool(parameters_, "diagnostics_enabled", false) ||
+                         paramBool(payload, "diagnostics_enabled", false);
+  reconciliation_diagnostics_.setEnabled(diagnostics_enabled_);
 
   // Top-level settings override/backfill the parameters object.
   for (const char *key : {"position_size_percent", "max_positions",
