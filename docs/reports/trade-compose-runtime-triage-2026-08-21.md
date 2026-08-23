@@ -75,13 +75,13 @@ validation.
   `cbc2c23bff0e375098cd8309a0fd5da18d94aa22`.
 - Authoritative push-triggered Docker Build Validation run for this head:
   [run 32626749456](https://github.com/chasekb/trade/actions/runs/32626749456),
-  head SHA `cbc2c23bff0e375098cd8309a0fd5da18d94aa22`, is currently `pending`
-  with no jobs materialized. No completion or success is claimed here.
+  head SHA `cbc2c23bff0e375098cd8309a0fd5da18d94aa22`, completed `cancelled`
+  before any jobs materialized. No completion or success is claimed here.
 - The matching pull-request run,
   [run 32626752385](https://github.com/chasekb/trade/actions/runs/32626752385),
   has the same head SHA but is not the authoritative closeout run because pull
   requests intentionally run only the amd64 build jobs and do not publish
-  manifests. Its two visible amd64 jobs remain queued.
+  manifests. Its visible jobs were cancelled before execution.
 
 The prior green run,
 [run 32598290563](https://github.com/chasekb/trade/actions/runs/32598290563),
@@ -99,12 +99,12 @@ but are historical evidence only:
 For the authoritative push run `32626749456`, the required job status snapshot
 was:
 
-- `Build Frontend (amd64)`: pending/not materialized.
-- `Build C++ Backend (amd64)`: pending/not materialized.
-- `Build C++ Backend (arm64)`: pending/not materialized.
-- `Build Frontend (arm64)`: pending/not materialized.
-- `Publish Frontend manifest`: pending/not materialized.
-- `Publish C++ Backend manifest`: pending/not materialized.
+- `Build Frontend (amd64)`: cancelled/not materialized.
+- `Build C++ Backend (amd64)`: cancelled/not materialized.
+- `Build C++ Backend (arm64)`: cancelled/not materialized.
+- `Build Frontend (arm64)`: cancelled/not materialized.
+- `Publish Frontend manifest`: cancelled/not materialized.
+- `Publish C++ Backend manifest`: cancelled/not materialized.
 
 The prior green run,
 [run 32598290563](https://github.com/chasekb/trade/actions/runs/32598290563),
