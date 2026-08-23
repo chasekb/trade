@@ -3,6 +3,7 @@
 #include "exchange/CoinbaseAdvancedClient.hpp"
 #include "trading/CoinbasePortfolio.hpp"
 #include "trading/TradingStatsCalculator.hpp"
+#include "trading/LiquidationSafety.hpp"
 
 #include <drogon/drogon.h>
 
@@ -202,6 +203,7 @@ private:
   bool markPersistedOrderTerminal(const std::string &order_id,
                                   const std::string &status);
   bool recoverPendingOrders();
+  bool recoverLiquidationAttempts();
   void applyLiveFillLocked(const OrderIntent &intent, const exchange::OrderFill &fill,
                            bool account_snapshot_reflects_fill = false);
   bool liveOrderExecutionEnabledLocked() const;
@@ -280,6 +282,7 @@ private:
   std::vector<OrderIntent> pending_orders_;
   std::vector<PendingLiveOrder> pending_live_orders_;
   std::set<std::string> pending_order_symbols_;
+  std::set<std::string> liquidation_attempted_symbols_;
   std::set<std::string> account_managed_symbols_;
   std::map<std::string, double> account_available_quantities_;
   std::map<std::string, std::pair<double, int>> managed_quantity_floors_;

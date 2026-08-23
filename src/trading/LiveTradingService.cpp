@@ -613,7 +613,7 @@ void LiveTradingService::queueTradeWriteLocked(const TradeRecord &trade) {
   pending_trade_writes_.push_back(trade);
   if (trade.trade_type == "live_account_managed_add" ||
       trade.trade_type == "live_account_managed_close" ||
-      trade.trade_type == "live_liquidation") {
+      trade.trade_type == kLiquidationTradeType) {
     return;
   }
   session_trade_inputs_.push_back(TradePerformanceInput{
@@ -743,7 +743,7 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
     if (position.quantity <= 1e-12) {
       positions_.erase(position_it);
     }
-  } else if (intent.action == "liquidate_holding") {
+  } else if (intent.action == kLiquidationAction) {
     auto position_it = positions_.find(intent.product_id);
     if (position_it == positions_.end()) {
       TR_LOG_WARN("Received Coinbase liquidation fill for missing holding {}",
@@ -773,7 +773,7 @@ void LiveTradingService::applyLiveFillLocked(const OrderIntent &intent,
     trade.win_probability = 0.0;
     trade.expected_return = 0.0;
     trade.model_confidence = 0.0;
-    trade.trade_type = "live_liquidation";
+    trade.trade_type = kLiquidationTradeType;
   } else {
     auto position_it = positions_.find(intent.product_id);
     const bool inherited_add = intent.action == "add" &&
@@ -942,7 +942,7 @@ bool LiveTradingService::markPersistedOrderByClientId(
     return true;
   } catch (const std::exception &e) {
     TR_LOG_ERROR("Failed to update Coinbase client order {}: {}", client_order_id,
-                 e.what());
+                 redactSensitiveText(e.what()));
     return false;
   }
 }
@@ -1032,6 +1032,24 @@ bool LiveTradingService::recoverPendingOrders() {
   }
 }
 
+bool LiveTradingService::recoverLiquidationAttempts() {
+  try {
+    const auto rows = DatabaseManager::getInstance().query(
+        "SELECT DISTINCT product_id FROM live_coinbase_orders WHERE action='" +
+        std::string(kLiquidationAction) + "'");
+    for (const auto &row : rows) {
+      if (!row["product_id"].is_null()) {
+        liquidation_attempted_symbols_.insert(row["product_id"].as<std::string>());
+      }
+    }
+    return true;
+  } catch (const std::exception &e) {
+    TR_LOG_ERROR("Failed to recover Coinbase liquidation guards: {}",
+                 redactSensitiveText(e.what()));
+    return false;
+  }
+}
+
 LiveTradingService::OrderDispatchResult
 LiveTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
   OrderDispatchResult dispatch_result;
@@ -1084,8 +1102,8 @@ LiveTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
             PendingLiveOrder{"", client_order_id, intent, true, false, false});
       }
       TR_LOG_ERROR("Coinbase order FAILED: {} {} {} ({}): {} [{}]", intent.side, intent.amount,
-                   intent.product_id, intent.amount_is_quote ? "quote" : "base", result.error,
-                   intent.reason);
+                   intent.product_id, intent.amount_is_quote ? "quote" : "base",
+                   redactSensitiveText(result.error), intent.reason);
       dispatch_result.error = result.error;
       continue;
     }
@@ -2162,6 +2180,13 @@ Json::Value LiveTradingService::liquidateCoinbaseHoldingLocked(const std::string
     return result;
   }
 
+  if (!liquidationAttemptAllowed(liquidation_attempted_symbols_.count(symbol) > 0,
+                                 pending_order_symbols_.count(symbol) > 0)) {
+    result["status"] = "skipped";
+    result["reason"] = "A one-time liquidation attempt already exists for this symbol";
+    return result;
+  }
+
   const PositionState position = it->second;
   if (position.session_managed) {
     result["status"] = "skipped";
@@ -2188,7 +2213,7 @@ Json::Value LiveTradingService::liquidateCoinbaseHoldingLocked(const std::string
   const double available_quantity = available_it == account_available_quantities_.end()
                                         ? 0.0
                                         : available_it->second;
-  const double sell_quantity = std::min(position.quantity, available_quantity);
+  const double sell_quantity = cappedLiquidationQuantity(position.quantity, available_quantity);
   if (!std::isfinite(sell_quantity) || sell_quantity <= 1e-12) {
     result["status"] = "skipped";
     result["reason"] = "Coinbase reports no available quantity to sell";
@@ -2213,8 +2238,9 @@ Json::Value LiveTradingService::liquidateCoinbaseHoldingLocked(const std::string
   intent.amount = sell_quantity;
   intent.amount_is_quote = false;
   intent.reason = "Liquidate Coinbase holding";
-  intent.action = "liquidate_holding";
+  intent.action = kLiquidationAction;
   intent.position = position;
+  liquidation_attempted_symbols_.insert(symbol);
   queueOrderIntentLocked(std::move(intent));
 
   result["status"] = "pending";
@@ -2902,7 +2928,7 @@ Json::Value LiveTradingService::startSession(const Json::Value &payload) {
   last_account_snapshot_at_.clear();
   pending_reserved_cash_ = 0.0;
   applyLiveAccountSnapshotLocked(live_account_snapshot, true);
-  if (!recoverPendingOrders()) {
+  if (!recoverPendingOrders() || !recoverLiquidationAttempts()) {
     exchange_client_.reset();
     Json::Value resp;
     resp["status"] = "error";
