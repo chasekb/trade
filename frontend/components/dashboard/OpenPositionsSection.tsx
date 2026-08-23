@@ -13,9 +13,13 @@ type OpenPositionRow = {
     inherited_quantity?: number | string;
     management_state?: string;
     eligible_for_strategy_management?: boolean;
+    reconciliation_status?: string;
 };
 
 const managementLabel = (position: OpenPositionRow) => {
+    if (position.reconciliation_status === 'stale_internal') return 'Reconciliation pending';
+    if (position.reconciliation_status === 'pending_settlement') return 'Pending settlement';
+    if (position.reconciliation_status === 'awaiting_snapshot_reconciliation') return 'Awaiting Coinbase snapshot';
     if (position.management_state === 'account_managed') return 'Account-managed';
     if (position.management_state === 'eligible_account_holding') return 'Eligible account holding';
     if (position.management_state === 'session_managed' || position.session_managed !== false) return 'Session-managed';
@@ -40,7 +44,8 @@ export function OpenPositionsSection({
     const [closingPosition, setClosingPosition] = useState<string | null>(null);
     const [liquidatingPosition, setLiquidatingPosition] = useState<string | null>(null);
     const [liquidatingAll, setLiquidatingAll] = useState(false);
-    const coinbaseHoldingCount = positions.filter((position) => position.session_managed === false).length;
+    const coinbaseHoldingCount = positions.filter((position) =>
+        position.session_managed === false && position.reconciliation_status !== 'stale_internal').length;
 
     const handleClose = async (symbol: string) => {
         if (onClose) {
@@ -128,8 +133,9 @@ export function OpenPositionsSection({
                     <tbody className="bg-white divide-y divide-gray-200">
                         {pageData.map((pos: OpenPositionRow, index: number) => {
                             const symbol = pos.symbol ?? '';
-                            const canClose = (!onClose || pos.session_managed !== false) && symbol.length > 0;
-                            const canLiquidate = pos.session_managed === false && Boolean(onLiquidateHolding) && symbol.length > 0;
+                            const exposureVerified = pos.reconciliation_status !== 'stale_internal';
+                            const canClose = exposureVerified && (!onClose || pos.session_managed !== false) && symbol.length > 0;
+                            const canLiquidate = exposureVerified && pos.session_managed === false && Boolean(onLiquidateHolding) && symbol.length > 0;
 
                             return (
                             <tr key={`${symbol}-${pos.entry_time}-${index}`}>
