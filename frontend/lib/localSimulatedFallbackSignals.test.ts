@@ -1,7 +1,11 @@
 describe('local simulated fallback order-book signal contract', () => {
-  const loadApi = async () => {
+  const loadApi = async (forceLocal = true) => {
     jest.resetModules();
-    process.env.NEXT_PUBLIC_FORCE_LOCAL_SIM_TRADING = 'true';
+    if (forceLocal) {
+      process.env.NEXT_PUBLIC_FORCE_LOCAL_SIM_TRADING = 'true';
+    } else {
+      delete process.env.NEXT_PUBLIC_FORCE_LOCAL_SIM_TRADING;
+    }
     return import('./api');
   };
 
@@ -45,5 +49,22 @@ describe('local simulated fallback order-book signal contract', () => {
     expect(signal.ml_analysis?.factoring_semantics).toBe('unavailable');
     expect(signal.ml_analysis?.profitability_gate_passed).toBe(false);
     expect(signal.ml_analysis?.profitability_gate_reason).toBe('Expected-return diagnostic is unavailable');
+  });
+
+  it('does not claim an active session when both backend starts fail', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ error: 'backend unavailable' }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const { apiClient } = await loadApi(false);
+
+    const response = await apiClient.startTrading('simulated', 'rsi', ['SOL-USD'], {}, {});
+
+    expect(response.status).toBe('error');
+    expect(response.error).toBe('backend unavailable');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
