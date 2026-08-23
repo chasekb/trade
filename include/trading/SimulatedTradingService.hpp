@@ -113,6 +113,13 @@ private:
     int order_book_depth = 0;
     double volume = 0.0;
     int total_signals = 0;
+    // Preserve the strategy decision separately from the final signal type.
+    // Profitability gates may downgrade a generated buy/sell to HOLD, but the
+    // execution analysis must still attribute that generated intent and its
+    // original side to the blocker rather than treating it as an unevaluated
+    // hold.
+    bool signal_generated = false;
+    std::string generated_signal_type;
   };
 
   // Rows produced under the mutex, flushed to Postgres outside it so API

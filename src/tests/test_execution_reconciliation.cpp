@@ -146,6 +146,19 @@ int main() {
   expectNear(ob.blockers.back().blocked_expected_return_sum, 0.010, 1e-9,
              "positive-edge intents blocked by cash are surfaced separately");
 
+  // A generated intent rejected by a profitability gate is still generated,
+  // but it is blocked and never becomes a fill. This is the parity contract
+  // used when a service exposes HOLD as the post-gate signal type.
+  const auto generated_but_blocked = reconcileExecution(
+      {blocked("orderbook", "profitability_gate", -0.002)}, {});
+  const auto &gate_block = generated_but_blocked.by_strategy.at("orderbook");
+  expect(gate_block.signals_generated == 1,
+         "profitability-gated intent remains a generated signal");
+  expect(gate_block.blocked_intents == 1,
+         "profitability-gated intent is counted as blocked");
+  expect(gate_block.executable_intents == 0 && gate_block.closing_legs == 0,
+         "blocked intent is not counted as an execution outcome");
+
   const auto &rsi = report.by_strategy.at("rsi");
   expect(rsi.losers == 1 && rsi.winners == 0, "rsi has a single losing outcome");
   expectNear(rsi.win_rate, 0.0, 1e-9, "rsi win rate is zero");

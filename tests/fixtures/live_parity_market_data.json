@@ -1,0 +1,29 @@
+{
+  "fixture_name": "btc_eth_live_parity_v1",
+  "execution_mode": "live_parity",
+  "strategy": "orderbook",
+  "symbols": ["BTC-USD", "ETH-USD"],
+  "parameters": {
+    "round_trip_fee_percent": 0.8,
+    "slippage_buffer_percent": 0.2,
+    "min_orderbook_signal_strength": 0.22,
+    "max_positions": 4,
+    "initial_portfolio_size": 10000.0
+  },
+  "ticks": [
+    {
+      "timestamp": "2026-01-15T15:00:00Z",
+      "quotes": {
+        "BTC-USD": {"mid": 42000.0, "best_bid": 41995.0, "best_ask": 42005.0, "spread": 10.0, "imbalance": 0.72, "volume": 1250.0, "depth": 20},
+        "ETH-USD": {"mid": 2500.0, "best_bid": 2499.5, "best_ask": 2500.5, "spread": 1.0, "imbalance": -0.68, "volume": 8400.0, "depth": 20}
+      }
+    },
+    {
+      "timestamp": "2026-01-15T15:00:01Z",
+      "quotes": {
+        "BTC-USD": {"mid": 42020.0, "best_bid": 42015.0, "best_ask": 42025.0, "spread": 10.0, "imbalance": 0.70, "volume": 1260.0, "depth": 20},
+        "ETH-USD": {"mid": 2498.0, "best_bid": 2497.5, "best_ask": 2498.5, "spread": 1.0, "imbalance": -0.66, "volume": 8420.0, "depth": 20}
+      }
+    }
+  ]
+}

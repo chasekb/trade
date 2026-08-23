@@ -493,7 +493,7 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   out["symbol"] = signal.symbol;
   out["signal_type"] = signal.signal_type;
   out["signal"] = signal.signal_type;
-  out["signal_generated"] = signal.signal_type != "hold";
+  out["signal_generated"] = signal.signal_generated;
   out["strength"] = signal.strength;
   out["signal_strength"] = signal.strength;
   out["price"] = signal.price;
@@ -520,8 +520,8 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   Json::Value analysis(Json::objectValue);
   const Json::Value ml_analysis =
       signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
-  const bool signal_generated = signal.signal_type != "hold";
-  const std::string side = sanitizeSide(signal.signal_type);
+  const bool signal_generated = signal.signal_generated;
+  const std::string side = sanitizeSide(signal.generated_signal_type);
   const double expected_return =
       ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
   const double fee_adjusted_expected_return =
@@ -546,6 +546,13 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
         !ml_analysis.get("profitability_gate_passed", Json::Value(true)).asBool()) {
       analysis["blocker_reason"] = "profitability_gate";
     }
+    return analysis;
+  }
+  // A profitability rejection changes the displayed signal to HOLD below,
+  // but it remains a generated intent and must retain this blocker reason.
+  if (ml_analysis.isMember("profitability_gate_passed") &&
+      !ml_analysis.get("profitability_gate_passed", Json::Value(true)).asBool()) {
+    analysis["blocker_reason"] = "profitability_gate";
     return analysis;
   }
   if (!signalPassesMlGateLocked(signal)) {
@@ -1131,6 +1138,8 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
 
   signal.signal_type = signal_type;
   signal.strength = strength;
+  signal.signal_generated = generated;
+  signal.generated_signal_type = signal_type;
   signal.price = mid;
   signal.spread = spread;
   signal.imbalance = imbalance;
@@ -1346,7 +1355,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
       signal.strength = 0.0;
       payload["signal_type"] = signal.signal_type;
       payload["signal"] = signal.signal_type;
-      payload["signal_generated"] = false;
+      payload["signal_generated"] = signal.signal_generated;
       payload["signal_strength"] = signal.strength;
       payload["signal_reason"] = gate.reason;
       payload["data_status"] = "sufficient";
@@ -1411,10 +1420,13 @@ bool SimulatedTradingService::signalPassesMlGateLocked(const SignalRecord &signa
 
   // win_probability is trained as the probability of a favorable (upward)
   // outcome, so buys need it high and sells need it correspondingly low.
-  if (signal.signal_type == "buy") {
+  const std::string decision_side = signal.generated_signal_type.empty()
+                                        ? signal.signal_type
+                                        : signal.generated_signal_type;
+  if (decision_side == "buy") {
     return win_probability >= threshold;
   }
-  if (signal.signal_type == "sell") {
+  if (decision_side == "sell") {
     return win_probability <= 1.0 - threshold;
   }
   return false;
@@ -1757,7 +1769,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     queueSignalWriteLocked(signal);
 
     auto position_it = positions_.find(symbol);
-    const bool signal_generated = signal.signal_type != "hold";
+    const bool signal_generated = signal.signal_generated;
     if (signal_generated) {
       ++signals_generated_;
     }
