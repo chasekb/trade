@@ -1,0 +1,62 @@
+
+===== 2026-08-22T23:08:31.560161-05:00 =====
+$ podman-compose down
+Error: no container with name or ID "t_63f7a4c5_cpp-backend_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_frontend_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_db_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_redis_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_frontend_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_cpp-backend_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_redis_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_db_1" found: no such container
+Error: no pod with name or ID pod_t_63f7a4c5 found: no such pod
+[exit=0]
+
+===== 2026-08-22T23:09:11.443869-05:00 =====
+$ podman ps -a --filter label=io.podman.compose.project=trade --format "{{.ID}} {{.Names}} {{.Status}} {{.Label \"io.podman.compose.service\"}}"
+b602fc4bbb34 trade_db_1 Up 33 minutes (healthy) db
+573ebdf37fc1 trade_redis_1 Up 33 minutes (healthy) redis
+22ef857dff07 trade_cpp-backend_1 Up 33 minutes (healthy) cpp-backend
+401a97cbd1c3 trade_frontend_1 Up 32 minutes (healthy) frontend
+[exit=0]
+
+===== 2026-08-22T23:09:11.527181-05:00 =====
+$ POSTGRES_HOST_PORT=5432 timeout 45s podman-compose up --no-build
+4135ad05b6cef1029d9d0d9cb6653f30afc1b6acb169b015d2b0afbece944860
+5509c0097c6064aa8a3b1df58f1d950e67090fffa6678ae8f3f1dc2385f12deb
+337d3bb4dee7ec2f23f5e000c080df127d8a918c9173dbe726ec0a68f3b10cac
+aad6289ca337b3ce76896f2e7e61480490152886c7828120371fb28e6b779e1d
+2cef2490244b8b682c3678c2843b95b9b8915844207b2122fb4ca3a94a410afb
+[exit=124]
+
+===== 2026-08-22T23:09:56.539728-05:00 =====
+$ podman ps -a --filter label=io.podman.compose.project=trade --format "{{.ID}} {{.Names}} {{.Status}} {{.Label \"io.podman.compose.service\"}}"
+b602fc4bbb34 trade_db_1 Up 34 minutes (healthy) db
+573ebdf37fc1 trade_redis_1 Up 35 minutes (healthy) redis
+22ef857dff07 trade_cpp-backend_1 Up 34 minutes (healthy) cpp-backend
+401a97cbd1c3 trade_frontend_1 Up 33 minutes (healthy) frontend
+[exit=0]
+
+===== 2026-08-22T23:10:20.357826-05:00 =====
+$ POSTGRES_HOST_PORT=5432 podman-compose down
+Error: no container with name or ID "t_63f7a4c5_cpp-backend_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_frontend_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_db_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_redis_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_frontend_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_cpp-backend_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_redis_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_db_1" found: no such container
+2cef2490244b8b682c3678c2843b95b9b8915844207b2122fb4ca3a94a410afb
+[exit=0]
+
+===== 2026-08-22T23:10:40.338260-05:00 =====
+$ podman ps -a --filter label=io.podman.compose.project=trade --format "{{.ID}} {{.Names}} {{.Status}} {{.Label \"io.podman.compose.service\"}}"
+b602fc4bbb34 trade_db_1 Up 35 minutes (healthy) db
+573ebdf37fc1 trade_redis_1 Up 35 minutes (healthy) redis
+22ef857dff07 trade_cpp-backend_1 Up 34 minutes (healthy) cpp-backend
+401a97cbd1c3 trade_frontend_1 Up 34 minutes (healthy) frontend
+[exit=0]
+
+===== 2026-08-22T23:10:47.656107-05:00 =====
+$ POSTGRES_HOST_PORT=5433 podman-compose up -d --no-build
