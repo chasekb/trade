@@ -72,16 +72,16 @@ validation.
 
 - Repository: [`chasekb/trade`](https://github.com/chasekb/trade).
 - Exact `origin/dev` SHA at this report revision:
-  `650f8f33071b38aed97285c64703dc8b6cbdcc80`.
+  `99dce999f04430b75e160a59ad702ce543b15dbb`.
 - Authoritative push-triggered Docker Build Validation run for this head:
-  [run 32625822575](https://github.com/chasekb/trade/actions/runs/32625822575),
-  head SHA `650f8f33071b38aed97285c64703dc8b6cbdcc80`, is currently `pending`
+  [run 32626178881](https://github.com/chasekb/trade/actions/runs/32626178881),
+  head SHA `99dce999f04430b75e160a59ad702ce543b15dbb`, is currently `pending`
   with no jobs materialized. No completion or success is claimed here.
 - The matching pull-request run,
-  [run 32625824148](https://github.com/chasekb/trade/actions/runs/32625824148),
+  [run 32626181364](https://github.com/chasekb/trade/actions/runs/32626181364),
   has the same head SHA but is not the authoritative closeout run because pull
   requests intentionally run only the amd64 build jobs and do not publish
-  manifests. It remains pending.
+  manifests. It remains queued.
 
 The prior green run,
 [run 32598290563](https://github.com/chasekb/trade/actions/runs/32598290563),
@@ -96,7 +96,8 @@ but are historical evidence only:
 - `Publish Frontend manifest`
 - `Publish C++ Backend manifest`
 
-For the authoritative push run, the required job status snapshot was:
+For the authoritative push run `32626178881`, the required job status snapshot
+was:
 
 - `Build Frontend (amd64)`: pending/not materialized.
 - `Build C++ Backend (amd64)`: pending/not materialized.
@@ -110,7 +111,7 @@ The prior green run,
 remains historical evidence only: all six jobs above succeeded there for
 head SHA `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not this report's SHA.
 Therefore, a fresh successful Docker Build Validation run for
-`650f8f33071b38aed97285c64703dc8b6cbdcc80` remains the CI closeout gate.
+`99dce999f04430b75e160a59ad702ce543b15dbb` remains the CI closeout gate.
 
 ### Fresh recreation and smoke evidence
 
