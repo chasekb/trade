@@ -43,6 +43,7 @@ set(SOURCES
     src/trading/PositionSizingPolicy.cpp
     src/trading/StrategySignal.cpp
     src/trading/StrategyExpectancyHarness.cpp
+    src/trading/OrderBookBaselineReport.cpp
     src/trading/ExecutionReconciliation.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
