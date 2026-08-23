@@ -616,8 +616,11 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   const handleStopTrading = async () => {
     try {
+      setActionError(null);
       await stopTrading();
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to stop trading';
+      setActionError(message);
       console.error('Failed to stop trading:', error);
     }
   };
