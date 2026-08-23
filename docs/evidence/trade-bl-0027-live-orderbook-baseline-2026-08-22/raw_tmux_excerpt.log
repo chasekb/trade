@@ -1,0 +1,29 @@
+# Frozen raw excerpt captured from tmux pane 0:7.0
+# Capture command:
+#   tmux capture-pane -pt 0:7.0 -S -10000 | grep -E 'sim_[0-9]+|selected|symbols|strategy|execution_mode|live_parity|ml_enhanced|Transformer|Start Trading|Trading session|session started'
+#   tmux capture-pane -pt 0:7.0 -S -10000 | grep -E 'individual_trades|order_book_signals|is_closing_leg|pnl|fees|trade|fill|blocked|execution_analysis'
+# Captured during investigation on 2026-08-23T03:37:51Z. Source logs use UTC.
+
+[db]          | 2026-08-22 15:51:55.995 UTC [1656] ERROR:  column "is_closing_leg" does not exist at character 42
+[db]          | 2026-08-22 15:51:55.995 UTC [1656] STATEMENT:  SELECT symbol, strategy_type, pnl, fees, is_closing_leg FROM individual_trades WHERE timestamp >= 1787327514
+[cpp-backend] | [2026-08-22 15:51:55.995] [trading_bot] [error] Database query failed: ERROR:  column "is_closing_leg" does not exist
+[db]          | 2026-08-22 16:01:07.250 UTC [4734] ... Loaded Transformer model. Lookback: 60, Features: 353
+[cpp-backend] | [2026-08-22 16:08:43.785] [trading_bot] [info] Simulated trading worker started for session sim_17874
+[cpp-backend] | [2026-08-22 16:09:46.632 UTC] [trading_bot] [warning] Failed to fetch order book for YB-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 16:22:51.831 UTC] [trading_bot] [warning] Failed to fetch order book for FIGHT-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 16:48:46.874 UTC] [trading_bot] [warning] Failed to fetch order book for ALGO-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 17:51:47.464 UTC] [trading_bot] [warning] Failed to fetch order book for SHIB-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 18:00:49.553 UTC] [trading_bot] [warning] Failed to fetch order book for MORPHO-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 18:35:37.879 UTC] [trading_bot] [warning] Failed to fetch order book for PNUT-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 18:45:14.213 UTC] [trading_bot] [warning] Failed to fetch order book for AUDIO-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 20:58:31.802 UTC] [trading_bot] [warning] Failed to fetch order book for AI-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 22:12:46.169 UTC] [trading_bot] [warning] Failed to fetch order book for RLS-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 22:38:55.528 UTC] [trading_bot] [warning] Failed to fetch order book for XYO-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 22:40:39.963 UTC] [trading_bot] [warning] Failed to fetch order book for LSETH-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-22 23:45:14.688 UTC] [trading_bot] [warning] Failed to fetch order book for NEX-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-23 01:24:34.775 UTC] [trading_bot] [warning] Failed to fetch order book for STX-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-23 01:49:42.772 UTC] [trading_bot] [warning] Failed to fetch order book for FOX-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-23 02:02:44.283 UTC] [trading_bot] [warning] Failed to fetch order book for JASMY-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-23 02:55:35.334 UTC] [trading_bot] [warning] Failed to fetch order book for STRK-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-23 03:14:39.923 UTC] [trading_bot] [warning] Failed to fetch order book for PYTH-USD: request failed (network or TLS error) (category=tls, retries=1)
+[cpp-backend] | [2026-08-23 03:24:09.281 UTC] [trading_bot] [warning] Failed to fetch order book for ZK-USD: request failed (network or TLS error) (category=tls, retries=1)
