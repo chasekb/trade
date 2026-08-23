@@ -12,7 +12,11 @@ namespace trading {
 
 struct StrategyExpectancyFixture {
   std::string name;
+  std::string symbol = "BTC-USD";
   std::string strategy;
+  std::string model_branch = "baseline";
+  std::string event_time;
+  std::string partition = "default";
   std::deque<double> prices;
   StrategyParams params;
   bool has_position = false;
@@ -35,7 +39,11 @@ struct StrategyExpectancyFixture {
 
 struct StrategyExpectancyRow {
   std::string fixture_name;
+  std::string symbol;
   std::string strategy;
+  std::string model_branch;
+  std::string event_time;
+  std::string partition;
   std::string signal_type = "hold";
   double signal_strength = 0.0;
   bool diagnostics_available = false;
@@ -70,10 +78,22 @@ struct StrategyExpectancyReport {
   StrategyExpectancyMetrics overall;
 };
 
+// A checked-in chronological evaluation split. Fixtures in each partition
+// are ordered oldest-to-newest and are disjoint by fixture identifier/time.
+struct StrategyExpectancyPartition {
+  std::string name;
+  std::string description;
+  std::string normalization_assumptions;
+  std::vector<StrategyExpectancyFixture> fixtures;
+};
+
 StrategyExpectancyReport evaluateStrategyExpectancy(
     const std::vector<StrategyExpectancyFixture> &fixtures);
 
 std::vector<StrategyExpectancyFixture> defaultStrategyExpectancyFixtures();
+
+// Stable train/validation/test fixtures for evaluation-only work.
+std::vector<StrategyExpectancyPartition> defaultStrategyExpectancyPartitions();
 
 } // namespace trading
 } // namespace trade

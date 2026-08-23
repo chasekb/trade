@@ -8,6 +8,7 @@
 
 using trade::trading::StrategyExpectancyFixture;
 using trade::trading::defaultStrategyExpectancyFixtures;
+using trade::trading::defaultStrategyExpectancyPartitions;
 using trade::trading::evaluateStrategyExpectancy;
 
 namespace {
@@ -65,6 +66,32 @@ int main() {
     }
   }
   expect(saw_fee_negative_block, "regression fixture exercised fee-negative block");
+
+  const auto partitions = defaultStrategyExpectancyPartitions();
+  expect(partitions.size() == 3, "stable train validation test partition count");
+  std::set<std::string> fixture_ids;
+  std::string previous_time;
+  std::size_t partition_samples = 0;
+  for (const auto &partition : partitions) {
+    expect(!partition.fixtures.empty(), partition.name + " has samples");
+    for (const auto &fixture : partition.fixtures) {
+      expect(fixture.partition == partition.name, fixture.name + " records its partition");
+      expect(fixture.event_time > previous_time, fixture.name + " preserves chronological order");
+      previous_time = fixture.event_time;
+      expect(fixture_ids.insert(fixture.name).second, fixture.name + " is unique");
+      expect(!fixture.symbol.empty() && !fixture.model_branch.empty(),
+             fixture.name + " records symbol and model branch");
+      ++partition_samples;
+    }
+  }
+  expect(partition_samples == 18, "deterministic partition sample count");
+  const auto partition_report = evaluateStrategyExpectancy(partitions.front().fixtures);
+  expect(partition_report.overall.trades_filled > 0, "partition includes accepted intents");
+  expect(partition_report.overall.blocked_intents >= 3,
+         "partition includes rejected and blocked intents");
+  expect(partition_report.rows.front().symbol == "BTC-USD", "row preserves symbol metadata");
+  expect(partition_report.rows.front().model_branch == "pca",
+         "row preserves model branch metadata");
 
   std::vector<StrategyExpectancyFixture> high_count_loser;
   for (int i = 0; i < 5; ++i) {

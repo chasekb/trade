@@ -40,10 +40,16 @@ void addFixture(std::vector<StrategyExpectancyFixture> &fixtures,
                 const std::string &name, const std::string &strategy,
                 std::deque<double> prices, double expected_return_fraction,
                 double realized_pnl, bool has_position = false,
-                long long ticks_since_last_entry = 0) {
+                long long ticks_since_last_entry = 0,
+                const std::string &symbol = "BTC-USD",
+                const std::string &model_branch = "baseline",
+                const std::string &event_time = "") {
   StrategyExpectancyFixture fixture;
   fixture.name = name;
+  fixture.symbol = symbol;
   fixture.strategy = strategy;
+  fixture.model_branch = model_branch;
+  fixture.event_time = event_time;
   fixture.prices = std::move(prices);
   fixture.expected_return_fraction = expected_return_fraction;
   fixture.realized_pnl = realized_pnl;
@@ -118,7 +124,11 @@ StrategyExpectancyReport evaluateStrategyExpectancy(
   for (const auto &fixture : fixtures) {
     StrategyExpectancyRow row;
     row.fixture_name = fixture.name;
+    row.symbol = fixture.symbol;
     row.strategy = fixture.strategy;
+    row.model_branch = fixture.model_branch;
+    row.event_time = fixture.event_time;
+    row.partition = fixture.partition;
 
     const auto signal = evaluateStrategySignal(fixture.strategy, fixture.prices,
                                                fixture.params, fixture.has_position,
@@ -197,6 +207,81 @@ std::vector<StrategyExpectancyFixture> defaultStrategyExpectancyFixtures() {
              linearSeries(100.0, 0.5, 60), 0.004, -8.0);
 
   return fixtures;
+}
+
+std::vector<StrategyExpectancyPartition> defaultStrategyExpectancyPartitions() {
+  std::vector<StrategyExpectancyPartition> partitions;
+
+  StrategyExpectancyPartition train{
+      "train-2026-01", "Early chronological calibration window; no later outcomes are visible.",
+      "Prices oldest-to-newest; fractions are decimal returns; realized_pnl is net of costs.", {}};
+  addFixture(train.fixtures, "train-btc-sma-pca-buy", "sma", linearSeries(100.0, 0.5, 60),
+             0.030, 18.0, false, 0, "BTC-USD", "pca", "2026-01-05T00:00:00Z");
+  addFixture(train.fixtures, "train-eth-ema-transformer-sell", "ema",
+             linearSeries(130.0, -0.5, 60), -0.028, 12.0, false, 0, "ETH-USD", "transformer",
+             "2026-01-05T00:01:00Z");
+  addFixture(train.fixtures, "train-sol-rsi-pca-buy", "rsi", linearSeries(130.0, -1.0, 30),
+             0.026, 14.0, false, 0, "SOL-USD", "pca", "2026-01-05T00:02:00Z");
+  addFixture(train.fixtures, "train-btc-bollinger-weak", "bollinger", bollingerExtreme(90.0),
+             0.024, 0.0, false, 0, "BTC-USD", "transformer", "2026-01-05T00:03:00Z");
+  train.fixtures.back().min_signal_strength = 1.1;
+  addFixture(train.fixtures, "train-eth-macd-unavailable", "macd", linearSeries(100.0, 0.4, 80),
+             0.029, 0.0, false, 0, "ETH-USD", "pca", "2026-01-05T00:04:00Z");
+  train.fixtures.back().expected_return_available = false;
+  addFixture(train.fixtures, "train-sol-stochastic-spread", "stochastic",
+             linearSeries(120.0, -1.0, 30), 0.025, 0.0, false, 0, "SOL-USD", "transformer",
+             "2026-01-05T00:05:00Z");
+  train.fixtures.back().spread_fraction = 0.030;
+  for (auto &fixture : train.fixtures) fixture.partition = train.name;
+  partitions.push_back(std::move(train));
+
+  StrategyExpectancyPartition validation{
+      "validation-2026-02", "Middle chronological validation window with unseen fixture identifiers.",
+      "No shuffling; directional sell edge is sign-adjusted before cost factoring.", {}};
+  addFixture(validation.fixtures, "validation-btc-fibonacci-pca-buy", "fibonacci",
+             fibonacciPullback(), 0.023, 8.0, false, 0, "BTC-USD", "pca", "2026-02-05T00:00:00Z");
+  addFixture(validation.fixtures, "validation-eth-buyandhold-transformer-buy", "buyandhold",
+             linearSeries(100.0, 0.0, 3), 0.027, 20.0, false, 0, "ETH-USD", "transformer",
+             "2026-02-05T00:01:00Z");
+  addFixture(validation.fixtures, "validation-sol-dca-pca-buy", "dca", linearSeries(100.0, 0.1, 5),
+             0.022, 6.0, false, 0, "SOL-USD", "pca", "2026-02-05T00:02:00Z");
+  addFixture(validation.fixtures, "validation-btc-sma-explicit-block", "sma",
+             linearSeries(100.0, 0.5, 60), 0.030, 0.0, false, 0, "BTC-USD", "transformer",
+             "2026-02-05T00:03:00Z");
+  validation.fixtures.back().blocked = true;
+  validation.fixtures.back().blocked_reason = "fixture risk hold";
+  addFixture(validation.fixtures, "validation-eth-rsi-sell-directional", "rsi",
+             linearSeries(100.0, 1.0, 30), -0.026, 9.0, false, 0, "ETH-USD", "pca",
+             "2026-02-05T00:04:00Z");
+  addFixture(validation.fixtures, "validation-sol-ema-fee-negative", "ema",
+             linearSeries(100.0, 0.5, 60), 0.004, -8.0, false, 0, "SOL-USD", "transformer",
+             "2026-02-05T00:05:00Z");
+  for (auto &fixture : validation.fixtures) fixture.partition = validation.name;
+  partitions.push_back(std::move(validation));
+
+  StrategyExpectancyPartition test{
+      "test-2026-03", "Final chronological holdout; never used for candidate calibration.",
+      "The holdout preserves source ordering and applies the same decimal-cost convention.", {}};
+  addFixture(test.fixtures, "test-btc-macd-pca-buy", "macd", linearSeries(100.0, 0.4, 80),
+             0.029, 15.0, false, 0, "BTC-USD", "pca", "2026-03-05T00:00:00Z");
+  addFixture(test.fixtures, "test-eth-stochastic-transformer-sell", "stochastic",
+             linearSeries(100.0, 1.0, 30), -0.025, 7.0, false, 0, "ETH-USD", "transformer",
+             "2026-03-05T00:01:00Z");
+  addFixture(test.fixtures, "test-sol-bollinger-pca-buy", "bollinger", bollingerExtreme(90.0),
+             0.024, 12.0, false, 0, "SOL-USD", "pca", "2026-03-05T00:02:00Z");
+  addFixture(test.fixtures, "test-btc-sma-spread-filter", "sma", linearSeries(100.0, 0.5, 60),
+             0.030, 0.0, false, 0, "BTC-USD", "transformer", "2026-03-05T00:03:00Z");
+  test.fixtures.back().spread_fraction = 0.030;
+  addFixture(test.fixtures, "test-eth-dca-unavailable", "dca", linearSeries(100.0, 0.1, 5),
+             0.022, 0.0, false, 0, "ETH-USD", "pca", "2026-03-05T00:04:00Z");
+  test.fixtures.back().expected_return_available = false;
+  addFixture(test.fixtures, "test-sol-buyandhold-transformer-buy", "buyandhold",
+             linearSeries(100.0, 0.0, 3), 0.027, 20.0, false, 0, "SOL-USD", "transformer",
+             "2026-03-05T00:05:00Z");
+  for (auto &fixture : test.fixtures) fixture.partition = test.name;
+  partitions.push_back(std::move(test));
+
+  return partitions;
 }
 
 } // namespace trading
