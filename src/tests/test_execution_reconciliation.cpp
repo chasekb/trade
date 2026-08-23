@@ -56,6 +56,18 @@ SignalAttribution executable(const std::string &strategy) {
   return signal;
 }
 
+SignalAttribution symbolBlocked(const std::string &symbol, const std::string &reason) {
+  auto signal = blocked("orderbook", reason, -0.001);
+  signal.symbol = symbol;
+  return signal;
+}
+
+SignalAttribution symbolExecutable(const std::string &symbol) {
+  auto signal = executable("orderbook");
+  signal.symbol = symbol;
+  return signal;
+}
+
 OutcomeAttribution close(const std::string &strategy, double pnl, double fees = 0.0) {
   OutcomeAttribution outcome;
   outcome.strategy = strategy;
@@ -91,6 +103,7 @@ int main() {
   // Empty input is a valid, all-zero report rather than an error.
   const auto empty = reconcileExecution({}, {});
   expect(empty.by_strategy.empty(), "empty input yields no strategy rows");
+  expect(empty.by_symbol.empty(), "empty input yields no symbol rows");
   expect(empty.overall.signals_evaluated == 0, "empty input has no evaluated signals");
   expect(!empty.overall.outcomes_unexplained, "empty input is not flagged unexplained");
 
@@ -157,6 +170,26 @@ int main() {
   expect(report.overall.closing_legs == 3, "overall closing legs across strategies");
   expectNear(report.overall.total_pnl, 2.0, 1e-9, "overall total pnl");
   expect(report.overall.blockers.size() == 3, "overall keeps every blocker bucket");
+
+  // Selected-universe diagnostics must preserve per-symbol blockers and
+  // outcomes instead of collapsing every symbol into one strategy bucket.
+  auto unmatched = close("orderbook", 2.0);
+  unmatched.symbol = "ETH-USD";
+  const auto universe = reconcileExecution(
+      {symbolBlocked("ADA-USD", "profitability_gate"),
+       symbolBlocked("BTC-USD", "ml_confidence_gate"),
+       symbolExecutable("SOL-USD")},
+      {unmatched});
+  expect(universe.by_symbol.size() == 4,
+         "symbol reconciliation includes every selected symbol plus outcome symbol");
+  expect(universe.by_symbol.at("ADA-USD").dominant_blocker == "profitability_gate",
+         "ADA blocker remains attributed to ADA");
+  expect(universe.by_symbol.at("BTC-USD").dominant_blocker == "ml_confidence_gate",
+         "BTC blocker remains attributed to BTC");
+  expect(universe.by_symbol.at("SOL-USD").executable_intents == 1,
+         "SOL executable paper intent remains attributed to SOL");
+  expect(universe.by_symbol.at("ETH-USD").outcomes_unexplained,
+         "outcome with no matching symbol intent is flagged unexplained");
 
   // A window that contains outcomes but no executable intents is not silently
   // reported as a clean reconciliation.

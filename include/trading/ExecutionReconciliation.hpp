@@ -77,6 +77,9 @@ struct StrategyReconciliation {
 
 struct ExecutionReconciliationReport {
   std::map<std::string, StrategyReconciliation> by_strategy;
+  // Keep symbol-level attribution alongside strategy totals so a selected
+  // universe can be reconciled without hiding a blocked or unfilled symbol.
+  std::map<std::string, StrategyReconciliation> by_symbol;
   StrategyReconciliation overall;
 };
 

@@ -23,6 +23,10 @@ std::string strategyKey(const std::string &strategy) {
   return strategy.empty() ? kUnknownStrategy : strategy;
 }
 
+std::string symbolKey(const std::string &symbol) {
+  return symbol.empty() ? "unknown" : symbol;
+}
+
 void applySignal(Accumulator &acc, const SignalAttribution &signal) {
   ++acc.totals.signals_evaluated;
   if (!signal.signal_generated) {
@@ -119,24 +123,34 @@ ExecutionReconciliationReport
 reconcileExecution(const std::vector<SignalAttribution> &signals,
                    const std::vector<OutcomeAttribution> &outcomes) {
   std::map<std::string, Accumulator> by_strategy;
+  std::map<std::string, Accumulator> by_symbol;
   Accumulator overall;
 
   for (const auto &signal : signals) {
     const std::string key = strategyKey(signal.strategy);
+    const std::string symbol = symbolKey(signal.symbol);
     by_strategy[key].totals.strategy = key;
     applySignal(by_strategy[key], signal);
+    by_symbol[symbol].totals.strategy = symbol;
+    applySignal(by_symbol[symbol], signal);
     applySignal(overall, signal);
   }
   for (const auto &outcome : outcomes) {
     const std::string key = strategyKey(outcome.strategy);
+    const std::string symbol = symbolKey(outcome.symbol);
     by_strategy[key].totals.strategy = key;
     applyOutcome(by_strategy[key], outcome);
+    by_symbol[symbol].totals.strategy = symbol;
+    applyOutcome(by_symbol[symbol], outcome);
     applyOutcome(overall, outcome);
   }
 
   ExecutionReconciliationReport report;
   for (const auto &[key, acc] : by_strategy) {
     report.by_strategy[key] = finalize(acc);
+  }
+  for (const auto &[key, acc] : by_symbol) {
+    report.by_symbol[key] = finalize(acc);
   }
   overall.totals.strategy = "overall";
   report.overall = finalize(overall);

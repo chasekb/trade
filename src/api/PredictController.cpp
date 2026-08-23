@@ -1798,6 +1798,12 @@ void PredictController::executionReconciliation(
   for (const auto &[strategy, metrics] : report.by_strategy) {
     resp["by_strategy"].append(reconciliation_to_json(metrics));
   }
+  resp["by_symbol"] = Json::arrayValue;
+  for (const auto &[symbol, metrics] : report.by_symbol) {
+    Json::Value row = reconciliation_to_json(metrics);
+    row["symbol"] = symbol;
+    resp["by_symbol"].append(row);
+  }
   resp["overall"] = reconciliation_to_json(report.overall);
 
   callback(HttpResponse::newHttpJsonResponse(resp));
