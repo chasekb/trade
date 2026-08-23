@@ -61,3 +61,78 @@ GET http://127.0.0.1:3000/api/health
 
 Local Docker/Podman image builds, CMake builds, and C++ tests were not run.
 Remote Docker Build Validation was the build gate.
+
+## TRADE-BL-0028 closeout evidence inventory
+
+Evidence inventory date: 2026-08-23. This section records the authoritative
+closeout facts without treating queued or historical CI as fresh validation.
+
+### Repository and Docker Build Validation identity
+
+- Repository: [`chasekb/trade`](https://github.com/chasekb/trade).
+- Exact `origin/dev` SHA at inventory time:
+  `3d68d136580b50e60b0a1c087310743e4bdb143c`.
+- Exact-SHA Docker Build Validation run currently associated with that head:
+  [run 32624048945](https://github.com/chasekb/trade/actions/runs/32624048945),
+  head SHA `3d68d136580b50e60b0a1c087310743e4bdb143c`, status `queued`.
+  Its visible jobs are `Build C++ Backend (amd64)` and `Build Frontend
+  (amd64)`; no completion or success is claimed here.
+- A second exact-SHA run,
+  [run 32624046671](https://github.com/chasekb/trade/actions/runs/32624046671),
+  has the same head SHA and was `pending` at inventory time. It is not
+  validation evidence.
+
+The prior green run,
+[run 32598290563](https://github.com/chasekb/trade/actions/runs/32598290563),
+was successful for head SHA `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not
+the current `origin/dev` SHA. Its required jobs all completed successfully:
+
+- `Build Frontend (amd64)`
+- `Build C++ Backend (amd64)`
+- `Build C++ Backend (arm64)`
+- `Build Frontend (arm64)`
+- `Publish Frontend manifest`
+- `Publish C++ Backend manifest`
+
+Therefore, a fresh successful Docker Build Validation run for
+`3d68d136580b50e60b0a1c087310743e4bdb143c` remains the CI closeout gate.
+
+### Fresh recreation and smoke evidence
+
+The post-repair recreation was healthy and retained the database-backed
+runtime contract:
+
+- `trade_db_1`: healthy, `0.0.0.0:5433->5432/tcp`.
+- `trade_redis_1`: healthy, `0.0.0.0:6379->6379/tcp`.
+- `trade_cpp-backend_1`: healthy, `0.0.0.0:8081->8080/tcp`.
+- `trade_frontend_1`: healthy, `0.0.0.0:3000->3000/tcp`.
+- `GET http://127.0.0.1:8081/health` returned
+  `{"service":"trading-bot-cpp-backend","status":"healthy","version":"0.1.0"}`.
+- `GET http://127.0.0.1:8081/api/trading/live/status` returned HTTP 200 with
+  a database-backed stopped-session snapshot.
+- `GET http://127.0.0.1:3000/api/health` returned the same healthy backend
+  JSON response.
+
+The durable runtime source artifact is this report's
+[runtime verification section](#runtime-verification-after-repair). The
+compose repair preserved the internal PostgreSQL endpoint `db:5432` while
+moving the host mapping to `5433`.
+
+### Host-port collision and outstanding cleanup
+
+The unrelated `db-postgres` container (`9ab627e64ce7`) owned host
+`0.0.0.0:5432` through `rootlessport` PID `2669789`; the trade stack used
+`0.0.0.0:5433->5432/tcp`. This is the captured collision evidence and is
+separate from the successful recreated stack.
+
+The stale evidence container `trade-port-collision-evidence-20260822`
+(`718a3a55e04f`, status `Created`) had not been removed at inventory time.
+Its cleanup is a separate outstanding issue and is not represented as a
+runtime or CI acceptance failure.
+
+### Explicit validation boundary
+
+No local Docker/Podman image builds, CMake builds, or C++ tests were run.
+Fresh runtime smoke evidence and the historical green run above must not be
+combined into a claim that the current SHA passed CI. Closeout requires the
+fresh exact-SHA Docker Build Validation run to complete successfully.
