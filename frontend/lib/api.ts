@@ -864,7 +864,10 @@ class ApiClient {
       }
     }
 
-    if (mode === 'simulated' && parameters.execution_mode !== 'live_parity') {
+    // A backend start failure must remain visible. Local simulation is an
+    // explicit opt-in only; silently switching modes makes the UI report an
+    // active session even though no backend worker exists.
+    if (mode === 'simulated' && FORCE_LOCAL_SIM_TRADING && parameters.execution_mode !== 'live_parity') {
       setLocalSimTradingSession(strategy, symbols, parameters);
       return {
         status: 'success',
