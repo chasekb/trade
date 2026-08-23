@@ -879,6 +879,7 @@ void SimulatedTradingService::resolvePendingLiveOrders() {
 std::map<std::string, SimulatedTradingService::MarketQuote>
 SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
   std::map<std::string, MarketQuote> quotes;
+  std::map<std::string, MarketDataStatus> fetched_status;
   if (!exchange_client_) {
     return quotes;
   }
@@ -907,11 +908,12 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
       }
     }
     if (!fetched) {
-      auto &status = market_data_status_[symbol];
+      MarketDataStatus status;
       status.status = "failed";
       status.category = classifyMarketDataError(error);
       status.error = error;
       status.retries = retries;
+      fetched_status[symbol] = status;
       TR_LOG_WARN("Failed to fetch order book for {}: {} (category={}, retries={})",
                   symbol, error, status.category, status.retries);
       continue;
@@ -927,12 +929,22 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
     quote.volume = book.bid_volume + book.ask_volume;
     quote.depth = book.depth;
     quotes[symbol] = quote;
-    auto &status = market_data_status_[symbol];
+    MarketDataStatus status;
     status.status = "refreshed";
     status.category = "ok";
     status.error.clear();
     status.retries = retries;
     status.last_success_at = nowIsoUtc();
+    fetched_status[symbol] = status;
+  }
+
+  // Network I/O runs outside mutex_. Publish diagnostics afterward so status
+  // readers cannot race with the worker updating the map.
+  if (!fetched_status.empty()) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto &[symbol, status] : fetched_status) {
+      market_data_status_[symbol] = std::move(status);
+    }
   }
   return quotes;
 }
@@ -1747,6 +1759,8 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     }
     // Live-data modes never trade on synthetic data: no quote, no tick action.
     if (live_mode && quote == nullptr) {
+      // This is a market-data blocker, not a synthetic HOLD signal.
+      ++execution_blocker_counts_["market_data_unavailable"];
       continue;
     }
     ++signals_evaluated_;
@@ -2143,6 +2157,13 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
                                                   const std::string &mode) {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
   std::unique_lock<std::mutex> lock(mutex_);
+  if (mode != "simulated" && mode != "live_parity") {
+    Json::Value response;
+    response["status"] = "error";
+    response["error"] = "mode must be simulated or live_parity";
+    response["mode"] = mode;
+    return response;
+  }
   ensureSchema();
 
   if (active_) {
