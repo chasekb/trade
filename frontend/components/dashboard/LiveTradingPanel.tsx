@@ -359,7 +359,9 @@ function LiveTradingStatistics() {
 
   const coinbasePositions = liveProducer.positions as PositionLike[];
   const openPositions = coinbasePositions;
-  const activePositions = coinbasePositions.length;
+  const activePositions = coinbasePositions.filter(
+    (position) => position.reconciliation_status !== 'stale_internal',
+  ).length;
   const liquidationDisabledReason = liveProducer.canTrade
     ? null
     : firstLiveTabProducerBlocker(liveProducer) || 'Live trading and explicit Coinbase order execution are required.';

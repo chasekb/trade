@@ -514,6 +514,30 @@ std::string LiveTradingService::positionManagementStateLocked(
   return "coinbase_unmanaged";
 }
 
+bool LiveTradingService::hasAcceptedPendingOrderLocked(const std::string &symbol) const {
+  return std::any_of(pending_live_orders_.begin(), pending_live_orders_.end(),
+                     [&symbol](const PendingLiveOrder &pending) {
+                       return pending.intent.product_id == symbol &&
+                              !pending.order_id.empty() && !pending.fill_applied;
+                     });
+}
+
+bool LiveTradingService::positionExposureVerifiedLocked(
+    const PositionState &position) const {
+  if (hasAcceptedPendingOrderLocked(position.symbol) ||
+      managed_quantity_floors_.count(position.symbol) > 0) {
+    return true;
+  }
+  if (!last_account_snapshot_loaded_ || !last_account_snapshot_error_.empty()) {
+    return false;
+  }
+  return std::any_of(last_account_snapshot_.holdings.begin(),
+                    last_account_snapshot_.holdings.end(),
+                    [&position](const CoinbaseHolding &holding) {
+                      return holding.asset + "-USD" == position.symbol;
+                    });
+}
+
 Json::Value LiveTradingService::signalToJson(const SignalRecord &signal) const {
   Json::Value out;
   out["signal_id"] = signal.signal_id;
@@ -581,23 +605,23 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   out["inherited_quantity"] = position.inherited_quantity;
   out["management_state"] = positionManagementStateLocked(position);
   out["eligible_for_strategy_management"] = position.eligible_for_strategy_management;
-  bool account_snapshot_present = false;
-  for (const auto &holding : last_account_snapshot_.holdings) {
-    if (holding.asset + "-USD" == position.symbol) {
-      account_snapshot_present = true;
-      break;
-    }
-  }
+  const bool account_snapshot_present =
+      last_account_snapshot_loaded_ && last_account_snapshot_error_.empty() &&
+      std::any_of(last_account_snapshot_.holdings.begin(),
+                  last_account_snapshot_.holdings.end(),
+                  [&position](const CoinbaseHolding &holding) {
+                    return holding.asset + "-USD" == position.symbol;
+                  });
   out["account_snapshot_present"] = account_snapshot_present;
   out["account_snapshot_loaded"] = last_account_snapshot_loaded_;
   out["account_snapshot_at"] = last_account_snapshot_at_;
-  out["pending_order_present"] = pending_order_symbols_.count(position.symbol) > 0;
+  out["pending_order_present"] = hasAcceptedPendingOrderLocked(position.symbol);
   const auto floor_it = managed_quantity_floors_.find(position.symbol);
   out["managed_quantity_floor_remaining"] =
       floor_it == managed_quantity_floors_.end() ? 0.0 : floor_it->second.first;
   out["reconciliation_status"] = account_snapshot_present
                                       ? "coinbase_confirmed"
-                                      : (pending_order_symbols_.count(position.symbol) > 0
+                                      : (hasAcceptedPendingOrderLocked(position.symbol)
                                              ? "pending_settlement"
                                              : (floor_it != managed_quantity_floors_.end()
                                                     ? "awaiting_snapshot_reconciliation"
@@ -1952,6 +1976,11 @@ void LiveTradingService::updateMarkToMarketLocked(
 
   std::vector<std::pair<std::string, const char *>> exits;
   for (auto &[symbol, position] : positions_) {
+    if (!positionExposureVerifiedLocked(position)) {
+      position.unrealized_pnl = 0.0;
+      position.pnl_percentage = 0.0;
+      continue;
+    }
     const auto it = prices.find(symbol);
     if (it != prices.end()) {
       position.current_price = it->second;
@@ -2463,6 +2492,7 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
   int session_managed_count = 0;
   int account_managed_count = 0;
   int coinbase_unmanaged_count = 0;
+  int unverified_position_count = 0;
   for (const auto &[symbol, position] : positions_) {
     positions[symbol] = positionToJson(position);
     const std::string management_state = positionManagementStateLocked(position);
@@ -2472,6 +2502,10 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
       ++account_managed_count;
     } else {
       ++coinbase_unmanaged_count;
+    }
+    if (!positionExposureVerifiedLocked(position)) {
+      ++unverified_position_count;
+      continue;
     }
     const double market_value =
         signedPositionValue(position.side, position.quantity, position.current_price);
@@ -2498,10 +2532,11 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
   portfolio["realized_pnl"] = realized_pnl_;
   portfolio["net_pnl"] = total_value - initial_capital_;
   portfolio["total_fees"] = total_fees_;
-  portfolio["open_positions_count"] = static_cast<int>(positions_.size());
+  portfolio["open_positions_count"] = static_cast<int>(positions_.size()) - unverified_position_count;
   portfolio["session_managed_positions_count"] = session_managed_count;
   portfolio["account_managed_positions_count"] = account_managed_count;
   portfolio["coinbase_unmanaged_positions_count"] = coinbase_unmanaged_count;
+  portfolio["unverified_positions_count"] = unverified_position_count;
   portfolio["account_position_management"] = accountPositionManagementModeLocked();
   portfolio["tick"] = static_cast<Json::Int64>(tick_);
   portfolio["positions"] = positions;
