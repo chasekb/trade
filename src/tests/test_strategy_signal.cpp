@@ -170,6 +170,26 @@ int main() {
     expect(!zero_net_edge.actionable,
            "exactly fee-neutral expected return is not actionable");
 
+    for (const double unavailable_return : {std::numeric_limits<double>::quiet_NaN(),
+                                            std::numeric_limits<double>::infinity(),
+                                            -std::numeric_limits<double>::infinity()}) {
+      diagnostic_input.expected_return_fraction = unavailable_return;
+      const auto nonfinite = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+      expect(!nonfinite.actionable, "non-finite expected return fails closed");
+      expect(!nonfinite.diagnostics_available,
+             "non-finite expected return is not reported as available");
+      expect(nonfinite.factor == "expected_return_unavailable",
+             "non-finite expected return is explicitly attributed");
+    }
+
+    diagnostic_input.expected_return_fraction = 0.020;
+    diagnostic_input.round_trip_fee_fraction = std::numeric_limits<double>::quiet_NaN();
+    const auto nonfinite_hurdle = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(!nonfinite_hurdle.actionable, "non-finite fee hurdle fails closed");
+    expect(nonfinite_hurdle.factor == "expected_return_unavailable",
+           "non-finite fee hurdle is explicitly attributed");
+    diagnostic_input.round_trip_fee_fraction = 0.010;
+
     diagnostic_input.signal_type = "sell";
     diagnostic_input.expected_return_fraction = -0.020;
     const auto favorable_sell = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
@@ -211,6 +231,27 @@ int main() {
     gate_input.expected_return_fraction = -0.050;
     const auto negative_buy = evaluateOrderBookProfitabilityGate(gate_input);
     expect(!negative_buy.passes, "order-book gate blocks negative expected return buys");
+
+    for (const double unavailable_return : {std::numeric_limits<double>::quiet_NaN(),
+                                            std::numeric_limits<double>::infinity(),
+                                            -std::numeric_limits<double>::infinity()}) {
+      gate_input.signal_type = "buy";
+      gate_input.expected_return_fraction = unavailable_return;
+      const auto nonfinite = evaluateOrderBookProfitabilityGate(gate_input);
+      expect(!nonfinite.passes, "order-book gate fails closed for non-finite expected return");
+      expect(std::isfinite(nonfinite.net_expected_return_fraction),
+             "order-book gate serializes finite non-finite-return fallback");
+      expect(nonfinite.reason == "Expected-return diagnostic is unavailable",
+             "order-book gate attributes unavailable expected return");
+    }
+
+    gate_input.expected_return_fraction = 0.020;
+    gate_input.round_trip_fee_fraction = std::numeric_limits<double>::infinity();
+    const auto nonfinite_hurdle = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!nonfinite_hurdle.passes, "order-book gate fails closed for infinite fee hurdle");
+    expect(std::isfinite(nonfinite_hurdle.required_edge_fraction),
+           "order-book gate keeps serialized hurdle finite");
+    gate_input.round_trip_fee_fraction = 0.010;
 
     gate_input.signal_type = "sell";
     const auto favorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
