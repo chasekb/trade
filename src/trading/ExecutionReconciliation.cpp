@@ -1,11 +1,163 @@
 #include "trading/ExecutionReconciliation.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 
 namespace trade {
 namespace trading {
+
+const char *toString(const AttributionStatus value) {
+  switch (value) {
+  case AttributionStatus::executed: return "executed";
+  case AttributionStatus::blocked: return "blocked";
+  case AttributionStatus::skipped: return "skipped";
+  }
+  return "unknown";
+}
+
+const char *toString(const RuntimeMode value) {
+  switch (value) {
+  case RuntimeMode::simulated: return "simulated";
+  case RuntimeMode::live_parity: return "live_parity";
+  case RuntimeMode::live: return "live";
+  }
+  return "unknown";
+}
+
+const char *toString(const AttributionSide value) {
+  switch (value) {
+  case AttributionSide::buy: return "buy";
+  case AttributionSide::sell: return "sell";
+  case AttributionSide::none: return "none";
+  }
+  return "unknown";
+}
+
+const char *toString(const BlockerCategory value) {
+  switch (value) {
+  case BlockerCategory::none: return "none";
+  case BlockerCategory::max_positions: return "max_positions";
+  case BlockerCategory::pending_order: return "pending_order";
+  case BlockerCategory::spot_cannot_short: return "spot_cannot_short";
+  case BlockerCategory::minimum_notional: return "minimum_notional";
+  case BlockerCategory::insufficient_cash: return "insufficient_cash";
+  case BlockerCategory::live_execution_disabled: return "live_execution_disabled";
+  case BlockerCategory::existing_holding: return "existing_holding";
+  case BlockerCategory::ml_or_profitability_gate: return "ml_or_profitability_gate";
+  case BlockerCategory::stop_or_take_profit_close: return "stop_or_take_profit_close";
+  case BlockerCategory::stale_or_missing_data: return "stale_or_missing_data";
+  case BlockerCategory::unknown: return "unknown";
+  }
+  return "unknown";
+}
+
+const char *toString(const DiagnosticFactor value) {
+  switch (value) {
+  case DiagnosticFactor::none: return "none";
+  case DiagnosticFactor::missing_expected_return: return "missing_expected_return";
+  case DiagnosticFactor::negative_fee_adjusted_edge: return "negative_fee_adjusted_edge";
+  case DiagnosticFactor::below_required_edge: return "below_required_edge";
+  case DiagnosticFactor::weak_strength: return "weak_strength";
+  case DiagnosticFactor::account_or_exchange_blocker: return "account_or_exchange_blocker";
+  case DiagnosticFactor::exit_risk_rule: return "exit_risk_rule";
+  case DiagnosticFactor::unknown: return "unknown";
+  }
+  return "unknown";
+}
+
+std::string strengthBucket(const double strength) {
+  if (!std::isfinite(strength) || strength < 0.0 || strength > 1.0) return "invalid";
+  if (strength < 0.30) return "weak";
+  if (strength < 0.70) return "medium";
+  return "strong";
+}
+
+std::string expectedReturnBucket(const double expected_return) {
+  if (!std::isfinite(expected_return)) return "invalid";
+  if (expected_return < 0.0) return "negative";
+  if (expected_return < 0.001) return "neutral";
+  if (expected_return < 0.01) return "positive";
+  return "high";
+}
+
+std::optional<std::string>
+validateSignalOutcome(const SignalOutcomeAttribution &outcome) {
+  const auto fail = [](const char *message) -> std::optional<std::string> {
+    return std::string(message);
+  };
+  if (outcome.signal_id.empty() || outcome.session_id.empty() ||
+      outcome.strategy.empty() || outcome.symbol.empty()) {
+    return fail("signal_id, session_id, strategy, and symbol are required");
+  }
+  if (outcome.timestamp_epoch_seconds <= 0 || outcome.runtime_window.empty()) {
+    return fail("positive timestamp and runtime_window are required");
+  }
+  if (strengthBucket(outcome.strength) == "invalid" ||
+      outcome.strength_bucket != strengthBucket(outcome.strength)) {
+    return fail("strength or strength_bucket is invalid");
+  }
+  if (expectedReturnBucket(outcome.expected_return) == "invalid" ||
+      outcome.expected_return_bucket != expectedReturnBucket(outcome.expected_return)) {
+    return fail("expected_return or expected_return_bucket is invalid");
+  }
+  if (!std::isfinite(outcome.objective.expected_return) ||
+      !std::isfinite(outcome.objective.fee_adjusted_expected_return) ||
+      !std::isfinite(outcome.objective.realized_pnl) ||
+      !std::isfinite(outcome.objective.fees) ||
+      !std::isfinite(outcome.objective.net_objective_impact) || outcome.objective.fees < 0.0) {
+    return fail("objective impact contains a non-finite or negative fee");
+  }
+  if (outcome.status == AttributionStatus::executed &&
+      (outcome.side == AttributionSide::none || outcome.blocker != BlockerCategory::none)) {
+    return fail("executed outcomes require a side and no blocker");
+  }
+  if (outcome.status == AttributionStatus::blocked &&
+      outcome.blocker == BlockerCategory::none) {
+    return fail("blocked outcomes require a blocker category");
+  }
+  if (outcome.status == AttributionStatus::skipped &&
+      outcome.side != AttributionSide::none) {
+    return fail("skipped outcomes must not carry an order side");
+  }
+  for (const auto &[key, value] : outcome.safe_metadata) {
+    if (key.empty() || key.size() > 64 || value.size() > 256) {
+      return fail("safe metadata is outside its bounded shape");
+    }
+    std::string lowered = key + " " + value;
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    for (const char *secret_word : {"secret", "password", "token", "credential", "private_key", "balance"}) {
+      if (lowered.find(secret_word) != std::string::npos) {
+        return fail("safe metadata contains a forbidden sensitive label");
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+SignalOutcomeAttribution legacySkippedOutcome(const std::string &signal_id,
+                                              const std::string &session_id,
+                                              const std::string &strategy,
+                                              const std::string &symbol,
+                                              const RuntimeMode mode) {
+  SignalOutcomeAttribution outcome;
+  outcome.signal_id = signal_id;
+  outcome.session_id = session_id;
+  outcome.strategy = strategy;
+  outcome.symbol = symbol;
+  outcome.status = AttributionStatus::skipped;
+  outcome.blocker = BlockerCategory::unknown;
+  outcome.diagnostic = DiagnosticFactor::unknown;
+  outcome.mode = mode;
+  outcome.timestamp_epoch_seconds = 1;
+  outcome.runtime_window = "legacy";
+  outcome.strength_bucket = strengthBucket(outcome.strength);
+  outcome.expected_return_bucket = expectedReturnBucket(outcome.expected_return);
+  outcome.safe_metadata.emplace("compatibility", "legacy_signal_without_terminal_outcome");
+  return outcome;
+}
 
 namespace {
 

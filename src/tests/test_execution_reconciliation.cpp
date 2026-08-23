@@ -7,7 +7,15 @@
 
 using trade::trading::OutcomeAttribution;
 using trade::trading::SignalAttribution;
+using trade::trading::AttributionSide;
+using trade::trading::AttributionStatus;
+using trade::trading::BlockerCategory;
+using trade::trading::SignalOutcomeAttribution;
+using trade::trading::expectedReturnBucket;
+using trade::trading::legacySkippedOutcome;
 using trade::trading::reconcileExecution;
+using trade::trading::strengthBucket;
+using trade::trading::validateSignalOutcome;
 
 namespace {
 
@@ -88,6 +96,38 @@ OutcomeAttribution flatClose(const std::string &strategy, double fees) {
 } // namespace
 
 int main() {
+  expect(strengthBucket(0.29) == "weak" && strengthBucket(0.70) == "strong",
+         "strength buckets use stable boundaries");
+  expect(expectedReturnBucket(-0.001) == "negative" &&
+             expectedReturnBucket(0.001) == "positive" &&
+             expectedReturnBucket(0.01) == "high",
+         "expected-return buckets use stable boundaries");
+
+  SignalOutcomeAttribution executed_outcome;
+  executed_outcome.signal_id = "signal-1";
+  executed_outcome.session_id = "session-1";
+  executed_outcome.strategy = "orderbook";
+  executed_outcome.symbol = "BTC-USD";
+  executed_outcome.status = AttributionStatus::executed;
+  executed_outcome.blocker = BlockerCategory::none;
+  executed_outcome.side = AttributionSide::buy;
+  executed_outcome.strength = 0.8;
+  executed_outcome.expected_return = 0.002;
+  executed_outcome.strength_bucket = strengthBucket(executed_outcome.strength);
+  executed_outcome.expected_return_bucket = expectedReturnBucket(executed_outcome.expected_return);
+  executed_outcome.timestamp_epoch_seconds = 1;
+  executed_outcome.runtime_window = "2026-08-22T00:00:00Z/2026-08-22T01:00:00Z";
+  expect(!validateSignalOutcome(executed_outcome).has_value(),
+         "complete executed attribution validates");
+  executed_outcome.side = AttributionSide::none;
+  expect(validateSignalOutcome(executed_outcome).has_value(),
+         "incomplete executed attribution fails closed");
+  const auto legacy = legacySkippedOutcome("legacy-1", "session-1", "sma", "BTC-USD",
+                                           trade::trading::RuntimeMode::simulated);
+  expect(!validateSignalOutcome(legacy).has_value() &&
+             legacy.status == AttributionStatus::skipped,
+         "legacy rows become explicit skipped outcomes");
+
   // Empty input is a valid, all-zero report rather than an error.
   const auto empty = reconcileExecution({}, {});
   expect(empty.by_strategy.empty(), "empty input yields no strategy rows");
