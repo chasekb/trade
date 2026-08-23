@@ -305,6 +305,15 @@ StrategySignalOutcome evaluateStrategySignal(const std::string &strategy,
 OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
     const OrderBookProfitabilityInput &input) {
   OrderBookProfitabilityGate gate;
+  if (!std::isfinite(input.signal_strength) ||
+      !std::isfinite(input.min_signal_strength) ||
+      !std::isfinite(input.expected_return_fraction) ||
+      !std::isfinite(input.spread_fraction) ||
+      !std::isfinite(input.round_trip_fee_fraction) ||
+      !std::isfinite(input.slippage_buffer_fraction)) {
+    gate.reason = "Order book profitability input is non-finite";
+    return gate;
+  }
   gate.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
                                 std::max(0.0, input.spread_fraction) +
                                 std::max(0.0, input.slippage_buffer_fraction);
@@ -344,6 +353,17 @@ OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
 StrategyProfitabilityDiagnostic evaluateStrategyProfitabilityDiagnostic(
     const StrategyProfitabilityInput &input) {
   StrategyProfitabilityDiagnostic diagnostic;
+  if (!std::isfinite(input.signal_strength) ||
+      !std::isfinite(input.min_signal_strength) ||
+      !std::isfinite(input.spread_fraction) ||
+      !std::isfinite(input.round_trip_fee_fraction) ||
+      !std::isfinite(input.slippage_buffer_fraction) ||
+      (input.expected_return_available &&
+       !std::isfinite(input.expected_return_fraction))) {
+    diagnostic.factor = "expected_return_unavailable";
+    diagnostic.reason = "Profitability diagnostic contains a non-finite input";
+    return diagnostic;
+  }
   diagnostic.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
                                       std::max(0.0, input.spread_fraction) +
                                       std::max(0.0, input.slippage_buffer_fraction);

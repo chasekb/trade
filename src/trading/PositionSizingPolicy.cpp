@@ -93,6 +93,15 @@ double expected_net_pnl_usd(double notional_usd, const MinimumTradeSizeInputs &i
 
 MinimumTradeSizeDecision minimum_trade_size_decision(const MinimumTradeSizeInputs &inputs) {
   MinimumTradeSizeDecision decision;
+  if (!std::isfinite(inputs.price) ||
+      !std::isfinite(inputs.expected_return_fraction) ||
+      !std::isfinite(inputs.round_trip_fee_fraction) ||
+      !std::isfinite(inputs.slippage_buffer_fraction) ||
+      !std::isfinite(inputs.spread_fraction) ||
+      !std::isfinite(inputs.minimum_net_pnl_usd) ||
+      !std::isfinite(inputs.configured_max_notional_usd)) {
+    return decision;
+  }
   decision.required_edge_fraction = std::max(0.0, inputs.round_trip_fee_fraction) +
                                     std::max(0.0, inputs.slippage_buffer_fraction) +
                                     std::max(0.0, inputs.spread_fraction);

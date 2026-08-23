@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 int main() {
   trade::trading::PositionSizingInputs weak{};
@@ -123,6 +124,25 @@ int main() {
   const auto override_decision = trade::trading::minimum_trade_size_decision(override);
   if (!override_decision.should_trade) {
     std::cerr << "Explicit override should allow unprofitable trades" << std::endl;
+    return 1;
+  }
+
+  // Non-finite model output must never become execution eligibility, even when
+  // the configured cap and price are otherwise valid.
+  for (const double non_finite : {std::numeric_limits<double>::quiet_NaN(),
+                                  std::numeric_limits<double>::infinity(),
+                                  -std::numeric_limits<double>::infinity()}) {
+    trade::trading::MinimumTradeSizeInputs invalid = profitable;
+    invalid.expected_return_fraction = non_finite;
+    if (trade::trading::minimum_trade_size_decision(invalid).should_trade) {
+      std::cerr << "Non-finite expected return must fail closed" << std::endl;
+      return 1;
+    }
+  }
+
+  trade::trading::MinimumTradeSizeInputs defaults{};
+  if (trade::trading::minimum_trade_size_decision(defaults).should_trade) {
+    std::cerr << "Default minimum trade inputs must remain ineligible" << std::endl;
     return 1;
   }
   return 0;

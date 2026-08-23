@@ -3,6 +3,7 @@
 #include <cmath>
 #include <deque>
 #include <iostream>
+#include <limits>
 #include <string>
 
 using trade::trading::evaluateStrategySignal;
@@ -176,6 +177,40 @@ int main() {
     expect(favorable_sell.actionable,
            "negative expected return is favorable for sell diagnostics");
 
+    diagnostic_input.expected_return_fraction = 0.020;
+    const auto unfavorable_sell = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+    expect(!unfavorable_sell.actionable,
+           "positive expected return blocks unfavorable sell diagnostics");
+
+    for (const double non_finite : {std::numeric_limits<double>::quiet_NaN(),
+                                    std::numeric_limits<double>::infinity(),
+                                    -std::numeric_limits<double>::infinity()}) {
+      diagnostic_input.expected_return_fraction = non_finite;
+      const auto unavailable_non_finite =
+          evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+      expect(!unavailable_non_finite.actionable,
+             "non-finite expected return fails closed for diagnostics");
+      expect(unavailable_non_finite.factor == "expected_return_unavailable",
+             "non-finite expected return is unavailable");
+    }
+
+    diagnostic_input.expected_return_fraction = 0.020;
+    for (double *non_finite_cost : {&diagnostic_input.round_trip_fee_fraction,
+                                    &diagnostic_input.spread_fraction,
+                                    &diagnostic_input.slippage_buffer_fraction}) {
+      *non_finite_cost = std::numeric_limits<double>::quiet_NaN();
+      const auto unavailable_cost =
+          evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+      expect(!unavailable_cost.actionable,
+             "non-finite fee/spread/slippage fails closed");
+      *non_finite_cost = 0.010;
+    }
+
+    StrategyProfitabilityInput defaults;
+    const auto default_diagnostic = evaluateStrategyProfitabilityDiagnostic(defaults);
+    expect(!default_diagnostic.actionable, "default diagnostic is report-only hold");
+    expect(default_diagnostic.factor == "hold", "default diagnostic records hold factor");
+
     diagnostic_input.signal_strength = 0.1;
     const auto weak_strength = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
     expect(!weak_strength.actionable, "weak strength blocks diagnostic actionability");
@@ -215,6 +250,19 @@ int main() {
     gate_input.signal_type = "sell";
     const auto favorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
     expect(favorable_sell.passes, "order-book gate treats negative expected return as favorable for sells");
+
+    gate_input.expected_return_fraction = 0.050;
+    const auto unfavorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!unfavorable_sell.passes,
+           "order-book gate blocks positive expected return sells");
+
+    for (const double non_finite : {std::numeric_limits<double>::quiet_NaN(),
+                                    std::numeric_limits<double>::infinity(),
+                                    -std::numeric_limits<double>::infinity()}) {
+      gate_input.expected_return_fraction = non_finite;
+      const auto unavailable = evaluateOrderBookProfitabilityGate(gate_input);
+      expect(!unavailable.passes, "order-book gate rejects non-finite expected return");
+    }
 
     // Regression coverage for the live order-book heuristic fallback: the old
     // 1.2% maximum edge could never clear the default 1.7%+ fee/spread/slippage
