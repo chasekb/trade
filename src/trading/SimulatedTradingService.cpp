@@ -513,6 +513,17 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   out["strength_composition"] = signal.payload.get("strength_composition", Json::Value(Json::objectValue));
   out["execution_analysis"] =
       signal.payload.get("execution_analysis", Json::Value(Json::objectValue));
+  // Keep the execution outcome available at the API row boundary as well as
+  // inside the persisted signal payload. This makes generated, filled, and
+  // blocked rows consumable without requiring clients to know the storage
+  // representation.
+  const Json::Value execution_analysis = out["execution_analysis"];
+  const bool signal_generated = out["signal_generated"].asBool();
+  out["executable_intent"] = execution_analysis.get("executable_intent", Json::Value(false));
+  out["blocked"] = signal_generated && execution_analysis.get("blocked", Json::Value(false)).asBool();
+  out["blocker_reason"] = signal_generated
+                              ? execution_analysis.get("blocker_reason", Json::Value(""))
+                              : Json::Value("");
   return out;
 }
 
@@ -604,6 +615,8 @@ Json::Value SimulatedTradingService::tradeToJson(const TradeRecord &trade) const
   out["expected_return"] = trade.expected_return;
   out["model_confidence"] = trade.model_confidence;
   out["trade_type"] = trade.trade_type;
+  out["is_closing_leg"] = trade.is_closing_leg;
+  out["execution_is_paper"] = trade.trade_type != "live";
   return out;
 }
 
@@ -767,6 +780,20 @@ SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
   OrderDispatchResult dispatch_result;
   if (orders.empty() || !exchange_client_) {
     return dispatch_result;
+  }
+  // This is the service boundary for the paper/live split. Even if a caller
+  // accidentally queues an intent while running live-parity, do not allow it
+  // to reach Coinbase and release its local reservation instead.
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (mode_ != "live") {
+      for (const auto &intent : orders) {
+        pending_order_symbols_.erase(intent.product_id);
+        pending_reserved_cash_ =
+            std::max(0.0, pending_reserved_cash_ - intent.reserved_cash);
+      }
+      return dispatch_result;
+    }
   }
   const auto cancel_requested = [this]() {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -1801,7 +1828,22 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
       closePositionLocked(symbol, opposite_signal ? "Closed on opposite signal" : "Closed after holding period");
       if (signal_generated && static_cast<int>(positions_.size()) < max_positions_ &&
           signalPassesMlGateLocked(signal)) {
-        openPositionLocked(signal, "Re-opened after close");
+        // Re-entry is a new live-equivalent entry decision. In paper-live
+        // mode, evaluate the shared execution gates after the old position is
+        // closed instead of treating the pre-close position as permission to
+        // bypass them.
+        if (mode_ == "live_parity") {
+          const Json::Value reentry_analysis = buildExecutionAnalysisLocked(signal);
+          if (reentry_analysis.get("executable_intent", Json::Value(false)).asBool()) {
+            ++executable_order_intents_;
+            openPositionLocked(signal, "Re-opened after close");
+          } else {
+            ++execution_blocker_counts_[reentry_analysis.get(
+                "blocker_reason", Json::Value("unknown")).asString()];
+          }
+        } else {
+          openPositionLocked(signal, "Re-opened after close");
+        }
       }
     }
   }
@@ -1936,10 +1978,28 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   portfolio["execution_is_paper"] = !liveOrderExecutionEnabledLocked();
   portfolio["market_data_source"] = usesLiveMarketData(mode_) ? "coinbase_public" : "synthetic";
   Json::Value blocker_counts(Json::objectValue);
+  std::size_t blocked_intents = 0;
   for (const auto &[reason, count] : execution_blocker_counts_) {
     blocker_counts[reason] = count;
+    blocked_intents += static_cast<std::size_t>(std::max(0, count));
   }
   portfolio["execution_blocker_counts"] = blocker_counts;
+  // This is the stable accounting boundary for simulated and live-parity
+  // paper execution. It deliberately uses session-local counters and trades;
+  // it never reads or aggregates the live account service.
+  Json::Value execution_summary(Json::objectValue);
+  execution_summary["mode"] = mode_;
+  execution_summary["signals_generated"] = static_cast<Json::UInt64>(signals_generated_);
+  execution_summary["executable_intents"] = static_cast<Json::UInt64>(executable_order_intents_);
+  execution_summary["blocked_intents"] = static_cast<Json::UInt64>(blocked_intents);
+  execution_summary["paper_fills"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  execution_summary["paper_fill_count"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  execution_summary["blocker_reasons"] = blocker_counts;
+  execution_summary["coinbase_order_submission_enabled"] = false;
+  execution_summary["live_account_mutation"] = false;
+  portfolio["execution_summary"] = execution_summary;
+  portfolio["paper_fill_count"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  portfolio["blocked_intent_count"] = static_cast<Json::UInt64>(blocked_intents);
   portfolio["strategy_type"] = strategy_;
   portfolio["started_at"] = started_at_;
   portfolio["updated_at"] = updated_at_;
@@ -2011,6 +2071,10 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
     signal_blocker_counts[reason] = count;
   }
   signal_diagnostics["execution_blocker_counts"] = signal_blocker_counts;
+  signal_diagnostics["blocked_intent_count"] = static_cast<Json::UInt64>(blocked_intents);
+  signal_diagnostics["paper_fill_count"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  signal_diagnostics["coinbase_order_submission_enabled"] = false;
+  signal_diagnostics["live_account_mutation"] = false;
   Json::Value market_data(Json::objectValue);
   Json::Value market_data_failures(Json::arrayValue);
   std::size_t refreshed_count = 0;
