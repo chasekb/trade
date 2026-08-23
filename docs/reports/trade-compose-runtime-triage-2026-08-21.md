@@ -72,21 +72,22 @@ validation.
 
 - Repository: [`chasekb/trade`](https://github.com/chasekb/trade).
 - Exact `origin/dev` SHA at this report revision:
-  `ffb75680531618ed282572cd91488f5901017156`.
+  `e5265f4f2497939fc92fda0fdbc544de950f30e8`.
 - Authoritative push-triggered Docker Build Validation run for this head:
-  [run 32625660185](https://github.com/chasekb/trade/actions/runs/32625660185),
-  head SHA `ffb75680531618ed282572cd91488f5901017156`, is currently `pending`
+  [run 32625756322](https://github.com/chasekb/trade/actions/runs/32625756322),
+  head SHA `e5265f4f2497939fc92fda0fdbc544de950f30e8`, is currently `pending`
   with no jobs materialized. No completion or success is claimed here.
 - The matching pull-request run,
-  [run 32625662720](https://github.com/chasekb/trade/actions/runs/32625662720),
+  [run 32625759101](https://github.com/chasekb/trade/actions/runs/32625759101),
   has the same head SHA but is not the authoritative closeout run because pull
   requests intentionally run only the amd64 build jobs and do not publish
-  manifests. It remains queued.
+  manifests. It remains pending.
 
 The prior green run,
 [run 32598290563](https://github.com/chasekb/trade/actions/runs/32598290563),
 was successful for head SHA `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not
-the current `origin/dev` SHA. Its required jobs all completed successfully:
+the current `origin/dev` SHA. Its required jobs all completed successfully,
+but are historical evidence only:
 
 - `Build Frontend (amd64)`
 - `Build C++ Backend (amd64)`
@@ -109,7 +110,7 @@ The prior green run,
 remains historical evidence only: all six jobs above succeeded there for
 head SHA `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not this report's SHA.
 Therefore, a fresh successful Docker Build Validation run for
-`ffb75680531618ed282572cd91488f5901017156` remains the CI closeout gate.
+`e5265f4f2497939fc92fda0fdbc544de950f30e8` remains the CI closeout gate.
 
 ### Fresh recreation and smoke evidence
 
