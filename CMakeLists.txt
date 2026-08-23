@@ -41,6 +41,7 @@ set(SOURCES
     src/exchange/CoinbaseAdvancedClient.cpp
     src/exchange/CoinbaseOrder.cpp
     src/trading/PositionSizingPolicy.cpp
+    src/trading/DiagnosticsContract.cpp
     src/trading/StrategySignal.cpp
     src/trading/StrategyExpectancyHarness.cpp
     src/trading/ExecutionReconciliation.cpp
@@ -154,6 +155,13 @@ add_executable(test_strategy_signal
 )
 target_include_directories(test_strategy_signal PRIVATE include)
 add_test(NAME strategy_signal COMMAND test_strategy_signal)
+
+add_executable(test_diagnostics_contract
+    src/tests/test_diagnostics_contract.cpp
+    src/trading/DiagnosticsContract.cpp
+)
+target_include_directories(test_diagnostics_contract PRIVATE include)
+add_test(NAME diagnostics_contract COMMAND test_diagnostics_contract)
 
 add_executable(test_strategy_expectancy_harness
     src/tests/test_strategy_expectancy_harness.cpp
