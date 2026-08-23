@@ -52,6 +52,22 @@ void addFixture(std::vector<StrategyExpectancyFixture> &fixtures,
   fixtures.push_back(std::move(fixture));
 }
 
+void addOrderBookFixture(std::vector<StrategyExpectancyFixture> &fixtures,
+                         const std::string &name, const std::string &strategy,
+                         double expected_return_fraction, double spread_fraction,
+                         double realized_pnl) {
+  StrategyExpectancyFixture fixture;
+  fixture.name = name;
+  fixture.strategy = strategy;
+  fixture.signal_type = "buy";
+  fixture.signal_strength = 1.0;
+  fixture.expected_return_available = true;
+  fixture.expected_return_fraction = expected_return_fraction;
+  fixture.spread_fraction = spread_fraction;
+  fixture.realized_pnl = realized_pnl;
+  fixtures.push_back(std::move(fixture));
+}
+
 StrategyExpectancyMetrics summarizeRows(const std::vector<const StrategyExpectancyRow *> &rows) {
   StrategyExpectancyMetrics metrics;
   metrics.fixtures = rows.size();
@@ -120,9 +136,14 @@ StrategyExpectancyReport evaluateStrategyExpectancy(
     row.fixture_name = fixture.name;
     row.strategy = fixture.strategy;
 
-    const auto signal = evaluateStrategySignal(fixture.strategy, fixture.prices,
-                                               fixture.params, fixture.has_position,
-                                               fixture.ticks_since_last_entry);
+    auto signal = evaluateStrategySignal(fixture.strategy, fixture.prices,
+                                         fixture.params, fixture.has_position,
+                                         fixture.ticks_since_last_entry);
+    if (!fixture.signal_type.empty()) {
+      signal.signal_type = fixture.signal_type;
+      signal.strength = fixture.signal_strength;
+      signal.reason = "Fixture-provided producer signal";
+    }
     row.signal_type = signal.signal_type;
     row.signal_strength = signal.strength;
 
@@ -146,6 +167,9 @@ StrategyExpectancyReport evaluateStrategyExpectancy(
     row.blocked = fixture.blocked || (signal.signal_type != "hold" && !diagnostic.actionable);
     row.blocked_reason = fixture.blocked ? fixture.blocked_reason : diagnostic.reason;
     row.filled = signal.signal_type != "hold" && diagnostic.actionable && !fixture.blocked;
+    row.factoring_semantics = diagnostic.diagnostics_available
+                                  ? (row.filled ? "execution-gated" : "execution-blocked")
+                                  : "report-only-unavailable";
     row.realized_pnl = row.filled ? fixture.realized_pnl : 0.0;
 
     report.rows.push_back(std::move(row));
@@ -187,6 +211,14 @@ std::vector<StrategyExpectancyFixture> defaultStrategyExpectancyFixtures() {
              linearSeries(100.0, 0.1, 5), 0.022, 6.0, false, 0);
   addFixture(fixtures, "buyandhold-positive-edge", "buyandhold",
              linearSeries(100.0, 0.0, 3), 0.027, 20.0, false, 0);
+
+  // Only order-book producers have an expected-return source in both
+  // execution paths. Indicator fixtures remain report-only until that source
+  // is wired into live and simulated execution.
+  addOrderBookFixture(fixtures, "orderbook-positive-edge", "orderbook",
+                      0.030, 0.001, 22.0);
+  addOrderBookFixture(fixtures, "ml-enhanced-orderbook-positive-edge",
+                      "ml_enhanced_orderbook", 0.032, 0.001, 24.0);
 
   // Regression fixture: high signal frequency alone is not acceptable when the
   // net expected edge is fee-negative. These rows should be generated but

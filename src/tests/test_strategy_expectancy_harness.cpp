@@ -29,7 +29,8 @@ int main() {
 
   const std::set<std::string> expected_strategies = {
       "sma",        "ema",      "rsi", "bollinger", "macd",
-      "stochastic", "fibonacci", "dca", "buyandhold"};
+      "stochastic", "fibonacci", "dca", "buyandhold", "orderbook",
+      "ml_enhanced_orderbook"};
 
   expect(report.rows.size() == fixtures.size(), "one output row per fixture");
   expect(report.overall.fixtures == fixtures.size(), "overall fixture count");
@@ -40,10 +41,10 @@ int main() {
 
   expect(report.overall.signals_generated >= expected_strategies.size(),
          "harness counts generated signals");
-  expect(report.overall.trades_filled == expected_strategies.size(),
-         "fee-positive fixtures become fills");
-  expect(report.overall.blocked_intents == 2,
-         "fee-negative regression fixtures are blocked intents");
+  expect(report.overall.trades_filled == 2,
+         "only order-book fixtures become actionable fills");
+  expect(report.overall.blocked_intents == fixtures.size() - 2,
+         "unavailable and fee-negative diagnostics are blocked intents");
   expect(report.overall.expectancy > 0.0,
          "default objective baseline has positive net expectancy");
   expect(report.overall.average_win > report.overall.average_loss,
@@ -52,6 +53,12 @@ int main() {
          "default baseline profit factor is above one");
   expect(!report.overall.negative_expectancy_flag,
          "default positive-expectancy baseline is not flagged");
+  expect(report.by_strategy.at("sma").trades_filled == 0,
+         "non-orderbook strategies remain report-only while unavailable");
+  expect(report.by_strategy.at("orderbook").trades_filled == 1,
+         "orderbook strategy is factored through after-cost gate");
+  expect(report.by_strategy.at("ml_enhanced_orderbook").trades_filled == 1,
+         "ML orderbook strategy is factored through after-cost gate");
 
   bool saw_fee_negative_block = false;
   for (const auto &row : report.rows) {
@@ -65,6 +72,16 @@ int main() {
     }
   }
   expect(saw_fee_negative_block, "regression fixture exercised fee-negative block");
+
+  for (const auto &row : report.rows) {
+    if (row.strategy == "sma" || row.strategy == "ema" || row.strategy == "rsi" ||
+        row.strategy == "bollinger" || row.strategy == "macd" ||
+        row.strategy == "stochastic" || row.strategy == "fibonacci" ||
+        row.strategy == "dca" || row.strategy == "buyandhold") {
+      expect(row.factoring_semantics == "report-only-unavailable",
+             row.strategy + " is explicitly report-only when diagnostics are unavailable");
+    }
+  }
 
   std::vector<StrategyExpectancyFixture> high_count_loser;
   for (int i = 0; i < 5; ++i) {

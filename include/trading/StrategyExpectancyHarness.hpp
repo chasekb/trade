@@ -18,7 +18,11 @@ struct StrategyExpectancyFixture {
   bool has_position = false;
   long long ticks_since_last_entry = 0;
 
-  bool expected_return_available = true;
+  // Optional direct signal for order-book fixtures, whose signal producer is
+  // intentionally outside evaluateStrategySignal().
+  std::string signal_type;
+  double signal_strength = 1.0;
+  bool expected_return_available = false;
   double expected_return_fraction = 0.0;
   double spread_fraction = 0.0;
   double round_trip_fee_fraction = 0.015;
@@ -47,6 +51,7 @@ struct StrategyExpectancyRow {
   bool filled = false;
   bool blocked = false;
   std::string blocked_reason;
+  std::string factoring_semantics;
   double realized_pnl = 0.0;
 };
 

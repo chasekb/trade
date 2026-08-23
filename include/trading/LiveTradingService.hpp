@@ -205,7 +205,9 @@ private:
   void applyLiveFillLocked(const OrderIntent &intent, const exchange::OrderFill &fill,
                            bool account_snapshot_reflects_fill = false);
   bool liveOrderExecutionEnabledLocked() const;
-  std::map<std::string, MarketQuote> fetchLiveQuotes(const std::vector<std::string> &symbols);
+  std::map<std::string, MarketQuote> fetchLiveQuotes(const std::vector<std::string> &symbols,
+                                                     int *attempted_symbols,
+                                                     int *skipped_symbols);
   bool fetchLiveAccountSnapshot(CoinbasePortfolioSnapshot &snapshot, std::string *error);
   void applyLiveAccountSnapshotLocked(const CoinbasePortfolioSnapshot &snapshot,
                                       bool establish_baseline);

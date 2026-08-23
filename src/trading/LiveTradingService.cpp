@@ -47,10 +47,10 @@ constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kMaxRecentTrades = 100;
 constexpr std::size_t kMaxRecentSignals = 250;
-// This is a warning threshold only. It does not cap the user-selected
-// universe or prevent quote requests; it flags the former batch size so API
-// fan-out can be correlated with provider errors and rate limits.
+// The selected universe remains intact, but one worker iteration is bounded
+// by a cadence so provider failures cannot turn into an unbounded request loop.
 constexpr std::size_t kQuoteFanoutWarningThreshold = 10;
+constexpr auto kLiveWorkerCadence = std::chrono::seconds(1);
 
 std::string randomClientOrderId() {
   static thread_local std::mt19937_64 rng(std::random_device{}());
@@ -1206,9 +1206,16 @@ void LiveTradingService::resolvePendingLiveOrders() {
 }
 
 std::map<std::string, LiveTradingService::MarketQuote>
-LiveTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
+LiveTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols,
+                                    int *attempted_symbols,
+                                    int *skipped_symbols) {
   std::map<std::string, MarketQuote> quotes;
+  int attempted = 0;
+  int skipped = 0;
   if (!exchange_client_) {
+    if (skipped_symbols != nullptr) {
+      *skipped_symbols = static_cast<int>(symbols.size());
+    }
     return quotes;
   }
 
@@ -1216,10 +1223,12 @@ LiveTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_requested_ || shutdown_requested_) {
+        skipped += static_cast<int>(symbols.size() - attempted);
         break;
       }
     }
 
+    ++attempted;
     exchange::OrderBookSummary book;
     std::string error;
     if (!exchange_client_->getOrderBook(symbol, book, &error)) {
@@ -1237,6 +1246,12 @@ LiveTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols) {
     quote.volume = book.bid_volume + book.ask_volume;
     quote.depth = book.depth;
     quotes[symbol] = quote;
+  }
+  if (attempted_symbols != nullptr) {
+    *attempted_symbols = attempted;
+  }
+  if (skipped_symbols != nullptr) {
+    *skipped_symbols = skipped;
   }
   return quotes;
 }
@@ -2308,8 +2323,11 @@ void LiveTradingService::generateTickLocked(const std::map<std::string, MarketQu
 
 void LiveTradingService::workerLoop() {
   TR_LOG_INFO("Live trading worker started for session {}", session_id_);
+  auto next_tick_at = std::chrono::steady_clock::now();
   while (true) {
     try {
+      std::this_thread::sleep_until(next_tick_at);
+      next_tick_at = std::chrono::steady_clock::now() + kLiveWorkerCadence;
       {
         std::lock_guard<std::mutex> lock(mutex_);
         if (shutdown_requested_) {
@@ -2353,7 +2371,10 @@ void LiveTradingService::workerLoop() {
       std::map<std::string, MarketQuote> quotes;
       CoinbasePortfolioSnapshot account_snapshot;
       bool account_snapshot_loaded = false;
-      quotes = fetchLiveQuotes(symbols_snapshot);
+      int attempted_quote_symbols = 0;
+      int skipped_quote_symbols = 0;
+      quotes = fetchLiveQuotes(symbols_snapshot, &attempted_quote_symbols,
+                               &skipped_quote_symbols);
       const auto quote_fetch_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - quote_batch_started).count();
       const double quote_fetch_seconds =
@@ -2363,7 +2384,8 @@ void LiveTradingService::workerLoop() {
       TR_LOG_INFO(
           "Live quote fan-out: session={} requested={} attempted={} succeeded={} skipped={} "
           "fetch_ms={} quote_requests_per_second={:.2f}",
-          session_id_, symbols_snapshot.size(), symbols_snapshot.size(), quotes.size(), 0,
+          session_id_, symbols_snapshot.size(), attempted_quote_symbols, quotes.size(),
+          skipped_quote_symbols,
           quote_fetch_elapsed_ms, quote_requests_per_second);
       if (symbols_snapshot.size() > kQuoteFanoutWarningThreshold) {
         TR_LOG_WARN(
@@ -2375,6 +2397,27 @@ void LiveTradingService::workerLoop() {
       account_snapshot_loaded = fetchLiveAccountSnapshot(account_snapshot, &account_error);
       if (!account_snapshot_loaded) {
         TR_LOG_WARN("Unable to refresh Coinbase account state: {}", account_error);
+      }
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_live_quote_attempted_symbols_ = attempted_quote_symbols;
+        last_live_quote_succeeded_symbols_ = static_cast<int>(quotes.size());
+        last_live_quote_skipped_symbols_ = skipped_quote_symbols;
+      }
+
+      // Never generate signals or dispatch orders from a partial market/account
+      // snapshot. A provider error is a safety stop, not a reason to reuse
+      // stale quotes or continue the live-affecting path.
+      const bool quote_coverage_complete =
+          attempted_quote_symbols == static_cast<int>(symbols_snapshot.size()) &&
+          skipped_quote_symbols == 0 && quotes.size() == symbols_snapshot.size();
+      if (!quote_coverage_complete || !account_snapshot_loaded) {
+        TR_LOG_WARN(
+            "Live tick blocked closed: session={} quote_coverage={}/{} attempted={} skipped={} "
+            "account_snapshot_loaded={} account_error={}",
+            session_id_, quotes.size(), symbols_snapshot.size(), attempted_quote_symbols,
+            skipped_quote_symbols, account_snapshot_loaded, account_error);
+        continue;
       }
 
       PendingWrites writes;
@@ -2388,7 +2431,6 @@ void LiveTradingService::workerLoop() {
           if (account_snapshot_loaded) {
             applyLiveAccountSnapshotLocked(account_snapshot, false);
           }
-          last_live_quote_succeeded_symbols_ = static_cast<int>(quotes.size());
           generateTickLocked(quotes);
           writes = takePendingWritesLocked();
           orders = takePendingOrdersLocked();
