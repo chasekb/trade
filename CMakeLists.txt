@@ -232,3 +232,17 @@ target_link_libraries(test_transformer_onnx_export PRIVATE
     ${TORCH_LIBRARIES}
 )
 add_test(NAME transformer_onnx_export COMMAND test_transformer_onnx_export)
+
+# Source contract for legacy TEXT signal_data compatibility. This deliberately
+# avoids a database dependency while exercising malformed and nonnumeric JSON
+# cases that previously reached unsupported PostgreSQL validation functions.
+add_executable(test_order_book_signal_query_contract
+    src/tests/test_order_book_signal_query_contract.cpp
+)
+target_link_libraries(test_order_book_signal_query_contract PRIVATE
+    nlohmann_json::nlohmann_json
+)
+target_compile_definitions(test_order_book_signal_query_contract PRIVATE
+    TRADE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+add_test(NAME order_book_signal_query_contract COMMAND test_order_book_signal_query_contract)
