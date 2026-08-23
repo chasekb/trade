@@ -65,23 +65,24 @@ Remote Docker Build Validation was the build gate.
 ## TRADE-BL-0028 closeout evidence inventory
 
 Evidence inventory date: 2026-08-23. This section records the authoritative
-closeout facts without treating queued or historical CI as fresh validation.
+closeout facts without treating queued, cancelled, or historical CI as fresh
+validation.
 
 ### Repository and Docker Build Validation identity
 
 - Repository: [`chasekb/trade`](https://github.com/chasekb/trade).
 - Exact `origin/dev` SHA at this report revision:
-  `0eaaa79c88c241128610f79e10d74238a1989328`.
+  `d44b1af07be5360029a9a9da85c1e10df1157802`.
 - Authoritative push-triggered Docker Build Validation run for this head:
-  [run 32624444896](https://github.com/chasekb/trade/actions/runs/32624444896),
-  head SHA `0eaaa79c88c241128610f79e10d74238a1989328`, status `pending` at
-  report update time. The six required push-time jobs are listed below; no
-  job had materialized yet, so no completion or success is claimed here.
+  [run 32625210298](https://github.com/chasekb/trade/actions/runs/32625210298),
+  head SHA `d44b1af07be5360029a9a9da85c1e10df1157802`, status `pending` at
+  report update time. No job had materialized yet, so no completion or success
+  is claimed here.
 - The matching pull-request run,
-  [run 32624447184](https://github.com/chasekb/trade/actions/runs/32624447184),
-  has the same head SHA but is not the authoritative closeout run because
-  pull requests intentionally run only the amd64 build jobs and do not publish
-  manifests.
+  [run 32625212250](https://github.com/chasekb/trade/actions/runs/32625212250),
+  has the same head SHA but is not the authoritative closeout run because pull
+  requests intentionally run only the amd64 build jobs and do not publish
+  manifests. Its two visible jobs were queued at report update time.
 
 The prior green run,
 [run 32598290563](https://github.com/chasekb/trade/actions/runs/32598290563),
@@ -109,7 +110,7 @@ The prior green run,
 remains historical evidence only: all six jobs above succeeded there for
 head SHA `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not this report's SHA.
 Therefore, a fresh successful Docker Build Validation run for
-`0eaaa79c88c241128610f79e10d74238a1989328` remains the CI closeout gate.
+`d44b1af07be5360029a9a9da85c1e10df1157802` remains the CI closeout gate.
 
 ### Fresh recreation and smoke evidence
 
