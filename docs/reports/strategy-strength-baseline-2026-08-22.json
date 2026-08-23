@@ -1,0 +1,142 @@
+{
+  "analysis": "strategy_strength_baseline",
+  "analysis_only": true,
+  "audit": {
+    "duplicate_rows": 0,
+    "input_rows": 11,
+    "invalid_rows": 0
+  },
+  "bin_convention": "left-closed/right-open except final bucket, [0.0,1.0]",
+  "bin_edges": [
+    0.0,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.0
+  ],
+  "cohorts": {
+    "fee_scenario": {
+      "missing": {
+        "evidence_status": "insufficient evidence",
+        "metrics": {
+          "average_loss_net_pnl": null,
+          "average_win_net_pnl": 13.222222222222221,
+          "expectancy_net_pnl": 13.222222222222221,
+          "gross_metrics": "insufficient evidence: gross PnL is absent",
+          "max_drawdown_net_pnl": 0.0,
+          "net_expectancy_95_ci": [
+            9.662669351147638,
+            16.781775093296805
+          ],
+          "sample_count": 9,
+          "uncertainty": "exploratory t interval with df=8",
+          "win_rate_percent": 100.0
+        },
+        "minimum_sample_threshold": 5
+      }
+    },
+    "holding_period": {
+      "missing": {
+        "evidence_status": "insufficient evidence",
+        "metrics": {
+          "average_loss_net_pnl": null,
+          "average_win_net_pnl": 13.222222222222221,
+          "expectancy_net_pnl": 13.222222222222221,
+          "gross_metrics": "insufficient evidence: gross PnL is absent",
+          "max_drawdown_net_pnl": 0.0,
+          "net_expectancy_95_ci": [
+            9.662669351147638,
+            16.781775093296805
+          ],
+          "sample_count": 9,
+          "uncertainty": "exploratory t interval with df=8",
+          "win_rate_percent": 100.0
+        },
+        "minimum_sample_threshold": 5
+      }
+    },
+    "market_regime": {
+      "missing": {
+        "evidence_status": "insufficient evidence",
+        "metrics": {
+          "average_loss_net_pnl": null,
+          "average_win_net_pnl": 13.222222222222221,
+          "expectancy_net_pnl": 13.222222222222221,
+          "gross_metrics": "insufficient evidence: gross PnL is absent",
+          "max_drawdown_net_pnl": 0.0,
+          "net_expectancy_95_ci": [
+            9.662669351147638,
+            16.781775093296805
+          ],
+          "sample_count": 9,
+          "uncertainty": "exploratory t interval with df=8",
+          "win_rate_percent": 100.0
+        },
+        "minimum_sample_threshold": 5
+      }
+    },
+    "strength_bucket": {
+      "missing": {
+        "evidence_status": "insufficient evidence",
+        "metrics": {
+          "average_loss_net_pnl": null,
+          "average_win_net_pnl": 13.222222222222221,
+          "expectancy_net_pnl": 13.222222222222221,
+          "gross_metrics": "insufficient evidence: gross PnL is absent",
+          "max_drawdown_net_pnl": 0.0,
+          "net_expectancy_95_ci": [
+            9.662669351147638,
+            16.781775093296805
+          ],
+          "sample_count": 9,
+          "uncertainty": "exploratory t interval with df=8",
+          "win_rate_percent": 100.0
+        },
+        "minimum_sample_threshold": 5
+      }
+    },
+    "symbol": {
+      "missing": {
+        "evidence_status": "insufficient evidence",
+        "metrics": {
+          "average_loss_net_pnl": null,
+          "average_win_net_pnl": 13.222222222222221,
+          "expectancy_net_pnl": 13.222222222222221,
+          "gross_metrics": "insufficient evidence: gross PnL is absent",
+          "max_drawdown_net_pnl": 0.0,
+          "net_expectancy_95_ci": [
+            9.662669351147638,
+            16.781775093296805
+          ],
+          "sample_count": 9,
+          "uncertainty": "exploratory t interval with df=8",
+          "win_rate_percent": 100.0
+        },
+        "minimum_sample_threshold": 5
+      }
+    }
+  },
+  "duplicates": "exact canonical JSON duplicates excluded after first occurrence",
+  "fee_scenarios": "gross and fee-scenario comparisons require gross_pnl and fee fields; absent fields are insufficient evidence",
+  "high_loss_regimes": "insufficient evidence: no losses and no regime/holding-period fields",
+  "minimum_sample_threshold": 5,
+  "missing_values": "retained as a missing cohort; never imputed or assigned a strength bucket",
+  "monotonicity": "insufficient evidence: no observed signal_strength values",
+  "overall": {
+    "average_loss_net_pnl": null,
+    "average_win_net_pnl": 13.222222222222221,
+    "expectancy_net_pnl": 13.222222222222221,
+    "gross_metrics": "insufficient evidence: gross PnL is absent",
+    "max_drawdown_net_pnl": 0.0,
+    "net_expectancy_95_ci": [
+      9.662669351147638,
+      16.781775093296805
+    ],
+    "sample_count": 9,
+    "uncertainty": "exploratory t interval with df=8",
+    "win_rate_percent": 100.0
+  },
+  "saturation_or_clipping": "insufficient evidence: no observed signal_strength values",
+  "source_rows": 11
+}
