@@ -1,0 +1,149 @@
+{
+  "report": "coinbase_orderbook_failure_evidence",
+  "schema_version": 1,
+  "generated_at": "2026-08-23T02:10:00Z",
+  "repository": {
+    "branch": "wt/t_b948e6c4",
+    "head_sha": "8af7838c9112e4f88c0f358504877d054ce9eb0c",
+    "working_tree_before_report": "clean",
+    "local_build_or_test_run": false
+  },
+  "scope": {
+    "requested": "Trace repeated Coinbase order-book TLS/network failures for YB-USD and other affected symbols, including retries, freshness, downstream blocking, and consuming code paths.",
+    "safety": [
+      "Read-only investigation; no Coinbase order was placed.",
+      "No symbol blacklist, selected-universe cap, retry-policy change, or fail-closed change was made."
+    ],
+    "evidence_limit": "No raw application log file, metrics export, trace, session id, selected-symbol payload, or database snapshot was present in this worktree. Runtime facts below are transcribed from the prior tmux pane capture recorded in Hermes session 20260822_111115_69aff4."
+  },
+  "source_events": [
+    {
+      "event_id": "pane-20260822-161419z",
+      "captured_at": "2026-08-22T16:14:19Z",
+      "source": "Hermes session 20260822_111115_69aff4, tmux pane 0:7.0 capture summary",
+      "observations": [
+        "Transformer model reload completed with lookback 60 and 353 features.",
+        "Repeated database failures reported that individual_trades.is_closing_leg does not exist.",
+        "Simulated trading worker started.",
+        "Coinbase order-book fetch for YB-USD failed with a TLS/network error after one retry.",
+        "Pane activity was described as roughly minute-spaced."
+      ],
+      "raw_log_available": false,
+      "timestamp_precision": "capture timestamp is exact; individual request start/end timestamps are unavailable"
+    }
+  ],
+  "per_symbol": [
+    {
+      "symbol": "YB-USD",
+      "fetch_attempts_observed": 1,
+      "fetch_successes_observed": 0,
+      "fetch_failures_observed": 1,
+      "failure_categories_observed": ["tls_or_network"],
+      "error_message_observed": "TLS/network error (the pane summary does not contain the underlying Drogon/OpenSSL error string)",
+      "retry_count_observed": 1,
+      "retry_semantics": "The runtime summary says after one retry. In current SimulatedTradingService::fetchLiveQuotes, attempts are bounded at two iterations and TLS/DNS/exchange-response categories break after the first failed request; status.retries records attempt + 1.",
+      "latest_success_timestamp": null,
+      "observed_data_age_seconds": null,
+      "freshness_status": "unknown; no successful snapshot timestamp or request timestamp was captured",
+      "downstream_effect": "confirmed for the observed failed fetch in live-data simulated mode: missing quotes are excluded from signal generation and execution rather than replaced with synthetic data",
+      "paper_intent_observed": null,
+      "fill_observed": null,
+      "confidence": "medium for one failed YB-USD event; low for total-window counts because raw logs and session identifiers are unavailable"
+    }
+  ],
+  "other_symbols": {
+    "symbols_with_observed_coinbase_failures": ["YB-USD"],
+    "symbols_with_observed_successes": [],
+    "selected_universe": null,
+    "per_symbol_counts_complete": false,
+    "reason": "The prior pane summary names only YB-USD and does not preserve the Start Trading payload or selected-universe list. No other symbol can be safely inferred."
+  },
+  "code_trace": [
+    {
+      "path": "src/exchange/CoinbaseAdvancedClient.cpp",
+      "lines": "168-200",
+      "symbol": "CoinbaseAdvancedClient::request",
+      "finding": "Uses HTTPS through Drogon, waits up to 15 seconds for the request future, and reports non-OK/empty responses as request failed (network or TLS error). The generic error loses the underlying transport detail at this boundary."
+    },
+    {
+      "path": "src/exchange/CoinbaseAdvancedClient.cpp",
+      "lines": "514-560",
+      "symbol": "CoinbaseAdvancedClient::getOrderBook",
+      "finding": "Calls the unauthenticated public endpoint /products/<product_id>/book?level=2 and rejects missing/empty bid or ask data."
+    },
+    {
+      "path": "src/trading/SimulatedTradingService.cpp",
+      "lines": "879-937",
+      "symbol": "SimulatedTradingService::fetchLiveQuotes",
+      "finding": "Fetches each selected symbol sequentially. It retries up to two loop iterations, but breaks immediately for tls, dns, and exchange_response classifications. On failure it records status, category, error, and retries; on success it records status=refreshed and last_success_at=nowIsoUtc()."
+    },
+    {
+      "path": "src/trading/SimulatedTradingService.cpp",
+      "lines": "1732-1758",
+      "symbol": "SimulatedTradingService::generateTickLocked",
+      "finding": "In live-data modes, a symbol with no valid quote is skipped before signal evaluation. The explicit comment states live-data modes never trade on synthetic data."
+    },
+    {
+      "path": "src/trading/SimulatedTradingService.cpp",
+      "lines": "1832-1907",
+      "symbol": "SimulatedTradingService::workerLoop",
+      "finding": "Starts the worker, fetches live quotes outside the mutex, generates a tick only from returned quotes, dispatches any resulting orders, flushes writes, and sleeps one second between iterations. Network latency plus the one-second sleep can explain roughly minute-spaced UI observations only if the selected universe/request latency or frontend polling is also measured; this report does not establish that causation."
+    },
+    {
+      "path": "src/trading/SimulatedTradingService.cpp",
+      "lines": "2012-2063",
+      "symbol": "SimulatedTradingService::buildPortfolioJson",
+      "finding": "Exposes per-symbol market_data status, category, error, retries, and last_success_at, plus refreshed/failed counts and failure symbols. It does not currently expose a computed data-age field."
+    },
+    {
+      "path": "src/trading/SimulatedTradingService.cpp",
+      "lines": "314-369",
+      "symbol": "SimulatedTradingService::ensureSchema",
+      "finding": "Current code creates individual_trades.is_closing_leg if absent, removes default/not-null constraints, and preserves NULL legacy semantics. This supports a source-level fix for the historical schema error, but no runtime migration result was captured in the evidence window."
+    },
+    {
+      "path": "src/api/PredictController.cpp",
+      "lines": "1762-1786",
+      "symbol": "PredictController::executionReconciliation",
+      "finding": "Current reconciliation query selects is_closing_leg and falls back for NULL legacy rows. A pre-migration runtime failure here could hide outcome reconciliation, but it is separate from the Coinbase fetch path and cannot by itself prove a no-trade cause."
+    }
+  ],
+  "causal_reconciliation": {
+    "coinbase_tls_lead": {
+      "classification": "confirmed blocker for the observed YB-USD fetch event; separate open issue for root cause and recurrence",
+      "why": "A failed order-book request is directly observed, and current live-data simulated code skips that symbol before signal/execution evaluation.",
+      "not_proven": [
+        "Whether the error recurred across multiple ticks.",
+        "Whether YB-USD ever recovered later.",
+        "Whether other selected symbols failed.",
+        "Whether the TLS/network failure caused the entire widget's roughly minute cadence.",
+        "Whether the failure was provider-side, DNS, container networking, certificate, or transient transport."
+      ],
+      "confidence": "medium"
+    },
+    "database_column_lead": {
+      "classification": "separate open issue / source-level mitigation present; runtime closeout unverified",
+      "why": "The missing-column error is a database/schema path, while Coinbase order-book fetch occurs through the exchange client. The paths are independent, although a reconciliation query failure can hide outcome diagnostics.",
+      "confidence": "medium"
+    },
+    "transformer_dimension_lead": {
+      "classification": "separate open issue / insufficient runtime evidence",
+      "why": "The pane reports lookback 60 and 353 features, but no model id, sequence dimensions, readiness response, or per-symbol inference result was captured. Current simulation code labels empty/not-ready transformer sequences as warming_up and does not turn that into evidence of a Coinbase transport failure.",
+      "confidence": "medium"
+    },
+    "worker_start_lead": {
+      "classification": "not a blocker by itself",
+      "why": "The worker-start event confirms the loop launched, not that quote requests succeeded, signals were generated, gates passed, intents were emitted, or fills occurred.",
+      "confidence": "high"
+    }
+  },
+  "reconciliation_gaps": [
+    "Need a fresh runtime capture retaining exact request timestamps, session id, selected symbols, per-symbol status, raw error text, retry count, last_success_at, and status response snapshots.",
+    "Need to calculate observed data age from a captured current timestamp and last_success_at; current response contract exposes the timestamp but not age.",
+    "Need per-symbol signal, model readiness/warm-up, gate/blocker, paper-intent, and fill counts from the same session window.",
+    "Need independent frontend polling/WebSocket timestamps to distinguish display cadence from producer cadence.",
+    "No code or configuration change is justified by this evidence alone."
+  ],
+  "final_classification": "confirmed blocker for one observed YB-USD market-data event, separate open issue for recurrence/root cause; not sufficient evidence to classify the overall zero-trade session or one-minute widget cadence as caused by Coinbase TLS.",
+  "overall_confidence": "medium-low"
+}
