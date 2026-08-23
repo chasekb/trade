@@ -1,0 +1,56 @@
+{
+  "evaluation": "strategy-calibration-walk-forward",
+  "date": "2026-08-22",
+  "status": "blocked",
+  "blocking_reasons": [
+    "No distinct implemented/fitted ranking mapping was found.",
+    "No historical or live-parity paper outcome dataset with timestamps was found.",
+    "Existing StrategyExpectancyFixture has no symbol, regime, holding-period, or split metadata."
+  ],
+  "supported_strategies": [
+    "sma",
+    "ema",
+    "rsi",
+    "bollinger",
+    "macd",
+    "stochastic",
+    "fibonacci",
+    "dca",
+    "buyandhold"
+  ],
+  "out_of_scope_for_current_harness": ["orderbook"],
+  "disposition": {
+    "sma": "defer",
+    "ema": "defer",
+    "rsi": "defer",
+    "bollinger": "defer",
+    "macd": "defer",
+    "stochastic": "defer",
+    "fibonacci": "defer",
+    "dca": "defer",
+    "buyandhold": "defer",
+    "orderbook": "defer"
+  },
+  "metrics": {
+    "walk_forward_splits": null,
+    "monotonicity": null,
+    "fee_adjusted_expectancy_delta": null,
+    "average_win_delta": null,
+    "average_loss_delta": null,
+    "drawdown_delta": null,
+    "combined_objective_delta": null,
+    "incremental_predictive_value": null
+  },
+  "source_paths": [
+    "src/trading/StrategySignal.cpp",
+    "include/trading/StrategySignal.hpp",
+    "src/trading/StrategyExpectancyHarness.cpp",
+    "include/trading/StrategyExpectancyHarness.hpp",
+    "docs/reports/strategy-expectancy-harness-closeout-2026-08-03.md",
+    "docs/reports/trade-strategy-objective-review-2026-08-01.md"
+  ],
+  "verification": {
+    "local_build_or_test_run": false,
+    "git_diff_check": "passed"
+  }
+}
