@@ -639,7 +639,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     reconciliation,
     isLoading: isReconciliationLoading,
     error: reconciliationError,
-  } = useExecutionReconciliation({ hours: 24 });
+  } = useExecutionReconciliation({ hours: 24, tradeType: executionMode });
 
   // Normalize optional summary fields for order book signals (prefer WebSocket data for real-time updates)
   const signalsSummary = {
@@ -795,13 +795,16 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
       {/* Signal-to-outcome reconciliation by strategy and blocker bucket */}
       <Card>
         <CardHeader>
-          <CardTitle>Execution Reconciliation</CardTitle>
+          <CardTitle>
+            {executionMode === 'live_parity' ? 'Live-parity execution outcomes' : 'Simulated execution outcomes'}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ExecutionReconciliationTable
             reconciliation={reconciliation}
             isLoading={isReconciliationLoading}
             error={reconciliationError}
+            modeLabel={executionMode === 'live_parity' ? 'Live-parity paper mode' : 'Synthetic simulation'}
           />
         </CardContent>
       </Card>
