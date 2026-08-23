@@ -41,6 +41,7 @@ set(SOURCES
     src/exchange/CoinbaseAdvancedClient.cpp
     src/exchange/CoinbaseOrder.cpp
     src/trading/PositionSizingPolicy.cpp
+    src/trading/ExecutionPreflight.cpp
     src/trading/StrategySignal.cpp
     src/trading/StrategyExpectancyHarness.cpp
     src/trading/ExecutionReconciliation.cpp
@@ -141,6 +142,13 @@ add_executable(test_position_sizing_policy
 )
 target_include_directories(test_position_sizing_policy PRIVATE include)
 add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
+
+add_executable(test_execution_preflight
+    src/tests/test_execution_preflight.cpp
+    src/trading/ExecutionPreflight.cpp
+)
+target_include_directories(test_execution_preflight PRIVATE include)
+add_test(NAME execution_preflight COMMAND test_execution_preflight)
 
 add_executable(test_portfolio_accounting
     src/tests/test_portfolio_accounting.cpp

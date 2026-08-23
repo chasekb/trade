@@ -9,6 +9,7 @@
 #include "trading/TradingStatsService.hpp"
 #include "trading/PortfolioAccounting.hpp"
 #include "trading/PositionSizingPolicy.hpp"
+#include "trading/ExecutionPreflight.hpp"
 #include "trading/StrategySignal.hpp"
 #include "ml/Metrics.hpp"
 #include "cache/CacheManager.hpp"
@@ -548,49 +549,32 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
     }
     return analysis;
   }
-  if (!signalPassesMlGateLocked(signal)) {
-    analysis["blocker_reason"] = "ml_confidence_gate";
-    return analysis;
-  }
-  if (positions_.find(signal.symbol) != positions_.end()) {
-    analysis["blocker_reason"] = "existing_position";
-    return analysis;
-  }
-  if (pending_order_symbols_.count(signal.symbol) > 0) {
-    analysis["blocker_reason"] = "pending_order";
-    return analysis;
-  }
-  if (positions_.size() >= static_cast<std::size_t>(max_positions_)) {
-    analysis["blocker_reason"] = "max_positions";
-    return analysis;
-  }
+  const bool strategy_gate_passed = signalPassesMlGateLocked(signal);
 
   const double allocated_usd = positionSizeUsdForSignal(signal);
   analysis["allocated_usd"] = allocated_usd;
-  if (allocated_usd <= 0.0 || signal.price <= 0.0) {
-    analysis["blocker_reason"] = "nonpositive_position_size_or_price";
-    return analysis;
-  }
-
-  // Live-parity paper mode must use the same spot/minimum/cash gates as live
-  // mode. Synthetic simulation intentionally retains its existing short-capable
-  // behavior and does not pretend that a paper blocker is an exchange blocker.
   if (mode_ == "live_parity") {
-    if (!exchange::coinbaseQuoteOrderMeetsMinimum(allocated_usd)) {
-      analysis["blocker_reason"] = "below_minimum_notional";
-      analysis["minimum_notional"] = exchange::coinbaseMinQuoteOrderUsd();
-      return analysis;
-    }
-    if (side != "buy") {
-      analysis["blocker_reason"] = "spot_cannot_open_short";
-      return analysis;
-    }
     const double fee = signal.price * (allocated_usd / signal.price) * kFeeRate;
     const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
     analysis["available_cash"] = available_cash;
     analysis["estimated_fee"] = fee;
-    if (!hasSufficientCash(side, available_cash, allocated_usd, fee)) {
-      analysis["blocker_reason"] = "insufficient_cash";
+    analysis["minimum_notional"] = exchange::coinbaseMinQuoteOrderUsd();
+    ExecutionPreflightInputs preflight;
+    preflight.strategy_gate_passed = strategy_gate_passed;
+    preflight.existing_position = positions_.find(signal.symbol) != positions_.end();
+    preflight.pending_order = pending_order_symbols_.count(signal.symbol) > 0;
+    preflight.managed_positions = positions_.size();
+    preflight.max_positions = static_cast<std::size_t>(max_positions_);
+    preflight.allocated_usd = allocated_usd;
+    preflight.price = signal.price;
+    preflight.minimum_notional = exchange::coinbaseMinQuoteOrderUsd();
+    preflight.side = side;
+    preflight.available_cash = available_cash;
+    preflight.estimated_fee = fee;
+    preflight.require_live_execution = false;
+    const auto decision = evaluate_execution_preflight(preflight);
+    if (!decision.executable) {
+      analysis["blocker_reason"] = decision.blocker_reason;
       return analysis;
     }
   }
