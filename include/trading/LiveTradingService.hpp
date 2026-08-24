@@ -3,6 +3,7 @@
 #include "exchange/CoinbaseAdvancedClient.hpp"
 #include "trading/CoinbasePortfolio.hpp"
 #include "trading/TradingStatsCalculator.hpp"
+#include "trading/DiagnosticsContract.hpp"
 
 #include <drogon/drogon.h>
 
@@ -123,6 +124,7 @@ private:
     int order_book_depth = 0;
     double volume = 0.0;
     int total_signals = 0;
+    NormalizedDiagnostics diagnostics;
   };
 
   // Rows produced under the mutex, flushed to Postgres outside it so API
@@ -184,6 +186,9 @@ private:
   SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index,
                                        const MarketQuote &quote);
   bool signalPassesMlGateLocked(const SignalRecord &signal) const;
+  NormalizedDiagnostics normalizeSignalDiagnosticsLocked(
+      const SignalRecord &signal, DiagnosticsMode requested_mode) const;
+  Json::Value diagnosticsToJson(const NormalizedDiagnostics &diagnostics) const;
   Json::Value buildEntryExecutionAnalysisLocked(const SignalRecord &signal) const;
   void queueSignalWriteLocked(const SignalRecord &signal);
   void queueTradeWriteLocked(const TradeRecord &trade);
