@@ -105,15 +105,20 @@ int main() {
            "report mode has stable reason");
   }
   {
-    DiagnosticsInput input;
-    input.strategy = "sma";
-    input.signal_type = "buy";
-    input.signal_strength = 0.9;
-    input.expected_return_available = true;
-    input.expected_return_fraction = 0.5;
-    const auto result = normalizeDiagnostics(input);
-    expect(!result.actionable && result.availability == DiagnosticsAvailability::Unavailable,
-           "uncalibrated strategy cannot fail open");
+    for (const char *strategy : {"sma", "ema", "rsi", "bollinger", "macd",
+                                 "stochastic", "fibonacci", "dca", "buyandhold"}) {
+      DiagnosticsInput input;
+      input.strategy = strategy;
+      input.signal_type = "buy";
+      input.signal_strength = 0.9;
+      input.expected_return_available = true;
+      input.expected_return_fraction = 0.5;
+      const auto result = normalizeDiagnostics(input);
+      expect(!result.actionable && result.availability == DiagnosticsAvailability::Unavailable,
+             std::string(strategy) + " cannot fail open with an optimistic diagnostic");
+      expect(result.mode == DiagnosticsMode::Unavailable,
+             std::string(strategy) + " retains its explicit unavailable mode");
+    }
   }
   {
     DiagnosticsInput input;

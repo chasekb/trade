@@ -1327,6 +1327,19 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
       ml_analysis["factoring_semantics"] = diagnostic.factor == "hold" ? "report" : "unavailable";
       ml_analysis["confidence"] = 0.0;
       ml_analysis["model_version"] = "strategy-diagnostic-unavailable";
+      if (generated && !diagnostic.actionable) {
+        generated = false;
+        signal_type = "hold";
+        signal.signal_type = signal_type;
+        signal.strength = 0.0;
+        payload["signal_type"] = signal.signal_type;
+        payload["signal"] = signal.signal_type;
+        payload["signal_generated"] = false;
+        payload["signal_strength"] = signal.strength;
+        payload["signal_reason"] = diagnostic.reason;
+        payload["data_status"] = "sufficient";
+        payload["prediction"] = "HOLD";
+      }
     }
   }
 
