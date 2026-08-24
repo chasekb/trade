@@ -7,7 +7,7 @@
 - `signal_id` is the idempotency key; `session_id` is an opaque session scope. Neither may contain credentials, balances, or complete account details.
 - `strategy`, `symbol`, `status`, `mode`, `timestamp_epoch_seconds`, and `runtime_window` are required.
 - `status` is exactly one of `executed`, `blocked`, or `skipped`. A blocked or skipped safety decision is never represented as executed.
-- `side` is `buy` or `sell` for executed outcomes and `none` for skipped outcomes.
+- `side` is `buy` or `sell` for executed and blocked outcomes and `none` for skipped outcomes.
 - `blocker` uses the stable categories `max_positions`, `pending_order`, `spot_cannot_short`, `minimum_notional`, `insufficient_cash`, `live_execution_disabled`, `existing_holding`, `ml_or_profitability_gate`, `stop_or_take_profit_close`, `stale_or_missing_data`, `none`, or `unknown`.
 - `diagnostic` uses `missing_expected_return`, `negative_fee_adjusted_edge`, `below_required_edge`, `weak_strength`, `account_or_exchange_blocker`, `exit_risk_rule`, `none`, or `unknown`.
 - `strength_bucket` is derived from strength in `[0,1]`: `weak` `< .30`, `medium` `[.30,.70)`, `strong` `[.70,1]`.
@@ -15,7 +15,7 @@
 - `objective` carries prediction-time expected return, fee-adjusted expected return, realized net PnL, fees, and net objective impact. Fees are non-negative and all numeric values must be finite.
 - `safe_metadata` is bounded redacted labels only. Validation rejects sensitive labels such as `secret`, `password`, `token`, `credential`, `private_key`, and `balance`.
 
-`validateSignalOutcome` returns an error for missing identifiers, invalid buckets, incomplete status/blocker combinations, non-finite values, unsafe metadata, or invalid objective values. Callers must fail closed: do not submit an order and do not persist the record when validation fails.
+`validateSignalOutcome` returns an error for missing identifiers, out-of-range enum values, invalid buckets, incomplete status/blocker/side combinations, non-finite values, unsafe metadata, or invalid objective values. Callers must fail closed: do not submit an order and do not persist the record when validation fails.
 
 ## Compatibility and reconciliation
 

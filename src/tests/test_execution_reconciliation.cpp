@@ -127,6 +127,17 @@ int main() {
   expect(!validateSignalOutcome(legacy).has_value() &&
              legacy.status == AttributionStatus::skipped,
          "legacy rows become explicit skipped outcomes");
+  auto invalid_enum = executed_outcome;
+  invalid_enum.side = AttributionSide::buy;
+  invalid_enum.status = static_cast<AttributionStatus>(99);
+  expect(validateSignalOutcome(invalid_enum).has_value(),
+         "out-of-range status fails closed");
+  auto incomplete_blocked = executed_outcome;
+  incomplete_blocked.status = AttributionStatus::blocked;
+  incomplete_blocked.blocker = BlockerCategory::pending_order;
+  incomplete_blocked.side = AttributionSide::none;
+  expect(validateSignalOutcome(incomplete_blocked).has_value(),
+         "blocked attribution without a side fails closed");
 
   // Empty input is a valid, all-zero report rather than an error.
   const auto empty = reconcileExecution({}, {});

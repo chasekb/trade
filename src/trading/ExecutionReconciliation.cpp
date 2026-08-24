@@ -82,6 +82,33 @@ std::string expectedReturnBucket(const double expected_return) {
   return "high";
 }
 
+namespace {
+
+bool validStatus(const AttributionStatus value) {
+  return value == AttributionStatus::executed ||
+         value == AttributionStatus::blocked || value == AttributionStatus::skipped;
+}
+
+bool validMode(const RuntimeMode value) {
+  return value == RuntimeMode::simulated || value == RuntimeMode::live_parity ||
+         value == RuntimeMode::live;
+}
+
+bool validSide(const AttributionSide value) {
+  return value == AttributionSide::buy || value == AttributionSide::sell ||
+         value == AttributionSide::none;
+}
+
+bool validBlocker(const BlockerCategory value) {
+  return value >= BlockerCategory::none && value <= BlockerCategory::unknown;
+}
+
+bool validDiagnostic(const DiagnosticFactor value) {
+  return value >= DiagnosticFactor::none && value <= DiagnosticFactor::unknown;
+}
+
+} // namespace
+
 std::optional<std::string>
 validateSignalOutcome(const SignalOutcomeAttribution &outcome) {
   const auto fail = [](const char *message) -> std::optional<std::string> {
@@ -93,6 +120,11 @@ validateSignalOutcome(const SignalOutcomeAttribution &outcome) {
   }
   if (outcome.timestamp_epoch_seconds <= 0 || outcome.runtime_window.empty()) {
     return fail("positive timestamp and runtime_window are required");
+  }
+  if (!validStatus(outcome.status) || !validMode(outcome.mode) ||
+      !validSide(outcome.side) || !validBlocker(outcome.blocker) ||
+      !validDiagnostic(outcome.diagnostic)) {
+    return fail("status, mode, side, blocker, or diagnostic is invalid");
   }
   if (strengthBucket(outcome.strength) == "invalid" ||
       outcome.strength_bucket != strengthBucket(outcome.strength)) {
@@ -114,8 +146,9 @@ validateSignalOutcome(const SignalOutcomeAttribution &outcome) {
     return fail("executed outcomes require a side and no blocker");
   }
   if (outcome.status == AttributionStatus::blocked &&
-      outcome.blocker == BlockerCategory::none) {
-    return fail("blocked outcomes require a blocker category");
+      (outcome.blocker == BlockerCategory::none ||
+       outcome.side == AttributionSide::none)) {
+    return fail("blocked outcomes require a blocker category and side");
   }
   if (outcome.status == AttributionStatus::skipped &&
       outcome.side != AttributionSide::none) {
