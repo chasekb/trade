@@ -10,6 +10,7 @@
 #include "trading/PortfolioAccounting.hpp"
 #include "trading/PositionSizingPolicy.hpp"
 #include "trading/ExecutionPreflight.hpp"
+#include "trading/DiagnosticsContract.hpp"
 #include "trading/StrategySignal.hpp"
 #include "trading/LegacyOrderBookSignal.hpp"
 #include "ml/Metrics.hpp"
@@ -521,8 +522,38 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   analysis["expected_return"] = expected_return;
   analysis["fee_adjusted_expected_return"] = fee_adjusted_expected_return;
   analysis["required_edge"] = ml_analysis.get("required_edge", Json::Value(0.0)).asDouble();
-  analysis["diagnostic_factor"] = ml_analysis.get(
-      "profitability_gate_reason", Json::Value(signal.payload.get("signal_reason", "").asString())).asString();
+  DiagnosticsInput diagnostic_input;
+  diagnostic_input.strategy = strategy_;
+  diagnostic_input.signal_type = signal.signal_type;
+  diagnostic_input.signal_strength = signal.strength;
+  diagnostic_input.min_signal_strength =
+      isOrderBookStrategy(strategy_)
+          ? paramNumber(parameters_, "min_orderbook_signal_strength",
+                        kDefaultOrderBookMinSignalStrength)
+          : 0.0;
+  diagnostic_input.expected_return_available =
+      ml_analysis.get("expected_return_available", Json::Value(false)).asBool();
+  diagnostic_input.expected_return_fraction = expected_return;
+  diagnostic_input.spread_fraction = signal.mid_price > 0.0
+                                         ? signal.spread / signal.mid_price
+                                         : 0.0;
+  diagnostic_input.round_trip_fee_fraction =
+      paramNumber(parameters_, "round_trip_fee_percent",
+                  kDefaultOrderBookRoundTripFeeFraction * 100.0) /
+      100.0;
+  diagnostic_input.slippage_buffer_fraction =
+      paramNumber(parameters_, "slippage_buffer_percent",
+                  kDefaultOrderBookSlippageBufferFraction * 100.0) /
+      100.0;
+  const NormalizedDiagnostics diagnostics = normalizeDiagnostics(diagnostic_input);
+  analysis["fee_adjusted_expected_return"] =
+      diagnostics.fee_adjusted_expected_return_fraction;
+  analysis["required_edge"] = diagnostics.required_edge_fraction;
+  analysis["diagnostic_factor"] = toString(diagnostics.reason_code);
+  analysis["diagnostics_mode"] = toString(diagnostics.mode);
+  analysis["diagnostics_availability"] = toString(diagnostics.availability);
+  analysis["diagnostics_reason_code"] = toString(diagnostics.reason_code);
+  analysis["diagnostics_reason"] = diagnostics.reason;
   analysis["blocked"] = true;
   analysis["blocker_reason"] = "no_signal";
   analysis["executable_intent"] = false;
@@ -530,11 +561,20 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   if (!signal_generated) {
     if (ml_analysis.isMember("profitability_gate_passed") &&
         !ml_analysis.get("profitability_gate_passed", Json::Value(true)).asBool()) {
-      analysis["blocker_reason"] = "profitability_gate";
+      analysis["blocker_reason"] = ml_analysis.get(
+          "diagnostics_reason_code", Json::Value("report_only")).asString();
     }
     return analysis;
   }
   const bool strategy_gate_passed = signalPassesMlGateLocked(signal);
+  if (!diagnostics.actionable) {
+    analysis["blocker_reason"] = toString(diagnostics.reason_code);
+    return analysis;
+  }
+  if (!strategy_gate_passed) {
+    analysis["blocker_reason"] = "ml_confidence_gate";
+    return analysis;
+  }
 
   const double allocated_usd = positionSizeUsdForSignal(signal);
   analysis["allocated_usd"] = allocated_usd;
@@ -1258,7 +1298,11 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
       ml_analysis["confidence"] = generated ? strength : 0.0;
       ml_analysis["model_version"] = "heuristic-fallback";
     } else {
-      StrategyProfitabilityInput diagnostic_input;
+      // Indicator-family strategies do not yet have calibrated expected-return
+      // diagnostics. Feed their signal through the same shared contract as the
+      // order-book path so simulation cannot invent an executable exception.
+      DiagnosticsInput diagnostic_input;
+      diagnostic_input.strategy = strategy_;
       diagnostic_input.signal_type = signal_type;
       diagnostic_input.signal_strength = strength;
       diagnostic_input.expected_return_available = false;
@@ -1271,47 +1315,66 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
           paramNumber(parameters_, "slippage_buffer_percent",
                       kDefaultOrderBookSlippageBufferFraction * 100.0) /
           100.0;
-      const auto diagnostic = evaluateStrategyProfitabilityDiagnostic(diagnostic_input);
+      const auto diagnostics = normalizeDiagnostics(diagnostic_input);
       ml_analysis["win_probability"] = 0.5;
       ml_analysis["expected_return"] = 0.0;
       ml_analysis["expected_return_available"] = false;
-      ml_analysis["diagnostics_available"] = diagnostic.diagnostics_available;
-      ml_analysis["fee_adjusted_expected_return"] = diagnostic.fee_adjusted_expected_return_fraction;
-      ml_analysis["required_edge"] = diagnostic.required_edge_fraction;
-      ml_analysis["profitability_gate_passed"] = false;
-      ml_analysis["profitability_gate_reason"] = diagnostic.reason;
-      ml_analysis["diagnostic_factor"] = diagnostic.factor;
-      ml_analysis["factoring_semantics"] = diagnostic.factor == "hold" ? "report" : "unavailable";
+      ml_analysis["diagnostics_available"] =
+          diagnostics.availability == DiagnosticsAvailability::Valid;
+      ml_analysis["fee_adjusted_expected_return"] =
+          diagnostics.fee_adjusted_expected_return_fraction;
+      ml_analysis["required_edge"] = diagnostics.required_edge_fraction;
+      ml_analysis["profitability_gate_passed"] = diagnostics.actionable;
+      ml_analysis["profitability_gate_reason"] = diagnostics.reason;
+      ml_analysis["diagnostic_factor"] = toString(diagnostics.reason_code);
+      ml_analysis["diagnostics_mode"] = toString(diagnostics.mode);
+      ml_analysis["diagnostics_availability"] = toString(diagnostics.availability);
+      ml_analysis["diagnostics_reason_code"] = toString(diagnostics.reason_code);
+      ml_analysis["factoring_semantics"] = diagnostics.report_only ? "report" : "unavailable";
       ml_analysis["confidence"] = 0.0;
       ml_analysis["model_version"] = "strategy-diagnostic-unavailable";
     }
   }
 
-  if (isOrderBookStrategy(strategy_) && generated) {
-    OrderBookProfitabilityInput gate_input;
-    gate_input.signal_type = signal_type;
-    gate_input.signal_strength = strength;
-    gate_input.expected_return_fraction =
+  if (isOrderBookStrategy(strategy_)) {
+    ml_analysis["expected_return_available"] = generated;
+  }
+  // Every strategy signal is normalized through the shared diagnostics
+  // contract. Hold remains report-only; unsupported executable strategies
+  // fail closed instead of receiving simulation-only eligibility.
+  {
+    DiagnosticsInput diagnostic_input;
+    diagnostic_input.strategy = strategy_;
+    diagnostic_input.signal_type = signal_type;
+    diagnostic_input.signal_strength = strength;
+    diagnostic_input.min_signal_strength =
+        isOrderBookStrategy(strategy_)
+            ? paramNumber(parameters_, "min_orderbook_signal_strength",
+                          kDefaultOrderBookMinSignalStrength)
+            : 0.0;
+    diagnostic_input.expected_return_available =
+        ml_analysis.get("expected_return_available", Json::Value(false)).asBool();
+    diagnostic_input.expected_return_fraction =
         ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
-    gate_input.spread_fraction = mid > 0.0 ? spread / mid : 0.0;
-    gate_input.round_trip_fee_fraction =
+    diagnostic_input.spread_fraction = mid > 0.0 ? spread / mid : 0.0;
+    diagnostic_input.round_trip_fee_fraction =
         paramNumber(parameters_, "round_trip_fee_percent",
                     kDefaultOrderBookRoundTripFeeFraction * 100.0) /
         100.0;
-    gate_input.slippage_buffer_fraction =
+    diagnostic_input.slippage_buffer_fraction =
         paramNumber(parameters_, "slippage_buffer_percent",
                     kDefaultOrderBookSlippageBufferFraction * 100.0) /
         100.0;
-    gate_input.min_signal_strength =
-        paramNumber(parameters_, "min_orderbook_signal_strength",
-                    kDefaultOrderBookMinSignalStrength);
-    const OrderBookProfitabilityGate gate =
-        evaluateOrderBookProfitabilityGate(gate_input);
-    ml_analysis["fee_adjusted_expected_return"] = gate.net_expected_return_fraction;
-    ml_analysis["required_edge"] = gate.required_edge_fraction;
-    ml_analysis["profitability_gate_passed"] = gate.passes;
-    ml_analysis["profitability_gate_reason"] = gate.reason;
-    if (!gate.passes) {
+    const NormalizedDiagnostics diagnostics = normalizeDiagnostics(diagnostic_input);
+    ml_analysis["fee_adjusted_expected_return"] =
+        diagnostics.fee_adjusted_expected_return_fraction;
+    ml_analysis["required_edge"] = diagnostics.required_edge_fraction;
+    ml_analysis["profitability_gate_passed"] = diagnostics.actionable;
+    ml_analysis["profitability_gate_reason"] = diagnostics.reason;
+    ml_analysis["diagnostic_factor"] = toString(diagnostics.reason_code);
+    ml_analysis["diagnostics_mode"] = toString(diagnostics.mode);
+    ml_analysis["diagnostics_reason_code"] = toString(diagnostics.reason_code);
+    if (!diagnostics.actionable && generated) {
       generated = false;
       signal_type = "hold";
       signal.signal_type = signal_type;
@@ -1320,7 +1383,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
       payload["signal"] = signal.signal_type;
       payload["signal_generated"] = false;
       payload["signal_strength"] = signal.strength;
-      payload["signal_reason"] = gate.reason;
+      payload["signal_reason"] = diagnostics.reason;
       payload["data_status"] = "sufficient";
       payload["prediction"] = "HOLD";
     }

@@ -126,6 +126,36 @@ int main() {
            "hold has stable report-only reason");
   }
 
+  // Live and simulated execution pass the same normalized producer values to
+  // the shared contract. Keep the parity assertion here so a future caller
+  // cannot silently reintroduce a mode-specific eligibility calculation.
+  for (const auto &fixture : {validBuy(), [&] {
+                                auto input = validBuy();
+                                input.signal_type = "sell";
+                                input.expected_return_fraction = -0.03;
+                                return input;
+                              }(), [&] {
+                                auto input = validBuy();
+                                input.expected_return_fraction = 0.005;
+                                return input;
+                              }(), [&] {
+                                auto input = validBuy();
+                                input.expected_return_available = false;
+                                return input;
+                              }()}) {
+    const auto live_facing = normalizeDiagnostics(fixture);
+    const auto simulated = normalizeDiagnostics(fixture);
+    expect(live_facing.actionable == simulated.actionable,
+           "live and simulated eligibility remain equivalent");
+    expect(live_facing.reason_code == simulated.reason_code,
+           "live and simulated blocker reason codes remain equivalent");
+    expect(live_facing.mode == simulated.mode,
+           "live and simulated diagnostics modes remain equivalent");
+    expect(live_facing.fee_adjusted_expected_return_fraction ==
+               simulated.fee_adjusted_expected_return_fraction,
+           "live and simulated directional fee-adjusted returns remain equivalent");
+  }
+
   if (failures != 0) {
     std::cerr << failures << " diagnostics contract expectation(s) failed\n";
     return 1;
