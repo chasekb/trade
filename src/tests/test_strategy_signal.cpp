@@ -254,6 +254,7 @@ int main() {
     gate_input.round_trip_fee_fraction = 0.010;
 
     gate_input.signal_type = "sell";
+    gate_input.expected_return_fraction = -0.050;
     const auto favorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
     expect(favorable_sell.passes, "order-book gate treats negative expected return as favorable for sells");
 

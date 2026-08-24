@@ -137,7 +137,7 @@ int main() {
   StrategyExpectancyFixture boundary = missing;
   boundary.name = "confidence-boundary";
   boundary.expected_return_available = true;
-  boundary.expected_return_fraction = 0.017;
+  boundary.expected_return_fraction = 0.018;
   boundary.min_signal_strength = 1.0;
   diagnostic_fixtures = {boundary};
   const auto boundary_report = evaluateStrategyExpectancy(diagnostic_fixtures);
