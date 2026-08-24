@@ -152,6 +152,7 @@ add_test(NAME portfolio_accounting COMMAND test_portfolio_accounting)
 add_executable(test_strategy_signal
     src/tests/test_strategy_signal.cpp
     src/trading/StrategySignal.cpp
+    src/trading/DiagnosticsContract.cpp
 )
 target_include_directories(test_strategy_signal PRIVATE include)
 add_test(NAME strategy_signal COMMAND test_strategy_signal)
@@ -167,6 +168,7 @@ add_executable(test_strategy_expectancy_harness
     src/tests/test_strategy_expectancy_harness.cpp
     src/trading/StrategyExpectancyHarness.cpp
     src/trading/StrategySignal.cpp
+    src/trading/DiagnosticsContract.cpp
 )
 target_include_directories(test_strategy_expectancy_harness PRIVATE include)
 add_test(NAME strategy_expectancy_harness COMMAND test_strategy_expectancy_harness)

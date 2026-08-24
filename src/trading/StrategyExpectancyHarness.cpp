@@ -127,6 +127,7 @@ StrategyExpectancyReport evaluateStrategyExpectancy(
     row.signal_strength = signal.strength;
 
     StrategyProfitabilityInput diagnostic_input;
+    diagnostic_input.strategy = fixture.strategy;
     diagnostic_input.signal_type = signal.signal_type;
     diagnostic_input.signal_strength = signal.strength;
     diagnostic_input.expected_return_available = fixture.expected_return_available;

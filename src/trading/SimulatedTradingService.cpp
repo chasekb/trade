@@ -535,6 +535,10 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   analysis["expected_return"] = expected_return;
   analysis["fee_adjusted_expected_return"] = fee_adjusted_expected_return;
   analysis["required_edge"] = ml_analysis.get("required_edge", Json::Value(0.0)).asDouble();
+  analysis["diagnostics_mode"] = ml_analysis.get("diagnostics_mode", Json::Value("unavailable"));
+  analysis["diagnostics_availability"] = ml_analysis.get("diagnostics_availability", Json::Value("unavailable"));
+  analysis["diagnostics_reason_code"] = ml_analysis.get("diagnostics_reason_code", Json::Value("missing_expected_return"));
+  analysis["diagnostics_report_only"] = ml_analysis.get("diagnostics_report_only", Json::Value(false));
   analysis["diagnostic_factor"] = ml_analysis.get(
       "profitability_gate_reason", Json::Value(signal.payload.get("signal_reason", "").asString())).asString();
   analysis["blocked"] = true;
@@ -554,6 +558,12 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   }
   if (positions_.find(signal.symbol) != positions_.end()) {
     analysis["blocker_reason"] = "existing_position";
+    return analysis;
+  }
+  if (ml_analysis.isMember("profitability_gate_passed") &&
+      !ml_analysis.get("profitability_gate_passed", Json::Value(false)).asBool()) {
+    analysis["blocker_reason"] = ml_analysis.get(
+        "diagnostics_reason_code", Json::Value("profitability_gate")).asString();
     return analysis;
   }
   if (pending_order_symbols_.count(signal.symbol) > 0) {
@@ -1287,6 +1297,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
       ml_analysis["model_version"] = "heuristic-fallback";
     } else {
       StrategyProfitabilityInput diagnostic_input;
+      diagnostic_input.strategy = strategy_;
       diagnostic_input.signal_type = signal_type;
       diagnostic_input.signal_strength = strength;
       diagnostic_input.expected_return_available = false;
@@ -1309,6 +1320,10 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
       ml_analysis["profitability_gate_passed"] = false;
       ml_analysis["profitability_gate_reason"] = diagnostic.reason;
       ml_analysis["diagnostic_factor"] = diagnostic.factor;
+      ml_analysis["diagnostics_mode"] = toString(diagnostic.mode);
+      ml_analysis["diagnostics_availability"] = toString(diagnostic.availability);
+      ml_analysis["diagnostics_reason_code"] = toString(diagnostic.reason_code);
+      ml_analysis["diagnostics_report_only"] = diagnostic.report_only;
       ml_analysis["factoring_semantics"] = diagnostic.factor == "hold" ? "report" : "unavailable";
       ml_analysis["confidence"] = 0.0;
       ml_analysis["model_version"] = "strategy-diagnostic-unavailable";
@@ -1339,6 +1354,10 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
     ml_analysis["required_edge"] = gate.required_edge_fraction;
     ml_analysis["profitability_gate_passed"] = gate.passes;
     ml_analysis["profitability_gate_reason"] = gate.reason;
+    ml_analysis["diagnostics_mode"] = "gate";
+    ml_analysis["diagnostics_availability"] = toString(gate.availability);
+    ml_analysis["diagnostics_reason_code"] = toString(gate.reason_code);
+    ml_analysis["diagnostics_report_only"] = gate.report_only;
     if (!gate.passes) {
       generated = false;
       signal_type = "hold";

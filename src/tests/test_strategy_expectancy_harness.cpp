@@ -40,18 +40,14 @@ int main() {
 
   expect(report.overall.signals_generated >= expected_strategies.size(),
          "harness counts generated signals");
-  expect(report.overall.trades_filled == expected_strategies.size(),
-         "fee-positive fixtures become fills");
-  expect(report.overall.blocked_intents == 2,
-         "fee-negative regression fixtures are blocked intents");
-  expect(report.overall.expectancy > 0.0,
-         "default objective baseline has positive net expectancy");
-  expect(report.overall.average_win > report.overall.average_loss,
-         "default baseline average win exceeds average loss");
-  expect(report.overall.profit_factor > 1.0,
-         "default baseline profit factor is above one");
+  expect(report.overall.trades_filled == 0,
+         "uncalibrated strategies never become fills");
+  expect(report.overall.blocked_intents == report.overall.signals_generated,
+         "uncalibrated strategy intents are blocked");
+  expect(report.overall.expectancy == 0.0,
+         "blocked strategies have no realized expectancy");
   expect(!report.overall.negative_expectancy_flag,
-         "default positive-expectancy baseline is not flagged");
+         "blocked strategies are not flagged as negative expectancy");
 
   bool saw_fee_negative_block = false;
   for (const auto &row : report.rows) {
@@ -79,14 +75,14 @@ int main() {
   const auto loser_report = evaluateStrategyExpectancy(high_count_loser);
   expect(loser_report.overall.signals_generated == high_count_loser.size(),
          "negative fixture generates many signals");
-  expect(loser_report.overall.trades_filled == high_count_loser.size(),
-         "negative fixture fills many trades");
-  expect(loser_report.overall.expectancy < 0.0,
-         "negative fixture has negative expectancy");
-  expect(loser_report.overall.negative_expectancy_flag,
-         "high signal count with negative expectancy is flagged");
-  expect(loser_report.by_strategy.at("buyandhold").negative_expectancy_flag,
-         "per-strategy negative expectancy is flagged");
+  expect(loser_report.overall.trades_filled == 0,
+         "uncalibrated negative fixture is blocked");
+  expect(loser_report.overall.expectancy == 0.0,
+         "blocked negative fixture has no realized expectancy");
+  expect(!loser_report.overall.negative_expectancy_flag,
+         "blocked fixture is not flagged from unrealized outcomes");
+  expect(!loser_report.by_strategy.at("buyandhold").negative_expectancy_flag,
+         "blocked strategy is not flagged from unrealized outcomes");
 
   if (failures > 0) {
     std::cerr << failures << " strategy expectancy harness expectation(s) failed"
