@@ -305,97 +305,65 @@ StrategySignalOutcome evaluateStrategySignal(const std::string &strategy,
 OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
     const OrderBookProfitabilityInput &input) {
   OrderBookProfitabilityGate gate;
-  gate.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
-                                std::max(0.0, input.spread_fraction) +
-                                std::max(0.0, input.slippage_buffer_fraction);
-  double expected_edge = 0.0;
-  if (input.signal_type == "buy") {
-    expected_edge = input.expected_return_fraction;
-  } else if (input.signal_type == "sell") {
-    expected_edge = -input.expected_return_fraction;
-  }
-  gate.net_expected_return_fraction = expected_edge - gate.required_edge_fraction;
-
-  if (input.signal_type == "hold") {
-    gate.reason = "Order book signal is hold";
-    return gate;
-  }
-  if (input.signal_strength < input.min_signal_strength) {
-    std::ostringstream oss;
-    oss << "Signal strength " << input.signal_strength << " below minimum "
-        << input.min_signal_strength;
-    gate.reason = oss.str();
-    return gate;
-  }
-  if (gate.net_expected_return_fraction <= 0.0) {
-    std::ostringstream oss;
-    oss << "Expected edge " << expected_edge
-        << " does not exceed fee/spread/slippage hurdle "
-        << gate.required_edge_fraction;
-    gate.reason = oss.str();
-    return gate;
-  }
-
-  gate.passes = true;
-  gate.reason = "Expected edge exceeds fee/spread/slippage hurdle";
+  DiagnosticsInput diagnostics;
+  diagnostics.strategy = "orderbook";
+  diagnostics.signal_type = input.signal_type;
+  diagnostics.signal_strength = input.signal_strength;
+  diagnostics.min_signal_strength = input.min_signal_strength;
+  diagnostics.expected_return_available = true;
+  diagnostics.expected_return_fraction = input.expected_return_fraction;
+  diagnostics.spread_fraction = input.spread_fraction;
+  diagnostics.round_trip_fee_fraction = input.round_trip_fee_fraction;
+  diagnostics.slippage_buffer_fraction = input.slippage_buffer_fraction;
+  const auto normalized = normalizeDiagnostics(diagnostics);
+  gate.passes = normalized.actionable;
+  gate.availability = normalized.availability;
+  gate.reason_code = normalized.reason_code;
+  gate.report_only = normalized.report_only;
+  gate.net_expected_return_fraction = normalized.fee_adjusted_expected_return_fraction;
+  gate.required_edge_fraction = normalized.required_edge_fraction;
+  gate.reason = normalized.reason;
   return gate;
 }
 
 StrategyProfitabilityDiagnostic evaluateStrategyProfitabilityDiagnostic(
     const StrategyProfitabilityInput &input) {
   StrategyProfitabilityDiagnostic diagnostic;
-  diagnostic.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
-                                      std::max(0.0, input.spread_fraction) +
-                                      std::max(0.0, input.slippage_buffer_fraction);
-
-  if (input.signal_type == "hold") {
-    diagnostic.factor = "hold";
-    diagnostic.reason = "Strategy signal is hold";
-    return diagnostic;
-  }
-
-  if (input.signal_strength < input.min_signal_strength) {
-    diagnostic.factor = "weak_strength";
-    std::ostringstream oss;
-    oss << "Signal strength " << input.signal_strength << " below minimum "
-        << input.min_signal_strength;
-    diagnostic.reason = oss.str();
-    return diagnostic;
-  }
-
-  if (!input.expected_return_available ||
-      !std::isfinite(input.expected_return_fraction)) {
-    diagnostic.factor = "expected_return_unavailable";
-    diagnostic.reason = "Expected-return diagnostic is unavailable";
-    return diagnostic;
-  }
-
-  diagnostic.diagnostics_available = true;
-  if (input.signal_type == "buy") {
-    diagnostic.directional_expected_edge_fraction = input.expected_return_fraction;
-  } else if (input.signal_type == "sell") {
-    diagnostic.directional_expected_edge_fraction = -input.expected_return_fraction;
-  } else {
-    diagnostic.factor = "unsupported_signal";
-    diagnostic.reason = "Unsupported strategy signal type: " + input.signal_type;
-    return diagnostic;
-  }
-
-  diagnostic.fee_adjusted_expected_return_fraction =
-      diagnostic.directional_expected_edge_fraction - diagnostic.required_edge_fraction;
-  if (diagnostic.fee_adjusted_expected_return_fraction <= 0.0) {
-    diagnostic.factor = "negative_fee_adjusted_edge";
-    std::ostringstream oss;
-    oss << "Expected edge " << diagnostic.directional_expected_edge_fraction
-        << " does not exceed fee/spread/slippage hurdle "
-        << diagnostic.required_edge_fraction;
-    diagnostic.reason = oss.str();
-    return diagnostic;
-  }
-
-  diagnostic.actionable = true;
-  diagnostic.factor = "fee_adjusted_edge_passed";
-  diagnostic.reason = "Expected edge exceeds fee/spread/slippage hurdle";
+  DiagnosticsInput diagnostics_input;
+  diagnostics_input.strategy = input.strategy;
+  diagnostics_input.signal_type = input.signal_type;
+  diagnostics_input.signal_strength = input.signal_strength;
+  diagnostics_input.min_signal_strength = input.min_signal_strength;
+  diagnostics_input.expected_return_available = input.expected_return_available;
+  diagnostics_input.expected_return_fraction = input.expected_return_fraction;
+  diagnostics_input.spread_fraction = input.spread_fraction;
+  diagnostics_input.round_trip_fee_fraction = input.round_trip_fee_fraction;
+  diagnostics_input.slippage_buffer_fraction = input.slippage_buffer_fraction;
+  diagnostics_input.requested_mode = input.requested_mode;
+  diagnostics_input.diagnostic_timestamp_seconds = input.diagnostic_timestamp_seconds;
+  diagnostics_input.now_seconds = input.now_seconds;
+  diagnostics_input.max_age_seconds = input.max_age_seconds;
+  const auto normalized = normalizeDiagnostics(diagnostics_input);
+  diagnostic.actionable = normalized.actionable;
+  diagnostic.diagnostics_available = normalized.availability == DiagnosticsAvailability::Valid;
+  diagnostic.availability = normalized.availability;
+  diagnostic.reason_code = normalized.reason_code;
+  diagnostic.mode = normalized.mode;
+  diagnostic.report_only = normalized.report_only;
+  diagnostic.directional_expected_edge_fraction = normalized.directional_expected_return_fraction;
+  diagnostic.fee_adjusted_expected_return_fraction = normalized.fee_adjusted_expected_return_fraction;
+  diagnostic.required_edge_fraction = normalized.required_edge_fraction;
+  diagnostic.reason = normalized.reason;
+  diagnostic.factor = normalized.reason_code == DiagnosticsReasonCode::Actionable
+                          ? "fee_adjusted_edge_passed"
+                          : normalized.reason_code == DiagnosticsReasonCode::NonPositiveFeeAdjustedEdge
+                                ? "negative_fee_adjusted_edge"
+                                : normalized.reason_code == DiagnosticsReasonCode::MissingExpectedReturn
+                                      ? "expected_return_unavailable"
+                                : normalized.reason_code == DiagnosticsReasonCode::HoldSignal ||
+                                          normalized.reason_code == DiagnosticsReasonCode::ReportOnly
+                                      ? "hold"
+                                      : toString(normalized.reason_code);
   return diagnostic;
 }
 

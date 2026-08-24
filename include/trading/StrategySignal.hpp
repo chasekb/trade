@@ -57,12 +57,16 @@ struct OrderBookProfitabilityInput {
 
 struct OrderBookProfitabilityGate {
   bool passes = false;
+  DiagnosticsAvailability availability = DiagnosticsAvailability::Unavailable;
+  DiagnosticsReasonCode reason_code = DiagnosticsReasonCode::MissingExpectedReturn;
+  bool report_only = false;
   double net_expected_return_fraction = 0.0;
   double required_edge_fraction = 0.0;
   std::string reason;
 };
 
 struct StrategyProfitabilityInput {
+  std::string strategy = "orderbook";
   std::string signal_type = "hold";
   double signal_strength = 0.0;
   bool expected_return_available = false;
@@ -71,11 +75,19 @@ struct StrategyProfitabilityInput {
   double round_trip_fee_fraction = 0.015;
   double slippage_buffer_fraction = 0.002;
   double min_signal_strength = 0.0;
+  std::optional<DiagnosticsMode> requested_mode;
+  std::int64_t diagnostic_timestamp_seconds = 0;
+  std::int64_t now_seconds = 0;
+  std::int64_t max_age_seconds = 0;
 };
 
 struct StrategyProfitabilityDiagnostic {
   bool actionable = false;
   bool diagnostics_available = false;
+  DiagnosticsAvailability availability = DiagnosticsAvailability::Unavailable;
+  DiagnosticsReasonCode reason_code = DiagnosticsReasonCode::MissingExpectedReturn;
+  DiagnosticsMode mode = DiagnosticsMode::Unavailable;
+  bool report_only = false;
   double directional_expected_edge_fraction = 0.0;
   double fee_adjusted_expected_return_fraction = 0.0;
   double required_edge_fraction = 0.0;
