@@ -249,3 +249,10 @@ target_link_libraries(test_transformer_onnx_export PRIVATE
     ${TORCH_LIBRARIES}
 )
 add_test(NAME transformer_onnx_export COMMAND test_transformer_onnx_export)
+
+add_executable(test_legacy_order_book_signal
+    src/tests/test_legacy_order_book_signal.cpp
+)
+target_include_directories(test_legacy_order_book_signal PRIVATE include)
+target_link_libraries(test_legacy_order_book_signal PRIVATE JsonCpp::JsonCpp)
+add_test(NAME legacy_order_book_signal COMMAND test_legacy_order_book_signal)

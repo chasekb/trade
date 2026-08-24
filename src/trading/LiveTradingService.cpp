@@ -11,6 +11,7 @@
 #include "trading/PositionSizingPolicy.hpp"
 #include "trading/ExecutionPreflight.hpp"
 #include "trading/StrategySignal.hpp"
+#include "trading/LegacyOrderBookSignal.hpp"
 #include "ml/Metrics.hpp"
 #include "cache/CacheManager.hpp"
 #include "utils/Logger.hpp"
@@ -25,6 +26,7 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <random>
 
 #include <set>
@@ -111,24 +113,6 @@ std::string joinStrings(const std::vector<std::string> &items, const char *sep =
 
 std::vector<std::string> defaultSymbols() {
   return {"BTC-USD", "ETH-USD", "SOL-USD"};
-}
-
-Json::Value parseJsonString(const std::string &text) {
-  Json::Value root;
-  if (text.empty()) {
-    return root;
-  }
-
-  Json::CharReaderBuilder builder;
-  builder["collectComments"] = false;
-  std::string errs;
-  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-  const char *begin = text.data();
-  const char *end = text.data() + text.size();
-  if (reader->parse(begin, end, &root, &errs)) {
-    return root;
-  }
-  return Json::Value();
 }
 
 std::string makeSessionId() {
@@ -978,8 +962,8 @@ bool LiveTradingService::recoverPendingOrders() {
                                                : row["reason"].as<std::string>();
       intent.action = row["action"].as<std::string>();
       intent.reserved_cash = row["reserved_cash"].as<double>();
-      const Json::Value signal = parseJsonString(row["signal_json"].as<std::string>());
-      const Json::Value position = parseJsonString(row["position_json"].as<std::string>());
+      const Json::Value signal = legacy_order_book::parseObject(row["signal_json"].as<std::string>());
+      const Json::Value position = legacy_order_book::parseObject(row["position_json"].as<std::string>());
       if (!signal.isObject() || !position.isObject() ||
           (intent.side != "buy" && intent.side != "sell") ||
           !std::isfinite(intent.amount) || intent.amount <= 0.0 ||
@@ -3388,22 +3372,34 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
         << "SELECT signal_id, session_id, symbol, signal_type, strength, price, timestamp, signal_data, "
         << "spread, imbalance, mid_price, best_bid, best_ask, order_book_depth, volume, total_signals "
         << "FROM latest_signals "
-        // Keep persisted ordering independent of optional/malformed signal JSON.
-        // The payload is parsed safely after the query; never cast legacy TEXT
-        // data to jsonb in SQL just to break ties.
-        << "ORDER BY strength DESC, timestamp DESC "
-        << "LIMIT " << safe_per_page << " OFFSET " << offset;
+        // Keep legacy TEXT JSON out of SQL. Ordering is applied below after
+        // each payload has been parsed with a numeric fallback.
+        << "ORDER BY symbol, timestamp DESC";
 
     auto rows = DatabaseManager::getInstance().execParams(sql.str(), bound_symbols);
+    std::vector<std::size_t> ordered_indices(rows.size());
+    std::iota(ordered_indices.begin(), ordered_indices.end(), 0);
+    std::sort(ordered_indices.begin(), ordered_indices.end(), [&rows](std::size_t lhs, std::size_t rhs) {
+      const auto lhs_signal = legacy_order_book::parseObject(rows[lhs]["signal_data"].is_null() ? "" : rows[lhs]["signal_data"].c_str());
+      const auto rhs_signal = legacy_order_book::parseObject(rows[rhs]["signal_data"].is_null() ? "" : rows[rhs]["signal_data"].c_str());
+      const double lhs_strength = rows[lhs]["strength"].is_null() ? 0.0 : rows[lhs]["strength"].as<double>();
+      const double rhs_strength = rows[rhs]["strength"].is_null() ? 0.0 : rows[rhs]["strength"].as<double>();
+      if (lhs_strength != rhs_strength) return lhs_strength > rhs_strength;
+      const double lhs_probability = legacy_order_book::winProbability(lhs_signal);
+      const double rhs_probability = legacy_order_book::winProbability(rhs_signal);
+      if (lhs_probability != rhs_probability) return lhs_probability > rhs_probability;
+      return rows[lhs]["timestamp"].as<long long>() > rows[rhs]["timestamp"].as<long long>();
+    });
     double strength_sum = 0.0;
     int active_count = 0;
     long long latest_ts = 0;
 
-    for (const auto &row : rows) {
-      Json::Value signal = parseJsonString(row["signal_data"].is_null() ? "" : row["signal_data"].c_str());
-      if (!signal.isObject()) {
-        signal = Json::Value(Json::objectValue);
-      }
+    const std::size_t first = std::min<std::size_t>(static_cast<std::size_t>(offset), ordered_indices.size());
+    const std::size_t last = std::min(first + static_cast<std::size_t>(safe_per_page), ordered_indices.size());
+    for (std::size_t rank = first; rank < last; ++rank) {
+      const auto &row = rows[ordered_indices[rank]];
+      Json::Value signal = legacy_order_book::parseObject(
+          row["signal_data"].is_null() ? "" : row["signal_data"].c_str());
       signal["signal_id"] = row["signal_id"].is_null() ? "" : row["signal_id"].c_str();
       signal["session_id"] = row["session_id"].is_null() ? "" : row["session_id"].c_str();
       signal["symbol"] = row["symbol"].is_null() ? "" : row["symbol"].c_str();
@@ -3436,7 +3432,7 @@ Json::Value LiveTradingService::getOrderBookSignals(const std::vector<std::strin
 
     result["total_analyzed"] = total;
     result["active_signals"] = active_count;
-    result["average_strength"] = rows.empty() ? 0.0 : strength_sum / static_cast<double>(rows.size());
+    result["average_strength"] = first == last ? 0.0 : strength_sum / static_cast<double>(last - first);
     if (latest_ts > 0) {
       result["last_updated"] = epochSecondsToIso(latest_ts);
     }
