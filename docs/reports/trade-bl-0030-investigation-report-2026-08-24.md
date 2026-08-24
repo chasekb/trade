@@ -1,7 +1,7 @@
 # TRADE-BL-0030 investigation report
 
-Date: 2026-08-24  
-Evidence timestamps: UTC  
+Date: 2026-08-24
+Evidence timestamps: UTC
 Status: evidence-backed investigation; no causal fix claimed
 
 ## Executive summary
