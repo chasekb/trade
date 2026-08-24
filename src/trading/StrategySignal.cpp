@@ -310,7 +310,7 @@ OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
   diagnostics.signal_type = input.signal_type;
   diagnostics.signal_strength = input.signal_strength;
   diagnostics.min_signal_strength = input.min_signal_strength;
-  diagnostics.expected_return_available = true;
+  diagnostics.expected_return_available = input.expected_return_available;
   diagnostics.expected_return_fraction = input.expected_return_fraction;
   diagnostics.spread_fraction = input.spread_fraction;
   diagnostics.round_trip_fee_fraction = input.round_trip_fee_fraction;
@@ -360,6 +360,8 @@ StrategyProfitabilityDiagnostic evaluateStrategyProfitabilityDiagnostic(
                                 ? "negative_fee_adjusted_edge"
                                 : normalized.reason_code == DiagnosticsReasonCode::MissingExpectedReturn
                                       ? "expected_return_unavailable"
+                                : normalized.reason_code == DiagnosticsReasonCode::WeakSignal
+                                      ? "weak_strength"
                                 : normalized.reason_code == DiagnosticsReasonCode::HoldSignal ||
                                           normalized.reason_code == DiagnosticsReasonCode::ReportOnly
                                       ? "hold"

@@ -1672,6 +1672,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         ml_analysis["ml_enabled"] = true;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
         ml_analysis["expected_return"] = expected_pnl;
+        ml_analysis["expected_return_available"] = std::isfinite(expected_pnl);
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
         ml_analysis["confidence"] = std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0);
         ml_analysis["model_version"] =
@@ -1735,10 +1736,12 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
     }
   }
 
-  if (isOrderBookStrategy(strategy_) && generated) {
+  if (isOrderBookStrategy(strategy_)) {
     OrderBookProfitabilityInput gate_input;
     gate_input.signal_type = signal_type;
     gate_input.signal_strength = strength;
+    gate_input.expected_return_available = ml_analysis.get(
+        "expected_return_available", Json::Value(false)).asBool();
     gate_input.expected_return_fraction =
         ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
     gate_input.spread_fraction = mid > 0.0 ? spread / mid : 0.0;
@@ -1763,7 +1766,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
     ml_analysis["diagnostics_availability"] = toString(gate.availability);
     ml_analysis["diagnostics_reason_code"] = toString(gate.reason_code);
     ml_analysis["diagnostics_report_only"] = gate.report_only;
-    if (!gate.passes) {
+    if (!gate.passes && !gate.report_only) {
       generated = false;
       signal_type = "hold";
       signal.signal_type = signal_type;

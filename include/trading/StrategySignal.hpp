@@ -2,7 +2,9 @@
 
 #include "trading/DiagnosticsContract.hpp"
 
+#include <cstdint>
 #include <deque>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +50,7 @@ struct StrategySignalOutcome {
 struct OrderBookProfitabilityInput {
   std::string signal_type = "hold";
   double signal_strength = 0.0;
+  bool expected_return_available = false;
   double expected_return_fraction = 0.0;
   double spread_fraction = 0.0;
   double round_trip_fee_fraction = 0.015;

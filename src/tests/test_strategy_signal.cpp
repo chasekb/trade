@@ -188,6 +188,7 @@ int main() {
     OrderBookProfitabilityInput gate_input;
     gate_input.signal_type = "buy";
     gate_input.signal_strength = 0.8;
+    gate_input.expected_return_available = true;
     gate_input.expected_return_fraction = 0.020;
     gate_input.spread_fraction = 0.001;
     gate_input.round_trip_fee_fraction = 0.010;
@@ -241,6 +242,24 @@ int main() {
     gate_input.expected_return_fraction = -0.024 * 0.92;
     const auto strong_sell = evaluateOrderBookProfitabilityGate(gate_input);
     expect(strong_sell.passes, "shared order-book gate treats strong negative edge as actionable sell");
+
+    gate_input.expected_return_available = false;
+    const auto unavailable_gate = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!unavailable_gate.passes &&
+               unavailable_gate.availability ==
+                   trade::trading::DiagnosticsAvailability::Unavailable,
+           "order-book gate blocks unavailable diagnostics");
+    expect(unavailable_gate.reason_code ==
+               trade::trading::DiagnosticsReasonCode::MissingExpectedReturn,
+           "order-book gate reports missing diagnostic reason");
+
+    gate_input.signal_type = "hold";
+    const auto report_only_gate = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(!report_only_gate.passes && report_only_gate.report_only,
+           "hold order-book decision is report-only");
+    expect(report_only_gate.reason_code ==
+               trade::trading::DiagnosticsReasonCode::ReportOnly,
+           "hold order-book decision reports stable reason");
   }
 
   if (failures > 0) {
