@@ -38,6 +38,7 @@ type PositionLike = {
   symbol?: string;
   status?: string;
   session_managed?: boolean;
+  reconciliation_status?: string;
   asset?: string;
   balance_crypto?: number;
   balance_fiat?: number;
