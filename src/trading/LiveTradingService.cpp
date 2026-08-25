@@ -52,6 +52,20 @@ constexpr std::size_t kMaxRecentSignals = 250;
 // fan-out can be correlated with provider errors and rate limits.
 constexpr std::size_t kQuoteFanoutWarningThreshold = 10;
 
+std::string canonicalProductId(std::string value) {
+  const auto first = value.find_first_not_of(" \t\r\n");
+  const auto last = value.find_last_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return {};
+  }
+  value = value.substr(first, last - first + 1);
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char character) {
+                   return static_cast<char>(std::toupper(character));
+                 });
+  return value;
+}
+
 std::string randomClientOrderId() {
   static thread_local std::mt19937_64 rng(std::random_device{}());
   static constexpr char kHex[] = "0123456789abcdef";
@@ -517,7 +531,8 @@ std::string LiveTradingService::positionManagementStateLocked(
 bool LiveTradingService::hasAcceptedPendingOrderLocked(const std::string &symbol) const {
   return std::any_of(pending_live_orders_.begin(), pending_live_orders_.end(),
                      [&symbol](const PendingLiveOrder &pending) {
-                       return pending.intent.product_id == symbol &&
+                       return canonicalProductId(pending.intent.product_id) ==
+                                  canonicalProductId(symbol) &&
                               !pending.order_id.empty() && !pending.fill_applied;
                      });
 }
@@ -534,7 +549,8 @@ bool LiveTradingService::positionExposureVerifiedLocked(
   return std::any_of(last_account_snapshot_.holdings.begin(),
                     last_account_snapshot_.holdings.end(),
                     [&position](const CoinbaseHolding &holding) {
-                      return holding.asset + "-USD" == position.symbol;
+                      return canonicalProductId(holding.asset + "-USD") ==
+                             canonicalProductId(position.symbol);
                     });
 }
 
@@ -610,7 +626,8 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
       std::any_of(last_account_snapshot_.holdings.begin(),
                   last_account_snapshot_.holdings.end(),
                   [&position](const CoinbaseHolding &holding) {
-                    return holding.asset + "-USD" == position.symbol;
+                    return canonicalProductId(holding.asset + "-USD") ==
+                           canonicalProductId(position.symbol);
                   });
   out["account_snapshot_present"] = account_snapshot_present;
   out["account_snapshot_loaded"] = last_account_snapshot_loaded_;
@@ -1329,7 +1346,6 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
   last_account_snapshot_at_ = nowIsoUtc();
   cash_ = snapshot.cash_available;
   cash_hold_ = snapshot.cash_hold;
-  total_positions_value_ = snapshot.positions_value;
   if (establish_baseline) {
     initial_capital_ = snapshot.total_value;
   }
@@ -1339,7 +1355,7 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
   unrealized_pnl_ = 0.0;
   const bool manage_account_exits = accountPositionManagementAllowsExitsLocked();
   for (const auto &holding : snapshot.holdings) {
-    const std::string symbol = holding.asset + "-USD";
+    const std::string symbol = canonicalProductId(holding.asset + "-USD");
     if (manage_account_exits &&
         std::find(symbols_.begin(), symbols_.end(), symbol) == symbols_.end()) {
       symbols_.push_back(symbol);
@@ -1414,7 +1430,12 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
     unrealized_pnl_ += position.unrealized_pnl;
   }
   for (auto it = positions_.begin(); it != positions_.end();) {
-    if (account_symbols.count(it->first) == 0 && pending_order_symbols_.count(it->first) == 0) {
+    const bool present_in_account = std::any_of(
+        account_symbols.begin(), account_symbols.end(),
+        [&it](const std::string &account_symbol) {
+          return canonicalProductId(account_symbol) == canonicalProductId(it->first);
+        });
+    if (!present_in_account && pending_order_symbols_.count(it->first) == 0) {
       auto floor_it = managed_quantity_floors_.find(it->first);
       if (floor_it != managed_quantity_floors_.end() &&
           floor_it->second.second > 0) {
@@ -1426,6 +1447,13 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
       }
     } else {
       ++it;
+    }
+  }
+  total_positions_value_ = 0.0;
+  for (const auto &[symbol, position] : positions_) {
+    if (positionExposureVerifiedLocked(position)) {
+      total_positions_value_ +=
+          signedPositionValue(position.side, position.quantity, position.current_price);
     }
   }
 }

@@ -475,6 +475,7 @@ export function useLiveTabProducer(enabled: boolean = true) {
     staleTime: 5 * 1000,
     refetchInterval: enabled ? 10 * 1000 : false,
     refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
   });
 }
 

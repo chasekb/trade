@@ -65,4 +65,18 @@ describe('normalizeLiveTabProducerSnapshot', () => {
     ]);
     expect(snapshot.errors).toEqual(['Coinbase credentials are not configured']);
   });
+
+  it('replaces cached live positions with authoritative verified rows', () => {
+    const snapshot = normalizeLiveTabProducerSnapshot({
+      portfolio: { positions: [{ symbol: 'BTC-USD' }] },
+      positions: [
+        { symbol: 'BTC-USD', reconciliation_status: 'coinbase_confirmed' },
+        { symbol: 'ETH-USD', reconciliation_status: 'stale_internal' },
+      ],
+    });
+
+    expect(snapshot.positions).toEqual([
+      { symbol: 'BTC-USD', reconciliation_status: 'coinbase_confirmed' },
+    ]);
+  });
 });
