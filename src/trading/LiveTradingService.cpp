@@ -1414,7 +1414,8 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
     unrealized_pnl_ += position.unrealized_pnl;
   }
   for (auto it = positions_.begin(); it != positions_.end();) {
-    if (account_symbols.count(it->first) == 0 && pending_order_symbols_.count(it->first) == 0) {
+    if (account_symbols.count(it->first) == 0 &&
+        !hasAcceptedPendingOrderLocked(it->first)) {
       auto floor_it = managed_quantity_floors_.find(it->first);
       if (floor_it != managed_quantity_floors_.end() &&
           floor_it->second.second > 0) {
