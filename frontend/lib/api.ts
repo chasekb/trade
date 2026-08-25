@@ -1281,7 +1281,50 @@ class ApiClient {
     if (params?.sessionId) query.set('session_id', params.sessionId);
     if (params?.tradeType) query.set('trade_type', params.tradeType);
     const suffix = query.toString();
-    return this.request(`/api/trading/execution-reconciliation${suffix ? `?${suffix}` : ''}`);
+    const endpoint = `/api/trading/execution-reconciliation${suffix ? `?${suffix}` : ''}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          status: 'error',
+          error: typeof payload.error === 'string'
+            ? payload.error
+            : 'Execution reconciliation is temporarily unavailable. Retry shortly.',
+          errorCode: typeof payload.code === 'string' ? payload.code : undefined,
+          httpStatus: response.status,
+          requestId: typeof payload.request_id === 'string' ? payload.request_id : undefined,
+          retryable: response.status === 503 || response.status === 504,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      return {
+        status: 'success',
+        data: payload,
+        httpStatus: response.status,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      const aborted = error instanceof DOMException && error.name === 'AbortError';
+      return {
+        status: 'error',
+        error: aborted
+          ? 'Execution reconciliation timed out. Retry shortly.'
+          : 'Execution reconciliation connection failed. Retry shortly.',
+        errorCode: aborted ? 'reconciliation_timeout' : 'reconciliation_transport_error',
+        retryable: true,
+        timestamp: new Date().toISOString(),
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async getPnlTrades(sortBy: string = 'pnl'): Promise<ApiResponse<any>> {

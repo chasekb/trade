@@ -12,6 +12,18 @@ export interface UseExecutionReconciliationOptions {
   enabled?: boolean;
 }
 
+class ExecutionReconciliationError extends Error {
+  readonly retryable: boolean;
+  readonly requestId?: string;
+
+  constructor(message: string, retryable: boolean, requestId?: string) {
+    super(message);
+    this.name = 'ExecutionReconciliationError';
+    this.retryable = retryable;
+    this.requestId = requestId;
+  }
+}
+
 // Reconciles generated signals to execution outcomes by strategy and blocker
 // bucket over a trailing window. This is a diagnostic read: it never starts,
 // stops, or authorizes trading.
@@ -23,11 +35,19 @@ export function useExecutionReconciliation(options: UseExecutionReconciliationOp
     queryFn: async () => {
       const response = await apiClient.getExecutionReconciliation({ hours, sessionId, tradeType });
       if (response.status === 'error' || !response.data) {
-        throw new Error(response.error || 'Failed to fetch execution reconciliation');
+        throw new ExecutionReconciliationError(
+          response.requestId
+            ? `${response.error || 'Execution reconciliation is temporarily unavailable. Retry shortly.'} (request ${response.requestId})`
+            : response.error || 'Execution reconciliation is temporarily unavailable. Retry shortly.',
+          response.retryable === true,
+          response.requestId,
+        );
       }
       return normalizeExecutionReconciliation(response.data);
     },
     enabled,
+    retry: (failureCount, error) =>
+      error instanceof ExecutionReconciliationError && error.retryable && failureCount < 2,
     refetchInterval: 60000,
     staleTime: 55000,
   });
