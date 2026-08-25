@@ -187,6 +187,10 @@ export interface ApiResponse<T> {
   status: 'success' | 'error';
   data?: T;
   error?: string;
+  errorCode?: string;
+  httpStatus?: number;
+  requestId?: string;
+  retryable?: boolean;
   timestamp: string;
 }
 

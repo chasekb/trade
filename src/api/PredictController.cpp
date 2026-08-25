@@ -1788,7 +1788,20 @@ void PredictController::executionReconciliation(
     }
   } catch (const std::exception &e) {
     TR_LOG_WARN("Failed to build execution reconciliation: {}", e.what());
-    resp["error"] = e.what();
+    static std::atomic<std::uint64_t> reconciliation_request_sequence{0};
+    const auto request_number =
+        reconciliation_request_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    resp = Json::Value(Json::objectValue);
+    resp["code"] = "reconciliation_unavailable";
+    resp["error"] =
+        "Execution reconciliation is temporarily unavailable. Retry shortly.";
+    resp["retryable"] = true;
+    resp["request_id"] = "reconciliation-" + std::to_string(request_number);
+    auto error_resp = HttpResponse::newHttpJsonResponse(resp);
+    error_resp->setStatusCode(k503ServiceUnavailable);
+    error_resp->addHeader("Cache-Control", "no-store");
+    callback(error_resp);
+    return;
   }
 
   resp["signal_rows"] = static_cast<Json::UInt64>(signals.size());
@@ -1800,7 +1813,9 @@ void PredictController::executionReconciliation(
   }
   resp["overall"] = reconciliation_to_json(report.overall);
 
-  callback(HttpResponse::newHttpJsonResponse(resp));
+  auto success_resp = HttpResponse::newHttpJsonResponse(resp);
+  success_resp->addHeader("Cache-Control", "no-store");
+  callback(success_resp);
 }
 
 } // namespace api
