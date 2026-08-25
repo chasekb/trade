@@ -81,6 +81,46 @@ struct StrategyProfitabilityDiagnostic {
   std::string reason;
 };
 
+// Outcome-derived strength mappings are intentionally opt-in. A rule is
+// usable only when its evidence and context contract are fully satisfied.
+struct StrengthCalibrationBin {
+  double raw_strength_min = 0.0;
+  double raw_strength_max = 1.0;
+  double calibrated_strength = 0.0;
+  std::size_t evidence_count = 0;
+};
+
+struct StrengthCalibrationRule {
+  std::string strategy;
+  std::string regime = "unknown";
+  double holding_period_min = 0.0;
+  double holding_period_max = 0.0;
+  double fee_fraction_min = 0.0;
+  double fee_fraction_max = 0.0;
+  std::size_t minimum_evidence = 0;
+  bool validated_out_of_sample = false;
+  std::vector<StrengthCalibrationBin> bins;
+};
+
+struct StrengthCalibrationContext {
+  std::string regime = "unknown";
+  double expected_holding_period = 0.0;
+  double round_trip_fee_fraction = 0.0;
+};
+
+struct StrategyStrengthCalibration {
+  bool enabled = false;
+  std::vector<StrengthCalibrationRule> rules;
+};
+
+struct StrategySignalEvaluation {
+  StrategySignalOutcome raw_signal;
+  StrategySignalOutcome effective_signal;
+  StrategyProfitabilityDiagnostic profitability;
+  bool calibration_applied = false;
+  std::string calibration_status = "disabled";
+};
+
 // Evaluates the indicator-family strategies (sma, ema, rsi, bollinger, macd,
 // stochastic, fibonacci, dca, buyandhold) over a price history ordered oldest
 // to newest (last element = current price). Order-book strategies are handled
@@ -91,6 +131,21 @@ StrategySignalOutcome evaluateStrategySignal(const std::string &strategy,
                                              const StrategyParams &params,
                                              bool has_position,
                                              long long ticks_since_last_entry);
+
+StrategySignalOutcome applyStrategyStrengthCalibration(
+    const std::string &strategy,
+    const StrategySignalOutcome &signal,
+    const StrategyStrengthCalibration &calibration,
+    const StrengthCalibrationContext &context,
+    std::string *status = nullptr);
+
+StrategySignalEvaluation evaluateStrategySignalWithDiagnostics(
+    const std::string &strategy, const std::deque<double> &prices,
+    const StrategyParams &params,
+    const StrategyStrengthCalibration &calibration,
+    const StrengthCalibrationContext &context,
+    const StrategyProfitabilityInput &profitability_input,
+    bool has_position, long long ticks_since_last_entry);
 
 OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
     const OrderBookProfitabilityInput &input);
