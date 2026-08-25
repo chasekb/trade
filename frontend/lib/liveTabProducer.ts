@@ -45,6 +45,10 @@ function asBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function livePositions(value: unknown): UnknownRecord[] {
+  return asArray(value).filter((position) => position.reconciliation_status !== 'stale_internal');
+}
+
 export function normalizeLiveTabProducerSnapshot(input: unknown): LiveTabProducerSnapshot {
   const root = asRecord(input);
   const portfolio = asRecord(root.portfolio);
@@ -61,7 +65,9 @@ export function normalizeLiveTabProducerSnapshot(input: unknown): LiveTabProduce
     totalPositionsValue: asNumber(portfolio.total_positions_value ?? root.total_positions_value),
     totalValue: asNumber(portfolio.total_value ?? root.total_value ?? root.total_balance_usd),
     holdings: asArray(portfolio.holdings ?? root.holdings),
-    positions: asArray(root.positions ?? portfolio.positions),
+    // The latest server response is authoritative; stale internal rows must
+    // not survive in the live exposure cache after reconciliation.
+    positions: livePositions(root.positions ?? portfolio.positions),
     pendingOrders: asArray(root.pending_orders),
     stats: asRecord(root.stats),
     credentialsConfigured: asBoolean(root.credentials_configured ?? readiness.credentials_configured),
