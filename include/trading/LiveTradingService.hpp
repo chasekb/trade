@@ -221,6 +221,7 @@ private:
   bool accountPositionManagementAllowsExitsLocked() const;
   bool accountPositionManagementAllowsEntriesLocked() const;
   std::string positionManagementStateLocked(const PositionState &position) const;
+  bool positionExposureVerifiedLocked(const PositionState &position) const;
   long long nowEpochSeconds() const;
   std::string nowIsoUtc() const;
   std::string makeId(const std::string &prefix, long long ts, const std::string &symbol,
