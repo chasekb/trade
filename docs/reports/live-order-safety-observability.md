@@ -28,13 +28,14 @@ Use explicit session states:
 
 `degraded` is an execution/readiness condition orthogonal to `active`; it may be entered from `active` or `draining` when market/account/reconciliation evidence is unsafe.
 
-A `POST /api/live-trading/stop` request must:
+A `POST /api/trading/live/stop` request (the registered route; there is no
+normative `/api/live-trading/stop` alias) must:
 
 1. Atomically set `stop_requested=true`, `active=false`, and reject new strategy or manual intents.
 2. Cancel quote-fetch work that has not started and prevent new queue admission. In-flight public GETs may finish only if the client cancellation hook permits; they may not create signals or orders after the stop epoch.
 3. Move every unsent intent to `cancelled_before_submit`, release its symbol lock and cash reservation exactly once, and emit a terminal event for each intent.
 4. Never cancel an already accepted market IOC as if it were cancellable. Keep it in `pending_reconciliation`; resolve by exchange order id or client-order-id lookup, then retrieve the fill/status and refresh the account snapshot.
-5. Continue the drain worker until: quote work is empty, unsent intents are empty, database writes are flushed or durably queued, and every accepted order is terminal or explicitly `reconciliation_unknown`.
+5. Continue the drain worker until: quote work is empty, unsent intents are empty, database writes are flushed or durably queued, and every accepted order is terminal or explicitly `reconciliation_unknown`. A write is "durably queued" only when it is in a committed transactional outbox/retry row in the database (including its operation key, payload, attempt, next-attempt time, and session/stop generation); an in-memory queue does not satisfy this condition.
 6. Return `status=settling` while accepted orders, ambiguous submissions, or persistence retries remain. Return `status=success` only when the drain contract is complete. A repeated stop is idempotent and returns the current drain status.
 7. Keep manual liquidation behind the same stop gate unless it is an explicitly separate, operator-approved emergency action with its own audit event. Stop must not trigger unapproved liquidation.
 
@@ -53,11 +54,12 @@ Default policy (configurable only by backend deployment configuration, not the b
 - A selected-universe tick is `coverage_complete` only when every selected symbol has a fresh or explicitly classified terminal result for that tick. Missing symbols are not treated as HOLD and are not hidden by pagination.
 - A partial tick may publish signals for observability, but all signals from a partial tick carry `coverage_complete=false` and `execution_eligible=false`. No order intent may reference an incomplete tick.
 - Failed market data is not retried indefinitely. Retry at most once for a transient timeout/429 within the same tick, with bounded backoff; do not retry malformed, unauthorized, or invalid-book responses. Drop the tick result after the deadline and wait for the next scheduled observation.
-- On repeated stale/partial ticks, enter `degraded` and keep live execution disabled until a complete fresh tick and fresh account snapshot are observed. Recovery is explicit in diagnostics (`degraded_reason`, `recovered_at`), not inferred from a green HTTP response.
+- On 2 consecutive stale/partial ticks, enter `degraded` and keep live execution disabled until a complete fresh tick and fresh account snapshot are observed. Recovery is explicit in diagnostics (`degraded_reason`, `recovered_at`), not inferred from a green HTTP response.
 
 Selected universe invariants:
 
-- The exact normalized user-selected symbols are retained in `selected_symbols`; deduplicate only exact symbol duplicates and preserve the user-visible order separately as `selected_symbols_order`.
+- Canonicalization trims ASCII surrounding whitespace, uppercases the product code, and accepts only the exchange product-id grammar `[A-Z0-9]+-[A-Z0-9]+`; empty, malformed, unsupported, or otherwise invalid symbols reject the live-start request. Canonical duplicates are rejected (rather than silently deduplicated), while the original user-visible order is retained only for diagnostics. An explicitly empty selection is invalid in live mode and must not fall back to `defaultSymbols()`.
+- The exact canonical user-selected symbols are retained in `selected_symbols`; preserve the user-visible order separately as `selected_symbols_order`.
 - A queue capacity or worker count limits concurrent requests, never selected symbols per tick. If the deadline cannot cover the universe, report `coverage_complete=false`, `missing_symbols`, and `queue_capacity_exceeded`; do not truncate or substitute a default universe.
 - Backend-only adaptive inputs are request latency, 429 count/rate, timeout/error rate, queue age, tick duration, stale age, and configured exchange budget. Browser timing, CPU count, widget page size, and displayed signal count are not concurrency inputs.
 
@@ -91,13 +93,13 @@ The scheduler has separate bounded lanes:
 3. order submission/reconciliation lane, serialized by intent and symbol safety rules;
 4. persistence lane with bounded retry storage.
 
-The queue is FIFO within freshness priority: expired/degraded recovery and account reconciliation first, then symbols with oldest observation age, then stable selected-universe order. Capacity, worker count, request timeout, cooldown, and per-tick deadline are fixed backend limits. Adaptive concurrency may move only within those limits and only after a completed control interval. Reduce concurrency immediately on 429s, timeout/error spikes, queue lag, or stale-age growth; increase slowly after a sustained healthy interval. Never use unbounded `hardware_concurrency()` fan-out.
+The queue is FIFO within freshness priority: expired/degraded recovery and account reconciliation first, then symbols with oldest observation age, then stable selected-universe order. The initial safe configuration is normative: queue capacity 256; worker count 2, bounded 1..4; dispatch limit 2 and never greater than worker count; quote batch size 8, bounded 1..32; exchange token bucket 5 requests/second with burst 10; request deadline 2,000 ms; one same-tick read-only retry with bounded backoff; throttle cooldown 1,000 ms, bounded 1,000..60,000 ms; recovery window 30,000 ms; stop-drain deadline 10,000 ms; and degraded entry after 2 consecutive stale/partial ticks. Deployments may tighten these values only within the stated bounds. Missing, zero, negative, non-finite, or out-of-range safety settings fail closed at startup and disable live execution; they must never become unbounded defaults. Adaptive concurrency may move only within these limits and only after a completed control interval. Reduce concurrency immediately on 429s, timeout/error spikes, queue lag, or stale-age growth; increase slowly after a sustained healthy interval. Never use unbounded `hardware_concurrency()` fan-out.
 
 A queue-full result is a classified drop (`queue_capacity_exceeded`), not a successful HOLD. No retry loop may outlive the tick deadline. Stop generation invalidates queued work.
 
 ## 6. Durable observability contract
 
-Every metric and log event includes: `service`, `environment`, `session_id`, `stop_generation`, `tick_id`, `intent_id` (when applicable), `signal_id`, `client_order_id` (when applicable), `exchange_order_id` (when known), `symbol`, `side`, `action`, `strategy`, `selected_universe_hash`, `queue_lane`, `attempt`, `source`, `status`, `reason_code`, `requested_at`, `received_at`, and `trace_id`. Do not log API keys, JWTs, Coinbase secrets, raw signed requests, or complete account payloads.
+Metrics use only bounded labels: `service`, `environment`, `result`, `reason_code`, `queue_lane`, `side`, `action`, and coarse `symbol_group`/strategy names from an allowlist. Never use session, tick, signal, intent, client-order, exchange-order, trace, or raw symbol identifiers as metric labels; attach those IDs as exemplars where supported. Structured logs and audit events carry the correlation fields `service`, `environment`, `session_id`, `stop_generation`, `tick_id`, `intent_id` (when applicable), `signal_id` (when applicable), `client_order_id` (when applicable), `exchange_order_id` (when known), `symbol` (when known), `side`/`action` (when applicable), `strategy` (when known), `selected_universe_hash`, `queue_lane`, `attempt`, `source`, `status`, `reason_code`, timestamps, and `trace_id`. Fields with no applicable value are omitted or JSON `null`, never fabricated. Do not log API keys, JWTs, Coinbase secrets, raw signed requests, or complete account payloads.
 
 Durable counters/gauges/histograms:
 
@@ -119,10 +121,22 @@ Alert conditions:
 - any accepted/ambiguous order remains unreconciled beyond the configured recovery window;
 - `coverage_complete=false` or expired-symbol count persists for two ticks while execution is enabled;
 - account snapshot is degraded beyond 30 seconds or valuation is incomplete;
-- 429/throttle rate, queue age, or timeout rate exceeds configured thresholds;
+- 429/throttle rate reaches 5 responses per minute, queue age exceeds 2,000 ms, or timeout rate exceeds 20% for two consecutive ticks (these are the initial thresholds; tightening is allowed);
 - reservation total disagrees with persisted pending orders;
 - duplicate prevention, fill idempotency, or persistence invariants fail;
 - Stop drain remains incomplete beyond its deadline.
+
+Persistence retry rows are the crash-recovery source of truth: the transaction
+that records an order/intent also records any required outbox operation, and a
+worker claims rows with a lease, retries idempotently by operation key, and
+marks them complete only after the external result is persisted. Rows survive
+process restart and are retained for at least 30 days (or until terminal plus
+the configured audit-retention period, whichever is longer); expired rows are
+archived, never deleted while non-terminal. An in-memory retry queue may be a
+performance cache only. If the database/outbox transaction cannot commit, live
+execution fails closed and no exchange placement is attempted. A restart after
+persistence failure must reload pending rows, preserve the original
+`client_order_id`, and reconcile before admitting new entries.
 
 ## 7. API and widget diagnostics
 
@@ -165,12 +179,15 @@ The widget must distinguish: `exchange_throttled`, `queue_lag`, `quote_stale`, `
 
 A tester can validate all of the following without placing a real order by using a fake Coinbase client and database fixtures:
 
-- Stop during quote fetch: no post-stop signal or intent is admitted; unsent reservations are released; accepted orders remain reconcilable; response stays `settling` until terminal.
+- Stop during quote fetch: no post-stop signal or intent is admitted; unsent reservations are released; accepted orders remain reconcilable; response stays `settling` until terminal or the 10-second drain deadline, after which it remains visibly incomplete and execution stays disabled.
 - Repeated stop and restart race: stop is idempotent, no old worker can submit into a new session, and restart waits for worker/drain completion.
 - Timeout after order transmission: exactly one persisted client id is looked up; no duplicate placement; eventual fill is applied once, including fees.
 - Database failure before placement: no exchange call occurs. Database failure after local fill application does not apply a second fill.
+- Restart after persistence failure: a committed outbox row is replayed exactly once by operation key; an uncommitted in-memory retry is not treated as durable, and live execution remains disabled until the order/account state is reconciled.
 - Duplicate intent for one symbol: second intent is blocked and `live_order_duplicate_prevented_total` increments.
 - 429/5xx: quote work is bounded and classified; order placement is not blindly retried; concurrency backs off within configured limits.
+- Invalid scheduler configuration: startup reports the invalid field and remains execution-disabled rather than accepting zero/unbounded capacity, workers, deadlines, or retry limits.
+- Invalid or empty explicit universe: live start rejects the request and never substitutes the default symbol list; canonical duplicates and malformed product IDs are named in diagnostics.
 - Missing, malformed, stale, or partial selected-universe quotes: diagnostics enumerate missing symbols, `coverage_complete=false`, and no live order is eligible from that tick.
 - Account snapshot timeout, valuation failure, or stale age: `can_trade=false`, account data is not silently replaced with zero, and the widget names `account_lag`/valuation failure.
 - Queue capacity/deadline exhaustion: no selected symbols disappear; dropped work is classified and visible.
