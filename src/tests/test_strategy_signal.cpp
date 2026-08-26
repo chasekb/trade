@@ -213,6 +213,66 @@ int main() {
     expect(known_good.strength > known_bad.strength,
            "validated mapping ranks known-good strength above known-bad strength");
 
+    // Context specificity is field-wise: exact regime, then narrower holding
+    // period, then narrower fee interval. Widths must not be summed because a
+    // narrow fee band can otherwise lose to an unrelated holding-period band.
+    StrengthCalibrationRule broad_holding;
+    broad_holding.strategy = "sma";
+    broad_holding.regime = "trend";
+    broad_holding.holding_period_min = 0.0;
+    broad_holding.holding_period_max = 2.05;
+    broad_holding.fee_fraction_min = 0.0095;
+    broad_holding.fee_fraction_max = 0.0105;
+    broad_holding.minimum_evidence = 1;
+    broad_holding.validated_out_of_sample = true;
+    broad_holding.bins = {{0.0, 1.0, 0.3, 1}};
+    StrengthCalibrationRule narrow_holding = broad_holding;
+    narrow_holding.holding_period_min = 0.0;
+    narrow_holding.holding_period_max = 2.0;
+    narrow_holding.fee_fraction_min = 0.0;
+    narrow_holding.fee_fraction_max = 0.1;
+    narrow_holding.bins = {{0.0, 1.0, 0.9, 1}};
+    StrategyStrengthCalibration competing;
+    competing.enabled = true;
+    competing.rules = {broad_holding, narrow_holding};
+    raw.strength = 0.5;
+    auto competing_context = context;
+    competing_context.expected_holding_period = 1.0;
+    const auto specific = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, competing, competing_context, &status);
+    expect(status == "applied" && specific.strength == 0.9,
+           "narrower holding-period rule wins over narrower fee rule");
+
+    // Unsorted bins are rejected before any mapping can be applied.
+    rule.bins = {{0.5, 1.0, 0.8, 3}, {0.0, 0.5, 0.4, 3}};
+    calibration.rules[0] = rule;
+    const auto unsorted = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(status == "invalid_rule" && unsorted.strength == raw.strength,
+           "unsorted calibration bins use identity fallback");
+
+    // The integrated seam keeps a held/rejected mapping at raw strength and
+    // still fails closed when expected-return diagnostics are unavailable.
+    rule.bins = {{0.0, 0.5, 0.4, 3}, {0.5, 1.0, 0.8, 3}};
+    rule.validated_out_of_sample = false;
+    calibration.rules[0] = rule;
+    StrategyProfitabilityInput unavailable_profitability;
+    unavailable_profitability.expected_return_available = false;
+    const auto held_evaluation = evaluateStrategySignalWithDiagnostics(
+        "sma", linearSeries(100.0, 0.5, 60), params, calibration, context,
+        unavailable_profitability, false, 0);
+    expect(held_evaluation.calibration_status == "not_validated" &&
+               held_evaluation.effective_signal.strength ==
+                   held_evaluation.raw_signal.strength,
+           "integrated held mapping preserves raw strength");
+    expect(!held_evaluation.profitability.actionable &&
+               held_evaluation.profitability.factor == "expected_return_unavailable",
+           "integrated missing diagnostics fail closed");
+
+    // Restore the validated fixture for the profitability assertions below.
+    rule.validated_out_of_sample = true;
+    calibration.rules[0] = rule;
+
     StrategyProfitabilityInput profitability;
     profitability.expected_return_available = true;
     profitability.expected_return_fraction = 0.020;

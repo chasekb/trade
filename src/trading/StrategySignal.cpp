@@ -321,6 +321,7 @@ bool validCalibrationRule(const StrengthCalibrationRule &rule) {
     return false;
   }
 
+  double previous_min = 0.0;
   double previous_max = 0.0;
   double previous_calibrated = 0.0;
   for (std::size_t i = 0; i < rule.bins.size(); ++i) {
@@ -330,19 +331,46 @@ bool validCalibrationRule(const StrengthCalibrationRule &rule) {
         bin.raw_strength_max > 1.0 || bin.raw_strength_min >= bin.raw_strength_max ||
         bin.calibrated_strength < 0.0 || bin.calibrated_strength > 1.0 ||
         bin.evidence_count < rule.minimum_evidence ||
+        (i > 0 && bin.raw_strength_min < previous_min) ||
         (i > 0 && bin.raw_strength_min < previous_max) ||
         (i > 0 && bin.calibrated_strength < previous_calibrated)) {
       return false;
     }
+    previous_min = bin.raw_strength_min;
     previous_max = bin.raw_strength_max;
     previous_calibrated = bin.calibrated_strength;
   }
   return true;
 }
 
-double ruleSpecificity(const StrengthCalibrationRule &rule) {
-  return (rule.holding_period_max - rule.holding_period_min) +
-         (rule.fee_fraction_max - rule.fee_fraction_min);
+struct RuleSpecificity {
+  bool exact_regime = false;
+  double holding_period_width = 0.0;
+  double fee_fraction_width = 0.0;
+};
+
+RuleSpecificity ruleSpecificity(const StrengthCalibrationRule &rule,
+                               const StrengthCalibrationContext &context) {
+  return {rule.regime == context.regime,
+          rule.holding_period_max - rule.holding_period_min,
+          rule.fee_fraction_max - rule.fee_fraction_min};
+}
+
+bool moreSpecific(const RuleSpecificity &candidate,
+                  const RuleSpecificity &selected) {
+  if (candidate.exact_regime != selected.exact_regime) {
+    return candidate.exact_regime;
+  }
+  if (candidate.holding_period_width != selected.holding_period_width) {
+    return candidate.holding_period_width < selected.holding_period_width;
+  }
+  return candidate.fee_fraction_width < selected.fee_fraction_width;
+}
+
+bool equallySpecific(const RuleSpecificity &left, const RuleSpecificity &right) {
+  return left.exact_regime == right.exact_regime &&
+         left.holding_period_width == right.holding_period_width &&
+         left.fee_fraction_width == right.fee_fraction_width;
 }
 
 } // namespace
@@ -410,13 +438,15 @@ StrategySignalOutcome applyStrategyStrengthCalibration(
   }
   const auto *selected = matches.front();
   for (const auto *candidate : matches) {
-    if (ruleSpecificity(*candidate) < ruleSpecificity(*selected)) {
+    if (moreSpecific(ruleSpecificity(*candidate, context),
+                     ruleSpecificity(*selected, context))) {
       selected = candidate;
     }
   }
+  const auto final_specificity = ruleSpecificity(*selected, context);
   for (const auto *candidate : matches) {
     if (candidate != selected &&
-        ruleSpecificity(*candidate) == ruleSpecificity(*selected)) {
+        equallySpecific(ruleSpecificity(*candidate, context), final_specificity)) {
       setStatus("ambiguous");
       return effective;
     }
