@@ -17,8 +17,8 @@ The scheduler is backend-only. The frontend supplies the selected universe and r
 
 - `UniverseState`: a deduplicated, order-preserving vector of selected product IDs plus a monotonically increasing `universe_generation`.
 - `QuoteQueue`: a fixed-capacity priority queue of quote jobs. Capacity is 256 queued jobs. There is at most one queued or in-flight job per `(universe_generation, symbol)`; a newer job coalesces/replaces an older queued job for that symbol.
-- `QuoteWorkers`: a fixed CPU worker pool. Safe defaults are `worker_count=2`, hard minimum 1, hard maximum 8. The maximum is a constant safety limit, not `hardware_concurrency()`; hardware concurrency may only be used as an input to a clamped configured default.
-- `ExchangeBudget`: one token bucket for all public Coinbase requests made by this live service, including quote order books and account valuation tickers. Authenticated account-list requests use a reserved sub-budget so quote fan-out cannot starve account safety refreshes.
+- `QuoteWorkers`: a fixed CPU worker pool. Safe defaults are `worker_count=2`, hard minimum 1, hard maximum 4. `dispatch_limit` is the coupled maximum number of active network calls and is never greater than `worker_count`. The maximum is a constant safety limit, not `hardware_concurrency()`; hardware concurrency is never used for fan-out.
+- `ExchangeBudget`: one token bucket for all Coinbase requests made by this live service, including quote order books and account valuation tickers. The account lane reserves a bounded, all-or-nothing cost so quote fan-out cannot starve account safety refreshes.
 - `AdaptiveController`: updates batch admission and worker concurrency only at tick boundaries from bounded rolling metrics. It cannot exceed fixed queue, worker, request-rate, or timeout limits.
 - `AccountSnapshotScheduler`: a separate single-flight cadence, default 15 seconds, for `listAccounts` plus required valuation tickers. It never runs once per quote symbol or once per quote tick.
 - `CancellationState`: a generation/cancellation token checked before enqueue, before budget wait, before network dispatch, after network completion, and before publishing a result.
@@ -32,18 +32,21 @@ These values are defaults and hard-bounded configuration fields:
 | Setting | Default | Hard range / rule |
 | --- | ---: | --- |
 | queue capacity | 256 jobs | fixed; never grows dynamically |
-| worker count | 2 | 1 through 8; no unbounded fan-out |
-| maximum in-flight quote requests | 4 | 1 through 8 and never above worker count |
+| worker count | 2 | 1 through 4; no unbounded fan-out |
+| dispatch/in-flight quote limit | 2 | 1 through worker count; updated atomically with worker count |
 | quote batch size target | 8 symbols | 1 through 32; batch size is admission grouping, not a universe cap |
 | public request rate | 5 requests/second | 0.5 through 20; configured exchange budget wins over adaptive increase |
 | public burst | 10 tokens | 1 through 20 and no greater than two seconds of configured rate |
-| account reserved rate | 1 request/second | at least one token every 15 seconds when credentials are configured |
-| request timeout | 10 seconds | 2 through 15 seconds |
+| account reservation | 10 request costs | exactly 6 account pages plus 4 valuation tickers; all-or-nothing |
+| quote deadline | 2 seconds absolute | includes queue wait, token wait, network, and retry |
+| account attempt deadline | 15 seconds absolute | includes pagination, valuation, token waits, and retry |
+| client transport timeout | 10 seconds | never overrides either absolute deadline |
 | maximum attempts | 2 total | one initial attempt plus one retry |
-| retry backoff | 250 ms then none | retry only once, with jitter bounded to 0–100 ms |
+| retry backoff | 100 ms base | retry only once; bounded by the absolute deadline |
 | normal quote freshness | 5 seconds | quote older than this cannot create an entry intent |
 | hard quote age | 15 seconds | older data is stale and excluded from signal execution |
-| account snapshot freshness | 30 seconds | older data blocks live order admission |
+| account snapshot active freshness | 45 seconds | older data blocks live order admission |
+| account snapshot hard stale | 90 seconds | diagnostic severity only; remains fail-closed |
 | queue lag warning / fail-closed | 2 s / 10 s | fail-closed means no new live order intent, not process termination |
 | account refresh cadence | 15 seconds | single-flight; settlement may trigger an immediate coalesced refresh |
 | controller interval | 10 seconds | decisions only at completed intervals |
@@ -59,12 +62,12 @@ job_id, session_id, universe_generation, symbol, requested_at,
 not_before, deadline, attempt, priority, cancellation_generation
 ```
 
-Priority is deterministic:
+Priority is deterministic and safety-first:
 
 1. symbols needed by an open managed position or pending exit;
-2. symbols whose last successful quote is oldest;
-3. symbols never successfully quoted in the current universe generation;
-4. configured selected-universe order;
+2. unseen or hard-stale symbols;
+3. soft-stale symbols, ordered by oldest successful quote;
+4. ordinary refreshes in configured selected-universe order;
 5. `job_id` as the final tie-breaker.
 
 An open managed position or a pending exit receives an exit-protection priority, but it still cannot bypass the exchange token bucket, request timeout, or cancellation. Account refreshes have their own reserved budget and are never queued behind quote work.
@@ -92,7 +95,7 @@ tokens = min(capacity, tokens + elapsed_seconds * configured_rate)
 allow(cost=1) iff tokens >= 1; then tokens -= 1
 ```
 
-A request waits only until its deadline and cancellation token. Waiting for a token is counted as queue/budget lag, not network latency. Public quote work may consume only `capacity - reserved_account_tokens`. The account lane owns a reservation of one token per 15-second cadence and may borrow no more than one additional token from the public pool when the bucket is otherwise idle. Quote work cannot consume the reserved token.
+A request waits only until its absolute deadline and cancellation token. Waiting for a token is counted as queue/budget lag, not network latency. Each account refresh atomically reserves exactly 10 request costs: at most 6 paginated `listAccounts` calls and at most 4 valuation tickers. The reservation must be available before the attempt starts; quote work may consume only unreserved tokens. The account lane is single-flight and has a 15-second completion-to-completion cadence. If reservation is unavailable by the 15-second attempt deadline, pagination exceeds 6 pages, valuation requires more than 4 tickers, or any required call fails, the entire refresh fails closed, retains the last complete snapshot, and blocks account-dependent orders once the retained snapshot is older than 45 seconds. No partial snapshot is published.
 
 HTTP 429, explicit rate-limit response, or a provider response containing a retry-after value causes an immediate controller decrease and sets `not_before` to `min(retry_after, 5 seconds)` for the one permitted retry. If retry-after is absent, use 1 second. A second 429 drops the job for this cycle and records `rate_limited`; it does not create a retry storm.
 
@@ -109,7 +112,7 @@ The controller uses exponentially weighted moving averages over completed reques
 - `budget_utilization`: consumed tokens / available configured tokens;
 - `coverage_ratio`: selected symbols with a valid quote not older than 5 seconds / selected symbols.
 
-Controller state is clamped to `batch_size [1,32]`, `inflight [1,8]`, and `workers [1,8]`. Start at batch 8, inflight 2, workers 2. Every 10 seconds:
+Controller state is one atomically updated tuple `(workers, dispatch_limit, batch_size, cooldown_until)`, clamped to `batch_size [1,32]`, `dispatch_limit [1,4]`, and `workers [1,4]`. It starts at `(2, 2, 8, now)`. Every 10 seconds:
 
 ```
 pressure = max(
@@ -122,10 +125,10 @@ pressure = max(
 )
 ```
 
-- If `rate_limit_ratio >= 0.05`, `timeout_error_ratio >= 0.10`, p95 latency > 5 seconds, or queue lag > 10 seconds: halve `inflight` (floor 1), halve `batch_size` (floor 1), and reduce workers by one (floor 1).
+- If `rate_limit_ratio >= 0.05`, `timeout_error_ratio >= 0.10`, p95 latency > 5 seconds, or queue lag > 10 seconds: atomically set `dispatch_limit = max(1, ceil(dispatch_limit / 2))`, `workers = max(dispatch_limit, workers - 1)`, and `batch_size = max(1, floor(batch_size / 2))`.
 - If queue lag > 2 seconds or stale age > 5 seconds: reduce neither below one, but reduce batch size by 25% and do not increase concurrency.
-- Increase only after three consecutive healthy intervals: no 429s, error/timeout ratio < 2%, p95 latency < 1.5 seconds, queue lag < 500 ms, tick duration < 2 seconds, and budget utilization < 80%. Increase batch size by one and inflight by one, up to the configured budget-derived limit and hard maximum 8.
-- The budget-derived limit is `floor(configured_rate * max(p95_latency_seconds, 0.25))`, clamped to `[1,8]`; it prevents concurrency from creating a request burst that the configured rate cannot sustain.
+- Increase only after three consecutive healthy intervals, at least 20 completed requests, and no overdue account reservation: no 429s, error/timeout ratio < 2%, p95 latency < 1.5 seconds, queue lag < 500 ms, tick duration < 2 seconds, stale age < 5 seconds, and budget utilization < 80%. Atomically increase `dispatch_limit` by one only when allowed, set `workers = max(previous_workers, dispatch_limit)`, and increase batch size by one. If the limit cannot increase, batch size may still increase.
+- The budget-derived limit is `floor(configured_rate * max(p95_latency_seconds, 0.25))`, clamped to `[1,4]`; the new tuple is always clamped to `dispatch_limit <= workers <= 4`. No transition can produce more active requests than worker slots.
 - If `coverage_ratio` falls while the controller is healthy, improve fairness by admitting the oldest symbol first; do not increase beyond the budget or hard limits solely to chase coverage.
 
 A single bad response cannot cause oscillation: decreases are immediate, increases require three healthy intervals. Configuration changes reset the controller to safe defaults.
@@ -138,7 +141,7 @@ Failure classes are deterministic:
 
 - `cancelled`: stop/session generation changed; no retry.
 - `invalid_response` or parse error: one retry only if the deadline remains; otherwise drop for this cycle.
-- timeout or transport error: one retry after 250 ms plus bounded jitter; otherwise drop.
+- timeout or transport error: one retry after 100 ms plus bounded jitter; otherwise drop.
 - 429/rate limited: one retry after bounded provider delay; second rate limit drops.
 - HTTP 4xx other than 429: definitive drop; no retry.
 - HTTP 5xx: one retry, then drop.
@@ -149,9 +152,9 @@ At the end of each scheduler interval, the signal-generation phase consumes a co
 
 ## 8. Account snapshot cadence and safety
 
-The account lane runs at most once per 15 seconds and is single-flight. It calls `listAccounts`, then only the ticker requests required to value non-zero holdings. It does not call one account snapshot per quote worker or per selected symbol. A settlement event may request an immediate refresh, but an existing in-flight refresh is coalesced and a second refresh is not started.
+The account lane runs at most once per 15 seconds and is single-flight. Before an attempt it atomically reserves exactly 10 request costs, then calls at most 6 paginated `listAccounts` pages and at most 4 valuation tickers required to value non-zero holdings. It does not call one account snapshot per quote worker or per selected symbol. A settlement event may request an immediate refresh, but an existing in-flight refresh is coalesced and a second refresh is not started. If the reservation is unavailable, a cap would be exceeded, the 15-second absolute deadline expires, or any required call fails, the attempt fails closed and publishes no partial snapshot.
 
-Account snapshot state includes `snapshot_id`, `requested_at`, `received_at`, `age_ms`, `success`, `error_class`, and `holdings_valued`. On failure, the prior snapshot may remain visible for diagnostics, but its age and error are surfaced. When age exceeds 30 seconds, live order admission fails closed with `account_snapshot_stale`; it does not fall back to synthetic/session capital. A successful snapshot atomically replaces the prior authoritative snapshot under the service mutex.
+Account snapshot state includes `snapshot_id`, `requested_at`, `received_at`, `age_ms`, `success`, `error_class`, `pages_used`, `tickers_used`, and `holdings_valued`. On failure, the prior snapshot may remain visible for diagnostics, but its age and error are surfaced. When age exceeds 45 seconds, live order admission fails closed with `account_snapshot_stale`; it does not fall back to synthetic/session capital. A successful snapshot atomically replaces the prior authoritative snapshot under the service mutex.
 
 ## 9. Stop Trading and cancellation
 
@@ -181,6 +184,7 @@ Existing portfolio/status payloads retain their fields. Add an additive `quote_s
   "tokens_available": 6.0,
   "queue_lag_ms": 410,
   "coverage_ratio": 0.83,
+  "empty_universe": false,
   "oldest_quote_age_ms": 3200,
   "last_tick_duration_ms": 920,
   "account_snapshot_age_ms": 7400,
@@ -205,14 +209,14 @@ Required counters/histograms include request attempts, success, invalid, 429, ti
 
 ## 12. Testable acceptance criteria
 
-1. A selected universe of 0, 1, 42, and more than 256 symbols is accepted without silent truncation or blacklist behavior.
-2. Queue depth never exceeds 256; in-flight requests never exceed 8 or the configured budget-derived limit; worker count never exceeds 8 even when hardware concurrency is large.
+1. A selected universe of 0, 1, 42, and more than 256 symbols is accepted without silent truncation or blacklist behavior. For an empty universe, `coverage_ratio=1.0`, `oldest_quote_age_ms=0`, `missing=0`, and `empty_universe=true`; the controller performs no quote admission and account safety remains independent.
+2. Queue depth never exceeds 256; in-flight requests never exceed `dispatch_limit`, and `dispatch_limit <= worker_count <= 4` even when hardware concurrency is large. Every adaptive transition updates the tuple atomically.
 3. Duplicate refreshes for one symbol coalesce, and a full queue reports explicit deferral while retaining the symbol in coverage state.
-4. Priority ordering is deterministic for equal timestamps and favors stale/unseen symbols, then managed exits, then selected order.
+4. Priority ordering is deterministic and favors managed exits, then unseen/hard-stale symbols, then soft-stale symbols, then ordinary refreshes; equal keys use selected order and job ID.
 5. Token accounting never spends below zero, public quote work cannot consume the account reservation, and 429 causes immediate bounded backoff without a retry storm.
 6. One timeout/5xx/parse failure retries at most once; a second failure drops only that cycle and retains any prior quote with age/error diagnostics.
 7. No quote older than 5 seconds can create an entry intent; no quote older than 15 seconds can create any live order intent.
-8. Account refreshes are single-flight and cadence-bound; an account snapshot older than 30 seconds blocks live orders and never falls back to simulated capital.
+8. Account refreshes are single-flight and cadence-bound; an account snapshot older than 45 seconds blocks live orders and never falls back to simulated capital. A refresh requiring more than 6 pages or 4 valuation tickers fails closed without partial publication.
 9. Stop Trading cancels queued work, discards late quote completions, prevents new intents, and leaves accepted Coinbase orders in the existing resolver path.
 10. An ambiguous order submission is resolved by client-order-id lookup and is never blindly resubmitted.
 11. Diagnostics expose complete selected-universe counts before UI pagination and include queue, budget, freshness, account, retry, and adaptive-controller state.
