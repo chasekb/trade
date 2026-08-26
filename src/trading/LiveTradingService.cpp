@@ -528,7 +528,7 @@ bool LiveTradingService::positionExposureVerifiedLocked(
       managed_quantity_floors_.count(position.symbol) > 0) {
     return true;
   }
-  if (!last_account_snapshot_loaded_ || !last_account_snapshot_error_.empty()) {
+  if (!last_account_snapshot_loaded_) {
     return false;
   }
   return std::any_of(last_account_snapshot_.holdings.begin(),
@@ -606,7 +606,7 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   out["management_state"] = positionManagementStateLocked(position);
   out["eligible_for_strategy_management"] = position.eligible_for_strategy_management;
   const bool account_snapshot_present =
-      last_account_snapshot_loaded_ && last_account_snapshot_error_.empty() &&
+      last_account_snapshot_loaded_ &&
       std::any_of(last_account_snapshot_.holdings.begin(),
                   last_account_snapshot_.holdings.end(),
                   [&position](const CoinbaseHolding &holding) {
