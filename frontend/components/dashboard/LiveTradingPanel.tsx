@@ -42,6 +42,7 @@ type PositionLike = {
   balance_crypto?: number;
   balance_fiat?: number;
   unrealized_pnl?: number;
+  reconciliation_status?: string;
 };
 
 // Trading Configuration Section
