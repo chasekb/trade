@@ -14,7 +14,7 @@ export interface UseExecutionReconciliationOptions {
 
 class ExecutionReconciliationError extends Error {
   readonly retryable: boolean;
-  readonly requestId?: string;
+  readonly requestId: string | undefined;
 
   constructor(message: string, retryable: boolean, requestId?: string) {
     super(message);
@@ -35,10 +35,9 @@ export function useExecutionReconciliation(options: UseExecutionReconciliationOp
     queryFn: async () => {
       const response = await apiClient.getExecutionReconciliation({ hours, sessionId, tradeType });
       if (response.status === 'error' || !response.data) {
+        const message = response.error || 'Execution reconciliation is temporarily unavailable. Retry shortly.';
         throw new ExecutionReconciliationError(
-          response.requestId
-            ? `${response.error || 'Execution reconciliation is temporarily unavailable. Retry shortly.'} (request ${response.requestId})`
-            : response.error || 'Execution reconciliation is temporarily unavailable. Retry shortly.',
+          response.requestId ? `${message} (request ${response.requestId})` : message,
           response.retryable === true,
           response.requestId,
         );

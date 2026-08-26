@@ -1298,10 +1298,10 @@ class ApiClient {
           error: typeof payload.error === 'string'
             ? payload.error
             : 'Execution reconciliation is temporarily unavailable. Retry shortly.',
-          errorCode: typeof payload.code === 'string' ? payload.code : undefined,
           httpStatus: response.status,
-          requestId: typeof payload.request_id === 'string' ? payload.request_id : undefined,
           retryable: response.status === 503 || response.status === 504,
+          ...(typeof payload.code === 'string' ? { errorCode: payload.code } : {}),
+          ...(typeof payload.request_id === 'string' ? { requestId: payload.request_id } : {}),
           timestamp: new Date().toISOString(),
         };
       }
