@@ -332,6 +332,46 @@ int main() {
     expect(!fee_negative.profitability.actionable &&
                fee_negative.profitability.factor == "negative_fee_adjusted_edge",
            "fee-negative high-strength diagnostic remains blocked");
+
+    // Strength and profitability are independent safeguards: a profitable
+    // expected return cannot rescue a calibration that lowers strength below
+    // the execution threshold, and a strong mapping cannot rescue a
+    // fee-negative expected return.
+    StrengthCalibrationRule conflicting_rule = rule;
+    conflicting_rule.holding_period_min = 5.0;
+    conflicting_rule.holding_period_max = 5.0;
+    conflicting_rule.fee_fraction_min = 0.01;
+    conflicting_rule.fee_fraction_max = 0.01;
+    conflicting_rule.bins = {{0.0, 1.0, 0.1, 3}};
+    StrategyStrengthCalibration conflicting_calibration;
+    conflicting_calibration.enabled = true;
+    conflicting_calibration.rules = {conflicting_rule};
+    auto boundary_context = context;
+    boundary_context.expected_holding_period = 5.0;
+    boundary_context.round_trip_fee_fraction = 0.01;
+    profitability.expected_return_fraction = 0.050;
+    profitability.min_signal_strength = 0.2;
+    const auto weak_but_profitable = evaluateStrategySignalWithDiagnostics(
+        "sma", linearSeries(100.0, 0.5, 60), params, conflicting_calibration,
+        boundary_context, profitability, false, 0);
+    expect(weak_but_profitable.calibration_status == "applied",
+           "exact holding and fee boundaries select calibration rule");
+    expect(weak_but_profitable.effective_signal.strength == 0.1 &&
+               weak_but_profitable.profitability.factor == "weak_strength" &&
+               !weak_but_profitable.profitability.actionable,
+           "positive profitability cannot override weak calibrated strength");
+
+    conflicting_rule.bins = {{0.0, 1.0, 0.9, 3}};
+    conflicting_calibration.rules = {conflicting_rule};
+    profitability.expected_return_fraction = 0.005;
+    const auto strong_but_unprofitable = evaluateStrategySignalWithDiagnostics(
+        "sma", linearSeries(100.0, 0.5, 60), params, conflicting_calibration,
+        boundary_context, profitability, false, 0);
+    expect(strong_but_unprofitable.effective_signal.strength == 0.9 &&
+               strong_but_unprofitable.profitability.factor ==
+                   "negative_fee_adjusted_edge" &&
+               !strong_but_unprofitable.profitability.actionable,
+           "strong calibration cannot override negative fee-adjusted expectancy");
   }
 
   // Strategy-neutral profitability diagnostics fail safe until expected-return
