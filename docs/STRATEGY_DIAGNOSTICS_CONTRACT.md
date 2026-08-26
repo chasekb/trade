@@ -28,17 +28,23 @@ All canonical API fields below use JSON numbers unless explicitly marked nullabl
 | `signal_strength` | fraction | `[0, 1]` | block; do not clamp malformed input silently |
 | `win_probability` | probability fraction | `[0, 1]` | unavailable; if required by policy, block |
 | `model_confidence` / `confidence` | probability-like fraction | `[0, 1]` | unavailable; if required by policy, block |
-| `expected_return_fraction` | signed return fraction for the forecast horizon | finite; implementation policy may cap to `[-1, 1]` | unavailable; live gate blocks |
-| `directional_expected_edge_fraction` | non-negative return fraction in intended direction | finite and `>= 0` | unavailable; live gate blocks |
-| `fee_fraction` | fraction of notional | finite and `>= 0` | unavailable; live gate blocks |
-| `spread_fraction` | fraction of mid-price/notional | finite and `>= 0` | unavailable; live gate blocks |
-| `slippage_buffer_fraction` | non-negative fraction of notional | finite and `>= 0` | unavailable; live gate blocks |
-| `required_edge_fraction` | sum of cost fractions | finite and `>= 0` | unavailable; live gate blocks |
-| `fee_adjusted_expected_return_fraction` | directional net return fraction | finite; may be negative | unavailable if any input unavailable |
+| `expected_return_fraction` | signed return fraction for the forecast horizon | finite and inclusive `[-1, 1]` | `null` with `status=invalid` for non-finite or out-of-range input; live gate blocks |
+| `directional_expected_edge_fraction` | non-negative return fraction in intended direction | finite and inclusive `[0, 1]` | `null` with `status=invalid` for non-finite, negative, or greater-than-one input; live gate blocks |
+| `fee_fraction` | fraction of notional | finite and inclusive `[0, 1]` | `null` with `status=invalid` for non-finite, negative, or greater-than-one input; live gate blocks |
+| `spread_fraction` | fraction of mid-price/notional | finite and inclusive `[0, 1]` | `null` with `status=invalid` for non-finite, negative, or greater-than-one input; live gate blocks |
+| `slippage_buffer_fraction` | non-negative fraction of notional | finite and inclusive `[0, 1]` | `null` with `status=invalid` for non-finite, negative, or greater-than-one input; live gate blocks |
+| `required_edge_fraction` | sum of cost fractions | finite and inclusive `[0, 3]` | `null` with `status=invalid` if any cost is invalid or the sum is non-finite/out of range; live gate blocks |
+| `fee_adjusted_expected_return_fraction` | directional net return fraction | finite and inclusive `[-3, 1]` | `null` with `status=invalid` if derived from invalid inputs; live gate blocks |
+| `forecast_horizon` | integer seconds for the forecast | `null` (not applicable/unavailable) or integer `[1, 31,536,000]` inclusive | reject fractional, non-integer, zero, negative, non-finite, or over-year values; required forecast with invalid horizon is unavailable and live-blocking |
 | `price`, `mid_price` | USD/base unit | finite and `> 0` for an order | block |
 | `quantity`, `notional_usd` | base units / USD | finite and `>= 0`; order quantity must be `> 0` | block |
 | `realized_pnl`, `net_pnl`, fees | USD | finite; PnL may be negative, fees must be `>= 0` | reject persisted outcome or mark reconciliation incomplete |
 | `win_rate`, `intent_conversion_rate`, `outcome_coverage` | fraction internally; percentage only where documented | `[0, 1]` internally | reject; the serialized `win_rate` compatibility field is `[0, 100]` |
+| `status` | enum | `available`, `unavailable`, `invalid`, `not_applicable` | reject unknown values; live execution treats every value except `available` as blocked |
+| `role` | enum | `gate`, `sizing`, `exit`, `report_only` | reject unknown values; role cannot grant authority not defined by the decision path |
+| `gate_reason` | fixed enum | `none`, `hold_signal`, `insufficient_history`, `missing_diagnostic`, `invalid_diagnostic`, `negative_directional_edge`, `non_positive_net_edge`, `invalid_cost`, `stale_market_data`, `model_unavailable`, `exchange_not_ready`, `position_authority`, `minimum_notional`, `live_not_authorized`, `unsupported_strategy`, `unsupported_side` | reject unknown values; human text belongs in optional `gate_reason_detail` |
+| `generated_at` | UTC RFC 3339 timestamp | parseable UTC timestamp with `Z` offset and second precision | reject missing, malformed, or non-UTC timestamps |
+| `source` | enum | `strategy`, `ml`, `orderbook`, `exchange_fill`, `reconciliation` | reject unknown values |
 
 Do not use `NaN`, infinity, sentinel negatives, or a fabricated zero to represent unavailable data in JSON. Canonical API fields use `null` plus an explicit availability/status field. Legacy fields that cannot be nullable retain their old numeric shape only for compatibility and must be accompanied by the canonical field and status.
 
@@ -96,7 +102,7 @@ ProfitabilityDiagnostic {
   win_probability: number | null
   model_confidence: number | null
   expected_return_fraction: number | null
-  forecast_horizon: string | null
+  forecast_horizon: integer_seconds | null
   directional_expected_edge_fraction: number | null
   fee_fraction: number | null
   spread_fraction: number | null
@@ -105,7 +111,8 @@ ProfitabilityDiagnostic {
   fee_adjusted_expected_return_fraction: number | null
   min_signal_strength: number | null
   profitability_gate_passed: boolean
-  gate_reason: string
+  gate_reason: "none" | "hold_signal" | "insufficient_history" | "missing_diagnostic" | "invalid_diagnostic" | "negative_directional_edge" | "non_positive_net_edge" | "invalid_cost" | "stale_market_data" | "model_unavailable" | "exchange_not_ready" | "position_authority" | "minimum_notional" | "live_not_authorized" | "unsupported_strategy" | "unsupported_side"
+  gate_reason_detail: string | null
   role: "gate" | "sizing" | "exit" | "report_only"
   generated_at: string
   source: "strategy" | "ml" | "orderbook" | "exchange_fill" | "reconciliation"
@@ -142,11 +149,34 @@ The classification below describes the current intended behavior and the require
 | `orderbook` | Active: imbalance/order-book signal | Active shared profitability gate; missing ML expected return remains unavailable and blocks | Active sizing input; spread/volatility reduce size but cannot override gate | Same shared gate and ownership checks | Report-only unless explicit close policy | Active blocker, fill, and expectancy attribution |
 | `ml_enhanced_orderbook` | Active: order-book signal followed by classifier/regressor/transformer enrichment | Active shared profitability gate, then active directional ML gate; missing required model output blocks unless the explicitly configured baseline fallback produces a valid diagnostic | Active sizing input from directional edge, confidence, and spread/volatility; never overrides either gate | Same fresh diagnostic, ML, ownership, and execution checks | Report-only unless explicit close policy | Active model-readiness, profitability, ML-blocker, fill, and expectancy attribution |
 
+The decision-path table above is supplemented by the following exhaustive diagnostic matrix. It is normative for both the live service and the ordinary simulated/backtest service; the final column identifies mode-specific behavior. Each cell is an explicit classification, not an assertion that a numeric producer already exists.
+
+Legend: `Active (producer)` is factored into the named path when its producer is valid; `Active (fail-closed)` is an active blocker that rejects an unavailable or invalid required diagnostic; `Active (cost)` is an active configured cost or ceiling input; `Report-only` cannot alter an action; `Unavailable (reason)` has no valid producer at that path. A simulation bypass is `Report-only (explicit bypass)` and is never inherited by live mode.
+
+| Strategy / path | `signal_strength` | `win_probability` | `model_confidence` | signed `expected_return_fraction` | directional edge | fee / spread / slippage | profitability gate | sizing | exit | blocker / reporting | Mode-specific rationale |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `sma` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
+| `ema` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
+| `rsi` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
+| `bollinger` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
+| `macd` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
+| `stochastic` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
+| `fibonacci` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
+| `dca` | Active (schedule producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling) | Report-only | Active (schedule/block) | Live requires the shared gate unless an audited policy is explicitly approved; Sim bypass remains report-labeled. |
+| `buyandhold` | Active (initial-buy producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling) | Report-only | Active (report/block) | Live requires the shared gate; Sim bypass is explicit and cannot authorize re-entry or close. |
+| `orderbook` | Active (producer) | Unavailable (plain orderbook has no probability) | Unavailable (plain orderbook has no model) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (producer/config) | Active (fail-closed) | Active (cost/ceiling) | Report-only | Active (report/block/fill) | Live and Sim use identical arithmetic; missing expected return blocks live and is report-labeled by an explicit Sim bypass only. |
+| `ml_enhanced_orderbook` | Active (orderbook producer) | Active (classifier producer) | Active (model producer) | Active (model/fallback producer) | Active (producer) | Active (producer/config) | Active (fail-closed) | Active (edge/confidence/cost) | Report-only | Active (model/block/fill) | Live and Sim require valid model output unless the configured labeled fallback supplies the same valid diagnostic. |
+| unknown strategy identifier | Unavailable (evaluator returns `hold`) | Unavailable (no strategy producer) | Unavailable (no strategy producer) | Unavailable (unsupported strategy) | Unavailable (depends on forecast) | Unavailable (no intent) | Active (fail-closed: unsupported_strategy) | Unavailable (no executable intent) | Report-only (no close authority) | Active (block/report) | Live always blocks; Sim records `hold` and unsupported-strategy status and cannot bypass into an order. |
+
+For every indicator, DCA, buy-and-hold, and plain-orderbook row, “Unavailable” is intentional current-state behavior: it does not mean zero, and it does not turn the corresponding gate into report-only. For live mode the active fail-closed gate blocks the generated buy/sell intent. For simulation/backtest mode, only an explicit caller policy may change that gate to `Report-only (explicit bypass)`; the bypass must be serialized with its reason and is rejected by live configuration. `ml_enhanced_orderbook` is the only listed strategy whose current contract has producers for all forecast/confidence diagnostics, subject to model readiness and bounds.
+
+The unknown identifier is the `evaluateStrategySignal` fallback: it returns `hold`, has no signal-strength or profitability producer, and receives `gate_reason=unsupported_strategy`; it is not equivalent to a valid zero-strength strategy. This row applies to live, simulation, and harness paths.
+
 The indicator strategies currently generate signals without expected-return data. Until a valid model/forecast producer is wired to each strategy, their profitability diagnostic is `unavailable`, not fee-neutral. The live service must therefore block generated entries under the shared gate. Simulated/backtest callers may use an explicit opt-in policy to evaluate signal behavior without a profitability gate, but that bypass must be visible in the report and never leak into live configuration.
 
 `ml_enhanced_orderbook` is a distinct live and simulated strategy identifier even though it shares order-book signal generation with `orderbook`. Its classifier probability/confidence gate is an additional active decision path after profitability factoring. Transformer warm-up or unavailable required inference is fail-closed; a configured baseline fallback is acceptable only when it emits a valid, labeled expected-return diagnostic and remains prohibited from weakening the live safety invariant.
 
-ML `win_probability`, `expected_return`, and `confidence` are report-only at signal generation unless the strategy configuration explicitly promotes them to a gate or sizing input. If promoted, the role must be present in the diagnostic record and the required validity bounds apply. Confidence must not be treated as expected return: it is a `[0,1]` certainty-like score, while expected return is signed and horizon-specific.
+At raw order-book signal generation, ML `win_probability`, `expected_return`, and `confidence` are report-only. In the `ml_enhanced_orderbook` post-enrichment path they are explicitly promoted to active gate/sizing inputs, as shown in the matrix; the role must be present in the diagnostic record and the required validity bounds apply. Confidence must not be treated as expected return: it is a `[0,1]` certainty-like score, while expected return is signed and horizon-specific.
 
 ## 7. Decision-path requirements
 
