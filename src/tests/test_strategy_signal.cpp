@@ -8,10 +8,14 @@
 using trade::trading::evaluateStrategySignal;
 using trade::trading::evaluateOrderBookProfitabilityGate;
 using trade::trading::evaluateStrategyProfitabilityDiagnostic;
+using trade::trading::evaluateStrategySignalWithDiagnostics;
 using trade::trading::OrderBookProfitabilityInput;
 using trade::trading::StrategyParams;
 using trade::trading::StrategyProfitabilityInput;
 using trade::trading::StrategySignalOutcome;
+using trade::trading::StrengthCalibrationContext;
+using trade::trading::StrengthCalibrationRule;
+using trade::trading::StrategyStrengthCalibration;
 
 namespace {
 
@@ -134,6 +138,183 @@ int main() {
   // unknown strategies never trade.
   expectSignal(evaluateStrategySignal("mystery", linearSeries(100.0, 1.0, 50), params, false, 0),
                "hold", "unknown strategy holds");
+
+  // Calibration is opt-in and fail-closed. These values are test mappings,
+  // not approved production calibration constants.
+  {
+    StrategySignalOutcome raw;
+    raw.signal_type = "buy";
+    raw.strength = 0.5;
+    raw.reason = "fixture signal";
+    StrengthCalibrationContext context;
+    context.regime = "trend";
+    context.expected_holding_period = 5.0;
+    context.round_trip_fee_fraction = 0.01;
+    StrengthCalibrationRule rule;
+    rule.strategy = "sma";
+    rule.regime = "trend";
+    rule.holding_period_min = 0.0;
+    rule.holding_period_max = 10.0;
+    rule.fee_fraction_min = 0.0;
+    rule.fee_fraction_max = 0.02;
+    rule.minimum_evidence = 3;
+    rule.validated_out_of_sample = true;
+    rule.bins = {{0.0, 0.5, 0.4, 3}, {0.5, 1.0, 0.8, 3}};
+    StrategyStrengthCalibration calibration;
+    calibration.enabled = true;
+    calibration.rules.push_back(rule);
+
+    std::string status;
+    const auto mapped = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(status == "applied", "validated calibration applies");
+    expect(mapped.strength == 0.8, "upper bin lower boundary is inclusive");
+
+    raw.strength = 0.0;
+    const auto lower = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(lower.strength == 0.4, "first bin lower boundary is inclusive");
+    raw.strength = 1.0;
+    const auto final = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(final.strength == 0.8, "final bin upper boundary is inclusive");
+
+    rule.validated_out_of_sample = false;
+    calibration.rules[0] = rule;
+    const auto held = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(status == "not_validated" && held.strength == raw.strength,
+           "unvalidated mapping is held with identity strength");
+
+    rule.validated_out_of_sample = true;
+    rule.minimum_evidence = 4;
+    calibration.rules[0] = rule;
+    const auto insufficient = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(status == "insufficient_evidence" && insufficient.strength == raw.strength,
+           "insufficient evidence uses identity fallback");
+
+    StrategySignalOutcome hold;
+    hold.signal_type = "hold";
+    hold.strength = 0.9;
+    const auto held_signal = trade::trading::applyStrategyStrengthCalibration(
+        "sma", hold, calibration, context, &status);
+    expect(status == "hold" && held_signal.strength == 0.0,
+           "calibration cannot promote or strengthen hold");
+
+    rule.minimum_evidence = 3;
+    calibration.rules[0] = rule;
+    raw.strength = 0.4;
+    const auto known_bad = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    raw.strength = 0.8;
+    const auto known_good = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(known_good.strength > known_bad.strength,
+           "validated mapping ranks known-good strength above known-bad strength");
+
+    // Context specificity is field-wise: exact regime, then narrower holding
+    // period, then narrower fee interval. Widths must not be summed because a
+    // narrow fee band can otherwise lose to an unrelated holding-period band.
+    StrengthCalibrationRule broad_holding;
+    broad_holding.strategy = "sma";
+    broad_holding.regime = "trend";
+    broad_holding.holding_period_min = 0.0;
+    broad_holding.holding_period_max = 2.05;
+    broad_holding.fee_fraction_min = 0.0095;
+    broad_holding.fee_fraction_max = 0.0105;
+    broad_holding.minimum_evidence = 1;
+    broad_holding.validated_out_of_sample = true;
+    broad_holding.bins = {{0.0, 1.0, 0.3, 1}};
+    StrengthCalibrationRule narrow_holding = broad_holding;
+    narrow_holding.holding_period_min = 0.0;
+    narrow_holding.holding_period_max = 2.0;
+    narrow_holding.fee_fraction_min = 0.0;
+    narrow_holding.fee_fraction_max = 0.1;
+    narrow_holding.bins = {{0.0, 1.0, 0.9, 1}};
+    StrategyStrengthCalibration competing;
+    competing.enabled = true;
+    competing.rules = {broad_holding, narrow_holding};
+    raw.strength = 0.5;
+    auto competing_context = context;
+    competing_context.expected_holding_period = 1.0;
+    const auto specific = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, competing, competing_context, &status);
+    expect(status == "applied" && specific.strength == 0.9,
+           "narrower holding-period rule wins over narrower fee rule");
+
+    // Unsorted bins are rejected before any mapping can be applied.
+    rule.bins = {{0.5, 1.0, 0.8, 3}, {0.0, 0.5, 0.4, 3}};
+    calibration.rules[0] = rule;
+    const auto unsorted = trade::trading::applyStrategyStrengthCalibration(
+        "sma", raw, calibration, context, &status);
+    expect(status == "invalid_rule" && unsorted.strength == raw.strength,
+           "unsorted calibration bins use identity fallback");
+
+    // "unknown" is a real regime key, not a wildcard. It can be used when
+    // the evaluation context is unknown, but must not bypass the regime
+    // evidence gate for a known context.
+    StrengthCalibrationRule unknown_regime = rule;
+    unknown_regime.regime = "unknown";
+    unknown_regime.validated_out_of_sample = true;
+    unknown_regime.bins = {{0.0, 0.5, 0.4, 3}, {0.5, 1.0, 0.8, 3}};
+    calibration.rules[0] = unknown_regime;
+    auto known_context = context;
+    known_context.regime = "trend";
+    const auto unknown_for_known =
+        trade::trading::applyStrategyStrengthCalibration(
+            "sma", raw, calibration, known_context, &status);
+    expect(status == "no_match" &&
+               unknown_for_known.strength == raw.strength,
+           "unknown regime does not wildcard known context");
+    auto unknown_context = context;
+    unknown_context.regime = "unknown";
+    const auto unknown_for_unknown =
+        trade::trading::applyStrategyStrengthCalibration(
+            "sma", raw, calibration, unknown_context, &status);
+    expect(status == "applied" && unknown_for_unknown.strength == 0.8,
+           "unknown regime applies to unknown context");
+
+    // The integrated seam keeps a held/rejected mapping at raw strength and
+    // still fails closed when expected-return diagnostics are unavailable.
+    rule.bins = {{0.0, 0.5, 0.4, 3}, {0.5, 1.0, 0.8, 3}};
+    rule.validated_out_of_sample = false;
+    calibration.rules[0] = rule;
+    StrategyProfitabilityInput unavailable_profitability;
+    unavailable_profitability.expected_return_available = false;
+    const auto held_evaluation = evaluateStrategySignalWithDiagnostics(
+        "sma", linearSeries(100.0, 0.5, 60), params, calibration, context,
+        unavailable_profitability, false, 0);
+    expect(held_evaluation.calibration_status == "not_validated" &&
+               held_evaluation.effective_signal.strength ==
+                   held_evaluation.raw_signal.strength,
+           "integrated held mapping preserves raw strength");
+    expect(!held_evaluation.profitability.actionable &&
+               held_evaluation.profitability.factor == "expected_return_unavailable",
+           "integrated missing diagnostics fail closed");
+
+    // Restore the validated fixture for the profitability assertions below.
+    rule.validated_out_of_sample = true;
+    calibration.rules[0] = rule;
+
+    StrategyProfitabilityInput profitability;
+    profitability.expected_return_available = true;
+    profitability.expected_return_fraction = 0.020;
+    profitability.round_trip_fee_fraction = 0.010;
+    profitability.slippage_buffer_fraction = 0.002;
+    const auto evaluated = evaluateStrategySignalWithDiagnostics(
+        "sma", linearSeries(100.0, 0.5, 60), params, calibration, context,
+        profitability, false, 0);
+    expect(evaluated.profitability.actionable,
+           "effective calibrated strength still uses fee-adjusted diagnostic");
+    profitability.expected_return_fraction = 0.005;
+    const auto fee_negative = evaluateStrategySignalWithDiagnostics(
+        "sma", linearSeries(100.0, 0.5, 60), params, calibration, context,
+        profitability, false, 0);
+    expect(!fee_negative.profitability.actionable &&
+               fee_negative.profitability.factor == "negative_fee_adjusted_edge",
+           "fee-negative high-strength diagnostic remains blocked");
+  }
 
   // Strategy-neutral profitability diagnostics fail safe until expected-return
   // data is available, then apply the same directional fee-adjusted edge
