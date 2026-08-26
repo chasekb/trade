@@ -2012,6 +2012,9 @@ void LiveTradingService::updateMarkToMarketLocked(
   unrealized_pnl_ = 0.0;
   total_positions_value_ = 0.0;
   for (const auto &[symbol, position] : positions_) {
+    if (!positionExposureVerifiedLocked(position)) {
+      continue;
+    }
     unrealized_pnl_ += position.unrealized_pnl;
     total_positions_value_ +=
         signedPositionValue(position.side, position.quantity, position.current_price);
