@@ -251,6 +251,30 @@ int main() {
     expect(status == "invalid_rule" && unsorted.strength == raw.strength,
            "unsorted calibration bins use identity fallback");
 
+    // "unknown" is a real regime key, not a wildcard. It can be used when
+    // the evaluation context is unknown, but must not bypass the regime
+    // evidence gate for a known context.
+    StrengthCalibrationRule unknown_regime = rule;
+    unknown_regime.regime = "unknown";
+    unknown_regime.validated_out_of_sample = true;
+    unknown_regime.bins = {{0.0, 0.5, 0.4, 3}, {0.5, 1.0, 0.8, 3}};
+    calibration.rules[0] = unknown_regime;
+    auto known_context = context;
+    known_context.regime = "trend";
+    const auto unknown_for_known =
+        trade::trading::applyStrategyStrengthCalibration(
+            "sma", raw, calibration, known_context, &status);
+    expect(status == "no_match" &&
+               unknown_for_known.strength == raw.strength,
+           "unknown regime does not wildcard known context");
+    auto unknown_context = context;
+    unknown_context.regime = "unknown";
+    const auto unknown_for_unknown =
+        trade::trading::applyStrategyStrengthCalibration(
+            "sma", raw, calibration, unknown_context, &status);
+    expect(status == "applied" && unknown_for_unknown.strength == 0.8,
+           "unknown regime applies to unknown context");
+
     // The integrated seam keeps a held/rejected mapping at raw strength and
     // still fails closed when expected-return diagnostics are unavailable.
     rule.bins = {{0.0, 0.5, 0.4, 3}, {0.5, 1.0, 0.8, 3}};

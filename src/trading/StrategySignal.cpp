@@ -412,7 +412,7 @@ StrategySignalOutcome applyStrategyStrengthCalibration(
   std::vector<const StrengthCalibrationRule *> matches;
   for (const auto &rule : calibration.rules) {
     if (rule.strategy != strategy ||
-        (rule.regime != context.regime && rule.regime != "unknown") ||
+        rule.regime != context.regime ||
         !inClosedInterval(context.expected_holding_period,
                           rule.holding_period_min, rule.holding_period_max) ||
         !inClosedInterval(context.round_trip_fee_fraction,
@@ -424,17 +424,6 @@ StrategySignalOutcome applyStrategyStrengthCalibration(
   if (matches.empty()) {
     setStatus("no_match");
     return effective;
-  }
-  const bool has_exact_regime = std::any_of(
-      matches.begin(), matches.end(), [&](const auto *rule) {
-        return rule->regime == context.regime;
-      });
-  if (has_exact_regime && context.regime != "unknown") {
-    matches.erase(std::remove_if(matches.begin(), matches.end(),
-                                 [&](const auto *rule) {
-                                   return rule->regime == "unknown";
-                                 }),
-                   matches.end());
   }
   const auto *selected = matches.front();
   for (const auto *candidate : matches) {
