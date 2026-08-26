@@ -409,18 +409,24 @@ StrategySignalOutcome applyStrategyStrengthCalibration(
     return effective;
   }
 
-  std::vector<const StrengthCalibrationRule *> matches;
+  std::vector<const StrengthCalibrationRule *> exact_matches;
+  std::vector<const StrengthCalibrationRule *> fallback_matches;
   for (const auto &rule : calibration.rules) {
     if (rule.strategy != strategy ||
-        rule.regime != context.regime ||
+        (rule.regime != context.regime && rule.regime != "unknown") ||
         !inClosedInterval(context.expected_holding_period,
                           rule.holding_period_min, rule.holding_period_max) ||
         !inClosedInterval(context.round_trip_fee_fraction,
                           rule.fee_fraction_min, rule.fee_fraction_max)) {
       continue;
     }
-    matches.push_back(&rule);
+    if (rule.regime == context.regime) {
+      exact_matches.push_back(&rule);
+    } else {
+      fallback_matches.push_back(&rule);
+    }
   }
+  const auto &matches = exact_matches.empty() ? fallback_matches : exact_matches;
   if (matches.empty()) {
     setStatus("no_match");
     return effective;

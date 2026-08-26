@@ -251,9 +251,8 @@ int main() {
     expect(status == "invalid_rule" && unsorted.strength == raw.strength,
            "unsorted calibration bins use identity fallback");
 
-    // "unknown" is a real regime key, not a wildcard. It can be used when
-    // the evaluation context is unknown, but must not bypass the regime
-    // evidence gate for a known context.
+    // "unknown" is an explicit fallback key, not a wildcard. It can be used
+    // for a known context only when no eligible exact-regime rule exists.
     StrengthCalibrationRule unknown_regime = rule;
     unknown_regime.regime = "unknown";
     unknown_regime.validated_out_of_sample = true;
@@ -264,11 +263,30 @@ int main() {
     const auto unknown_for_known =
         trade::trading::applyStrategyStrengthCalibration(
             "sma", raw, calibration, known_context, &status);
-    expect(status == "no_match" &&
-               unknown_for_known.strength == raw.strength,
-           "unknown regime does not wildcard known context");
+    expect(status == "applied" && unknown_for_known.strength == 0.8,
+           "unknown regime is an explicit fallback for known context");
+
+    StrengthCalibrationRule exact_regime = unknown_regime;
+    exact_regime.regime = "trend";
+    exact_regime.bins = {{0.0, 0.5, 0.2, 3}, {0.5, 1.0, 0.3, 3}};
+    calibration.rules = {unknown_regime, exact_regime};
+    const auto exact_precedence =
+        trade::trading::applyStrategyStrengthCalibration(
+            "sma", raw, calibration, known_context, &status);
+    expect(status == "applied" && exact_precedence.strength == 0.3,
+           "exact regime takes precedence over unknown fallback");
+
+    StrengthCalibrationRule ambiguous_fallback = unknown_regime;
+    ambiguous_fallback.bins = {{0.0, 0.5, 0.6, 3}, {0.5, 1.0, 0.9, 3}};
+    calibration.rules = {unknown_regime, ambiguous_fallback};
+    const auto ambiguous_unknown =
+        trade::trading::applyStrategyStrengthCalibration(
+            "sma", raw, calibration, known_context, &status);
+    expect(status == "ambiguous" && ambiguous_unknown.strength == raw.strength,
+           "equally specific unknown fallbacks fail closed");
     auto unknown_context = context;
     unknown_context.regime = "unknown";
+    calibration.rules = {unknown_regime};
     const auto unknown_for_unknown =
         trade::trading::applyStrategyStrengthCalibration(
             "sma", raw, calibration, unknown_context, &status);
