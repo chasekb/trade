@@ -148,6 +148,12 @@ add_executable(test_portfolio_accounting
 target_include_directories(test_portfolio_accounting PRIVATE include)
 add_test(NAME portfolio_accounting COMMAND test_portfolio_accounting)
 
+add_executable(test_live_reconciliation_contract
+    src/tests/test_live_reconciliation_contract.cpp
+)
+target_include_directories(test_live_reconciliation_contract PRIVATE include)
+add_test(NAME live_reconciliation_contract COMMAND test_live_reconciliation_contract)
+
 add_executable(test_strategy_signal
     src/tests/test_strategy_signal.cpp
     src/trading/StrategySignal.cpp

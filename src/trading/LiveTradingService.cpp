@@ -1,4 +1,5 @@
 #include "trading/LiveTradingService.hpp"
+#include "trading/LiveReconciliation.hpp"
 
 #include "api/PredictController.hpp"
 #include "config/Config.hpp"
@@ -524,18 +525,16 @@ bool LiveTradingService::hasAcceptedPendingOrderLocked(const std::string &symbol
 
 bool LiveTradingService::positionExposureVerifiedLocked(
     const PositionState &position) const {
-  if (hasAcceptedPendingOrderLocked(position.symbol) ||
-      managed_quantity_floors_.count(position.symbol) > 0) {
-    return true;
-  }
-  if (!last_account_snapshot_loaded_) {
-    return false;
-  }
-  return std::any_of(last_account_snapshot_.holdings.begin(),
-                    last_account_snapshot_.holdings.end(),
-                    [&position](const CoinbaseHolding &holding) {
-                      return holding.asset + "-USD" == position.symbol;
-                    });
+  const bool snapshot_contains_position =
+      std::any_of(last_account_snapshot_.holdings.begin(),
+                  last_account_snapshot_.holdings.end(),
+                  [&position](const CoinbaseHolding &holding) {
+                    return coinbaseProductIdForAsset(holding.asset) == position.symbol;
+                  });
+  return livePositionExposureVerified(
+      last_account_snapshot_loaded_, snapshot_contains_position,
+      hasAcceptedPendingOrderLocked(position.symbol),
+      managed_quantity_floors_.count(position.symbol) > 0);
 }
 
 Json::Value LiveTradingService::signalToJson(const SignalRecord &signal) const {
@@ -610,7 +609,7 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
       std::any_of(last_account_snapshot_.holdings.begin(),
                   last_account_snapshot_.holdings.end(),
                   [&position](const CoinbaseHolding &holding) {
-                    return holding.asset + "-USD" == position.symbol;
+                    return coinbaseProductIdForAsset(holding.asset) == position.symbol;
                   });
   out["account_snapshot_present"] = account_snapshot_present;
   out["account_snapshot_loaded"] = last_account_snapshot_loaded_;
@@ -619,13 +618,10 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   const auto floor_it = managed_quantity_floors_.find(position.symbol);
   out["managed_quantity_floor_remaining"] =
       floor_it == managed_quantity_floors_.end() ? 0.0 : floor_it->second.first;
-  out["reconciliation_status"] = account_snapshot_present
-                                      ? "coinbase_confirmed"
-                                      : (hasAcceptedPendingOrderLocked(position.symbol)
-                                             ? "pending_settlement"
-                                             : (floor_it != managed_quantity_floors_.end()
-                                                    ? "awaiting_snapshot_reconciliation"
-                                                    : "stale_internal"));
+  out["reconciliation_status"] = livePositionReconciliationStatus(
+      last_account_snapshot_loaded_, account_snapshot_present,
+      hasAcceptedPendingOrderLocked(position.symbol),
+      floor_it != managed_quantity_floors_.end());
   return out;
 }
 
