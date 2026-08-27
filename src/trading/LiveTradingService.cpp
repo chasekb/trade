@@ -8,6 +8,7 @@
 #include "trading/TradingStatsCalculator.hpp"
 #include "trading/TradingStatsService.hpp"
 #include "trading/PortfolioAccounting.hpp"
+#include "trading/LivePositionReconciliation.hpp"
 #include "trading/PositionSizingPolicy.hpp"
 #include "trading/ExecutionPreflight.hpp"
 #include "trading/DiagnosticsContract.hpp"
@@ -581,13 +582,10 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   const auto floor_it = managed_quantity_floors_.find(position.symbol);
   out["managed_quantity_floor_remaining"] =
       floor_it == managed_quantity_floors_.end() ? 0.0 : floor_it->second.first;
-  out["reconciliation_status"] = account_snapshot_present
-                                      ? "coinbase_confirmed"
-                                      : (pending_order_symbols_.count(position.symbol) > 0
-                                             ? "pending_settlement"
-                                             : (floor_it != managed_quantity_floors_.end()
-                                                    ? "awaiting_snapshot_reconciliation"
-                                                    : "stale_internal"));
+  out["reconciliation_status"] = livePositionReconciliationStatus(
+      LivePositionReconciliation{last_account_snapshot_loaded_, account_snapshot_present,
+                                 pending_order_symbols_.count(position.symbol) > 0,
+                                 floor_it != managed_quantity_floors_.end()});
   return out;
 }
 
@@ -1005,9 +1003,12 @@ bool LiveTradingService::recoverPendingOrders() {
           position.get("entry_expected_return", 0.0).asDouble();
       intent.position.entry_model_confidence =
           position.get("entry_model_confidence", 0.0).asDouble();
+      // Recovery proves only that an order was persisted as pending.  The
+      // current account snapshot must still prove whether a fill is present;
+      // never treat a recovered row as snapshot-confirmed by default.
       pending_live_orders_.push_back(
           PendingLiveOrder{row["order_id"].is_null() ? "" : row["order_id"].as<std::string>(),
-                           row["client_order_id"].as<std::string>(), intent, true, false, true, 0});
+                           row["client_order_id"].as<std::string>(), intent, true, false, false, 0});
       pending_order_symbols_.insert(intent.product_id);
       pending_reserved_cash_ += intent.reserved_cash;
     }
@@ -1978,6 +1979,18 @@ void LiveTradingService::updateMarkToMarketLocked(
 
   std::vector<std::pair<std::string, const char *>> exits;
   for (auto &[symbol, position] : positions_) {
+    const auto floor_it = managed_quantity_floors_.find(symbol);
+    const bool snapshot_present = std::any_of(
+        last_account_snapshot_.holdings.begin(), last_account_snapshot_.holdings.end(),
+        [&symbol](const auto &holding) { return holding.asset + "-USD" == symbol; });
+    const LivePositionReconciliation reconciliation{
+        last_account_snapshot_loaded_, snapshot_present,
+        pending_order_symbols_.count(symbol) > 0, floor_it != managed_quantity_floors_.end()};
+    if (!livePositionContributesToExposure(reconciliation)) {
+      position.unrealized_pnl = 0.0;
+      position.pnl_percentage = 0.0;
+      continue;
+    }
     const auto it = prices.find(symbol);
     if (it != prices.end()) {
       position.current_price = it->second;
@@ -2491,6 +2504,16 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
   int coinbase_unmanaged_count = 0;
   for (const auto &[symbol, position] : positions_) {
     positions[symbol] = positionToJson(position);
+    const auto floor_it = managed_quantity_floors_.find(symbol);
+    const bool snapshot_present = std::any_of(
+        last_account_snapshot_.holdings.begin(), last_account_snapshot_.holdings.end(),
+        [&symbol](const auto &holding) { return holding.asset + "-USD" == symbol; });
+    const LivePositionReconciliation reconciliation{
+        last_account_snapshot_loaded_, snapshot_present,
+        pending_order_symbols_.count(symbol) > 0, floor_it != managed_quantity_floors_.end()};
+    if (!livePositionContributesToExposure(reconciliation)) {
+      continue;
+    }
     const std::string management_state = positionManagementStateLocked(position);
     if (management_state == "session_managed") {
       ++session_managed_count;
@@ -2524,7 +2547,8 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
   portfolio["realized_pnl"] = realized_pnl_;
   portfolio["net_pnl"] = total_value - initial_capital_;
   portfolio["total_fees"] = total_fees_;
-  portfolio["open_positions_count"] = static_cast<int>(positions_.size());
+  portfolio["open_positions_count"] = session_managed_count + account_managed_count +
+                                       coinbase_unmanaged_count;
   portfolio["session_managed_positions_count"] = session_managed_count;
   portfolio["account_managed_positions_count"] = account_managed_count;
   portfolio["coinbase_unmanaged_positions_count"] = coinbase_unmanaged_count;

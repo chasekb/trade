@@ -50,6 +50,7 @@ set(SOURCES
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
     src/trading/LiveTradingService.cpp
+    src/trading/LivePositionReconciliation.cpp
     src/trading/CoinbasePortfolio.cpp
     src/trading/TradingStatsCalculator.cpp
     src/api/PredictController.cpp
@@ -223,6 +224,13 @@ add_executable(test_coinbase_portfolio
 target_include_directories(test_coinbase_portfolio PRIVATE include)
 target_link_libraries(test_coinbase_portfolio PRIVATE JsonCpp::JsonCpp Drogon::Drogon)
 add_test(NAME coinbase_portfolio COMMAND test_coinbase_portfolio)
+
+add_executable(test_live_position_reconciliation
+    src/tests/test_live_position_reconciliation.cpp
+    src/trading/LivePositionReconciliation.cpp
+)
+target_include_directories(test_live_position_reconciliation PRIVATE include)
+add_test(NAME live_position_reconciliation COMMAND test_live_position_reconciliation)
 
 add_executable(test_trading_stats_calculator
     src/tests/test_trading_stats_calculator.cpp
