@@ -17,6 +17,7 @@ bool expect(bool condition, const char *label) {
 int main() {
   using trade::trading::absolutePositionExposure;
   using trade::trading::coinbaseProductIdForAsset;
+  using trade::trading::LivePendingOrderEvidence;
   using trade::trading::livePositionExposureVerified;
   using trade::trading::livePositionReconciliationStatus;
   using trade::trading::signedPositionValue;
@@ -29,29 +30,41 @@ int main() {
 
   // A successful snapshot remains authoritative when a later refresh fails;
   // the failed refresh changes diagnostics, not the cached snapshot state.
-  ok &= expect(livePositionExposureVerified(true, true, false, false),
+  ok &= expect(livePositionExposureVerified(true, true, LivePendingOrderEvidence::none, false),
                "cached successful snapshot must verify a position");
-  ok &= expect(std::string(livePositionReconciliationStatus(true, true, false, false)) ==
+  ok &= expect(std::string(livePositionReconciliationStatus(
+                   true, true, LivePendingOrderEvidence::none, false)) ==
                    "coinbase_confirmed",
                "cached successful snapshot must remain confirmed after refresh failure");
 
   // No snapshot is fail-closed, including an absent position in an empty
-  // snapshot. Only the existing bounded pending/floor exceptions are kept.
-  ok &= expect(!livePositionExposureVerified(false, false, false, false),
+  // snapshot. Only accepted pending orders and managed floors are bounded
+  // recovery exceptions; submitting/ambiguous orders are not evidence.
+  ok &= expect(!livePositionExposureVerified(
+                   false, false, LivePendingOrderEvidence::none, false),
                "never-loaded snapshot must fail closed");
-  ok &= expect(!livePositionExposureVerified(true, false, false, false),
+  ok &= expect(!livePositionExposureVerified(
+                   true, false, LivePendingOrderEvidence::none, false),
                "absent ETH-USD must fail closed");
-  ok &= expect(livePositionExposureVerified(false, false, true, false),
+  ok &= expect(livePositionExposureVerified(
+                   false, false, LivePendingOrderEvidence::accepted, false),
                "accepted pending order must preserve bounded recovery");
-  ok &= expect(livePositionExposureVerified(true, false, false, true),
+  ok &= expect(!livePositionExposureVerified(
+                   false, false, LivePendingOrderEvidence::none, false),
+               "submitting or ambiguous orders must remain fail-closed");
+  ok &= expect(livePositionExposureVerified(
+                   true, false, LivePendingOrderEvidence::none, true),
                "managed floor must preserve bounded recovery");
-  ok &= expect(std::string(livePositionReconciliationStatus(false, false, true, false)) ==
+  ok &= expect(std::string(livePositionReconciliationStatus(
+                       false, false, LivePendingOrderEvidence::accepted, false)) ==
                    "pending_settlement",
                "pending exception must be labeled");
-  ok &= expect(std::string(livePositionReconciliationStatus(true, false, false, true)) ==
+  ok &= expect(std::string(livePositionReconciliationStatus(
+                       true, false, LivePendingOrderEvidence::none, true)) ==
                    "awaiting_snapshot_reconciliation",
                "floor exception must be labeled");
-  ok &= expect(std::string(livePositionReconciliationStatus(true, false, false, false)) ==
+  ok &= expect(std::string(livePositionReconciliationStatus(
+                       true, false, LivePendingOrderEvidence::none, false)) ==
                    "stale_internal",
                "unverified position must be labeled");
 
