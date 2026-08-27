@@ -501,6 +501,14 @@ std::string LiveTradingService::positionManagementStateLocked(
   return "coinbase_unmanaged";
 }
 
+bool LiveTradingService::hasAcceptedPendingOrderLocked(const std::string &symbol) const {
+  return std::any_of(pending_live_orders_.begin(), pending_live_orders_.end(),
+                     [&symbol](const PendingLiveOrder &pending) {
+                       return pending.intent.product_id == symbol &&
+                              !pending.order_id.empty();
+                     });
+}
+
 Json::Value LiveTradingService::signalToJson(const SignalRecord &signal) const {
   Json::Value out;
   out["signal_id"] = signal.signal_id;
@@ -570,7 +578,7 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   out["eligible_for_strategy_management"] = position.eligible_for_strategy_management;
   bool account_snapshot_present = false;
   for (const auto &holding : last_account_snapshot_.holdings) {
-    if (holding.asset + "-USD" == position.symbol) {
+    if (coinbaseProductIdForAsset(holding.asset) == position.symbol) {
       account_snapshot_present = true;
       break;
     }
@@ -578,13 +586,14 @@ Json::Value LiveTradingService::positionToJson(const PositionState &position) co
   out["account_snapshot_present"] = account_snapshot_present;
   out["account_snapshot_loaded"] = last_account_snapshot_loaded_;
   out["account_snapshot_at"] = last_account_snapshot_at_;
-  out["pending_order_present"] = pending_order_symbols_.count(position.symbol) > 0;
+  const bool accepted_pending_order = hasAcceptedPendingOrderLocked(position.symbol);
+  out["pending_order_present"] = accepted_pending_order;
   const auto floor_it = managed_quantity_floors_.find(position.symbol);
   out["managed_quantity_floor_remaining"] =
       floor_it == managed_quantity_floors_.end() ? 0.0 : floor_it->second.first;
   out["reconciliation_status"] = livePositionReconciliationStatus(
       LivePositionReconciliation{last_account_snapshot_loaded_, account_snapshot_present,
-                                 pending_order_symbols_.count(position.symbol) > 0,
+                                 accepted_pending_order,
                                  floor_it != managed_quantity_floors_.end()});
   return out;
 }
@@ -1302,7 +1311,7 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
   unrealized_pnl_ = 0.0;
   const bool manage_account_exits = accountPositionManagementAllowsExitsLocked();
   for (const auto &holding : snapshot.holdings) {
-    const std::string symbol = holding.asset + "-USD";
+    const std::string symbol = coinbaseProductIdForAsset(holding.asset);
     if (manage_account_exits &&
         std::find(symbols_.begin(), symbols_.end(), symbol) == symbols_.end()) {
       symbols_.push_back(symbol);
@@ -1982,10 +1991,10 @@ void LiveTradingService::updateMarkToMarketLocked(
     const auto floor_it = managed_quantity_floors_.find(symbol);
     const bool snapshot_present = std::any_of(
         last_account_snapshot_.holdings.begin(), last_account_snapshot_.holdings.end(),
-        [&symbol](const auto &holding) { return holding.asset + "-USD" == symbol; });
+        [&symbol](const auto &holding) { return coinbaseProductIdForAsset(holding.asset) == symbol; });
     const LivePositionReconciliation reconciliation{
         last_account_snapshot_loaded_, snapshot_present,
-        pending_order_symbols_.count(symbol) > 0, floor_it != managed_quantity_floors_.end()};
+        hasAcceptedPendingOrderLocked(symbol), floor_it != managed_quantity_floors_.end()};
     if (!livePositionContributesToExposure(reconciliation)) {
       position.unrealized_pnl = 0.0;
       position.pnl_percentage = 0.0;
@@ -2507,10 +2516,10 @@ Json::Value LiveTradingService::buildPortfolioJson() const {
     const auto floor_it = managed_quantity_floors_.find(symbol);
     const bool snapshot_present = std::any_of(
         last_account_snapshot_.holdings.begin(), last_account_snapshot_.holdings.end(),
-        [&symbol](const auto &holding) { return holding.asset + "-USD" == symbol; });
+        [&symbol](const auto &holding) { return coinbaseProductIdForAsset(holding.asset) == symbol; });
     const LivePositionReconciliation reconciliation{
         last_account_snapshot_loaded_, snapshot_present,
-        pending_order_symbols_.count(symbol) > 0, floor_it != managed_quantity_floors_.end()};
+        hasAcceptedPendingOrderLocked(symbol), floor_it != managed_quantity_floors_.end()};
     if (!livePositionContributesToExposure(reconciliation)) {
       continue;
     }
