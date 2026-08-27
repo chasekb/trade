@@ -51,10 +51,10 @@ Default policy (configurable only by backend deployment configuration, not the b
 - `stale`: age > 5,000 ms and < 15,000 ms; display with an explicit stale badge, never create a new live entry.
 - `expired`: quote age >= 15,000 ms, timeout, malformed/empty book, or failed request; no signal is executable. An expired quote is also a hard-degraded condition.
 - Account snapshot `fresh`: age <= 45,000 ms. `account_degraded`: >45,000 ms, failed, or valuation incomplete. No new live entry, add, or manual buy is allowed while degraded. Exits may be allowed only under a separately configured emergency policy using a still-authoritative holding quantity; otherwise block and show the reason.
-- A selected-universe tick is `coverage_complete` only when every selected symbol has a fresh or explicitly classified terminal result for that tick. Missing symbols are not treated as HOLD and are not hidden by pagination.
-- A partial tick may publish signals for observability, but all signals from a partial tick carry `coverage_complete=false` and `execution_eligible=false`. No order intent may reference an incomplete tick.
+- A selected-universe tick is `collection_complete` when every selected symbol has either a fresh result or an explicitly classified terminal result for that tick. Failed, malformed, empty, timed-out, or otherwise expired results are terminal for collection accounting but are never execution-eligible; therefore they make `coverage_complete=false`. Missing symbols are not treated as HOLD and are not hidden by pagination.
+- A partial tick, or any tick containing an expired/invalid terminal result, may publish signals for observability, but all signals from it carry `coverage_complete=false` and `execution_eligible=false`. Only a tick in which every selected symbol is fresh can be coverage-complete and provide an execution-eligible basis for an order intent.
 - Failed market data is not retried indefinitely. Retry at most once for a transient timeout/429 or parse/invalid response within the same tick, with bounded backoff; do not retry unauthorized responses. Drop the tick result after the deadline and wait for the next scheduled observation.
-- On 2 consecutive stale/partial ticks, enter `degraded` and keep live execution disabled until three consecutive healthy complete fresh ticks and a 15-second stable recovery window have been observed, with a fresh account snapshot. Recovery is explicit in diagnostics (`degraded_reason`, `recovered_at`), not inferred from a green HTTP response.
+- On 2 consecutive stale/partial ticks, enter `degraded` and keep live execution disabled until three consecutive healthy complete fresh ticks and a 15-second stable recovery window have been observed, with a fresh account snapshot. The 15-second window is the sole readiness-recovery window; it is distinct from the 30-second order-reconciliation recovery timeout below. Recovery is explicit in diagnostics (`degraded_reason`, `recovered_at`), not inferred from a green HTTP response.
 
 Selected universe invariants:
 
@@ -80,7 +80,7 @@ Submission rules:
 - A definitive validation/auth/minimum-notional/insufficient-funds rejection is terminal and releases reservations exactly once.
 - A timeout, connection reset, 5xx, or cancellation after request transmission is ambiguous, not a safe rejection. Do not retry placement. Look up the persisted client id and reconcile order status/fill.
 - A 429 is a throttle signal: record it, stop admission for the configured cooldown, and retry only read-only quote/account work within its bounded retry budget. Never duplicate an order because a placement response was delayed.
-- Fill/status polling is bounded by attempts and wall-clock age. After the recovery window, mark `reconciliation_unknown`, retain the reservation, disable new live entries, and alert an operator. Do not mark an unknown order rejected or fabricate a fill.
+- Fill/status polling is bounded by attempts and wall-clock age. After the 30-second order-reconciliation recovery timeout, mark `reconciliation_unknown`, retain the reservation, disable new live entries, and alert an operator. Do not mark an unknown order rejected or fabricate a fill.
 - Apply a fill at most once using `fill_applied` plus a unique trade id. Persistence retries are idempotent upserts; a persistence failure after local application leaves the order pending reconciliation rather than applying the fill again.
 - Account snapshots can confirm quantity but cannot replace the exchange order/fill record for realized PnL or fees.
 
@@ -93,7 +93,7 @@ The scheduler has separate bounded lanes:
 3. order submission/reconciliation lane, serialized by intent and symbol safety rules;
 4. persistence lane with bounded retry storage.
 
-The queue is FIFO within freshness priority: expired/degraded recovery and account reconciliation first, then symbols with oldest observation age, then stable selected-universe order. The initial safe configuration is normative: queue capacity 256; worker count 2, bounded 1..4; dispatch limit 2 and never greater than worker count; quote batch size 8, bounded 1..32; exchange token bucket 5 requests/second with rate bounded 0.5..20 requests/second and burst bounded 1..20 and no greater than two seconds of rate; request deadline 2,000 ms; account attempt deadline 15,000 ms with a 10,000 ms transport timeout; one same-tick read-only retry with bounded backoff; throttle cooldown 1,000 ms, bounded 1,000..60,000 ms; recovery window 30,000 ms; stop-drain deadline 30,000 ms; and degraded entry after 2 consecutive stale/partial ticks. Deployments may tighten these values only within the stated bounds. Missing, zero, negative, non-finite, or out-of-range safety settings fail closed at startup and disable live execution; they must never become unbounded defaults. Adaptive concurrency may move only within these limits and only after a completed control interval. Reduce concurrency immediately on 429s, timeout/error spikes, queue lag, or stale-age growth; increase slowly after a sustained healthy interval. Never use unbounded `hardware_concurrency()` fan-out.
+- The queue is FIFO within freshness priority: expired/degraded recovery and account reconciliation first, then symbols with oldest observation age, then stable selected-universe order. The initial safe configuration is normative: queue capacity 256; worker count 2, bounded 1..4; dispatch limit 2 and never greater than worker count; quote batch size 8, bounded 1..32; exchange token bucket 5 requests/second with rate bounded 0.5..20 requests/second and burst bounded 1..20 and no greater than two seconds of rate; request deadline 2,000 ms; account attempt deadline 15,000 ms with a 10,000 ms transport timeout; one same-tick read-only retry with bounded backoff; throttle cooldown 1,000 ms, bounded 1,000..60,000 ms; order-reconciliation recovery timeout 30,000 ms; stop-drain deadline 30,000 ms; and degraded entry after 2 consecutive stale/partial ticks. Deployments may tighten these values only within the stated bounds. Missing, zero, negative, non-finite, or out-of-range safety settings fail closed at startup and disable live execution; they must never become unbounded defaults. Adaptive concurrency may move only within these limits and only after a completed control interval. Reduce concurrency immediately on 429s, timeout/error spikes, queue lag, or stale-age growth; increase slowly after a sustained healthy interval. Never use unbounded `hardware_concurrency()` fan-out.
 
 A queue-full result is a classified drop (`queue_capacity_exceeded`), not a successful HOLD. No retry loop may outlive the tick deadline. Stop generation invalidates queued work.
 
@@ -118,7 +118,7 @@ Structured event names include `live_session_start`, `live_session_stop_requeste
 
 Alert conditions:
 
-- any accepted/ambiguous order remains unreconciled beyond the configured recovery window;
+- any accepted/ambiguous order remains unreconciled beyond the 30-second order-reconciliation recovery timeout;
 - `coverage_complete=false` or expired-symbol count persists for two ticks while execution is enabled;
 - account snapshot is degraded beyond 30 seconds or valuation is incomplete;
 - 429/throttle rate reaches 5 responses per minute, queue age exceeds 2,000 ms, or timeout rate exceeds 20% for two consecutive ticks (these are the initial thresholds; tightening is allowed);
@@ -179,7 +179,7 @@ The widget must distinguish: `exchange_throttled`, `queue_lag`, `quote_stale`, `
 
 A tester can validate all of the following without placing a real order by using a fake Coinbase client and database fixtures:
 
-- Stop during quote fetch: no post-stop signal or intent is admitted; unsent reservations are released; accepted orders remain reconcilable; response stays `settling` until terminal or the 10-second drain deadline, after which it remains visibly incomplete and execution stays disabled.
+- Stop during quote fetch: no post-stop signal or intent is admitted; unsent reservations are released; accepted orders remain reconcilable; response stays `settling` until terminal or the 30-second stop-drain deadline, after which it remains visibly incomplete and execution stays disabled.
 - Repeated stop and restart race: stop is idempotent, no old worker can submit into a new session, and restart waits for worker/drain completion.
 - Timeout after order transmission: exactly one persisted client id is looked up; no duplicate placement; eventual fill is applied once, including fees.
 - Database failure before placement: no exchange call occurs. Database failure after local fill application does not apply a second fill.
@@ -188,7 +188,7 @@ A tester can validate all of the following without placing a real order by using
 - 429/5xx: quote work is bounded and classified; order placement is not blindly retried; concurrency backs off within configured limits.
 - Invalid scheduler configuration: startup reports the invalid field and remains execution-disabled rather than accepting zero/unbounded capacity, workers, deadlines, or retry limits.
 - Invalid or empty explicit universe: live start rejects the request and never substitutes the default symbol list; canonical duplicates and malformed product IDs are named in diagnostics.
-- Missing, malformed, stale, or partial selected-universe quotes: diagnostics enumerate missing symbols, `coverage_complete=false`, and no live order is eligible from that tick.
+- Missing, malformed, stale, or partial selected-universe quotes: diagnostics enumerate missing/expired symbols, distinguish `collection_complete` from `coverage_complete`, set `coverage_complete=false`, and no live order is eligible from that tick.
 - Account snapshot timeout, valuation failure, or stale age: `can_trade=false`, account data is not silently replaced with zero, and the widget names `account_lag`/valuation failure.
 - Queue capacity/deadline exhaustion: no selected symbols disappear; dropped work is classified and visible.
 - Reconciliation timeout: order becomes `reconciliation_unknown`, reservations remain held, new entries are blocked, and an alert is emitted.
