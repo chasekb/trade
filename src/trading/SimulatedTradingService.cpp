@@ -1,4 +1,5 @@
 #include "trading/SimulatedTradingService.hpp"
+#include "trading/SimulatedTradingContract.hpp"
 
 #include "api/PredictController.hpp"
 #include "config/Config.hpp"
@@ -43,9 +44,35 @@ constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // fixture-equivalent strong imbalances can clear the shared fee/spread/slippage
 // profitability gate while weak signals remain HOLD.
 constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
+constexpr std::size_t kTransformerLookback = 60;
+constexpr std::size_t kTransformerFeatureWidth = 353;
 constexpr std::size_t kMaxRecentTrades = 100;
 
 constexpr double kDefaultInitialCapital = 10000.0;
+
+Json::Value makeDiagnosisReason(const std::string &code, const std::string &message,
+                                bool retryable = true) {
+  Json::Value result(Json::objectValue);
+  result["code"] = code;
+  result["message"] = message;
+  result["retryable"] = retryable;
+  return result;
+}
+
+Json::Value makeSafeExecutionError(const std::string &code, const int attempts,
+                                   const std::string &occurred_at) {
+  Json::Value result(Json::objectValue);
+  result["code"] = code;
+  result["message"] = code == "timeout"
+                           ? "Exchange execution request timed out."
+                           : code == "session_cancelled"
+                                 ? "Exchange execution was cancelled with the session."
+                                 : "Exchange rejected or failed to execute the order.";
+  result["retryable"] = code != "session_cancelled";
+  result["attempts"] = std::max(0, attempts);
+  result["occurred_at"] = occurred_at;
+  return result;
+}
 
 std::string formatNowIsoUtc() {
   const auto now = std::chrono::system_clock::now();
@@ -80,27 +107,6 @@ long long currentEpochSeconds() {
       .count();
 }
 
-std::string classifyMarketDataError(const std::string &error) {
-  std::string lower = error;
-  std::transform(lower.begin(), lower.end(), lower.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  if (lower.find("tls") != std::string::npos || lower.find("certificate") != std::string::npos) {
-    return "tls";
-  }
-  if (lower.find("dns") != std::string::npos || lower.find("resolve") != std::string::npos) {
-    return "dns";
-  }
-  if (lower.find("timeout") != std::string::npos) {
-    return "timeout";
-  }
-  if (lower.find("cancel") != std::string::npos || lower.find("shutdown") != std::string::npos) {
-    return "cancellation_or_shutdown";
-  }
-  if (lower.find("http ") != std::string::npos) {
-    return "exchange_response";
-  }
-  return "network";
-}
 
 std::string joinStrings(const std::vector<std::string> &items, const char *sep = ",") {
   std::ostringstream oss;
@@ -119,7 +125,9 @@ std::vector<std::string> defaultSymbols() {
 
 
 std::string makeSessionId() {
-  return "sim_" + std::to_string(currentEpochSeconds());
+  static std::atomic<std::uint64_t> sequence{0};
+  return "sim_" + std::to_string(currentEpochSeconds()) + "_" +
+         std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
 }
 
 constexpr std::size_t kMaxPriceHistory = 512;
@@ -783,6 +791,28 @@ void SimulatedTradingService::applyLiveFillLocked(const OrderIntent &intent,
   total_fees_ += fill.total_fees;
   queueTradeWriteLocked(trade);
   recent_trades_.push_back(trade);
+  auto &diagnosis = diagnosisForSymbolLocked(intent.product_id);
+  diagnosis["execution"]["state"] = "filled";
+  diagnosis["execution"]["side"] = intent.side == "buy" ? "BUY" : "SELL";
+  diagnosis["execution"]["attempts"] = 1;
+  diagnosis["execution"]["filled_quantity"] = quantity;
+  diagnosis["execution"]["average_price"] = price;
+  diagnosis["execution"]["occurred_at"] = trade.timestamp_iso;
+  diagnosis["trade"]["trade_id"] = trade.trade_id;
+  diagnosis["trade"]["side"] = trade.side == "buy" ? "BUY" : "SELL";
+  if (intent.action == "close") {
+    diagnosis["trade"]["state"] = "closed";
+    diagnosis["trade"]["outcome"] = trade.pnl > 0.0 ? "profit" : (trade.pnl < 0.0 ? "loss" : "flat");
+    diagnosis["trade"]["closed_at"] = trade.timestamp_iso;
+    diagnosis["trade"]["realized_pnl"] = trade.pnl;
+    diagnosis["trade"]["fee"] = trade.fees;
+    markDiagnosisStatusLocked(diagnosis, "trade_completed", true, "", "");
+  } else {
+    diagnosis["trade"]["state"] = "open";
+    diagnosis["trade"]["outcome"] = "pending";
+    diagnosis["trade"]["opened_at"] = trade.timestamp_iso;
+    markDiagnosisStatusLocked(diagnosis, "trade_open", false, "", "");
+  }
   updated_at_ = nowIsoUtc();
   trimHistoryLocked();
 }
@@ -822,9 +852,22 @@ SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
       std::lock_guard<std::mutex> lock(mutex_);
       pending_order_symbols_.erase(intent.product_id);
       pending_reserved_cash_ = std::max(0.0, pending_reserved_cash_ - intent.reserved_cash);
-      TR_LOG_ERROR("Coinbase order FAILED: {} {} {} ({}): {} [{}]", intent.side, intent.amount,
-                   intent.product_id, intent.amount_is_quote ? "quote" : "base", result.error,
-                   intent.reason);
+      auto &diagnosis = diagnosisForSymbolLocked(intent.product_id);
+      const std::string classified_error = classifyMarketDataErrorCode(result.error);
+      const std::string execution_code = classified_error == "timeout"
+                                             ? "timeout"
+                                             : classified_error == "cancelled"
+                                                   ? "session_cancelled"
+                                                   : "execution_rejected";
+      diagnosis["execution"]["state"] = "failed";
+      diagnosis["execution"]["attempts"] = 1;
+      diagnosis["execution"]["error"] =
+          makeSafeExecutionError(execution_code, 1, nowIsoUtc());
+      markDiagnosisStatusLocked(diagnosis, "execution_failed", true, execution_code,
+                                "Exchange rejected the order.", false);
+      TR_LOG_ERROR("Coinbase order FAILED: {} {} {} ({}), code={} [{}]", intent.side,
+                   intent.amount, intent.product_id, intent.amount_is_quote ? "quote" : "base",
+                   execution_code, intent.reason);
       dispatch_result.error = result.error;
       continue;
     }
@@ -902,9 +945,10 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
 
     exchange::OrderBookSummary book;
     std::string error;
-    int retries = 0;
+    int attempts = 0;
     bool fetched = false;
     for (int attempt = 0; attempt < 2; ++attempt) {
+      ++attempts;
       reconciliation_diagnostics_.recordFetchAttempt(symbol);
       if (exchange_client_->getOrderBook(symbol, book, &error)) {
         fetched = true;
@@ -912,25 +956,56 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
         break;
       }
       reconciliation_diagnostics_.recordFetchResult(symbol, false, 0);
-      retries = attempt + 1;
-      const std::string category = classifyMarketDataError(error);
-      if (category == "tls" || category == "dns" || category == "exchange_response") {
+      const std::string category = classifyMarketDataErrorCode(error);
+      if (category == "tls_handshake" || category == "dns_failure" ||
+          category == "exchange_response" || category == "cancelled") {
         break;
       }
     }
     if (!fetched) {
-      auto &status = market_data_status_[symbol];
-      status.status = "failed";
-      status.category = classifyMarketDataError(error);
-      status.error = error;
-      status.retries = retries;
-      TR_LOG_WARN("Failed to fetch order book for {}: {} (category={}, retries={})",
-                  symbol, error, status.category, status.retries);
+      const std::string category = classifyMarketDataErrorCode(error);
+      const int retries = std::max(0, attempts - 1);
+      int http_status = 0;
+      const auto http_pos = error.find("HTTP ");
+      if (category == "exchange_response" && http_pos != std::string::npos) {
+        try {
+          http_status = std::stoi(error.substr(http_pos + 5));
+        } catch (...) {
+          http_status = 0;
+        }
+      }
+      const std::string occurred_at = nowIsoUtc();
+      const std::string safe_error = safeMarketDataErrorMessage(category);
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto &status = market_data_status_[symbol];
+        status.status = "failed";
+        status.category = category;
+        status.error = safe_error;
+        status.retries = retries;
+        auto &diagnosis = diagnosisForSymbolLocked(symbol);
+        diagnosis["market_data"]["state"] = "unavailable";
+        diagnosis["market_data"]["attempts"] = attempts;
+        diagnosis["market_data"]["last_success_at"] = status.last_success_at.empty()
+                                                             ? Json::Value(Json::nullValue)
+                                                             : Json::Value(status.last_success_at);
+        diagnosis["market_data"]["error"] =
+            makeSafeMarketDataError(category, attempts, occurred_at, http_status);
+        diagnosis["quote"]["state"] = "unknown";
+        markDiagnosisStatusLocked(diagnosis, "data_unavailable", true, category,
+                                  safe_error);
+      }
+      TR_LOG_WARN("Market-data transition session={} symbol={} status=data_unavailable reason={} attempts={}",
+                  session_id_, symbol, category, attempts);
       continue;
     }
 
     MarketQuote quote;
-    quote.valid = true;
+    quote.valid = std::isfinite(book.best_bid) && std::isfinite(book.best_ask) &&
+                  std::isfinite(book.mid) && std::isfinite(book.spread) &&
+                  std::isfinite(book.imbalance) && book.best_bid > 0.0 &&
+                  book.best_ask > 0.0 && book.best_bid <= book.best_ask &&
+                  book.mid > 0.0 && book.spread >= 0.0;
     quote.mid = book.mid;
     quote.spread = book.spread;
     quote.best_bid = book.best_bid;
@@ -938,13 +1013,42 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
     quote.imbalance = book.imbalance;
     quote.volume = book.bid_volume + book.ask_volume;
     quote.depth = book.depth;
-    quotes[symbol] = quote;
-    auto &status = market_data_status_[symbol];
-    status.status = "refreshed";
-    status.category = "ok";
-    status.error.clear();
-    status.retries = retries;
-    status.last_success_at = nowIsoUtc();
+    const std::string observed_at = nowIsoUtc();
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto &status = market_data_status_[symbol];
+      status.status = "refreshed";
+      status.category = "ok";
+      status.error.clear();
+      status.retries = std::max(0, attempts - 1);
+      status.last_success_at = observed_at;
+      auto &diagnosis = diagnosisForSymbolLocked(symbol);
+      diagnosis["market_data"]["state"] = "ready";
+      diagnosis["market_data"]["attempts"] = attempts;
+      diagnosis["market_data"]["last_success_at"] = observed_at;
+      diagnosis["market_data"]["error"] = Json::nullValue;
+      diagnosis["quote"]["observed_at"] = observed_at;
+      diagnosis["quote"]["age_ms"] = 0;
+      diagnosis["quote"]["bid"] = book.best_bid;
+      diagnosis["quote"]["ask"] = book.best_ask;
+      diagnosis["quote"]["mid"] = book.mid;
+      diagnosis["quote"]["validation_errors"] = Json::arrayValue;
+      if (quote.valid) {
+        diagnosis["quote"]["state"] = "valid";
+        diagnosis["quote"]["max_age_ms"] = 5000;
+      } else {
+        diagnosis["quote"]["state"] = "invalid";
+        diagnosis["quote"]["bid"] = Json::nullValue;
+        diagnosis["quote"]["ask"] = Json::nullValue;
+        diagnosis["quote"]["mid"] = Json::nullValue;
+        diagnosis["quote"]["validation_errors"].append("invalid_quote");
+        markDiagnosisStatusLocked(diagnosis, "quote_invalid", true, "invalid_quote",
+                                  "The market-data response did not contain a valid quote.");
+      }
+    }
+    if (quote.valid) {
+      quotes[symbol] = quote;
+    }
   }
   return quotes;
 }
@@ -1167,6 +1271,8 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   payload["signal_type"] = signal.signal_type;
   payload["signal"] = signal.signal_type;
   payload["signal_generated"] = generated;
+  payload["generated_before_gate"] = generated;
+  payload["candidate_signal_type"] = signal.signal_type;
   payload["signal_strength"] = signal.strength;
   payload["price"] = signal.price;
   payload["timestamp"] = signal.timestamp_iso;
@@ -1237,41 +1343,60 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
 
         const auto pca_features = engineer->preprocess(features);
         const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
+        const bool transformer_configured = models->has_transformer();
+        const bool transformer_contract_shape =
+            transformer_sequence.size() == kTransformerLookback &&
+            std::all_of(transformer_sequence.begin(), transformer_sequence.end(),
+                        [](const auto &row) { return row.size() == kTransformerFeatureWidth; });
         const bool transformer_ready =
-            !models->has_transformer() || models->transformer_input_ready(transformer_sequence);
-        if (models->has_transformer() && !transformer_ready) {
+            !transformer_configured ||
+            (transformer_contract_shape && models->transformer_input_ready(transformer_sequence));
+        if (transformer_configured && !transformer_ready) {
           ++transformer_warming_symbols_;
         }
+        // A sequence that is still warming up must not run any model
+        // inference. In particular, avoid producing a fallback prediction that
+        // would later be mistaken for a valid HOLD or executable signal.
         const double win_prob =
-            models->has_classifier() ? models->predict_win_prob(pca_features) : 0.5;
+            (!models->has_transformer() || transformer_ready) && models->has_classifier()
+                ? models->predict_win_prob(pca_features)
+                : 0.5;
         double transformer_pnl = 0.0;
-        if (models->has_transformer() && transformer_ready) {
+        if (transformer_configured && transformer_ready) {
           transformer_pnl = models->predict_transformer(transformer_sequence);
         }
         // Transformer-only packs still surface a genuine expected return on
         // signal and trade rows instead of a constant zero.
-        const double expected_pnl = models->has_regressor()
-                                        ? models->predict_pnl(pca_features)
-                                        : transformer_pnl;
+        const double expected_pnl =
+            (!transformer_configured || transformer_ready) && models->has_regressor()
+                ? models->predict_pnl(pca_features)
+                : transformer_pnl;
 
-        ml_analysis["ml_enabled"] = transformer_ready;
+        ml_analysis["ml_enabled"] = !transformer_configured || transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
         ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
-        ml_analysis["confidence"] = transformer_ready
+        ml_analysis["confidence"] = (!transformer_configured || transformer_ready)
                                          ? std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0)
                                          : 0.0;
-        ml_analysis["model_version"] = transformer_ready
+        ml_analysis["model_version"] = !transformer_configured || transformer_ready
                                             ? CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack")
                                             : "transformer-warming-up";
-        ml_analysis["inference_status"] = transformer_ready ? "ready" : "warming_up";
-        ml_analysis["transformer_expected_lookback"] = 60;
-        ml_analysis["transformer_sequence_length"] =
-            static_cast<Json::UInt64>(transformer_sequence.size());
-        ml_analysis["transformer_feature_width"] =
-            transformer_sequence.empty()
-                ? 0
-                : static_cast<Json::UInt64>(transformer_sequence.front().size());
+        ml_analysis["transformer_configured"] = transformer_configured;
+        ml_analysis["inference_status"] = !transformer_configured
+                                               ? "not_configured"
+                                               : (transformer_ready ? "ready" : "warming_up");
+        ml_analysis["transformer_expected_lookback"] = kTransformerLookback;
+        ml_analysis["transformer_sequence_length"] = transformer_configured
+                                                           ? static_cast<Json::UInt64>(transformer_sequence.size())
+                                                           : 0;
+        ml_analysis["transformer_feature_width"] = transformer_configured
+                                                        ? (transformer_sequence.empty()
+                                                               ? 0
+                                                               : static_cast<Json::UInt64>(transformer_sequence.front().size()))
+                                                        : 0;
+        ml_analysis["transformer_contract_compatible"] =
+            !transformer_configured || transformer_contract_shape;
         used_model = true;
       } catch (const std::exception &e) {
         ++transformer_rejected_inputs_;
@@ -1339,6 +1464,21 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   if (isOrderBookStrategy(strategy_)) {
     ml_analysis["expected_return_available"] = generated;
   }
+  if (strategy_ == "ml_enhanced_orderbook" &&
+      ml_analysis.get("inference_status", Json::Value("")).asString() == "warming_up") {
+    generated = false;
+    signal_type = "hold";
+    signal.signal_type = signal_type;
+    signal.strength = 0.0;
+    payload["signal_type"] = signal.signal_type;
+    payload["signal"] = signal.signal_type;
+    payload["signal_generated"] = false;
+    payload["generated_before_gate"] = false;
+    payload["signal_strength"] = signal.strength;
+    payload["signal_reason"] = "Transformer history is still warming up";
+    payload["data_status"] = "insufficient";
+    payload["prediction"] = "HOLD";
+  }
   // Every strategy signal is normalized through the shared diagnostics
   // contract. Hold remains report-only; unsupported executable strategies
   // fail closed instead of receiving simulation-only eligibility.
@@ -1374,19 +1514,11 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
     ml_analysis["diagnostic_factor"] = toString(diagnostics.reason_code);
     ml_analysis["diagnostics_mode"] = toString(diagnostics.mode);
     ml_analysis["diagnostics_reason_code"] = toString(diagnostics.reason_code);
-    if (!diagnostics.actionable && generated) {
-      generated = false;
-      signal_type = "hold";
-      signal.signal_type = signal_type;
-      signal.strength = 0.0;
-      payload["signal_type"] = signal.signal_type;
-      payload["signal"] = signal.signal_type;
-      payload["signal_generated"] = false;
-      payload["signal_strength"] = signal.strength;
-      payload["signal_reason"] = diagnostics.reason;
-      payload["data_status"] = "sufficient";
-      payload["prediction"] = "HOLD";
-    }
+    // Keep a generated BUY/SELL candidate intact when a policy gate rejects it.
+    // Rewriting it to HOLD loses the distinction between a valid strategy HOLD
+    // and a generated signal that was deliberately blocked. The execution
+    // analysis and diagnosis projection carry the gate reason instead.
+    ml_analysis["ml_gate_passed"] = signalPassesMlGateLocked(signal);
   }
   ml_analysis["features_used"] = Json::arrayValue;
   if (isOrderBookStrategy(strategy_)) {
@@ -1429,6 +1561,8 @@ bool SimulatedTradingService::signalPassesMlGateLocked(const SignalRecord &signa
 
   const Json::Value ml_analysis =
       signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
+  const std::string candidate_signal_type =
+      signal.payload.get("candidate_signal_type", Json::Value(signal.signal_type)).asString();
   const std::string model_version = ml_analysis.get("model_version", Json::Value("")).asString();
   if (model_version == "transformer-warming-up") {
     return false;
@@ -1446,13 +1580,209 @@ bool SimulatedTradingService::signalPassesMlGateLocked(const SignalRecord &signa
 
   // win_probability is trained as the probability of a favorable (upward)
   // outcome, so buys need it high and sells need it correspondingly low.
-  if (signal.signal_type == "buy") {
+  if (candidate_signal_type == "buy") {
     return win_probability >= threshold;
   }
-  if (signal.signal_type == "sell") {
+  if (candidate_signal_type == "sell") {
     return win_probability <= 1.0 - threshold;
   }
   return false;
+}
+
+Json::Value &SimulatedTradingService::diagnosisForSymbolLocked(const std::string &symbol) {
+  auto it = symbol_diagnoses_.find(symbol);
+  if (it != symbol_diagnoses_.end()) {
+    return it->second;
+  }
+  const auto ordinal_it = std::find(symbols_.begin(), symbols_.end(), symbol);
+  const std::size_t ordinal = ordinal_it == symbols_.end()
+                                  ? symbol_diagnoses_.size()
+                                  : static_cast<std::size_t>(ordinal_it - symbols_.begin());
+  auto [inserted, _] = symbol_diagnoses_.emplace(
+      symbol, makeEmptySymbolDiagnosis(symbol, ordinal, started_at_));
+  diagnosis_sequences_[symbol] = 0;
+  return inserted->second;
+}
+
+void SimulatedTradingService::touchDiagnosisLocked(Json::Value &diagnosis) {
+  const std::string symbol = diagnosis.get("symbol", Json::Value("")).asString();
+  const auto sequence = ++diagnosis_sequences_[symbol];
+  diagnosis["sequence"] = static_cast<Json::UInt64>(sequence);
+  diagnosis["updated_at"] = nowIsoUtc();
+  diagnosis["occurred_at"] = diagnosis["updated_at"];
+  diagnosis["event_id"] = session_id_ + ":" + symbol + ":" + std::to_string(sequence);
+}
+
+void SimulatedTradingService::markDiagnosisStatusLocked(
+    Json::Value &diagnosis, const std::string &primary, const bool terminal,
+    const std::string &code, const std::string &message, const bool retryable) {
+  const std::string previous = diagnosis["status"].get("primary", "pending").asString();
+  diagnosis["status"]["primary"] = primary;
+  diagnosis["status"]["terminal"] = terminal;
+  diagnosis["status"]["evaluated_at"] = nowIsoUtc();
+  if (code.empty()) {
+    diagnosis["status"]["reason"] = Json::nullValue;
+  } else {
+    diagnosis["status"]["reason"]["code"] = code;
+    diagnosis["status"]["reason"]["message"] = message;
+    diagnosis["status"]["reason"]["retryable"] = retryable;
+  }
+  touchDiagnosisLocked(diagnosis);
+  if (previous != primary) {
+    TR_LOG_INFO("Simulated diagnosis transition session={} symbol={} old_status={} new_status={} reason={} sequence={}",
+                session_id_, diagnosis["symbol"].asString(), previous, primary, code,
+                diagnosis["sequence"].asUInt64());
+  }
+}
+
+void SimulatedTradingService::updateDiagnosisFromSignalLocked(const SignalRecord &signal) {
+  auto &diagnosis = diagnosisForSymbolLocked(signal.symbol);
+  diagnosis["market_data"]["state"] = "ready";
+  diagnosis["market_data"]["provider"] = usesLiveMarketData(mode_) ? "coinbase" : "synthetic";
+  diagnosis["market_data"]["last_success_at"] = signal.timestamp_iso;
+  diagnosis["quote"]["state"] = "valid";
+  diagnosis["quote"]["bid"] = signal.best_bid;
+  diagnosis["quote"]["ask"] = signal.best_ask;
+  diagnosis["quote"]["mid"] = signal.mid_price;
+  diagnosis["quote"]["observed_at"] = signal.timestamp_iso;
+  diagnosis["quote"]["age_ms"] = 0;
+  diagnosis["quote"]["validation_errors"] = Json::arrayValue;
+
+  const Json::Value ml = signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
+  const std::string model_version = ml.get("model_version", Json::Value("")).asString();
+  if (strategy_ == "ml_enhanced_orderbook") {
+    const bool transformer_configured =
+        ml.get("transformer_configured", Json::Value(model_version != "heuristic-fallback" &&
+                                                      model_version != "strategy-diagnostic-unavailable"))
+            .asBool();
+    if (!transformer_configured) {
+      diagnosis["transformer"]["state"] = "not_configured";
+    } else {
+      const int actual_lookback = ml.get("transformer_sequence_length", Json::Value(0)).asInt();
+      const int actual_width = ml.get("transformer_feature_width", Json::Value(0)).asInt();
+      const bool lookback_compatible = actual_lookback == static_cast<int>(kTransformerLookback);
+      const bool width_compatible = actual_width == static_cast<int>(kTransformerFeatureWidth);
+      // A short sequence is expected while history warms up. It is not a
+      // shape mismatch until the sequence exceeds the fixed contract; a
+      // feature-width mismatch is actionable as soon as a row exists.
+      const bool lookback_mismatch = actual_lookback > static_cast<int>(kTransformerLookback);
+      const bool width_mismatch = actual_width > 0 && !width_compatible;
+      diagnosis["transformer"]["lookback"]["actual"] = actual_lookback;
+      diagnosis["transformer"]["lookback"]["compatible"] = lookback_compatible;
+      diagnosis["transformer"]["feature_width"]["actual"] = actual_width;
+      diagnosis["transformer"]["feature_width"]["compatible"] = width_compatible;
+      diagnosis["transformer"]["history_rows"] = actual_lookback;
+      if (lookback_mismatch || width_mismatch) {
+        const std::string code = lookback_mismatch ? "lookback_mismatch" : "feature_width_mismatch";
+        diagnosis["transformer"]["state"] = "shape_mismatch";
+        diagnosis["transformer"]["error"]["code"] = code;
+        diagnosis["transformer"]["error"]["message"] =
+            "Transformer input shape does not match the configured contract.";
+        diagnosis["transformer"]["error"]["retryable"] = false;
+        diagnosis["transformer"]["error"]["occurred_at"] = signal.timestamp_iso;
+        markDiagnosisStatusLocked(diagnosis, "feature_shape_mismatch", true, code,
+                                  "Transformer input shape does not match the configured contract.", false);
+        diagnosis["signal"]["state"] = "not_evaluated";
+        diagnosis["signal"]["side"] = Json::nullValue;
+        return;
+      }
+      if (ml.get("inference_status", Json::Value("warming_up")).asString() != "ready") {
+        diagnosis["transformer"]["state"] = "warming_up";
+        diagnosis["transformer"]["error"] = Json::Value(Json::objectValue);
+        diagnosis["transformer"]["error"]["code"] = "transformer_warming_up";
+        diagnosis["transformer"]["error"]["message"] = "Transformer history is still warming up.";
+        diagnosis["transformer"]["error"]["retryable"] = true;
+        diagnosis["transformer"]["error"]["occurred_at"] = signal.timestamp_iso;
+        markDiagnosisStatusLocked(diagnosis, "transformer_not_ready", !active_,
+                                  "transformer_warming_up",
+                                  "Transformer history is still warming up.");
+        diagnosis["signal"]["state"] = "not_evaluated";
+        diagnosis["signal"]["side"] = Json::nullValue;
+        return;
+      }
+      diagnosis["transformer"]["state"] = "ready";
+    }
+  } else {
+    diagnosis["transformer"]["state"] = "not_evaluated";
+  }
+
+  const bool generated = signal.payload.get("generated_before_gate", Json::Value(signal.signal_type != "hold")).asBool();
+  const std::string candidate_side = signal.payload.get("candidate_signal_type", Json::Value(signal.signal_type)).asString();
+  const std::string signal_state = generated && (candidate_side == "buy" || candidate_side == "sell")
+                                       ? candidate_side
+                                       : "hold";
+  diagnosis["signal"]["state"] = signal_state;
+  diagnosis["signal"]["side"] = signal_state == "hold" ? Json::Value(Json::nullValue)
+                                                            : Json::Value(signal_state == "buy" ? "BUY" : "SELL");
+  diagnosis["signal"]["generated_at"] = signal.timestamp_iso;
+  diagnosis["signal"]["confidence"] = ml.get("confidence", Json::Value(Json::nullValue));
+  diagnosis["signal"]["predicted_return"] = ml.get("expected_return", Json::Value(Json::nullValue));
+  diagnosis["signal"]["reason"] = signal_state == "hold"
+                                        ? makeDiagnosisReason("signal_hold", "Strategy returned HOLD.")
+                                        : Json::Value(Json::nullValue);
+  if (signal_state == "hold") {
+    diagnosis["gates"]["profitability"]["state"] = "not_evaluated";
+    diagnosis["gates"]["ml"]["state"] = "not_evaluated";
+    diagnosis["gates"]["all_passed"] = Json::nullValue;
+    diagnosis["intent"]["state"] = "not_created";
+    diagnosis["intent"]["reason"] = makeDiagnosisReason("signal_hold", "No order intent is created for HOLD.");
+    markDiagnosisStatusLocked(diagnosis, "hold", true, "signal_hold", "Strategy returned HOLD.");
+    return;
+  }
+
+  const bool profitability_passed = ml.get("profitability_gate_passed", Json::Value(true)).asBool();
+  const bool ml_passed = ml.get("ml_gate_passed", Json::Value(signalPassesMlGateLocked(signal))).asBool();
+  diagnosis["gates"]["profitability"]["state"] = profitability_passed ? "passed" : "blocked";
+  diagnosis["gates"]["profitability"]["reasons"] = Json::arrayValue;
+  if (!profitability_passed) {
+    diagnosis["gates"]["profitability"]["reasons"].append(
+        makeDiagnosisReason("profitability_below_threshold", "Expected edge does not cover fees and threshold."));
+  }
+  diagnosis["gates"]["ml"]["state"] = ml_passed ? "passed" : "blocked";
+  diagnosis["gates"]["ml"]["reasons"] = Json::arrayValue;
+  if (!ml_passed) {
+    diagnosis["gates"]["ml"]["reasons"].append(
+        makeDiagnosisReason("ml_confidence_below_threshold", "ML confidence is below the configured threshold."));
+  }
+  diagnosis["gates"]["all_passed"] = profitability_passed && ml_passed;
+
+  const Json::Value analysis = signal.payload.get("execution_analysis", Json::Value(Json::objectValue));
+  const bool executable = analysis.get("executable_intent", Json::Value(false)).asBool();
+  diagnosis["intent"]["side"] = signal_state == "buy" ? "BUY" : "SELL";
+  diagnosis["intent"]["quantity"] = analysis.get("allocated_usd", Json::Value(Json::nullValue));
+  if (!profitability_passed || !ml_passed) {
+    diagnosis["intent"]["state"] = "blocked";
+    diagnosis["intent"]["reason"] = makeDiagnosisReason("gate_blocked", "Signal was blocked by one or more policy gates.");
+    diagnosis["execution"]["state"] = "not_attempted";
+    markDiagnosisStatusLocked(diagnosis, "gates_blocked", true, "gate_blocked",
+                              "Signal was blocked by one or more policy gates.");
+  } else if (!executable) {
+    const std::string blocker = analysis.get("blocker_reason", Json::Value("intent_not_executable")).asString();
+    diagnosis["intent"]["state"] = "blocked";
+    diagnosis["intent"]["reason"] = makeDiagnosisReason(blocker, "Signal did not produce an executable intent.");
+    diagnosis["execution"]["state"] = "not_attempted";
+    markDiagnosisStatusLocked(diagnosis, "intent_not_executable", true, blocker,
+                              "Signal did not produce an executable intent.");
+  } else {
+    diagnosis["intent"]["state"] = "executable";
+    diagnosis["intent"]["reason"] = Json::nullValue;
+    diagnosis["intent"]["created_at"] = signal.timestamp_iso;
+    diagnosis["execution"]["state"] = "pending";
+    markDiagnosisStatusLocked(diagnosis, "pending", false, "", "");
+  }
+
+  const auto position_it = positions_.find(signal.symbol);
+  if (position_it != positions_.end()) {
+    diagnosis["execution"]["state"] = "filled";
+    diagnosis["execution"]["side"] = signal_state == "buy" ? "BUY" : "SELL";
+    diagnosis["execution"]["attempts"] = 1;
+    diagnosis["execution"]["filled_quantity"] = position_it->second.quantity;
+    diagnosis["execution"]["average_price"] = position_it->second.entry_price;
+    diagnosis["execution"]["occurred_at"] = position_it->second.entry_time;
+    diagnosis["trade"]["state"] = "open";
+    diagnosis["trade"]["outcome"] = "pending";
+    markDiagnosisStatusLocked(diagnosis, "trade_open", false, "", "");
+  }
 }
 
 void SimulatedTradingService::trimHistoryLocked() {
@@ -1788,6 +2118,12 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     }
     // Live-data modes never trade on synthetic data: no quote, no tick action.
     if (live_mode && quote == nullptr) {
+      auto &diagnosis = diagnosisForSymbolLocked(symbol);
+      if (diagnosis["status"]["primary"].asString() == "pending") {
+        markDiagnosisStatusLocked(diagnosis, "data_unavailable", true,
+                                  "unknown_network_error",
+                                  "Market-data provider request failed.");
+      }
       continue;
     }
     ++signals_evaluated_;
@@ -1796,6 +2132,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     signal.payload["execution_analysis"] = buildExecutionAnalysisLocked(signal);
     recent_signals_[signal.symbol] = signal;
     queueSignalWriteLocked(signal);
+    updateDiagnosisFromSignalLocked(signal);
 
     auto position_it = positions_.find(symbol);
     const bool signal_generated = signal.signal_type != "hold";
@@ -1821,6 +2158,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
           reconciliation_diagnostics_.recordBlocker(
               analysis.get("blocker_reason", Json::Value("unknown")).asString());
         }
+        updateDiagnosisFromSignalLocked(signal);
         continue;
       }
       if (signal_generated) {
@@ -1833,8 +2171,22 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
           blocker = "profitability_or_position_size";
         } else if (sanitizeSide(signal.signal_type) != "buy") {
           blocker = "spot_cannot_open_short";
+        } else {
+          const double allocated_usd = positionSizeUsdForSignal(signal);
+          const double fee = signal.price > 0.0 ? allocated_usd * kFeeRate : 0.0;
+          const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
+          if (!hasSufficientCash("buy", available_cash, allocated_usd, fee)) {
+            blocker = "insufficient_cash";
+          }
         }
         if (!blocker.empty()) {
+          // Keep the execution analysis authoritative when the final
+          // portfolio checks reject a candidate after signal generation.
+          // Otherwise diagnosis would report an executable intent even
+          // though openPositionLocked correctly declined to place it.
+          signal.payload["execution_analysis"]["blocked"] = true;
+          signal.payload["execution_analysis"]["executable_intent"] = false;
+          signal.payload["execution_analysis"]["blocker_reason"] = blocker;
           ++execution_blocker_counts_[blocker];
           reconciliation_diagnostics_.recordBlocker(blocker);
         } else {
@@ -1842,6 +2194,7 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
           openPositionLocked(signal, "Opened on generated signal");
         }
       }
+      updateDiagnosisFromSignalLocked(signal);
       continue;
     }
 
@@ -1851,12 +2204,14 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
     // Accumulation strategies never auto-close: buy-and-hold keeps its
     // position for the session, DCA adds on each scheduled buy signal.
     if (strategy_ == "buyandhold") {
+      updateDiagnosisFromSignalLocked(signal);
       continue;
     }
     if (strategy_ == "dca") {
       if (signal_generated && signal.signal_type == "buy") {
         addToPositionLocked(signal, "DCA scheduled purchase");
       }
+      updateDiagnosisFromSignalLocked(signal);
       continue;
     }
 
@@ -1991,6 +2346,44 @@ void SimulatedTradingService::startWorkerLocked() {
   worker_ = std::thread([this]() { workerLoop(); });
 }
 
+Json::Value SimulatedTradingService::buildDiagnosisJson() const {
+  Json::Value result(Json::objectValue);
+  result["schema_version"] = kSimulatedTradingDiagnosisSchema;
+  result["session_id"] = session_id_;
+  result["mode"] = mode_;
+  result["as_of"] = nowIsoUtc();
+  result["occurred_at"] = result["as_of"];
+  result["selected_symbols"] = Json::arrayValue;
+  for (const auto &symbol : symbols_) {
+    result["selected_symbols"].append(symbol);
+  }
+  result["symbols"] = Json::arrayValue;
+  std::vector<Json::Value> symbols;
+  symbols.reserve(symbols_.size());
+  for (std::size_t ordinal = 0; ordinal < symbols_.size(); ++ordinal) {
+    const auto it = symbol_diagnoses_.find(symbols_[ordinal]);
+    const Json::Value diagnosis =
+        it == symbol_diagnoses_.end()
+            ? makeEmptySymbolDiagnosis(symbols_[ordinal], ordinal, started_at_)
+            : it->second;
+    result["symbols"].append(diagnosis);
+    symbols.push_back(diagnosis);
+  }
+  DiagnosisSummaryInput summary_input;
+  summary_input.session_id = session_id_;
+  summary_input.mode = mode_;
+  summary_input.as_of = result["as_of"].asString();
+  summary_input.selected_symbols = symbols_;
+  summary_input.symbols = std::move(symbols);
+  summary_input.trade_count = session_trade_inputs_.size();
+  summary_input.active = active_;
+  summary_input.cancelled = session_cancelled_;
+  result["summary"] = makeDiagnosisSummary(summary_input);
+  result["event_type"] = "simulated_trading.symbol_diagnosis";
+  result["event_version"] = "1";
+  return result;
+}
+
 Json::Value SimulatedTradingService::buildPortfolioJson() const {
   Json::Value portfolio(Json::objectValue);
   portfolio["is_active"] = active_;
@@ -2112,6 +2505,7 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   signal_diagnostics["contract"] =
       "Simulated order-book signals are generated once per worker tick and retain the latest record for every selected symbol; display pagination is separate from signal coverage.";
   portfolio["order_book_signal_diagnostics"] = signal_diagnostics;
+  portfolio["diagnostics"] = buildDiagnosisJson();
   if (diagnostics_enabled_) {
     portfolio["reconciliation_diagnostics"] =
         reconciliation_diagnostics_.toJson(nowEpochSeconds());
@@ -2243,11 +2637,13 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   strategy_ = payload.isMember("strategy") ? payload["strategy"].asString() : "orderbook";
   symbols_.clear();
   if (payload.isMember("symbols") && payload["symbols"].isArray()) {
+    std::vector<std::string> requested_symbols;
     for (const auto &symbol : payload["symbols"]) {
       if (symbol.isString()) {
-        symbols_.push_back(symbol.asString());
+        requested_symbols.push_back(symbol.asString());
       }
     }
+    symbols_ = normalizeSimulatedSymbols(requested_symbols);
   }
   if (symbols_.empty()) {
     symbols_ = defaultSymbols();
@@ -2266,6 +2662,7 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   diagnostics_enabled_ = paramBool(parameters_, "diagnostics_enabled", false) ||
                          paramBool(payload, "diagnostics_enabled", false);
   reconciliation_diagnostics_.setEnabled(diagnostics_enabled_);
+  reconciliation_diagnostics_.reset(symbols_);
 
   // Top-level settings override/backfill the parameters object.
   for (const char *key : {"position_size_percent", "max_positions",
@@ -2318,6 +2715,9 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   executable_order_intents_ = 0;
   transformer_warming_symbols_ = 0;
   transformer_rejected_inputs_ = 0;
+  symbol_diagnoses_.clear();
+  diagnosis_sequences_.clear();
+  session_cancelled_ = false;
   session_trade_inputs_.clear();
   pending_orders_.clear();
   pending_live_orders_.clear();
@@ -2327,6 +2727,11 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   started_at_ = nowIsoUtc();
   updated_at_ = started_at_;
   start_epoch_seconds_ = nowEpochSeconds();
+  for (std::size_t ordinal = 0; ordinal < symbols_.size(); ++ordinal) {
+    symbol_diagnoses_.emplace(
+        symbols_[ordinal], makeEmptySymbolDiagnosis(symbols_[ordinal], ordinal, started_at_));
+    diagnosis_sequences_[symbols_[ordinal]] = 0;
+  }
   active_ = true;
   stop_requested_ = false;
 
@@ -2351,7 +2756,23 @@ Json::Value SimulatedTradingService::stopSession() {
     return resp;
   }
   stop_requested_ = true;
+  session_cancelled_ = true;
   active_ = false;
+  for (const auto &symbol : symbols_) {
+    auto &diagnosis = diagnosisForSymbolLocked(symbol);
+    if (!diagnosis["status"].get("terminal", Json::Value(false)).asBool()) {
+      if (diagnosis["market_data"].get("state", Json::Value("not_requested")).asString() == "pending") {
+        diagnosis["market_data"]["state"] = "cancelled";
+      }
+      if (diagnosis["execution"].get("state", Json::Value("not_attempted")).asString() == "pending") {
+        diagnosis["execution"]["state"] = "cancelled";
+        diagnosis["execution"]["error"] =
+            makeSafeExecutionError("session_cancelled", 0, nowIsoUtc());
+      }
+      markDiagnosisStatusLocked(diagnosis, "cancelled", true, "session_cancelled",
+                                "Simulation session was cancelled.", false);
+    }
+  }
   updated_at_ = nowIsoUtc();
   Json::Value resp = buildStatusJson();
   const bool settling = !pending_order_symbols_.empty();
@@ -2366,8 +2787,16 @@ Json::Value SimulatedTradingService::stopSession() {
 Json::Value SimulatedTradingService::getStatus(const std::string &session_id) {
   std::lock_guard<std::mutex> lock(mutex_);
   Json::Value resp = buildStatusJson();
+  const auto request = resolveSimulatedSessionRequest(active_, session_id_, session_id);
   if (!session_id.empty()) {
     resp["requested_session_id"] = session_id;
+  }
+  resp["session_id_matches"] = request.requested_session_matches;
+  if (!request.requested_session_matches) {
+    resp["diagnostics"] = Json::nullValue;
+    resp["diagnosis_error"]["code"] = "session_mismatch";
+    resp["diagnosis_error"]["message"] =
+        "Requested session does not match the active simulated session.";
   }
   return resp;
 }
@@ -2413,6 +2842,16 @@ Json::Value SimulatedTradingService::updateStrategyParameters(const Json::Value 
   resp["parameters"] = parameters_;
   resp["max_positions"] = max_positions_;
   resp["position_update_interval"] = position_update_interval_;
+  resp["isActive"] = active_;
+  resp["is_active"] = active_;
+  resp["is_trading"] = active_;
+  resp["session_id"] = session_id_;
+  resp["mode"] = mode_;
+  resp["strategy_type"] = strategy_;
+  resp["symbols"] = Json::arrayValue;
+  for (const auto &symbol : symbols_) {
+    resp["symbols"].append(symbol);
+  }
   return resp;
 }
 
@@ -2430,32 +2869,138 @@ Json::Value SimulatedTradingService::getLivePortfolioStatus() {
   return buildPortfolioJson();
 }
 
-Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::string> &symbols,
-                                                         int page,
-                                                         int per_page) {
-  Json::Value result;
+Json::Value SimulatedTradingService::getOrderBookSignals(
+    const std::vector<std::string> &symbols, int page, int per_page,
+    const std::string &requested_session_id) {
+  // Snapshot mutable session state before doing any database work. The worker
+  // replaces signal rows once per tick, so reading the members directly here
+  // races with the worker and can mix lifecycle states in one response.
+  std::map<std::string, SignalRecord> recent_signals;
+  std::vector<std::string> session_symbols;
+  std::string current_session_id;
+  std::string current_mode;
+  bool active = false;
+  std::size_t signals_evaluated = 0;
+  std::size_t signals_generated = 0;
+  std::size_t executable_order_intents = 0;
+  std::size_t transformer_warming_symbols = 0;
+  std::size_t transformer_rejected_inputs = 0;
+  std::map<std::string, int> execution_blocker_counts;
+  std::map<std::string, Json::Value> symbol_diagnoses;
+  std::size_t session_trade_count = 0;
+  bool session_cancelled = false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    recent_signals = recent_signals_;
+    session_symbols = symbols_;
+    current_session_id = session_id_;
+    current_mode = mode_;
+    active = active_;
+    signals_evaluated = signals_evaluated_;
+    signals_generated = signals_generated_;
+    executable_order_intents = executable_order_intents_;
+    transformer_warming_symbols = transformer_warming_symbols_;
+    transformer_rejected_inputs = transformer_rejected_inputs_;
+    execution_blocker_counts = execution_blocker_counts_;
+    symbol_diagnoses = symbol_diagnoses_;
+    session_trade_count = session_trade_inputs_.size();
+    session_cancelled = session_cancelled_;
+  }
+
+  const auto requested_symbols = normalizeSimulatedSymbols(symbols);
+  const bool all_symbols = symbols.empty();
+  const std::size_t selected_symbol_count =
+      all_symbols ? session_symbols.size() : requested_symbols.size();
+  const std::string session_scope =
+      requested_session_id.empty() ? current_session_id : requested_session_id;
+
+  Json::Value result(Json::objectValue);
   result["signals"] = Json::arrayValue;
   result["total_analyzed"] = 0;
   result["active_signals"] = 0;
   result["average_strength"] = 0.0;
   result["last_updated"] = "";
-  result["pagination"]["page"] = std::max(1, page);
-  result["pagination"]["per_page"] = std::max(1, per_page);
-  result["pagination"]["total_signals"] = 0;
-  result["pagination"]["total_pages"] = 0;
-  result["pagination"]["has_next"] = false;
-  result["pagination"]["has_prev"] = false;
-  result["diagnostics"]["requested_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
-  result["diagnostics"]["recent_signal_record_count"] = static_cast<Json::UInt64>(recent_signals_.size());
+  if (!requested_session_id.empty() && requested_session_id != current_session_id) {
+    result["status"] = "error";
+    result["error"] = "Requested session does not match the active simulated session.";
+    result["diagnostics"] = Json::nullValue;
+    return result;
+  }
+  const auto empty_pagination = normalizeSignalPagination(page, per_page, 0);
+  auto writePagination = [&result](const SignalPagination &pagination) {
+    // Keep current names and legacy aliases so older dashboard builds remain
+    // compatible with the canonical response.
+    result["pagination"]["current_page"] = pagination.page;
+    result["pagination"]["page"] = pagination.page;
+    result["pagination"]["per_page"] = pagination.per_page;
+    result["pagination"]["limit"] = pagination.per_page;
+    result["pagination"]["total_signals"] = static_cast<Json::UInt64>(pagination.total);
+    result["pagination"]["total"] = static_cast<Json::UInt64>(pagination.total);
+    result["pagination"]["total_pages"] = static_cast<Json::UInt64>(pagination.total_pages);
+    result["pagination"]["has_next"] = pagination.has_next;
+    result["pagination"]["has_prev"] = pagination.has_prev;
+  };
+  writePagination(empty_pagination);
+  result["diagnostics"]["requested_symbol_count"] =
+      static_cast<Json::UInt64>(requested_symbols.size());
+  result["diagnostics"]["selected_symbol_count"] =
+      static_cast<Json::UInt64>(selected_symbol_count);
+  result["diagnostics"]["recent_signal_record_count"] =
+      static_cast<Json::UInt64>(recent_signals.size());
+  result["diagnostics"]["current_latest_signal_count"] = 0;
+  result["diagnostics"]["signals_evaluated"] = static_cast<Json::UInt64>(signals_evaluated);
+  result["diagnostics"]["signals_generated"] = static_cast<Json::UInt64>(signals_generated);
+  result["diagnostics"]["executable_order_intent_count"] =
+      static_cast<Json::UInt64>(executable_order_intents);
+  result["diagnostics"]["transformer_warming_symbols"] =
+      static_cast<Json::UInt64>(transformer_warming_symbols);
+  result["diagnostics"]["transformer_rejected_inputs"] =
+      static_cast<Json::UInt64>(transformer_rejected_inputs);
+  result["diagnostics"]["coverage_complete"] = all_symbols || selected_symbol_count == 0;
+  Json::Value initial_blocker_counts(Json::objectValue);
+  for (const auto &[reason, count] : execution_blocker_counts) {
+    initial_blocker_counts[reason] = count;
+  }
+  result["diagnostics"]["execution_blocker_counts"] = initial_blocker_counts;
   result["diagnostics"]["contract"] =
       "The simulated worker updates every selected symbol once per tick; the response is latest-by-symbol and pagination only controls display rows.";
+  const std::vector<std::string> diagnosis_symbols = all_symbols ? session_symbols : requested_symbols;
+  result["diagnostics"]["schema_version"] = kSimulatedTradingDiagnosisSchema;
+  result["diagnostics"]["session_id"] = session_scope;
+  result["diagnostics"]["as_of"] = nowIsoUtc();
+  result["diagnostics"]["selected_symbols"] = Json::arrayValue;
+  result["diagnostics"]["symbols"] = Json::arrayValue;
+  std::vector<Json::Value> diagnosis_records;
+  for (std::size_t ordinal = 0; ordinal < diagnosis_symbols.size(); ++ordinal) {
+    result["diagnostics"]["selected_symbols"].append(diagnosis_symbols[ordinal]);
+    const auto diagnosis_it = symbol_diagnoses.find(diagnosis_symbols[ordinal]);
+    const Json::Value record = diagnosis_it == symbol_diagnoses.end()
+                                   ? makeEmptySymbolDiagnosis(diagnosis_symbols[ordinal], ordinal, "")
+                                   : diagnosis_it->second;
+    result["diagnostics"]["symbols"].append(record);
+    diagnosis_records.push_back(record);
+  }
+  DiagnosisSummaryInput diagnosis_input;
+  diagnosis_input.session_id = session_scope;
+  diagnosis_input.mode = current_mode;
+  diagnosis_input.as_of = result["diagnostics"]["as_of"].asString();
+  diagnosis_input.selected_symbols = diagnosis_symbols;
+  diagnosis_input.symbols = diagnosis_records;
+  diagnosis_input.trade_count = session_trade_count;
+  diagnosis_input.active = active;
+  diagnosis_input.cancelled = session_cancelled;
+  result["diagnostics"]["summary"] = makeDiagnosisSummary(diagnosis_input);
 
   try {
-    if (active_ || !recent_signals_.empty()) {
+    if (active || !recent_signals.empty()) {
       std::map<std::string, SignalRecord> latest_by_symbol;
-      for (const auto &[symbol, signal] : recent_signals_) {
+      for (const auto &[symbol, signal] : recent_signals) {
         (void)symbol;
-        if (!symbols.empty() && std::find(symbols.begin(), symbols.end(), signal.symbol) == symbols.end()) {
+        if (!all_symbols && std::find(requested_symbols.begin(), requested_symbols.end(), signal.symbol) ==
+                                requested_symbols.end()) {
+          continue;
+        }
+        if (!session_scope.empty() && signal.session_id != session_scope) {
           continue;
         }
 
@@ -2481,18 +3026,8 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
         return left.symbol < right.symbol;
       });
 
-      const int total = static_cast<int>(filtered.size());
-      const int safe_page = std::max(1, page);
-      const int safe_per_page = std::max(1, per_page);
-      const int offset = (safe_page - 1) * safe_per_page;
-      const int total_pages = safe_per_page > 0 ? static_cast<int>(std::ceil(static_cast<double>(total) / safe_per_page)) : 0;
-
-      result["pagination"]["page"] = safe_page;
-      result["pagination"]["per_page"] = safe_per_page;
-      result["pagination"]["total_signals"] = total;
-      result["pagination"]["total_pages"] = total_pages;
-      result["pagination"]["has_next"] = safe_page < total_pages;
-      result["pagination"]["has_prev"] = safe_page > 1;
+      const auto pagination = normalizeSignalPagination(page, per_page, filtered.size());
+      writePagination(pagination);
 
       double strength_sum = 0.0;
       int active_count = 0;
@@ -2506,28 +3041,31 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
         latest_ts = std::max(latest_ts, signal.timestamp);
       }
 
-      for (int i = offset; i < std::min(offset + safe_per_page, total); ++i) {
-        const auto &signal = filtered[static_cast<std::size_t>(i)];
+      const std::size_t offset = static_cast<std::size_t>(pagination.page - 1) *
+                                static_cast<std::size_t>(pagination.per_page);
+      const std::size_t first = std::min(offset, filtered.size());
+      const std::size_t last = std::min(first + static_cast<std::size_t>(pagination.per_page), filtered.size());
+      for (std::size_t i = first; i < last; ++i) {
+        const auto &signal = filtered[i];
         Json::Value signal_json = signalToJson(signal);
         result["signals"].append(signal_json);
       }
 
-      result["total_analyzed"] = total;
+      result["total_analyzed"] = static_cast<Json::UInt64>(filtered.size());
       result["active_signals"] = active_count;
-      result["diagnostics"]["selected_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
-      result["diagnostics"]["current_latest_signal_count"] = static_cast<Json::UInt64>(total);
-      result["diagnostics"]["signals_evaluated"] = static_cast<Json::UInt64>(signals_evaluated_);
-      result["diagnostics"]["signals_generated"] = static_cast<Json::UInt64>(signals_generated_);
-      result["diagnostics"]["executable_order_intent_count"] = static_cast<Json::UInt64>(executable_order_intents_);
-      result["diagnostics"]["transformer_warming_symbols"] = static_cast<Json::UInt64>(transformer_warming_symbols_);
-      result["diagnostics"]["transformer_rejected_inputs"] = static_cast<Json::UInt64>(transformer_rejected_inputs_);
+      result["diagnostics"]["current_latest_signal_count"] = static_cast<Json::UInt64>(filtered.size());
+      result["diagnostics"]["signals_evaluated"] = static_cast<Json::UInt64>(signals_evaluated);
+      result["diagnostics"]["signals_generated"] = static_cast<Json::UInt64>(signals_generated);
+      result["diagnostics"]["executable_order_intent_count"] = static_cast<Json::UInt64>(executable_order_intents);
+      result["diagnostics"]["transformer_warming_symbols"] = static_cast<Json::UInt64>(transformer_warming_symbols);
+      result["diagnostics"]["transformer_rejected_inputs"] = static_cast<Json::UInt64>(transformer_rejected_inputs);
       Json::Value blocker_counts(Json::objectValue);
-      for (const auto &[reason, count] : execution_blocker_counts_) {
+      for (const auto &[reason, count] : execution_blocker_counts) {
         blocker_counts[reason] = count;
       }
       result["diagnostics"]["execution_blocker_counts"] = blocker_counts;
-      result["diagnostics"]["coverage_complete"] = symbols.empty() || total >= static_cast<int>(symbols.size());
-      result["average_strength"] = total > 0 ? strength_sum / static_cast<double>(total) : 0.0;
+      result["diagnostics"]["coverage_complete"] = all_symbols || filtered.size() >= requested_symbols.size();
+      result["average_strength"] = filtered.empty() ? 0.0 : strength_sum / static_cast<double>(filtered.size());
       if (latest_ts > 0) {
         result["last_updated"] = epochSecondsToIso(latest_ts);
       }
@@ -2540,32 +3078,36 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
       return result;
     }
 
-    // Symbols arrive from the request; bind them as parameters, never inline.
+    // Session and symbol filters are bound as parameters, never interpolated.
     std::ostringstream where;
-    std::vector<std::string> bound_symbols;
-    if (!symbols.empty()) {
-      where << " WHERE symbol IN (";
-      for (std::size_t i = 0; i < symbols.size(); ++i) {
-        bound_symbols.push_back(symbols[i]);
+    std::vector<std::string> bound_values;
+    bool has_where = false;
+    if (!session_scope.empty()) {
+      where << " WHERE session_id=$1";
+      bound_values.push_back(session_scope);
+      has_where = true;
+    }
+    if (!all_symbols && !requested_symbols.empty()) {
+      where << (has_where ? " AND " : " WHERE ") << "symbol IN (";
+      for (std::size_t i = 0; i < requested_symbols.size(); ++i) {
+        bound_values.push_back(requested_symbols[i]);
         if (i > 0) {
           where << ",";
         }
-        where << "$" << bound_symbols.size();
+        where << "$" << bound_values.size();
       }
       where << ")";
+      has_where = true;
     }
 
     auto count_res = DatabaseManager::getInstance().execParams(
         "SELECT COUNT(DISTINCT symbol) AS total_count FROM order_book_signals" + where.str(),
-        bound_symbols);
-    const int total = (!count_res.empty() && !count_res[0]["total_count"].is_null())
-                          ? count_res[0]["total_count"].as<int>()
+        bound_values);
+    const std::size_t total = (!count_res.empty() && !count_res[0]["total_count"].is_null())
+                          ? static_cast<std::size_t>(count_res[0]["total_count"].as<long long>())
                           : 0;
-
-    const int safe_page = std::max(1, page);
-    const int safe_per_page = std::max(1, per_page);
-    const int offset = (safe_page - 1) * safe_per_page;
-    const int total_pages = safe_per_page > 0 ? static_cast<int>(std::ceil(static_cast<double>(total) / safe_per_page)) : 0;
+    const auto pagination = normalizeSignalPagination(page, per_page, total);
+    writePagination(pagination);
 
     std::ostringstream sql;
     sql << "WITH latest_signals AS ("
@@ -2579,7 +3121,7 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
         // each payload has been parsed with a numeric fallback.
         << "ORDER BY symbol, timestamp DESC";
 
-    auto rows = DatabaseManager::getInstance().execParams(sql.str(), bound_symbols);
+    auto rows = DatabaseManager::getInstance().execParams(sql.str(), bound_values);
     std::vector<std::size_t> ordered_indices(rows.size());
     std::iota(ordered_indices.begin(), ordered_indices.end(), 0);
     std::sort(ordered_indices.begin(), ordered_indices.end(), [&rows](std::size_t lhs, std::size_t rhs) {
@@ -2597,8 +3139,10 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
     int active_count = 0;
     long long latest_ts = 0;
 
-    const std::size_t first = std::min<std::size_t>(static_cast<std::size_t>(offset), ordered_indices.size());
-    const std::size_t last = std::min(first + static_cast<std::size_t>(safe_per_page), ordered_indices.size());
+    const std::size_t offset = static_cast<std::size_t>(pagination.page - 1) *
+                               static_cast<std::size_t>(pagination.per_page);
+    const std::size_t first = std::min(offset, ordered_indices.size());
+    const std::size_t last = std::min(first + static_cast<std::size_t>(pagination.per_page), ordered_indices.size());
     for (std::size_t rank = first; rank < last; ++rank) {
       const auto &row = rows[ordered_indices[rank]];
       Json::Value signal = legacy_order_book::parseObject(
@@ -2620,7 +3164,20 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
             isInsufficientDataReason(signal_reason) ? "insufficient" : "sufficient";
       }
       signal["spread"] = row["spread"].is_null() ? 0.0 : std::stod(row["spread"].c_str());
+      signal["imbalance"] = row["imbalance"].is_null() ? 0.0 : std::stod(row["imbalance"].c_str());
+      signal["imbalance_ratio"] = signal["imbalance"];
+      signal["mid_price"] = row["mid_price"].is_null() ? signal["price"] : std::stod(row["mid_price"].c_str());
+      signal["best_bid"] = row["best_bid"].is_null() ? 0.0 : std::stod(row["best_bid"].c_str());
+      signal["best_ask"] = row["best_ask"].is_null() ? 0.0 : std::stod(row["best_ask"].c_str());
+      signal["order_book_depth"] = row["order_book_depth"].is_null() ? 0 : std::stoi(row["order_book_depth"].c_str());
       signal["volume"] = row["volume"].is_null() ? 0.0 : std::stod(row["volume"].c_str());
+      signal["buy_volume"] = signal.get("buy_volume", Json::Value(0.0));
+      signal["sell_volume"] = signal.get("sell_volume", Json::Value(0.0));
+      signal["signal_reason"] = signal.get("signal_reason", Json::Value(""));
+      signal["criteria_analysis"] = signal.get("criteria_analysis", Json::Value(Json::objectValue));
+      signal["ml_analysis"] = signal.get("ml_analysis", Json::Value(Json::objectValue));
+      signal["strength_composition"] = signal.get("strength_composition", Json::Value(Json::objectValue));
+      signal["execution_analysis"] = signal.get("execution_analysis", Json::Value(Json::objectValue));
       signal["active_signals"] = signal["signal_generated"].asBool() ? 1 : 0;
       result["signals"].append(signal);
 
@@ -2633,21 +3190,16 @@ Json::Value SimulatedTradingService::getOrderBookSignals(const std::vector<std::
       }
     }
 
-    result["total_analyzed"] = total;
+    result["total_analyzed"] = static_cast<Json::UInt64>(total);
     result["active_signals"] = active_count;
-    result["diagnostics"]["selected_symbol_count"] = static_cast<Json::UInt64>(symbols.size());
+    result["diagnostics"]["selected_symbol_count"] = static_cast<Json::UInt64>(selected_symbol_count);
     result["diagnostics"]["current_latest_signal_count"] = static_cast<Json::UInt64>(rows.size());
-    result["diagnostics"]["coverage_complete"] = symbols.empty() || total >= static_cast<int>(symbols.size());
+    result["diagnostics"]["coverage_complete"] = all_symbols || total >= requested_symbols.size();
     result["average_strength"] = first == last ? 0.0 : strength_sum / static_cast<double>(last - first);
     if (latest_ts > 0) {
       result["last_updated"] = epochSecondsToIso(latest_ts);
     }
-    result["pagination"]["page"] = safe_page;
-    result["pagination"]["per_page"] = safe_per_page;
-    result["pagination"]["total_signals"] = total;
-    result["pagination"]["total_pages"] = total_pages;
-    result["pagination"]["has_next"] = safe_page < total_pages;
-    result["pagination"]["has_prev"] = safe_page > 1;
+
   } catch (const std::exception &e) {
     TR_LOG_WARN("Failed to fetch order book signals: {}", e.what());
   }

@@ -256,10 +256,8 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
   const recentTrades = mergeRecentTrades(portfolio.recent_trades ?? rawStats.recent_trades, trades);
   const openPositions = toArray(portfolio.positions ?? rawStats.positions).filter(Boolean) as PositionLike[];
 
-  const cashBalance = toNumber(
-    portfolio.cash_balance ?? portfolio.current_capital ?? portfolio.available_balance_usd,
-    0,
-  );
+  // cash_balance is the canonical simulated cash field; legacy aliases are intentionally ignored.
+  const cashBalance = toNumber(portfolio.cash_balance, 0);
   const unrealizedPnl = toNumber(portfolio.unrealized_pnl ?? rawStats.unrealized_pnl ?? rawStats.total_unrealized_pnl, 0);
   const realizedPnl = toNumber(portfolio.realized_pnl ?? rawStats.realized_pnl, 0);
   const rawTotalFees = portfolio.total_fees ?? rawStats.total_fees;

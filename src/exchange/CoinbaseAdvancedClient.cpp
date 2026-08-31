@@ -7,6 +7,7 @@
 #include <drogon/drogon.h>
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cmath>
@@ -25,6 +26,26 @@ namespace {
 constexpr char kAdvancedTradeHost[] = "api.coinbase.com";
 constexpr char kPublicExchangeHost[] = "api.exchange.coinbase.com";
 constexpr double kRequestTimeoutSeconds = 10.0;
+
+const char *requestFailureCode(const drogon::ReqResult result) {
+  switch (result) {
+  case drogon::ReqResult::Timeout:
+    return "timeout";
+  case drogon::ReqResult::BadServerAddress:
+    return "dns_failure";
+  case drogon::ReqResult::HandshakeError:
+  case drogon::ReqResult::InvalidCertificate:
+  case drogon::ReqResult::EncryptionFailure:
+    return "tls_handshake";
+  case drogon::ReqResult::NetworkFailure:
+    return "network_unreachable";
+  case drogon::ReqResult::BadResponse:
+    return "unknown_network_error";
+  case drogon::ReqResult::Ok:
+    return "";
+  }
+  return "unknown_network_error";
+}
 
 double toDouble(const Json::Value &value, double fallback = 0.0) {
   if (value.isNumeric()) {
@@ -97,6 +118,20 @@ std::string formatAmount(double amount) {
   return out;
 }
 
+std::string safeProviderCode(const std::string &raw) {
+  std::string code;
+  code.reserve(std::min<std::size_t>(raw.size(), 64));
+  for (const unsigned char character : raw) {
+    if (code.size() >= 64) break;
+    if (std::isalnum(character) || character == '_' || character == '-') {
+      code.push_back(static_cast<char>(character));
+    } else {
+      return {};
+    }
+  }
+  return code;
+}
+
 Json::Value parseJson(const std::string &text, std::string *error) {
   Json::Value root;
   Json::CharReaderBuilder builder;
@@ -104,7 +139,7 @@ Json::Value parseJson(const std::string &text, std::string *error) {
   std::istringstream stream(text);
   if (!Json::parseFromStream(builder, stream, &root, &errs)) {
     if (error) {
-      *error = "invalid JSON response: " + errs;
+      *error = "invalid JSON response";
     }
     return Json::Value();
   }
@@ -195,7 +230,9 @@ Json::Value CoinbaseAdvancedClient::request(const std::string &method, const std
   const auto [result, payload] = future.get();
   if (result != drogon::ReqResult::Ok || payload.empty()) {
     if (error) {
-      *error = "request failed (network or TLS error)";
+      const char *code = requestFailureCode(result);
+      *error = std::string("market-data request failed: ") +
+               (code[0] == '\0' ? "unknown_network_error" : code);
     }
     return Json::Value();
   }
@@ -208,11 +245,16 @@ Json::Value CoinbaseAdvancedClient::request(const std::string &method, const std
   Json::Value json = parseJson(response_body, &parse_error);
   if (status_code < 200 || status_code >= 300) {
     if (error) {
-      std::string detail = parse_error.empty() ? response_body.substr(0, 300) : parse_error;
+      // Do not let provider response bodies cross the exchange-client
+      // boundary. They may contain request metadata or account details. The
+      // caller only needs a stable HTTP classification; diagnostics can expose
+      // the numeric status without retaining raw response text.
+      std::string detail = "provider error";
       if (json.isObject()) {
-        const Json::Value message = json.get("message", json.get("error", Json::Value("")));
-        if (message.isString() && !message.asString().empty()) {
-          detail = message.asString();
+        const Json::Value provider_code = json.get("error", Json::Value(""));
+        if (provider_code.isString()) {
+          const std::string code = safeProviderCode(provider_code.asString());
+          if (!code.empty()) detail = "provider code " + code;
         }
       }
       *error = "HTTP " + std::to_string(status_code) + ": " + detail;

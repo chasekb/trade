@@ -47,6 +47,7 @@ set(SOURCES
     src/trading/StrategyExpectancyHarness.cpp
     src/trading/ExecutionReconciliation.cpp
     src/trading/ReconciliationDiagnostics.cpp
+    src/trading/SimulatedTradingDiagnosis.cpp
     src/trading/TradingStatsService.cpp
     src/trading/SimulatedTradingService.cpp
     src/trading/LiveTradingService.cpp
@@ -272,3 +273,16 @@ add_executable(test_legacy_order_book_signal
 target_include_directories(test_legacy_order_book_signal PRIVATE include)
 target_link_libraries(test_legacy_order_book_signal PRIVATE JsonCpp::JsonCpp)
 add_test(NAME legacy_order_book_signal COMMAND test_legacy_order_book_signal)
+
+add_executable(test_simulated_trading_contract
+    src/tests/test_simulated_trading_contract.cpp)
+target_include_directories(test_simulated_trading_contract PRIVATE include)
+target_link_libraries(test_simulated_trading_contract PRIVATE JsonCpp::JsonCpp)
+add_test(NAME simulated_trading_contract COMMAND test_simulated_trading_contract)
+
+add_executable(test_simulated_trading_diagnosis
+    src/tests/test_simulated_trading_diagnosis.cpp
+    src/trading/SimulatedTradingDiagnosis.cpp)
+target_include_directories(test_simulated_trading_diagnosis PRIVATE include)
+target_link_libraries(test_simulated_trading_diagnosis PRIVATE JsonCpp::JsonCpp)
+add_test(NAME simulated_trading_diagnosis COMMAND test_simulated_trading_diagnosis)

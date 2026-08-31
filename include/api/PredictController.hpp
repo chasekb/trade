@@ -28,6 +28,8 @@ public:
   ADD_METHOD_TO(PredictController::stopSimulatedTrading, "/api/simulated-trading/stop", Post);
   ADD_METHOD_TO(PredictController::simulatedTradingStatus, "/api/simulated-trading/status", Get);
   ADD_METHOD_TO(PredictController::simulatedTradingStatus, "/api/trading/simulated/status", Get);
+  ADD_METHOD_TO(PredictController::simulatedTradingDiagnosis, "/api/simulated-trading/diagnosis", Get);
+  ADD_METHOD_TO(PredictController::simulatedTradingDiagnosis, "/api/simulated-trading/{session_id}/diagnosis", Get);
   ADD_METHOD_TO(PredictController::updateSimulatedStrategyParameters, "/api/trading/simulated/update-strategy-params", Post);
   ADD_METHOD_TO(PredictController::liveOrderBookSignals, "/api/orderbook/live-signals", Get);
   ADD_METHOD_TO(PredictController::simulatedOrderBookSignals, "/api/orderbook/simulated-signals", Get);
@@ -77,6 +79,8 @@ public:
                           std::function<void(const HttpResponsePtr &)> &&callback);
   void simulatedTradingStatus(const HttpRequestPtr &req,
                              std::function<void(const HttpResponsePtr &)> &&callback);
+  void simulatedTradingDiagnosis(const HttpRequestPtr &req,
+                                 std::function<void(const HttpResponsePtr &)> &&callback);
   void updateSimulatedStrategyParameters(const HttpRequestPtr &req,
                                          std::function<void(const HttpResponsePtr &)> &&callback);
   void liveOrderBookSignals(const HttpRequestPtr &req,

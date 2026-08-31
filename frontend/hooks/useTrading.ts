@@ -6,6 +6,8 @@ import {
   TradingStrategy,
   OrderBookSignal,
   OrderBookSignalDiagnostics,
+  SimulatedTradingDiagnosisSummary,
+  SimulatedTradingSymbolDiagnosis,
 } from '@/types/trading';
 
 type TradingParameterValue = string | number | boolean | undefined;
@@ -27,6 +29,54 @@ type TradingStatusPayload = {
   recent_trades?: unknown;
   current_capital?: unknown;
 };
+
+export type TradingDisplayStatus = {
+  isActive: boolean;
+  mode: TradingMode;
+  strategy: TradingStrategy;
+  symbols: string[];
+  sessionId?: string | undefined;
+};
+
+function unwrapTradingStatusPayload(payload: unknown): TradingStatusPayload | undefined {
+  let current: unknown = payload;
+  for (let depth = 0; depth < 3 && isRecord(current); depth += 1) {
+    if (isRecord(current.data)) {
+      current = current.data;
+      continue;
+    }
+    return current as TradingStatusPayload;
+  }
+  return isRecord(current) ? current as TradingStatusPayload : undefined;
+}
+
+export function normalizeTradingStatusPayload(
+  payload: unknown,
+  fallback: TradingDisplayStatus,
+): TradingDisplayStatus {
+  const candidate = unwrapTradingStatusPayload(payload);
+  if (!candidate) {
+    return fallback;
+  }
+
+  const status = typeof candidate.status === 'string' ? candidate.status.toLowerCase() : '';
+  const explicitActive = candidate.isActive ?? candidate.is_active ?? candidate.is_trading;
+  const isActive = typeof explicitActive === 'boolean'
+    ? explicitActive
+    : ['active', 'started', 'starting', 'running'].includes(status)
+      ? true
+      : ['inactive', 'stopped', 'stopping', 'settling', 'failed', 'error'].includes(status)
+        ? false
+        : fallback.isActive;
+
+  return {
+    isActive,
+    mode: candidate.mode ?? fallback.mode,
+    strategy: candidate.strategy_type ?? candidate.strategy ?? fallback.strategy,
+    symbols: Array.isArray(candidate.symbols) ? candidate.symbols : fallback.symbols,
+    ...(candidate.session_id ? { sessionId: candidate.session_id } : fallback.sessionId ? { sessionId: fallback.sessionId } : {}),
+  };
+}
 
 type OrderBookSignalsData = {
   signals: OrderBookSignal[];
@@ -65,7 +115,7 @@ function parseWebSocketPayload(raw: string): WebSocketPayload {
 
 export function useLiveTrading(mode: TradingMode = 'simulated') {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState({
+  const [status, setStatus] = useState<TradingDisplayStatus>({
     isActive: false,
     mode,
     strategy: 'orderbook' as TradingStrategy,
@@ -88,15 +138,7 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
   });
 
-  const backendPayload = backendStatus as TradingStatusPayload | undefined;
-  const displayStatus = backendPayload ? {
-    isActive: backendPayload.isActive ?? backendPayload.is_active ?? backendPayload.is_trading ?? false,
-    // The session's real mode comes from the backend; fall back to the tab's
-    // own mode rather than assuming simulated.
-    mode: backendPayload.mode || mode,
-    strategy: backendPayload.strategy_type || backendPayload.strategy || 'orderbook' as TradingStrategy,
-    symbols: backendPayload.symbols || [],
-  } : status;
+  const displayStatus = normalizeTradingStatusPayload(backendStatus, status);
 
   const startTradingMutation = useMutation({
     mutationFn: async (config: {
@@ -154,11 +196,16 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
         Boolean(responseData.data?.session_id);
 
       if (isStarted) {
+        if (variables.mode === 'simulated') {
+          queryClient.removeQueries({ queryKey: ['simulated-trading-stats'] });
+          queryClient.removeQueries({ queryKey: ['orderbook-signals', variables.mode] });
+        }
         setStatus({
           isActive: true,
           mode: variables.mode,
           strategy: variables.strategy,
           symbols: variables.symbols,
+          ...(responseData.session_id ? { sessionId: responseData.session_id } : {}),
         });
 
         queryClient.setQueryData(['trading-status', mode], responseData);
@@ -195,9 +242,15 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
     onSuccess: (response) => {
       const responseStatus = (response as { status: string }).status;
       if (responseStatus === 'success' || responseStatus === 'settling') {
-        setStatus(prev => ({ ...prev, isActive: false, symbols: [] }));
+        setStatus(prev => ({ ...prev, isActive: false, symbols: [], sessionId: undefined }));
         queryClient.setQueryData(['trading-status', mode], response);
         queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
+        // A stopped session must not leave portfolio or signal rows available
+        // for a later restart while its first requests are still in flight.
+        if (mode === 'simulated') {
+          queryClient.removeQueries({ queryKey: ['simulated-trading-stats'] });
+          queryClient.removeQueries({ queryKey: ['orderbook-signals', mode] });
+        }
         if (mode === 'simulated') {
           queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
         }
@@ -277,6 +330,59 @@ function mergeCountMap(left?: Record<string, number>, right?: Record<string, num
   return merged;
 }
 
+function mergeDiagnosisSummaries(
+  summaries: Array<SimulatedTradingDiagnosisSummary | undefined>,
+): SimulatedTradingDiagnosisSummary | undefined {
+  const available = summaries.filter(
+    (summary): summary is SimulatedTradingDiagnosisSummary => Boolean(summary),
+  );
+  if (available.length === 0) {
+    return undefined;
+  }
+
+  const byPrimaryStatus = available.reduce(
+    (merged, summary) => mergeCountMap(merged, summary.by_primary_status),
+    {} as Record<string, number>,
+  );
+  const reasonCounts = available.reduce((merged, summary) => {
+    for (const reason of summary.no_trade_reasons ?? []) {
+      merged[reason.code] = (merged[reason.code] ?? 0) + reason.count;
+    }
+    return merged;
+  }, {} as Record<string, number>);
+  const noTradeReasons = Object.entries(reasonCounts)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([code, count]) => ({ code, count }));
+  const tradeCount = Math.max(...available.map((summary) => summary.trade_count ?? 0));
+  const selectedCount = available.reduce(
+    (total, summary) => total + (summary.selected_count ?? 0),
+    0,
+  );
+  const terminalCount = available.reduce(
+    (total, summary) => total + (summary.terminal_count ?? 0),
+    0,
+  );
+  const latest = available[available.length - 1];
+  const message = tradeCount > 0
+    ? `${tradeCount} trade${tradeCount === 1 ? '' : 's'} recorded`
+    : noTradeReasons.length > 0
+      ? `No trades recorded: ${noTradeReasons.map(({ code, count }) => `${code} (${count})`).join(', ')}.`
+      : latest.message;
+
+  const mergedSummary: SimulatedTradingDiagnosisSummary = {
+    ...latest,
+    selected_count: selectedCount,
+    terminal_count: terminalCount,
+    trade_count: tradeCount,
+    by_primary_status: byPrimaryStatus,
+    no_trade_reasons: noTradeReasons,
+  };
+  if (message !== undefined) {
+    mergedSummary.message = message;
+  }
+  return mergedSummary;
+}
+
 function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: number, perPage: number) {
   const normalizedResponses = responses.filter(Boolean);
   const allSignals = normalizedResponses.flatMap((response) => response.signals ?? []);
@@ -350,8 +456,20 @@ function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: 
       ...((merged.current_batch_symbols as string[] | undefined) ?? []),
       ...((current.current_batch_symbols as string[] | undefined) ?? []),
     ],
+    symbols: Array.from(new Map<string, SimulatedTradingSymbolDiagnosis>([
+      ...((merged.symbols ?? [])),
+      ...((current.symbols ?? [])),
+    ].map((diagnosis): [string, SimulatedTradingSymbolDiagnosis] => [diagnosis.symbol, diagnosis])).values()),
+    selected_symbols: Array.from(new Set([
+      ...((merged.selected_symbols ?? [])),
+      ...((current.selected_symbols ?? [])),
+    ])),
+    summary: mergeDiagnosisSummaries([merged.summary, current.summary]),
+    schema_version: current.schema_version ?? merged.schema_version,
+    session_id: current.session_id ?? merged.session_id,
+    as_of: current.as_of ?? merged.as_of,
     coverage_complete: (merged.coverage_complete ?? true) && (current.coverage_complete ?? true),
-  }), {} as OrderBookSignalDiagnostics);
+  } as OrderBookSignalDiagnostics), {} as OrderBookSignalDiagnostics);
 
   return {
     signals: pageSignals,
@@ -378,15 +496,18 @@ export function useOrderBookSignals(
   page: number = 1,
   perPage: number = 10,
   strategy?: string,
-  mode: 'live' | 'simulated' = 'live'
+  mode: 'live' | 'simulated' = 'live',
+  sessionId?: string,
 ) {
   // Enable query when trading is active, even if symbols aren't loaded yet
   // This allows WebSocket updates to populate the widget immediately
   const isEnabled = enabled;
-  const requestSymbols = symbols && symbols.length > 0 ? symbols : undefined;
+  const requestSymbols = symbols && symbols.length > 0
+    ? Array.from(new Set(symbols)).sort()
+    : undefined;
 
   return useQuery({
-    queryKey: ['orderbook-signals', mode, requestSymbols, enabled, page, perPage, strategy],
+    queryKey: ['orderbook-signals', mode, requestSymbols, page, perPage, strategy, sessionId],
     queryFn: async () => {
       if (requestSymbols && requestSymbols.length > ORDERBOOK_SYMBOL_CHUNK_SIZE) {
         const chunks = chunkOrderBookSymbols(requestSymbols);
@@ -394,7 +515,9 @@ export function useOrderBookSignals(
           // Fetch every selected symbol in each request chunk, then apply widget
           // pagination after merging. The page size controls display only; it
           // must not cap selected-universe signal coverage.
-          apiClient.getOrderBookSignals(chunk, { page: 1, per_page: chunk.length }, mode)
+          sessionId
+            ? apiClient.getOrderBookSignals(chunk, { page: 1, per_page: chunk.length }, mode, sessionId)
+            : apiClient.getOrderBookSignals(chunk, { page: 1, per_page: chunk.length }, mode)
         );
         const settled = await Promise.allSettled(chunkRequests);
         const successfulResponses = settled
@@ -430,7 +553,9 @@ export function useOrderBookSignals(
         return merged;
       }
 
-      const response = await apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode);
+      const response = await (sessionId
+        ? apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode, sessionId)
+        : apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode));
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch order book signals');
       }
@@ -499,7 +624,7 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 
 // Simulated Trading WebSocket Hook
 
-export function useSimTradingWebSocket(enabled: boolean = true) {
+export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: string) {
   const [connected, setConnected] = useState(false);
   const queryClient = useQueryClient();
 
@@ -518,14 +643,16 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
     orderbookQueries.forEach((query) => {
       const queryKey = query.queryKey;
       const querySymbols = queryKey[2] as string[] | undefined;
-      const page = queryKey[4] as number;
+      const querySessionId = queryKey[6] as string | undefined;
+      const page = queryKey[3] as number;
 
       if (page !== 1) {
         return;
       }
 
       const relevantSignals = incomingSignals.filter((signal) =>
-        !querySymbols || querySymbols.length === 0 || querySymbols.includes(signal.symbol)
+        (!querySymbols || querySymbols.length === 0 || querySymbols.includes(signal.symbol)) &&
+        (!querySessionId || !signal.session_id || signal.session_id === querySessionId)
       );
       if (relevantSignals.length === 0) {
         return;
@@ -659,6 +786,13 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         }
 
         // Push trading statistics into cache for instant UI updates
+        const eventSessionId = isRecord(data) && typeof data.session_id === 'string'
+          ? data.session_id
+          : undefined;
+        if (sessionId && eventSessionId && eventSessionId !== sessionId) {
+          return;
+        }
+
         if (type === 'trading_statistics_update' && data) {
           // Expect { portfolio, open_positions, recent_trades, ... }
           // Normalize to the shape expected by useSimulatedTradingStats consumer
@@ -734,7 +868,7 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       try { ws.removeEventListener('message', onMessage); } catch { }
       try { ws.close(); } catch { }
     };
-  }, [enabled, queryClient, applySignals]);
+  }, [enabled, queryClient, applySignals, sessionId]);
 
   return {
     connected,

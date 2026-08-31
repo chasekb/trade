@@ -3,6 +3,7 @@
 #include "exchange/CoinbaseAdvancedClient.hpp"
 #include "trading/TradingStatsCalculator.hpp"
 #include "trading/ReconciliationDiagnostics.hpp"
+#include "trading/SimulatedTradingDiagnosis.hpp"
 
 #include <drogon/drogon.h>
 
@@ -34,7 +35,8 @@ public:
   Json::Value getLivePortfolioStatus();
   Json::Value getOrderBookSignals(const std::vector<std::string> &symbols,
                                   int page,
-                                  int per_page);
+                                  int per_page,
+                                  const std::string &session_id = "");
   Json::Value closePosition(const std::string &symbol);
   Json::Value getOpenPositions();
 
@@ -205,6 +207,13 @@ private:
   Json::Value tradeToJson(const TradeRecord &trade) const;
   Json::Value signalToJson(const SignalRecord &signal) const;
   Json::Value positionToJson(const PositionState &position) const;
+  Json::Value buildDiagnosisJson() const;
+  Json::Value &diagnosisForSymbolLocked(const std::string &symbol);
+  void touchDiagnosisLocked(Json::Value &diagnosis);
+  void markDiagnosisStatusLocked(Json::Value &diagnosis, const std::string &primary,
+                                 bool terminal, const std::string &code,
+                                 const std::string &message, bool retryable = true);
+  void updateDiagnosisFromSignalLocked(const SignalRecord &signal);
   void trimHistoryLocked();
 
   mutable std::mutex mutex_;
@@ -250,6 +259,9 @@ private:
   std::size_t transformer_rejected_inputs_ = 0;
   bool diagnostics_enabled_ = false;
   ReconciliationDiagnostics reconciliation_diagnostics_;
+  std::map<std::string, Json::Value> symbol_diagnoses_;
+  std::map<std::string, std::uint64_t> diagnosis_sequences_;
+  bool session_cancelled_ = false;
   // Full per-session trade inputs so status stats never rescan the database
   // while a session is running (recent_trades_ is capped and insufficient).
   std::vector<TradePerformanceInput> session_trade_inputs_;

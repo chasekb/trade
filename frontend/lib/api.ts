@@ -1015,7 +1015,8 @@ class ApiClient {
   async getOrderBookSignals(
     symbols?: string[],
     params?: { page?: number; per_page?: number },
-    mode: 'live' | 'simulated' = 'live'
+    mode: 'live' | 'simulated' = 'live',
+    sessionId?: string,
   ): Promise<ApiResponse<{
     signals: OrderBookSignal[];
     pagination?: any;
@@ -1043,6 +1044,7 @@ class ApiClient {
     }
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.per_page) queryParams.append('per_page', params.per_page.toString());
+    if (sessionId) queryParams.append('session_id', sessionId);
 
     const query = queryParams.toString();
 

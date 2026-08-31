@@ -272,11 +272,10 @@ function TradingConfiguration({
 // Main Simulated Trading Panel Component
 // Simulated Trading Statistics Component
 function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
-  const queryClient = useQueryClient();
-  const { data: stats, isLoading, error } = useSimulatedTradingStats(isTradingActive);
+  const { data: stats, isLoading, error, refetch } = useSimulatedTradingStats(isTradingActive);
 
   const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+    void refetch();
   };
 
   if (!isTradingActive) {
@@ -329,6 +328,21 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
     );
   }
 
+  if (!stats) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Simulated Trading Statistics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500" role="status">
+            <p>No simulated trading statistics are available yet.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const snapshot = normalizeSimulatedTradingSnapshot(stats);
   const {
     openPositions,
@@ -367,6 +381,11 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {snapshot.trades.length === 0 && snapshot.recentTrades.length === 0 && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600" role="status">
+            No simulated trades have been recorded yet. Statistics will update as the active session receives signals.
+          </div>
+        )}
         {/* Main Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-lg">
@@ -496,19 +515,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading();
   const queryClient = useQueryClient();
   // Start native WebSocket to receive live updates for stats/signals
-  useSimTradingWebSocket(status.isActive);
+  useSimTradingWebSocket(status.isActive, status.sessionId);
 
-  useEffect(() => {
-    if (!status.isActive) {
-      return;
-    }
-
-    // Force a fresh pull once the simulated session flips active so the statistics
-    // and order book widgets populate immediately, even if the optimistic start
-    // mutation resolved before the polling queries re-enabled.
-    void queryClient.refetchQueries({ queryKey: ['simulated-trading-stats'] });
-    void queryClient.refetchQueries({ queryKey: ['orderbook-signals'] });
-  }, [queryClient, status.isActive]);
 
   // Use sessionStorage to persist pagination state across tab switches and component remounts
   const getStoredPage = () => {
@@ -547,14 +555,34 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     ? status.symbols
     : ((symbols && symbols.length > 0) ? symbols : (status.symbols || []));
   // Fetch the active page of signals; the backend now deduplicates by symbol and sorts by strength/win probability.
-  const { data: orderBookData } = useOrderBookSignals(
+  const {
+    data: orderBookData,
+    isLoading: isSignalsLoading,
+    isFetching: isSignalsFetching,
+    error: signalsError,
+    refetch: refetchSignals,
+  } = useOrderBookSignals(
     activeSymbols,
     status.isActive,
     currentPage,
     pageSize,
     strategy,
-    'simulated'
+    'simulated',
+    status.sessionId,
   );
+
+  const activeSymbolsKey = activeSymbols.join('|');
+  useEffect(() => {
+    if (!status.isActive) {
+      return;
+    }
+
+    // A start, stop/restart, strategy change, or universe change can happen
+    // before a polling query has mounted. Refetch the active widget queries
+    // after the new session state is visible so no manual reload is needed.
+    void queryClient.refetchQueries({ queryKey: ['simulated-trading-stats'], type: 'all' });
+    void queryClient.refetchQueries({ queryKey: ['orderbook-signals', 'simulated'], type: 'all' });
+  }, [activeSymbolsKey, currentPage, pageSize, queryClient, status.isActive, strategy]);
   const [configHidden, setConfigHidden] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const startDisabledReason = symbols.length === 0
@@ -594,7 +622,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         mode: 'simulated',
         strategy,
         symbols,
-        parameters: { ...config, execution_mode: executionMode },
+        parameters: { ...config, execution_mode: executionMode, diagnostics_enabled: true },
         max_positions: maxPositions,
         position_update_interval: 5,
       };
@@ -635,14 +663,16 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   const signalsToDisplay = orderBookData?.signals || [];
 
-  // Diagnostic read of the trailing signal-to-outcome window. The panel status
-  // does not carry a session id, so this reports the last day across sessions;
-  // a stopped session therefore still explains its blockers and outcomes.
+  // Keep reconciliation scoped to the active session. Without this identity a
+  // restart or stale tab can display blockers and outcomes from another run.
   const {
     reconciliation,
     isLoading: isReconciliationLoading,
     error: reconciliationError,
-  } = useExecutionReconciliation({ hours: 24 });
+  } = useExecutionReconciliation({
+    hours: 24,
+    ...(status.sessionId ? { sessionId: status.sessionId } : {}),
+  });
 
   // Normalize optional summary fields for order book signals (prefer WebSocket data for real-time updates)
   const signalsSummary = {
@@ -752,48 +782,94 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
       <SimulatedTradingStatistics isTradingActive={status.isActive} />
 
       {/* Order Book Signals */}
-      {status.isActive && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Order Book Signals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <OrderBookSignalsTable
-              signals={signalsToDisplay}
-              pagination={orderBookData?.pagination}
-              currentPage={currentPage}
-              pageSize={pageSize}
-              onPageChange={handlePageChange}
-              onPageSizeChange={handlePageSizeChange}
-              summary={signalsSummary}
-            />
-            {orderBookData?.diagnostics && (
-              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-                <p className="font-semibold text-slate-800">Execution diagnostics</p>
-                <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
-                  <span>Evaluated: {orderBookData.diagnostics.signals_evaluated ?? 0}</span>
-                  <span>Generated: {orderBookData.diagnostics.signals_generated ?? 0}</span>
-                  <span>Executable: {orderBookData.diagnostics.executable_order_intent_count ?? 0}</span>
-                  <span>Transformer warming: {orderBookData.diagnostics.transformer_warming_symbols ?? 0}</span>
-                  <span>Rejected inputs: {orderBookData.diagnostics.transformer_rejected_inputs ?? 0}</span>
-                </div>
-                {Object.keys(orderBookData.diagnostics.execution_blocker_counts ?? {}).length > 0 && (
-                  <p className="mt-2 text-amber-800">
-                    Blockers: {Object.entries(orderBookData.diagnostics.execution_blocker_counts ?? {})
-                      .map(([reason, count]) => `${reason}=${count}`).join(', ')}
-                  </p>
-                )}
-                {(orderBookData.diagnostics.signals_generated ?? 0) > 0 &&
-                  (orderBookData.diagnostics.executable_order_intent_count ?? 0) === 0 && (
-                    <p className="mt-2 font-medium text-red-700">
-                      Signals were generated but none were executable; inspect blocker counts before changing the universe.
-                    </p>
-                  )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Order Book Signals</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {status.isActive && orderBookData?.diagnostics && (
+            <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="font-semibold text-slate-800">Per-symbol execution diagnosis</p>
+                <span className="text-xs text-slate-500">
+                  As of {orderBookData.diagnostics.as_of
+                    ? new Date(orderBookData.diagnostics.as_of).toLocaleString()
+                    : 'pending'}
+                </span>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              {orderBookData.diagnostics.summary?.message && (
+                <p className="mt-1 text-slate-700">{orderBookData.diagnostics.summary.message}</p>
+              )}
+              <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                <span>Selected: {orderBookData.diagnostics.summary?.selected_count ?? orderBookData.diagnostics.selected_symbol_count ?? 0}</span>
+                <span>Terminal: {orderBookData.diagnostics.summary?.terminal_count ?? 0}</span>
+                <span>Trades: {orderBookData.diagnostics.summary?.trade_count ?? 0}</span>
+                <span>Outcome: {orderBookData.diagnostics.summary?.outcome ?? 'not yet determined'}</span>
+              </div>
+              {(orderBookData.diagnostics.symbols?.length ?? 0) > 0 && (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead>
+                      <tr className="text-left uppercase tracking-wide text-slate-500">
+                        <th className="px-2 py-1">Symbol</th>
+                        <th className="px-2 py-1">Status</th>
+                        <th className="px-2 py-1">Reason</th>
+                        <th className="px-2 py-1">Updated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderBookData.diagnostics.symbols?.map((diagnosis) => (
+                        <tr key={diagnosis.symbol} className="border-t border-slate-200">
+                          <td className="px-2 py-1 font-medium">{diagnosis.symbol}</td>
+                          <td className="px-2 py-1">{diagnosis.status?.primary ?? 'pending'}</td>
+                          <td className="px-2 py-1">{diagnosis.status?.reason?.message ?? 'Awaiting evaluation'}</td>
+                          <td className="px-2 py-1 text-slate-500">
+                            {diagnosis.updated_at ? new Date(diagnosis.updated_at).toLocaleString() : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+          {!status.isActive ? (
+            <div className="text-center py-8 text-gray-500" role="status">
+              <p>Start trading to see order book signals for the selected symbols.</p>
+            </div>
+          ) : isSignalsLoading || (isSignalsFetching && !orderBookData) ? (
+            <div className="text-center py-8" role="status">
+              <p>Loading order book signals...</p>
+            </div>
+          ) : signalsError ? (
+            <div className="text-center py-8 text-red-600" role="alert">
+              <p>Failed to load order book signals.</p>
+              <p className="mt-1 text-sm">{signalsError instanceof Error ? signalsError.message : 'Unknown request error'}</p>
+              <Button className="mt-3" variant="secondary" size="sm" onClick={() => void refetchSignals()}>
+                Refresh signals
+              </Button>
+            </div>
+          ) : !orderBookData || signalsToDisplay.length === 0 ? (
+            <div className="text-center py-8 text-gray-500" role="status">
+              <p>No order book signals are available for the active symbol universe yet.</p>
+              {isSignalsFetching && <p className="mt-1 text-sm">Refreshing signals...</p>}
+            </div>
+          ) : (
+            <>
+              <OrderBookSignalsTable
+                signals={signalsToDisplay}
+                pagination={orderBookData.pagination}
+                currentPage={currentPage}
+                pageSize={pageSize}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                summary={signalsSummary}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Signal-to-outcome reconciliation by strategy and blocker bucket */}
       <Card>

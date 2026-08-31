@@ -1217,6 +1217,28 @@ void PredictController::simulatedTradingStatus(
   callback(HttpResponse::newHttpJsonResponse(response));
 }
 
+void PredictController::simulatedTradingDiagnosis(
+    const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback) {
+  const std::string session_id = req->getParameter("session_id");
+  const Json::Value status =
+      trade::trading::SimulatedTradingService::getInstance().getStatus(session_id);
+  if (!session_id.empty() &&
+      !status.get("session_id_matches", Json::Value(true)).asBool()) {
+    Json::Value error;
+    error["schema_version"] = "simulated_trading_diagnosis.v1";
+    error["status"] = "error";
+    error["error"]["code"] = "session_mismatch";
+    error["error"]["message"] = "Requested session does not match the active simulated session.";
+    auto response = HttpResponse::newHttpJsonResponse(error);
+    response->setStatusCode(k404NotFound);
+    callback(response);
+    return;
+  }
+  callback(HttpResponse::newHttpJsonResponse(
+      status.get("diagnostics", Json::Value(Json::nullValue))));
+}
+
 void PredictController::updateSimulatedStrategyParameters(
     const HttpRequestPtr &req,
     std::function<void(const HttpResponsePtr &)> &&callback) {
@@ -1261,9 +1283,14 @@ void PredictController::simulatedOrderBookSignals(
   }
   const int page = parse_int_param(req->getParameter("page"), 1);
   const int per_page = parse_int_param(req->getParameter("per_page"), 10);
+  const std::string session_id = req->getParameter("session_id");
   Json::Value response = trade::trading::SimulatedTradingService::getInstance()
-                             .getOrderBookSignals(symbols, page, per_page);
-  callback(HttpResponse::newHttpJsonResponse(response));
+                             .getOrderBookSignals(symbols, page, per_page, session_id);
+  auto http_response = HttpResponse::newHttpJsonResponse(response);
+  if (response.get("status", Json::Value("")).asString() == "error") {
+    http_response->setStatusCode(k404NotFound);
+  }
+  callback(http_response);
 }
 
 void PredictController::livePortfolioStatus(

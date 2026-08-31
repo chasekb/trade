@@ -155,6 +155,7 @@ describe('normalizeSimulatedTradingSnapshot', () => {
     expect(snapshot.stats.net_pnl).toBe(-1);
     expect(snapshot.stats.last_trade_time).toBe('2026-06-18T14:00:00.000Z');
     expect(snapshot.recentTrades.map((trade) => trade.trade_id)).toEqual(['trade-2', 'trade-1']);
+    expect(snapshot.cashBalance).toBe(0);
   });
 
   it('keeps open-leg trades out of win-rate calculations while still counting them toward totals', () => {
@@ -288,6 +289,23 @@ describe('normalizeSimulatedTradingSnapshot', () => {
     expect(snapshot.totalPositionsValue).toBe(-100);
     expect(snapshot.totalPositionsExposure).toBe(100);
     expect(snapshot.totalValue).toBe(999);
+    expect(snapshot.totalValue).toBe(snapshot.cashBalance + snapshot.totalPositionsValue);
+  });
+
+  it('recomputes total value from canonical cash and signed positions when backend total is stale', () => {
+    const snapshot = normalizeSimulatedTradingSnapshot({
+      portfolio: {
+        cash_balance: 9499.75,
+        total_positions_value: 500,
+        // Documented mismatch shape: total_value was calculated from stale cash.
+        total_value: 999,
+        positions: [
+          { symbol: 'LONG-USD', side: 'buy', quantity: 5, current_price: 100 },
+        ],
+      },
+    });
+
+    expect(snapshot.totalValue).toBe(9999.75);
     expect(snapshot.totalValue).toBe(snapshot.cashBalance + snapshot.totalPositionsValue);
   });
 

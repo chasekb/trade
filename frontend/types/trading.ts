@@ -44,6 +44,8 @@ export interface Trade {
 
 export interface OrderBookSignal {
   symbol: string;
+  session_id?: string;
+  event_id?: string;
   timestamp: string;
   price: number;
   signal: 'buy' | 'sell' | 'hold';
@@ -145,6 +147,12 @@ export interface OrderBookSignal {
 }
 
 export interface OrderBookSignalDiagnostics {
+  schema_version?: string;
+  session_id?: string;
+  as_of?: string;
+  selected_symbols?: string[];
+  symbols?: SimulatedTradingSymbolDiagnosis[];
+  summary?: SimulatedTradingDiagnosisSummary;
   selected_symbol_count?: number;
   requested_symbol_count?: number;
   quote_attempted_symbol_count?: number;
@@ -169,6 +177,37 @@ export interface OrderBookSignalDiagnostics {
   coverage_complete?: boolean;
   widget_coverage_contract?: string;
   contract?: string;
+}
+
+export interface SimulatedTradingSymbolDiagnosis {
+  symbol: string;
+  sequence?: number;
+  updated_at?: string;
+  status?: {
+    primary?: string;
+    terminal?: boolean;
+    reason?: { code?: string; message?: string; retryable?: boolean } | null;
+    evaluated_at?: string | null;
+  };
+  market_data?: Record<string, unknown>;
+  quote?: Record<string, unknown>;
+  transformer?: Record<string, unknown>;
+  signal?: Record<string, unknown>;
+  gates?: Record<string, unknown>;
+  intent?: Record<string, unknown>;
+  execution?: Record<string, unknown>;
+  trade?: Record<string, unknown>;
+}
+
+export interface SimulatedTradingDiagnosisSummary {
+  status?: string;
+  outcome?: string;
+  selected_count?: number;
+  terminal_count?: number;
+  trade_count?: number;
+  by_primary_status?: Record<string, number>;
+  no_trade_reasons?: Array<{ code: string; count: number }>;
+  message?: string;
 }
 
 export interface PriceDataPoint {
