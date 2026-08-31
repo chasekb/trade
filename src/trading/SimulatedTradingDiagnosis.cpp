@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <set>
 #include <sstream>
 
 namespace trade::trading {
@@ -225,7 +226,22 @@ Json::Value makeDiagnosisSummary(const DiagnosisSummaryInput &input) {
   std::map<std::string, std::size_t> reasons;
   std::size_t terminal_count = 0;
   bool has_non_trade = false;
+  std::set<std::string> selected_symbols(input.selected_symbols.begin(),
+                                         input.selected_symbols.end());
+  std::set<std::string> seen_symbols;
+  // An empty completed session is still a valid snapshot, but it must carry
+  // an explicit reason so consumers never interpret zero symbols as an
+  // unexplained zero-trade result.
+  bool complete_reconciliation =
+      selected_symbols.size() == input.selected_symbols.size() &&
+      input.symbols.size() == input.selected_symbols.size();
   for (const auto &symbol : input.symbols) {
+    const std::string symbol_id = symbol.get("symbol", Json::Value("")).asString();
+    if (selected_symbols.count(symbol_id) == 0 ||
+        !seen_symbols.insert(symbol_id).second) {
+      complete_reconciliation = false;
+      continue;
+    }
     const std::string status = symbol.get("status", Json::Value(Json::objectValue))
                                    .get("primary", Json::Value("pending")).asString();
     ++counts[status];
@@ -233,9 +249,14 @@ Json::Value makeDiagnosisSummary(const DiagnosisSummaryInput &input) {
     if (!isTradeStatus(status)) has_non_trade = true;
     addReasonCounts(symbol, reasons);
   }
+  if (seen_symbols.size() != selected_symbols.size()) {
+    complete_reconciliation = false;
+  }
   if (input.fatal_error) ++reasons["session_error"];
-  if (!input.active && !input.cancelled && input.trade_count == 0 &&
-      (input.selected_symbols.empty() || terminal_count < input.selected_symbols.size())) {
+  if (!complete_reconciliation ||
+      (input.selected_symbols.empty() && input.symbols.empty() && input.trade_count == 0) ||
+      (!input.active && !input.cancelled && input.trade_count == 0 &&
+       terminal_count < input.selected_symbols.size())) {
     ++reasons["incomplete_reconciliation"];
   }
   Json::Value by_status(Json::objectValue);
@@ -263,7 +284,7 @@ Json::Value makeDiagnosisSummary(const DiagnosisSummaryInput &input) {
       return isProblemStatus(symbol.get("status", Json::Value(Json::objectValue)).get("primary", "").asString());
     }) ? "degraded" : "running");
     result["outcome"] = "not_yet_determined";
-  } else if (terminal_count == input.selected_symbols.size()) {
+  } else if (complete_reconciliation && terminal_count == input.selected_symbols.size()) {
     result["status"] = "completed";
     result["outcome"] = input.trade_count == 0 ? "no_trade" : (has_non_trade ? "mixed" : "trades_recorded");
   } else {

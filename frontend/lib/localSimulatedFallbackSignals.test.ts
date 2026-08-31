@@ -67,4 +67,33 @@ describe('local simulated fallback order-book signal contract', () => {
     expect(response.error).toBe('backend unavailable');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('preserves signal request failures instead of returning an unexplained empty success', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('network unavailable')) as unknown as typeof fetch;
+    const { apiClient } = await loadApi(false);
+
+    const response = await apiClient.getOrderBookSignals(['BTC-USD'], { page: 1, per_page: 10 }, 'simulated');
+
+    expect(response.status).toBe('error');
+    expect(response.error).toBe('network unavailable');
+    expect(response.data).toBeUndefined();
+  });
+
+  it('reads the canonical per-session diagnosis resource', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ schema_version: 'simulated_trading_diagnosis.v1', session_id: 'session/1' }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const { apiClient } = await loadApi(false);
+
+    const response = await apiClient.getSimulatedTradingDiagnosis('session/1');
+
+    expect(response.status).toBe('success');
+    expect(response.data?.schema_version).toBe('simulated_trading_diagnosis.v1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/simulated-trading/session%2F1/diagnosis'),
+      expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) }),
+    );
+  });
 });

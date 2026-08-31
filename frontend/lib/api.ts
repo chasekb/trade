@@ -985,6 +985,15 @@ class ApiClient {
     }));
   }
 
+  async getSimulatedTradingDiagnosis(
+    sessionId?: string,
+  ): Promise<ApiResponse<OrderBookSignalDiagnostics | null>> {
+    const endpoint = sessionId
+      ? `/api/simulated-trading/${encodeURIComponent(sessionId)}/diagnosis`
+      : '/api/simulated-trading/diagnosis';
+    return this.request<OrderBookSignalDiagnostics | null>(endpoint);
+  }
+
   async getTradingStatus(mode: 'live' | 'simulated'): Promise<ApiResponse<any>> {
     if (mode === 'simulated') {
       return this.getSimulatedTradingStatus();
@@ -1052,26 +1061,12 @@ class ApiClient {
       const endpoint = mode === 'live' ? 'live-signals' : 'simulated-signals';
       const response = await this.request<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; diagnostics?: OrderBookSignalDiagnostics; }>(`/api/orderbook/${endpoint}${query ? `?${query}` : ''}`);
       return response;
-    } catch {
+    } catch (error) {
       return {
-        status: 'success',
-        data: {
-          signals: [],
-          pagination: {
-            page: params?.page || 1,
-            limit: params?.per_page || 10,
-            total: 0,
-            total_pages: 0,
-            has_next: false,
-            has_prev: false,
-          },
-          total_analyzed: 0,
-          active_signals: 0,
-          last_updated: new Date().toISOString(),
-          average_strength: 0,
-        },
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Failed to fetch order book signals',
         timestamp: new Date().toISOString(),
-      } as ApiResponse<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; diagnostics?: OrderBookSignalDiagnostics; }>;
+      };
     }
   }
 

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LiveTradingPanelProps, TradingStrategy } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLiveTrading, useOrderBookSignals, useProducts, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
+import { useLiveTrading, useOrderBookSignals, useProducts, useSimulatedTradingDiagnosis, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
 import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 import { FALLBACK_COINBASE_SYMBOLS, getAllSymbols, hasUsableProductCategories, parseCustomSymbols, resolveUniverseSymbols, symbolsMatch } from '@/lib/symbolUniverse';
 import { OpenPositionsSection } from './OpenPositionsSection';
@@ -31,6 +31,40 @@ type CoinbaseProduct = {
   trading_disabled?: boolean;
   id?: string;
 };
+
+function diagnosisReason(diagnosis: {
+  status?: {
+    primary?: string;
+    reason?: { code?: string; message?: string } | null;
+  };
+  gates?: Record<string, unknown>;
+}): string {
+  const statusReason = diagnosis.status?.reason;
+  if (diagnosis.status?.primary === 'gates_blocked') {
+    const gateReasons = Object.values(diagnosis.gates ?? {}).flatMap((gate) => {
+      if (!gate || typeof gate !== 'object') {
+        return [];
+      }
+      const reasons = (gate as { reasons?: unknown }).reasons;
+      if (!Array.isArray(reasons)) {
+        return [];
+      }
+      return reasons.flatMap((reason) => {
+        if (!reason || typeof reason !== 'object') {
+          return [];
+        }
+        const typedReason = reason as { code?: unknown; message?: unknown };
+        const code = typeof typedReason.code === 'string' ? typedReason.code : '';
+        const message = typeof typedReason.message === 'string' ? typedReason.message : '';
+        return code && message ? [`${code}: ${message}`] : code || message ? [code || message] : [];
+      });
+    });
+    if (gateReasons.length > 0) {
+      return gateReasons.join('; ');
+    }
+  }
+  return statusReason?.message || statusReason?.code || 'Awaiting evaluation';
+}
 
 // Trading Configuration Section
 function TradingConfiguration({
@@ -570,6 +604,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     'simulated',
     status.sessionId,
   );
+  const { data: diagnosisData } = useSimulatedTradingDiagnosis(status.isActive, status.sessionId);
 
   const activeSymbolsKey = activeSymbols.join('|');
   useEffect(() => {
@@ -787,26 +822,26 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           <CardTitle>Order Book Signals</CardTitle>
         </CardHeader>
         <CardContent>
-          {status.isActive && orderBookData?.diagnostics && (
+          {status.isActive && (orderBookData?.diagnostics ?? diagnosisData) && (
             <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="font-semibold text-slate-800">Per-symbol execution diagnosis</p>
                 <span className="text-xs text-slate-500">
-                  As of {orderBookData.diagnostics.as_of
-                    ? new Date(orderBookData.diagnostics.as_of).toLocaleString()
+                  As of {(orderBookData?.diagnostics ?? diagnosisData)?.as_of
+                    ? new Date((orderBookData?.diagnostics ?? diagnosisData)?.as_of ?? '').toLocaleString()
                     : 'pending'}
                 </span>
               </div>
-              {orderBookData.diagnostics.summary?.message && (
-                <p className="mt-1 text-slate-700">{orderBookData.diagnostics.summary.message}</p>
+              {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.message && (
+                <p className="mt-1 text-slate-700">{(orderBookData?.diagnostics ?? diagnosisData)?.summary?.message}</p>
               )}
               <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-                <span>Selected: {orderBookData.diagnostics.summary?.selected_count ?? orderBookData.diagnostics.selected_symbol_count ?? 0}</span>
-                <span>Terminal: {orderBookData.diagnostics.summary?.terminal_count ?? 0}</span>
-                <span>Trades: {orderBookData.diagnostics.summary?.trade_count ?? 0}</span>
-                <span>Outcome: {orderBookData.diagnostics.summary?.outcome ?? 'not yet determined'}</span>
+                <span>Selected: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.selected_count ?? (orderBookData?.diagnostics ?? diagnosisData)?.selected_symbol_count ?? 0}</span>
+                <span>Terminal: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.terminal_count ?? 0}</span>
+                <span>Trades: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.trade_count ?? 0}</span>
+                <span>Outcome: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.outcome ?? 'not yet determined'}</span>
               </div>
-              {(orderBookData.diagnostics.symbols?.length ?? 0) > 0 && (
+              {((orderBookData?.diagnostics ?? diagnosisData)?.symbols?.length ?? 0) > 0 && (
                 <div className="mt-3 overflow-x-auto">
                   <table className="min-w-full text-xs">
                     <thead>
@@ -818,11 +853,11 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
                       </tr>
                     </thead>
                     <tbody>
-                      {orderBookData.diagnostics.symbols?.map((diagnosis) => (
+                      {(orderBookData?.diagnostics ?? diagnosisData)?.symbols?.map((diagnosis) => (
                         <tr key={diagnosis.symbol} className="border-t border-slate-200">
                           <td className="px-2 py-1 font-medium">{diagnosis.symbol}</td>
                           <td className="px-2 py-1">{diagnosis.status?.primary ?? 'pending'}</td>
-                          <td className="px-2 py-1">{diagnosis.status?.reason?.message ?? 'Awaiting evaluation'}</td>
+                          <td className="px-2 py-1">{diagnosisReason(diagnosis)}</td>
                           <td className="px-2 py-1 text-slate-500">
                             {diagnosis.updated_at ? new Date(diagnosis.updated_at).toLocaleString() : '—'}
                           </td>

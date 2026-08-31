@@ -9,6 +9,7 @@ const mockUseLiveTrading = jest.fn();
 const mockUseOrderBookSignals = jest.fn();
 const mockUseProducts = jest.fn();
 const mockUseSimulatedTradingStats = jest.fn();
+const mockUseSimulatedTradingDiagnosis = jest.fn();
 const mockUseExecutionReconciliation = jest.fn();
 
 jest.mock('@/hooks/useTrading', () => ({
@@ -16,6 +17,7 @@ jest.mock('@/hooks/useTrading', () => ({
   useOrderBookSignals: (...args: unknown[]) => mockUseOrderBookSignals(...args),
   useProducts: (...args: unknown[]) => mockUseProducts(...args),
   useSimulatedTradingStats: (...args: unknown[]) => mockUseSimulatedTradingStats(...args),
+  useSimulatedTradingDiagnosis: (...args: unknown[]) => mockUseSimulatedTradingDiagnosis(...args),
   useSimTradingWebSocket: jest.fn(),
 }));
 jest.mock('@/hooks/useExecutionReconciliation', () => ({
@@ -66,6 +68,7 @@ describe('SimulatedTradingPanel widget states', () => {
       updateStrategyParameters: jest.fn(),
     });
     mockUseProducts.mockReturnValue({ data: {} });
+    mockUseSimulatedTradingDiagnosis.mockReturnValue({ data: undefined, error: null });
     mockUseExecutionReconciliation.mockReturnValue({ reconciliation: null, isLoading: false, error: null });
   });
 
@@ -160,6 +163,32 @@ describe('SimulatedTradingPanel widget states', () => {
     expect(screen.getByText('data_unavailable')).toBeInTheDocument();
     expect(screen.getByText('TLS handshake failed while contacting the market-data provider.')).toBeInTheDocument();
     expect(screen.getByText(/No trades recorded: TLS handshake failed/)).toBeInTheDocument();
+  });
+
+  it('uses the canonical diagnosis query when signal loading fails', () => {
+    mockUseSimulatedTradingStats.mockReturnValue({ data: emptyStats, isLoading: false, error: null, refetch: jest.fn() });
+    mockUseOrderBookSignals.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+      error: new Error('signal request failed'),
+      refetch: jest.fn(),
+    });
+    mockUseSimulatedTradingDiagnosis.mockReturnValue({
+      data: {
+        as_of: '2026-08-28T00:00:08.000Z',
+        summary: { selected_count: 1, terminal_count: 1, trade_count: 0, outcome: 'no_trade', message: 'No trades recorded: valid HOLD.' },
+        symbols: [{ symbol: 'BTC-USD', status: { primary: 'hold', terminal: true, reason: { code: 'signal_hold', message: 'Strategy returned HOLD.' } } }],
+      },
+      error: null,
+    });
+
+    renderPanel();
+
+    expect(screen.getByText('Per-symbol execution diagnosis')).toBeInTheDocument();
+    expect(screen.getByText('hold')).toBeInTheDocument();
+    expect(screen.getByText('Strategy returned HOLD.')).toBeInTheDocument();
+    expect(screen.getByText('Failed to load order book signals.')).toBeInTheDocument();
   });
 
   it('updates cash, positions, and total value together across the buy and sell trace', () => {

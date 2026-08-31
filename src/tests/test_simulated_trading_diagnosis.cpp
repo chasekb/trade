@@ -109,6 +109,33 @@ int main() {
                  "incomplete_reconciliation",
          "empty zero-trade sessions cannot claim an unexplained result");
 
+  input.selected_symbols = {"BTC-USD", "ETH-USD"};
+  input.symbols = {terminal("hold", "signal_hold"),
+                   terminal("hold", "signal_hold")};
+  input.symbols[0]["symbol"] = "BTC-USD";
+  input.symbols[1]["symbol"] = "BTC-USD";
+  const Json::Value incomplete_summary = makeDiagnosisSummary(input);
+  bool has_incomplete_reason = false;
+  for (const auto &reason : incomplete_summary["no_trade_reasons"]) {
+    has_incomplete_reason = has_incomplete_reason ||
+                            reason["code"].asString() == "incomplete_reconciliation";
+  }
+  expect(incomplete_summary["status"].asString() == "failed" && has_incomplete_reason,
+         "duplicate records cannot make an incomplete universe look complete");
+
+  input.selected_symbols = {"BTC-USD", "BTC-USD"};
+  input.symbols = {terminal("hold", "signal_hold"), terminal("hold", "signal_hold")};
+  const Json::Value duplicate_selection_summary = makeDiagnosisSummary(input);
+  expect(duplicate_selection_summary["status"].asString() == "failed",
+         "duplicate selected symbols cannot make the universe look complete");
+
+  input.selected_symbols = {"TEST-USD"};
+  input.symbols = {terminal("trade_open", "")};
+  const Json::Value open_summary = makeDiagnosisSummary(input);
+  expect(open_summary["terminal_count"].asInt() == 1 &&
+             open_summary["by_primary_status"]["trade_open"].asInt() == 1,
+         "an open trade is terminal for the current symbol evaluation");
+
   input.trade_count = 1;
   input.selected_symbols = {"TEST-USD"};
   input.symbols = {terminal("trade_completed", "")};

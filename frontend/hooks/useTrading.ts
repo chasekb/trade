@@ -622,6 +622,23 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
   });
 }
 
+export function useSimulatedTradingDiagnosis(enabled: boolean = true, sessionId?: string) {
+  return useQuery({
+    queryKey: ['simulated-trading-diagnosis', sessionId],
+    queryFn: async () => {
+      const response = await apiClient.getSimulatedTradingDiagnosis(sessionId);
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch simulated trading diagnosis');
+      }
+      return response.data ?? undefined;
+    },
+    enabled,
+    staleTime: 2 * 1000,
+    refetchInterval: enabled ? 3 * 1000 : false,
+    refetchOnWindowFocus: true,
+  });
+}
+
 // Simulated Trading WebSocket Hook
 
 export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: string) {

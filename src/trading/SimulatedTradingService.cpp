@@ -811,7 +811,9 @@ void SimulatedTradingService::applyLiveFillLocked(const OrderIntent &intent,
     diagnosis["trade"]["state"] = "open";
     diagnosis["trade"]["outcome"] = "pending";
     diagnosis["trade"]["opened_at"] = trade.timestamp_iso;
-    markDiagnosisStatusLocked(diagnosis, "trade_open", false, "", "");
+    // `trade_open` is terminal for this evaluation even though the position
+    // remains open and a later tick may produce a new diagnosis.
+    markDiagnosisStatusLocked(diagnosis, "trade_open", true, "", "");
   }
   updated_at_ = nowIsoUtc();
   trimHistoryLocked();
@@ -1400,7 +1402,10 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         used_model = true;
       } catch (const std::exception &e) {
         ++transformer_rejected_inputs_;
-        TR_LOG_WARN("ML inference failed for {}; using heuristic fallback: {}", symbol, e.what());
+        // Exception text can contain provider URLs, paths, or request details.
+        // Keep the structured state useful without putting unbounded data in
+        // logs; the diagnosis carries only the stable classification.
+        TR_LOG_WARN("ML inference failed for {}; using heuristic fallback (error=redacted)", symbol);
       }
     }
   }
@@ -1781,7 +1786,7 @@ void SimulatedTradingService::updateDiagnosisFromSignalLocked(const SignalRecord
     diagnosis["execution"]["occurred_at"] = position_it->second.entry_time;
     diagnosis["trade"]["state"] = "open";
     diagnosis["trade"]["outcome"] = "pending";
-    markDiagnosisStatusLocked(diagnosis, "trade_open", false, "", "");
+    markDiagnosisStatusLocked(diagnosis, "trade_open", true, "", "");
   }
 }
 
@@ -2304,7 +2309,7 @@ void SimulatedTradingService::workerLoop() {
       dispatchOrders(std::move(orders));
       flushWrites(std::move(writes));
     } catch (const std::exception &e) {
-      TR_LOG_ERROR("Simulated trading worker tick failed for session {}: {}", session_id_, e.what());
+      TR_LOG_ERROR("Simulated trading worker tick failed for session {} (error=redacted)", session_id_);
     } catch (...) {
       TR_LOG_ERROR("Simulated trading worker tick failed for session {}: unknown exception", session_id_);
     }
@@ -2552,7 +2557,7 @@ Json::Value SimulatedTradingService::buildStatusJson() const {
       }
     }
   } catch (const std::exception &e) {
-    TR_LOG_WARN("Failed to load persisted simulated trade stats for session {}: {}", session_id_, e.what());
+    TR_LOG_WARN("Failed to load persisted simulated trade stats for session {} (error=redacted)", session_id_);
   }
 
   if (trades.empty()) {
@@ -3201,7 +3206,7 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
     }
 
   } catch (const std::exception &e) {
-    TR_LOG_WARN("Failed to fetch order book signals: {}", e.what());
+    TR_LOG_WARN("Failed to fetch order book signals (error=redacted)");
   }
 
   return result;
