@@ -605,6 +605,10 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     status.sessionId,
   );
   const { data: diagnosisData } = useSimulatedTradingDiagnosis(status.isActive, status.sessionId);
+  // The canonical session snapshot includes every selected symbol, including
+  // symbols without a signal row. Prefer it over the signal endpoint's
+  // compatibility/coverage projection when both requests are available.
+  const diagnosisSnapshot = diagnosisData ?? orderBookData?.diagnostics;
 
   const activeSymbolsKey = activeSymbols.join('|');
   useEffect(() => {
@@ -822,26 +826,26 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           <CardTitle>Order Book Signals</CardTitle>
         </CardHeader>
         <CardContent>
-          {status.isActive && (orderBookData?.diagnostics ?? diagnosisData) && (
+          {status.isActive && diagnosisSnapshot && (
             <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="font-semibold text-slate-800">Per-symbol execution diagnosis</p>
                 <span className="text-xs text-slate-500">
-                  As of {(orderBookData?.diagnostics ?? diagnosisData)?.as_of
-                    ? new Date((orderBookData?.diagnostics ?? diagnosisData)?.as_of ?? '').toLocaleString()
+                  As of {diagnosisSnapshot.as_of
+                    ? new Date(diagnosisSnapshot.as_of).toLocaleString()
                     : 'pending'}
                 </span>
               </div>
-              {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.message && (
-                <p className="mt-1 text-slate-700">{(orderBookData?.diagnostics ?? diagnosisData)?.summary?.message}</p>
+              {diagnosisSnapshot.summary?.message && (
+                <p className="mt-1 text-slate-700">{diagnosisSnapshot.summary.message}</p>
               )}
               <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-                <span>Selected: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.selected_count ?? (orderBookData?.diagnostics ?? diagnosisData)?.selected_symbol_count ?? 0}</span>
-                <span>Terminal: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.terminal_count ?? 0}</span>
-                <span>Trades: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.trade_count ?? 0}</span>
-                <span>Outcome: {(orderBookData?.diagnostics ?? diagnosisData)?.summary?.outcome ?? 'not yet determined'}</span>
+                <span>Selected: {diagnosisSnapshot.summary?.selected_count ?? diagnosisSnapshot.selected_symbol_count ?? 0}</span>
+                <span>Terminal: {diagnosisSnapshot.summary?.terminal_count ?? 0}</span>
+                <span>Trades: {diagnosisSnapshot.summary?.trade_count ?? 0}</span>
+                <span>Outcome: {diagnosisSnapshot.summary?.outcome ?? 'not yet determined'}</span>
               </div>
-              {((orderBookData?.diagnostics ?? diagnosisData)?.symbols?.length ?? 0) > 0 && (
+              {(diagnosisSnapshot.symbols?.length ?? 0) > 0 && (
                 <div className="mt-3 overflow-x-auto">
                   <table className="min-w-full text-xs">
                     <thead>
@@ -853,7 +857,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
                       </tr>
                     </thead>
                     <tbody>
-                      {(orderBookData?.diagnostics ?? diagnosisData)?.symbols?.map((diagnosis) => (
+                      {diagnosisSnapshot.symbols?.map((diagnosis) => (
                         <tr key={diagnosis.symbol} className="border-t border-slate-200">
                           <td className="px-2 py-1 font-medium">{diagnosis.symbol}</td>
                           <td className="px-2 py-1">{diagnosis.status?.primary ?? 'pending'}</td>

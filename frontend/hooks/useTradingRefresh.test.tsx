@@ -4,7 +4,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { apiClient } from '@/lib/api';
-import { normalizeTradingStatusPayload, useOrderBookSignals } from './useTrading';
+import { applySimulatedTradingDiagnosisEvent, normalizeTradingStatusPayload, useOrderBookSignals } from './useTrading';
 
 jest.mock('@/lib/api', () => ({
   apiClient: {
@@ -72,6 +72,71 @@ describe('simulated trading status normalization', () => {
       strategy: 'orderbook',
       symbols: [],
     }).isActive).toBe(false);
+  });
+});
+
+describe('simulated trading diagnosis event state', () => {
+  it('applies newer symbol events and ignores stale or duplicate trade events', () => {
+    const initial = {
+      schema_version: 'simulated_trading_diagnosis.v1',
+      session_id: 'session-1',
+      selected_symbols: ['BTC-USD'],
+      symbols: [{
+        symbol: 'BTC-USD',
+        sequence: 3,
+        status: { primary: 'hold', terminal: true, reason: { code: 'signal_hold', message: 'Strategy returned HOLD.' } },
+        trade: { state: 'not_applicable', outcome: 'not_applicable' },
+      }],
+      summary: {
+        status: 'running',
+        outcome: 'not_yet_determined',
+        selected_count: 1,
+        terminal_count: 1,
+        trade_count: 0,
+        by_primary_status: { hold: 1 },
+        no_trade_reasons: [{ code: 'signal_hold', count: 1 }],
+      },
+    };
+    const filled = {
+      symbol: 'BTC-USD',
+      sequence: 4,
+      updated_at: '2026-08-26T12:00:04Z',
+      status: { primary: 'trade_open', terminal: true },
+      trade: { state: 'open', outcome: 'pending', trade_id: 'trade-1' },
+    };
+
+    const updated = applySimulatedTradingDiagnosisEvent(initial, {
+      event_type: 'simulated_trading.symbol_diagnosis',
+      session_id: 'session-1',
+      symbol: 'BTC-USD',
+      sequence: 4,
+      diagnosis: filled,
+    });
+    if (!updated) {
+      throw new Error('expected diagnosis event to produce a snapshot');
+    }
+    const stale = applySimulatedTradingDiagnosisEvent(updated, {
+      event_type: 'simulated_trading.symbol_diagnosis',
+      session_id: 'session-1',
+      symbol: 'BTC-USD',
+      sequence: 3,
+      diagnosis: initial.symbols[0],
+    });
+    const duplicate = applySimulatedTradingDiagnosisEvent(stale, {
+      event_type: 'simulated_trading.symbol_diagnosis',
+      session_id: 'session-1',
+      symbol: 'BTC-USD',
+      sequence: 5,
+      diagnosis: { ...filled, sequence: 5 },
+    });
+    if (!duplicate) {
+      throw new Error('expected duplicate diagnosis event to retain a snapshot');
+    }
+
+    expect(updated.symbols?.[0].status?.primary).toBe('trade_open');
+    expect(updated.summary?.trade_count).toBe(1);
+    expect(stale).toBe(updated);
+    expect(duplicate.summary?.trade_count).toBe(1);
   });
 });
 

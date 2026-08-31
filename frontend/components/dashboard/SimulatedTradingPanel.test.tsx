@@ -191,6 +191,39 @@ describe('SimulatedTradingPanel widget states', () => {
     expect(screen.getByText('Failed to load order book signals.')).toBeInTheDocument();
   });
 
+  it('prefers the canonical diagnosis snapshot over the signal coverage projection', () => {
+    mockUseSimulatedTradingStats.mockReturnValue({ data: emptyStats, isLoading: false, error: null, refetch: jest.fn() });
+    mockUseOrderBookSignals.mockReturnValue({
+      data: {
+        signals: [],
+        pagination: { total_pages: 0, total: 0, has_next: false, has_prev: false },
+        diagnostics: {
+          as_of: '2026-08-28T00:00:08.000Z',
+          summary: { selected_count: 1, terminal_count: 1, trade_count: 0, outcome: 'no_trade', message: 'No trades recorded: valid HOLD.' },
+          symbols: [{ symbol: 'BTC-USD', status: { primary: 'hold', terminal: true, reason: { code: 'signal_hold', message: 'Strategy returned HOLD.' } } }],
+        },
+      },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+    mockUseSimulatedTradingDiagnosis.mockReturnValue({
+      data: {
+        as_of: '2026-08-28T00:00:09.000Z',
+        summary: { selected_count: 1, terminal_count: 1, trade_count: 0, outcome: 'no_trade', message: 'No trades recorded: ML confidence gate.' },
+        symbols: [{ symbol: 'BTC-USD', status: { primary: 'gates_blocked', terminal: true, reason: { code: 'gate_blocked', message: 'Signal was blocked by one or more policy gates.' } }, gates: { ml: { reasons: [{ code: 'ml_confidence_below_threshold', message: 'ML confidence is below the configured threshold.' }] } } }],
+      },
+      error: null,
+    });
+
+    renderPanel();
+
+    expect(screen.getByText('gates_blocked')).toBeInTheDocument();
+    expect(screen.getByText('ml_confidence_below_threshold: ML confidence is below the configured threshold.')).toBeInTheDocument();
+    expect(screen.queryByText('Strategy returned HOLD.')).not.toBeInTheDocument();
+  });
+
   it('updates cash, positions, and total value together across the buy and sell trace', () => {
     const snapshots = [
       {

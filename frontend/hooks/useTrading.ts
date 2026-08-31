@@ -99,6 +99,7 @@ type OrderBookSignalsData = {
 
 type WebSocketPayload = {
   type?: string;
+  event_type?: string;
   data?: unknown;
 };
 
@@ -381,6 +382,159 @@ function mergeDiagnosisSummaries(
     mergedSummary.message = message;
   }
   return mergedSummary;
+}
+
+export type SimulatedTradingDiagnosisEvent = {
+  event_type?: string;
+  session_id?: string;
+  symbol: string;
+  sequence: number;
+  diagnosis: SimulatedTradingSymbolDiagnosis;
+};
+
+function diagnosisReasonCodes(diagnosis?: SimulatedTradingSymbolDiagnosis): string[] {
+  if (!diagnosis) {
+    return [];
+  }
+  const codes: string[] = [];
+  const statusCode = diagnosis.status?.reason?.code;
+  if (typeof statusCode === 'string' && statusCode) {
+    codes.push(statusCode);
+  }
+  for (const gate of Object.values(diagnosis.gates ?? {})) {
+    if (!gate || typeof gate !== 'object') {
+      continue;
+    }
+    const reasons = (gate as { reasons?: unknown }).reasons;
+    if (!Array.isArray(reasons)) {
+      continue;
+    }
+    for (const reason of reasons) {
+      if (!reason || typeof reason !== 'object') {
+        continue;
+      }
+      const code = (reason as { code?: unknown }).code;
+      if (typeof code === 'string' && code) {
+        codes.push(code);
+      }
+    }
+  }
+  return codes;
+}
+
+function adjustDiagnosisReasonCounts(
+  counts: Record<string, number>,
+  diagnosis: SimulatedTradingSymbolDiagnosis | undefined,
+  delta: number,
+) {
+  for (const code of diagnosisReasonCodes(diagnosis)) {
+    counts[code] = (counts[code] ?? 0) + delta;
+    if (counts[code] <= 0) {
+      delete counts[code];
+    }
+  }
+}
+
+/**
+ * Apply one sequence-numbered symbol event to the canonical diagnosis cache.
+ * The reducer is deliberately immutable and idempotent: retries with the
+ * same trade ID or an older sequence cannot inflate aggregate counts.
+ */
+export function applySimulatedTradingDiagnosisEvent(
+  current: OrderBookSignalDiagnostics | undefined,
+  event: SimulatedTradingDiagnosisEvent,
+): OrderBookSignalDiagnostics | undefined {
+  if (event.event_type && event.event_type !== 'simulated_trading.symbol_diagnosis') {
+    return current;
+  }
+  if (!event.symbol || !Number.isInteger(event.sequence) || event.sequence < 0 ||
+      event.diagnosis.symbol !== event.symbol) {
+    return current;
+  }
+  if (current?.session_id && event.session_id && current.session_id !== event.session_id) {
+    return current;
+  }
+  if (current?.selected_symbols?.length && !current.selected_symbols.includes(event.symbol)) {
+    return current;
+  }
+
+  const existing = current?.symbols?.find((diagnosis) => diagnosis.symbol === event.symbol);
+  if (existing?.sequence !== undefined && event.sequence <= existing.sequence) {
+    return current;
+  }
+
+  const previousSymbols = current?.symbols ?? [];
+  const selectedSymbols = [...(current?.selected_symbols ?? previousSymbols.map(({ symbol }) => symbol))];
+  if (!selectedSymbols.includes(event.symbol)) {
+    selectedSymbols.push(event.symbol);
+  }
+  const symbolMap = new Map(previousSymbols.map((diagnosis) => [diagnosis.symbol, diagnosis]));
+  symbolMap.set(event.symbol, event.diagnosis);
+  const symbols = selectedSymbols.map((symbol) => symbolMap.get(symbol)).filter(
+    (diagnosis): diagnosis is SimulatedTradingSymbolDiagnosis => Boolean(diagnosis),
+  );
+
+  const previousSummary = current?.summary;
+  const byPrimaryStatus = { ...(previousSummary?.by_primary_status ?? {}) };
+  const previousPrimary = existing?.status?.primary;
+  const nextPrimary = event.diagnosis.status?.primary;
+  if (previousPrimary) {
+    byPrimaryStatus[previousPrimary] = (byPrimaryStatus[previousPrimary] ?? 0) - 1;
+    if (byPrimaryStatus[previousPrimary] <= 0) {
+      delete byPrimaryStatus[previousPrimary];
+    }
+  }
+  if (nextPrimary) {
+    byPrimaryStatus[nextPrimary] = (byPrimaryStatus[nextPrimary] ?? 0) + 1;
+  }
+
+  const previousTerminal = existing?.status?.terminal === true;
+  const nextTerminal = event.diagnosis.status?.terminal === true;
+  const terminalCount = Math.max(0, (previousSummary?.terminal_count ?? 0)
+    - (previousTerminal ? 1 : 0) + (nextTerminal ? 1 : 0));
+  const previousTradeId = existing?.trade?.trade_id;
+  const nextTradeId = event.diagnosis.trade?.trade_id;
+  const knownTradeIds = new Set(previousSymbols.flatMap((diagnosis) => {
+    const tradeId = diagnosis.trade?.trade_id;
+    return typeof tradeId === 'string' && tradeId.length > 0 ? [tradeId] : [];
+  }));
+  const addedTrade = typeof nextTradeId === 'string' && nextTradeId.length > 0 &&
+    nextTradeId !== previousTradeId && !knownTradeIds.has(nextTradeId);
+  const tradeCount = (previousSummary?.trade_count ?? 0) + (addedTrade ? 1 : 0);
+  const reasonCounts: Record<string, number> = {};
+  for (const reason of previousSummary?.no_trade_reasons ?? []) {
+    reasonCounts[reason.code] = reason.count;
+  }
+  adjustDiagnosisReasonCounts(reasonCounts, existing, -1);
+  adjustDiagnosisReasonCounts(reasonCounts, event.diagnosis, 1);
+  const noTradeReasons = Object.entries(reasonCounts)
+    .filter(([, count]) => count > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([code, count]) => ({ code, count }));
+
+  const updated: OrderBookSignalDiagnostics = {
+    ...(current ?? {}),
+    schema_version: current?.schema_version ?? 'simulated_trading_diagnosis.v1',
+    selected_symbols: selectedSymbols,
+    symbols,
+    summary: {
+      ...(previousSummary ?? {}),
+      selected_count: Math.max(previousSummary?.selected_count ?? 0, selectedSymbols.length),
+      terminal_count: terminalCount,
+      trade_count: tradeCount,
+      by_primary_status: byPrimaryStatus,
+      no_trade_reasons: noTradeReasons,
+    },
+  };
+  const sessionId = event.session_id ?? current?.session_id;
+  const asOf = event.diagnosis.updated_at ?? current?.as_of;
+  if (sessionId !== undefined) {
+    updated.session_id = sessionId;
+  }
+  if (asOf !== undefined) {
+    updated.as_of = asOf;
+  }
+  return updated;
 }
 
 function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: number, perPage: number) {
@@ -795,8 +949,8 @@ export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: stri
     const onMessage = (event: MessageEvent) => {
       try {
         const payload = parseWebSocketPayload(event.data);
-        const type = payload?.type;
-        const data = payload?.data;
+        const type = payload?.type ?? payload?.event_type;
+        const data = payload?.data ?? payload;
 
         if (type === 'pong') {
           return;
@@ -807,6 +961,37 @@ export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: stri
           ? data.session_id
           : undefined;
         if (sessionId && eventSessionId && eventSessionId !== sessionId) {
+          return;
+        }
+
+        if (type === 'simulated_trading.symbol_diagnosis' && isRecord(data)) {
+          const diagnosisValue = data.diagnosis;
+          const symbol = typeof data.symbol === 'string'
+            ? data.symbol
+            : isRecord(diagnosisValue) && typeof diagnosisValue.symbol === 'string'
+              ? diagnosisValue.symbol
+              : '';
+          const sequence = typeof data.sequence === 'number' ? data.sequence : undefined;
+          if (symbol && sequence !== undefined && isRecord(diagnosisValue)) {
+            const diagnosis = {
+              ...diagnosisValue,
+              symbol,
+              sequence: typeof diagnosisValue.sequence === 'number'
+                ? diagnosisValue.sequence
+                : sequence,
+            } as SimulatedTradingSymbolDiagnosis;
+            const diagnosisEvent: SimulatedTradingDiagnosisEvent = {
+              event_type: type,
+              ...(eventSessionId ? { session_id: eventSessionId } : {}),
+              symbol,
+              sequence,
+              diagnosis,
+            };
+            const diagnosisQueryKey = ['simulated-trading-diagnosis', eventSessionId ?? sessionId];
+            queryClient.setQueryData<OrderBookSignalDiagnostics>(diagnosisQueryKey, (current) =>
+              applySimulatedTradingDiagnosisEvent(current, diagnosisEvent));
+            window.dispatchEvent(new CustomEvent('sim-trading-diagnosis-update', { detail: diagnosisEvent }));
+          }
           return;
         }
 
