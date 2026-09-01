@@ -127,8 +127,11 @@ int main() {
 
   // warm-up: insufficient history yields hold for indicator strategies.
   for (const char *strategy : {"sma", "ema", "rsi", "bollinger", "macd", "stochastic", "fibonacci"}) {
-    expectSignal(evaluateStrategySignal(strategy, linearSeries(100.0, 1.0, 3), params, false, 0),
-                 "hold", std::string(strategy) + " warm-up hold");
+    const auto warmup = evaluateStrategySignal(strategy, linearSeries(100.0, 1.0, 3), params,
+                                               false, 0);
+    expectSignal(warmup, "hold", std::string(strategy) + " warm-up hold");
+    expect(warmup.reason.find("warming up") != std::string::npos,
+           std::string(strategy) + " warm-up is explicitly reported");
   }
 
   // unknown strategies never trade.

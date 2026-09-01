@@ -115,6 +115,26 @@ int main() {
     std::cout << "PASS: transformer history is isolated per symbol" << std::endl;
   }
 
+  // Model input diagnostics are deterministic: every selected symbol has its
+  // own sequence and the transformer warm-up window is capped at 60 rows.
+  if (fe.transformer_feature_dim() != 353) {
+    std::cerr << "FAIL: transformer feature dimension is not 353" << std::endl;
+    all_passed = false;
+  }
+  for (int i = 0; i < 58; ++i) {
+    symbol_a.timestamp = i + 2;
+    fe.preprocess(symbol_a);
+  }
+  const auto a_sequence = fe.get_transformer_sequence("A-USD");
+  const auto b_sequence = fe.get_transformer_sequence("B-USD");
+  if (a_sequence.size() != 60 || b_sequence.size() != 2) {
+    std::cerr << "FAIL: transformer readiness sequence counts are not per-symbol and bounded"
+              << std::endl;
+    all_passed = false;
+  } else {
+    std::cout << "PASS: transformer input readiness is per-symbol and bounded" << std::endl;
+  }
+
   if (all_passed) {
     std::cout << "\nALL FEATURE ENGINEERING TESTS PASSED!" << std::endl;
     return 0;
