@@ -1,0 +1,34 @@
+
+===== 2026-08-22T23:12:54.410654-05:00 =====
+$ podman-compose down
+Error: no container with name or ID "t_63f7a4c5_cpp-backend_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_redis_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_db_1" found: no such container
+Error: no container with name or ID "t_63f7a4c5_frontend_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_frontend_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_cpp-backend_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_redis_1" found: no such container
+Error: no container with ID or name "t_63f7a4c5_db_1" found: no such container
+Error: no pod with name or ID pod_t_63f7a4c5 found: no such pod
+[exit=0]
+
+===== 2026-08-22T23:13:01.732119-05:00 =====
+$ podman ps -a --filter label=io.podman.compose.project=t_63f7a4c5 --format "{{.ID}} {{.Names}} {{.Status}} {{.Label \"io.podman.compose.service\"}}"
+[exit=0]
+
+===== 2026-08-22T23:13:01.899270-05:00 =====
+$ podman pod ps --format "{{.ID}} {{.Name}} {{.Status}}"
+cf9234f8b42c pod_trade Running
+31e884d6866f pod_arhida-cpp Running
+9d8b80ddbf74 pod_db Running
+7507e25982b7 pod_transform Running
+24c35e0e47e6 pod_cohida Running
+[exit=0]
+
+===== 2026-08-22T23:13:02.071160-05:00 =====
+$ curl -fsS --max-time 5 http://127.0.0.1:8081/health
+{"service":"trading-bot-cpp-backend","status":"healthy","version":"0.1.0"}[exit=0]
+
+===== 2026-08-22T23:13:02.079664-05:00 =====
+$ curl -fsS --max-time 5 http://127.0.0.1:8081/api/trading/live/status
+{"account_managed_positions_count":0,"account_position_management":"disabled","available_balance_usd":99.80458336183851,"cash_balance":99.80458336183851,"cash_hold":0.0,"coinbase_unmanaged_positions_count":1,"current_capital":99.804603610055111,"initial_capital":99.804603610055111,"isActive":false,"is_active":false,"is_trading":false,"mode":"live","net_pnl":0.0,"open_positions_count":1,"order_book_signal_diagnostics":{"active_recent_signal_records":0,"contract":"Live order-book quotes request the full selected universe each worker iteration with no enforced symbol cap or cadence sleep; fan-out counts, fetch duration, estimated request rate, and warning-threshold crossings are logged for API-limit detection. total_signals is the current latest-by-symbol signal count, not cumulative signal history. execution_blocker_counts classifies recent generated signals before any live order submission so operators can distinguish signal quality, profitability, spot-only, cash, notional, pending-order, and explicit live-execution blockers.","coverage_complete":false,"current_batch_symbols":[],"current_latest_signal_count":0,"executable_order_intent_count":0,"execution_blocker_counts":{},"execution_expected_return_bucket_counts":{},"execution_strength_bucket_counts":{},"live_quote_symbols_per_tick_cap":0,"quote_attempted_symbol_count":0,"quote_fanout_limit_enforced":false,"quote_fanout_warning_threshold":10,"quote_skipped_symbol_count":0,"quote_success_symbol_count":0,"recent_signal_record_count":0,"requested_symbol_count":0},"pending_order_count":0,"pending_reserved_cash":0.0,"positions":{"ETH-USD":{"account_snapshot_at":"2026-08-23T04:12:06Z","account_snapshot_loaded":true,"account_snapshot_present":true,"current_price":2408.2600000000002,"eligible_for_strategy_management":true,"entry_price":2408.2600000000002,"entry_time":"2026-08-23T04:04:13Z","inherited_quantity":8.4078200000000004e-09,"managed_entry_price":0.0,"managed_quantity":0.0,"managed_quantity_floor_remaining":0.0,"management_state":"eligible_account_holding","pending_order_present":false,"pnl_percentage":0.0,"quantity":8.4078200000000004e-09,"reconciliation_status":"coinbase_confirmed","session_managed":false,"side":"buy","status":"coinbase","symbol":"ETH-USD","unrealized_pnl":0.0}},"realized_pnl":0.0,"recent_signals":[],"recent_trades":[],"session_id":"","session_managed_positions_count":0,"started_at":"","stats":{"avg_loss":0.0,"avg_trade_size":0.0,"avg_win":0.0,"best_trade":0.0,"last_trade_time":"","losing_trades":0,"max_drawdown":0.0,"net_pnl":0.0,"profit_factor":0.0,"sharpe_ratio":0.0,"total_fees":0.0,"total_pnl":0.0,"total_trades":0,"total_volume":0.0,"trades_today":0,"win_rate":0.0,"winning_trades":0,"worst_trade":0.0},"status":"stopped","strategy_type":"orderbook","symbols":[],"tick":0,"total_balance_usd":99.804603610055111,"total_fees":0.0,"total_positions_exposure":2.0248216593200003e-05,"total_positions_value":2.0248216593200003e-05,"total_value":99.804603610055111,"trades":[],"unrealized_pnl":0.0,"updated_at":""}[exit=0]
