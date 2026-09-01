@@ -26,6 +26,10 @@ struct CoinbasePortfolioSnapshot {
   std::vector<CoinbaseHolding> holdings;
 };
 
+// Convert an account asset symbol to the Coinbase USD product id used by
+// live positions. Preserve an already-qualified product id.
+std::string coinbaseProductIdForAsset(const std::string &asset);
+
 CoinbasePortfolioSnapshot buildCoinbasePortfolioSnapshot(
     const std::vector<exchange::AccountBalance> &accounts,
     const std::map<std::string, double> &prices_usd);

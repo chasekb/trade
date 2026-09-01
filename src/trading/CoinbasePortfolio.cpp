@@ -6,6 +6,13 @@
 namespace trade {
 namespace trading {
 
+std::string coinbaseProductIdForAsset(const std::string &asset) {
+  if (asset.empty() || asset.find('-') != std::string::npos) {
+    return asset;
+  }
+  return asset + "-USD";
+}
+
 CoinbasePortfolioSnapshot buildCoinbasePortfolioSnapshot(
     const std::vector<exchange::AccountBalance> &accounts,
     const std::map<std::string, double> &prices_usd) {

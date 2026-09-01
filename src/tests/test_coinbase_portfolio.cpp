@@ -10,6 +10,14 @@ bool close(double left, double right) { return std::abs(left - right) < 1e-9; }
 int main() {
   using trade::exchange::AccountBalance;
   using trade::trading::buildCoinbasePortfolioSnapshot;
+  using trade::trading::coinbaseProductIdForAsset;
+
+  if (coinbaseProductIdForAsset("BTC") != "BTC-USD" ||
+      coinbaseProductIdForAsset("BTC-USD") != "BTC-USD" ||
+      !coinbaseProductIdForAsset("").empty()) {
+    std::cerr << "Coinbase asset symbols were not converted to product ids correctly" << std::endl;
+    return 1;
+  }
 
   const std::vector<AccountBalance> accounts = {
       {"USD", 9.5, 0.25}, {"USDC", 0.5, 0.0}, {"BTC", 0.0006, 0.0002},
