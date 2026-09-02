@@ -394,6 +394,9 @@ void LiveTradingService::ensureSchema() {
 
 
 double LiveTradingService::positionSizeUsdForSignal(const SignalRecord &signal) const {
+  if (!signal.diagnostics.actionable || signal.diagnostics.report_only) {
+    return 0.0;
+  }
   const double pct = parameters_.isMember("position_size_percent")
                          ? parameters_["position_size_percent"].asDouble()
                          : 1.0;
@@ -534,7 +537,49 @@ Json::Value LiveTradingService::signalToJson(const SignalRecord &signal) const {
   out["ml_analysis"] = signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
   out["strength_composition"] = signal.payload.get("strength_composition", Json::Value(Json::objectValue));
   out["execution_analysis"] = signal.payload.get("execution_analysis", Json::Value(Json::objectValue));
+  out["diagnostics"] = diagnosticsToJson(signal.diagnostics);
   return out;
+}
+
+Json::Value LiveTradingService::diagnosticsToJson(
+    const NormalizedDiagnostics &diagnostics) const {
+  Json::Value out(Json::objectValue);
+  out["mode"] = toString(diagnostics.mode);
+  out["availability"] = toString(diagnostics.availability);
+  out["reason_code"] = toString(diagnostics.reason_code);
+  out["actionable"] = diagnostics.actionable;
+  out["report_only"] = diagnostics.report_only;
+  out["directional_expected_return"] = diagnostics.directional_expected_return_fraction;
+  out["required_edge"] = diagnostics.required_edge_fraction;
+  out["fee_adjusted_expected_return"] = diagnostics.fee_adjusted_expected_return_fraction;
+  out["reason"] = diagnostics.reason;
+  return out;
+}
+
+NormalizedDiagnostics LiveTradingService::normalizeSignalDiagnosticsLocked(
+    const SignalRecord &signal, DiagnosticsMode requested_mode) const {
+  const Json::Value ml = signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
+  DiagnosticsInput input;
+  input.strategy = strategy_;
+  input.signal_type = signal.signal_type;
+  input.signal_strength = signal.strength;
+  input.min_signal_strength = isOrderBookStrategy(strategy_)
+                                  ? paramNumber(parameters_, "min_orderbook_signal_strength",
+                                                kDefaultOrderBookMinSignalStrength)
+                                  : 0.0;
+  input.expected_return_available =
+      ml.get("expected_return_available", Json::Value(ml.isMember("expected_return"))).asBool();
+  input.expected_return_fraction = ml.get("expected_return", Json::Value(0.0)).asDouble();
+  input.spread_fraction = signal.mid_price > 0.0 ? signal.spread / signal.mid_price : 0.0;
+  input.round_trip_fee_fraction = paramNumber(parameters_, "round_trip_fee_percent",
+                                               kDefaultOrderBookRoundTripFeeFraction * 100.0) / 100.0;
+  input.slippage_buffer_fraction = paramNumber(parameters_, "slippage_buffer_percent",
+                                                 kDefaultOrderBookSlippageBufferFraction * 100.0) / 100.0;
+  input.diagnostic_timestamp_seconds = signal.timestamp;
+  input.now_seconds = nowEpochSeconds();
+  input.max_age_seconds = std::max<long long>(1, position_update_interval_ * 10);
+  input.requested_mode = requested_mode;
+  return normalizeDiagnostics(input);
 }
 
 Json::Value LiveTradingService::tradeToJson(const TradeRecord &trade) const {
@@ -993,6 +1038,8 @@ bool LiveTradingService::recoverPendingOrders() {
       intent.signal.best_ask = signal.get("best_ask", 0.0).asDouble();
       intent.signal.order_book_depth = signal.get("order_book_depth", 0).asInt();
       intent.signal.payload = signal.get("payload", Json::Value(Json::objectValue));
+      intent.signal.diagnostics = normalizeSignalDiagnosticsLocked(
+          intent.signal, DiagnosticsMode::Gate);
       intent.position.symbol = position.get("symbol", intent.product_id).asString();
       intent.position.side = position.get("side", "buy").asString();
       intent.position.quantity = position.get("quantity", 0.0).asDouble();
@@ -1054,6 +1101,17 @@ LiveTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
     }
     if (stop_dispatch) {
       break;
+    }
+    if (!intent.signal.diagnostics.actionable || intent.signal.diagnostics.report_only) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      pending_order_symbols_.erase(intent.product_id);
+      pending_reserved_cash_ = std::max(0.0, pending_reserved_cash_ - intent.reserved_cash);
+      dispatch_result.error = "live_diagnostics_blocked:" +
+                              toString(intent.signal.diagnostics.reason_code);
+      TR_LOG_WARN("Refusing live order for {}: {} [{}]", intent.product_id,
+                  intent.signal.diagnostics.reason,
+                  toString(intent.signal.diagnostics.reason_code));
+      continue;
     }
     const std::string client_order_id = randomClientOrderId();
     if (!persistSubmittedOrder(client_order_id, intent)) {
@@ -1818,10 +1876,17 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
   payload["trade_type"] = "live";
 
   signal.payload = payload;
+  signal.diagnostics = normalizeSignalDiagnosticsLocked(
+      signal, resolveDiagnosticsMode(strategy_, signal.signal_type));
+  signal.payload["diagnostics"] = diagnosticsToJson(signal.diagnostics);
   return signal;
 }
 
 bool LiveTradingService::signalPassesMlGateLocked(const SignalRecord &signal) const {
+  if (signal.signal_type != "hold" &&
+      (!signal.diagnostics.actionable || signal.diagnostics.report_only)) {
+    return false;
+  }
   if (strategy_ != "ml_enhanced_orderbook") {
     return true;
   }
@@ -2038,6 +2103,12 @@ void LiveTradingService::updateMarkToMarketLocked(
 
 void LiveTradingService::openPositionLocked(const SignalRecord &signal,
                                                  const std::string &reason) {
+  if (!signal.diagnostics.actionable || signal.diagnostics.report_only) {
+    TR_LOG_WARN("Blocking live entry for {}: {} [{}]", signal.symbol,
+                signal.diagnostics.reason,
+                toString(signal.diagnostics.reason_code));
+    return;
+  }
   if (account_managed_symbols_.count(signal.symbol) > 0 &&
       !accountPositionManagementAllowsEntriesLocked()) {
     return;
@@ -2099,6 +2170,12 @@ void LiveTradingService::openPositionLocked(const SignalRecord &signal,
 // DCA accumulation: grow an existing position and average the entry price.
 void LiveTradingService::addToPositionLocked(const SignalRecord &signal,
                                                   const std::string &reason) {
+  if (!signal.diagnostics.actionable || signal.diagnostics.report_only) {
+    TR_LOG_WARN("Blocking live position add for {}: {} [{}]", signal.symbol,
+                signal.diagnostics.reason,
+                toString(signal.diagnostics.reason_code));
+    return;
+  }
   if (pending_order_symbols_.count(signal.symbol) > 0) {
     return;
   }
@@ -2152,6 +2229,25 @@ void LiveTradingService::addToPositionLocked(const SignalRecord &signal,
 Json::Value LiveTradingService::closePositionLocked(const std::string &symbol,
                                                          const std::string &reason) {
   Json::Value result(Json::objectValue);
+  const SignalRecord *latest_signal = nullptr;
+  for (auto it = recent_signals_.rbegin(); it != recent_signals_.rend(); ++it) {
+    if (it->symbol == symbol) {
+      latest_signal = &(*it);
+      break;
+    }
+  }
+  if (latest_signal == nullptr || !latest_signal->diagnostics.actionable ||
+      latest_signal->diagnostics.report_only) {
+    result["status"] = "error";
+    result["error"] = "Live exit blocked because diagnostics are unavailable or not actionable";
+    result["blocker_reason"] = latest_signal == nullptr
+                                    ? "missing_diagnostic"
+                                    : toString(latest_signal->diagnostics.reason_code);
+    if (latest_signal != nullptr) {
+      result["diagnostics"] = diagnosticsToJson(latest_signal->diagnostics);
+    }
+    return result;
+  }
   auto it = positions_.find(symbol);
   if (it == positions_.end()) {
     result["status"] = "error";
@@ -2202,6 +2298,25 @@ Json::Value LiveTradingService::closePositionLocked(const std::string &symbol,
 Json::Value LiveTradingService::liquidateCoinbaseHoldingLocked(const std::string &symbol) {
   Json::Value result(Json::objectValue);
   result["symbol"] = symbol;
+  const SignalRecord *latest_signal = nullptr;
+  for (auto it = recent_signals_.rbegin(); it != recent_signals_.rend(); ++it) {
+    if (it->symbol == symbol) {
+      latest_signal = &(*it);
+      break;
+    }
+  }
+  if (latest_signal == nullptr || !latest_signal->diagnostics.actionable ||
+      latest_signal->diagnostics.report_only) {
+    result["status"] = "skipped";
+    result["reason"] = "Holding liquidation requires an actionable live diagnostic";
+    result["blocker_reason"] = latest_signal == nullptr
+                                    ? "missing_diagnostic"
+                                    : toString(latest_signal->diagnostics.reason_code);
+    if (latest_signal != nullptr) {
+      result["diagnostics"] = diagnosticsToJson(latest_signal->diagnostics);
+    }
+    return result;
+  }
 
   auto it = positions_.find(symbol);
   if (it == positions_.end()) {
