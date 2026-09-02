@@ -20,10 +20,11 @@ The implementation should use a distinct operation/action discriminator (for exa
 
 Relevant existing surfaces inspected:
 
-- `src/api/PredictController.cpp` and `include/api/PredictController.hpp`: live liquidation is exposed at `/api/trading/live/liquidate-holdings`.
-- `src/trading/LiveTradingService.cpp` and `include/trading/LiveTradingService.hpp`: account snapshots, available quantities, pending-symbol tracking, live execution gate, and order dispatch/state reconciliation live here.
-- `src/exchange/CoinbaseAdvancedClient.cpp` / `include/exchange/CoinbaseAdvancedClient.hpp`: market IOC placement supports quote-size buys, base-size sells, and caller-supplied client order IDs.
-- `src/exchange/CoinbaseOrder.cpp` / `include/exchange/CoinbaseOrder.hpp`: Coinbase quote minimum and terminal order-fill parsing are centralized here.
+- `src/trade_bot/trading/live_components/trade_executor.py`: the current live executor dispatches Coinbase market buys with `quote_size` and sells with `base_size`; it currently lacks the approval, idempotency, terminal-fill, and reconciliation gates required by this exception.
+- `src/trade_bot/core/trading_bot.py`: a second live execution surface also dispatches market buy/sell requests and records trade data; it must not inherit this exception through shared signal sizing.
+- `src/trade_bot/data/coinbase_portfolio_handler.py`: authenticated account/portfolio reads expose available balances and holdings; preflight must use authoritative Coinbase values and fail closed on unavailable credentials or read errors.
+- `src/trade_bot/data/data_provider.py` and `src/trade_bot/data/data_components/orderbook_handler.py`: quote/order-book data surfaces; freshness, crossed-book, and numeric validation are not an execution approval.
+- Repository inspection found no existing `/api/trading/live/liquidate-holdings` route or dedicated dust-close implementation in the current Python tree. The implementation must add a separate operation rather than assume that endpoint exists.
 
 ## 2. Required preflight snapshot
 
@@ -38,7 +39,7 @@ Required fields:
 - Best bid, best ask, computed mid, quote timestamp/age, and the source of the quote. Reject missing, zero, non-finite, crossed, or stale prices.
 - Available USD, total USD, and USD held/reserved. Available USD must be authoritative Coinbase account data, not simulated/session cash.
 - Account readiness/authenticated-account health, product/account permissions, and whether the account is restricted or in an error state.
-- Live-order enablement as resolved by the backend (`liveOrderExecutionEnabledLocked()`); this must be false for dry-run and true only for the separately controlled execution phase.
+- Live-order enablement as resolved by the backend runtime (currently live sessions are started through `src/trade_bot/web/web_routes/trading_routes.py` → `TradingHandlers.start_live_trading`); this must be false for dry-run and true only for the separately controlled execution phase. Do not treat construction of `LiveTradeExecutor` or presence of credentials as approval to execute.
 - Existing pending/open ETH-USD orders, plus any pending order symbols that could reserve ETH or USD. Require none for ETH-USD; abort on an inconclusive order-history lookup.
 - Existing one-time operation state: absent/unconsumed approval, no prior buy/sell intent in an executable state, and no active operation with the same idempotency key.
 - Fee schedule or configured fee assumption, spread estimate, slippage tolerance, timeout, and maximum total cost used for this run.
