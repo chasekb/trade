@@ -270,6 +270,38 @@ Json::Value makeDiagnosisSummary(const DiagnosisSummaryInput &input) {
     no_trade_reasons.append(item);
   }
   result["no_trade_reasons"] = no_trade_reasons;
+
+  // Prefer a specific order-preventing reason over the generic terminal
+  // status. The map iteration order provides a stable lexical tie-break while
+  // excluding valid HOLDs and reconciliation/session bookkeeping reasons.
+  std::string dominant_blocker_code;
+  std::size_t dominant_blocker_count = 0;
+  for (const auto &[code, count] : reasons) {
+    if (code == "signal_hold" || code == "gate_blocked" ||
+        code == "incomplete_reconciliation" || code == "session_error") {
+      continue;
+    }
+    if (count > dominant_blocker_count ||
+        (count == dominant_blocker_count &&
+         (dominant_blocker_code.empty() || code < dominant_blocker_code))) {
+      dominant_blocker_code = code;
+      dominant_blocker_count = count;
+    }
+  }
+  if (dominant_blocker_code.empty()) {
+    const auto generic_gate = reasons.find("gate_blocked");
+    if (generic_gate != reasons.end()) {
+      dominant_blocker_code = generic_gate->first;
+      dominant_blocker_count = generic_gate->second;
+    }
+  }
+  Json::Value dominant_blocker(Json::objectValue);
+  dominant_blocker["code"] = dominant_blocker_code.empty()
+                                  ? Json::Value(Json::nullValue)
+                                  : Json::Value(dominant_blocker_code);
+  dominant_blocker["count"] = static_cast<Json::UInt64>(dominant_blocker_count);
+  result["dominant_blocker"] = dominant_blocker;
+
   result["terminal_count"] = static_cast<Json::UInt64>(terminal_count);
   result["trade_count"] = static_cast<Json::UInt64>(input.trade_count);
 

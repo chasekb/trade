@@ -286,3 +286,9 @@ add_executable(test_simulated_trading_diagnosis
 target_include_directories(test_simulated_trading_diagnosis PRIVATE include)
 target_link_libraries(test_simulated_trading_diagnosis PRIVATE JsonCpp::JsonCpp)
 add_test(NAME simulated_trading_diagnosis COMMAND test_simulated_trading_diagnosis)
+
+add_executable(test_zero_trade_orderbook_fixture
+    src/tests/test_zero_trade_orderbook_fixture.cpp
+    src/trading/SimulatedTradingDiagnosis.cpp)
+target_include_directories(test_zero_trade_orderbook_fixture PRIVATE include)
+target_link_libraries(test_zero_trade_orderbook_fixture PRIVATE JsonCpp::JsonCpp)
