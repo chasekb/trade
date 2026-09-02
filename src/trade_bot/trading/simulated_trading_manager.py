@@ -16,6 +16,7 @@ from .trading_models import Position, Trade, Portfolio
 from .strategies.ml_enhanced_orderbook import MLEnhancedOrderBookStrategy
 from .strategies.orderbook import OrderBookStrategy
 from trade_bot.ml.model_manager import ModelManager
+from .reconciliation_diagnostics import ReconciliationDiagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,16 @@ class SimulatedTradingManager:
     
     def __init__(self, initial_balance: float = 10000.0, max_positions: int = 5, 
                  position_size_percent: float = 20.0, trading_fee: float = 0.001,
-                 db_manager=None, session_id: str = None, model_manager: ModelManager = None, config=None):
+                 db_manager=None, session_id: str = None, model_manager: ModelManager = None, config=None,
+                 diagnostics_enabled: bool = False, clock=None, data_provider=None):
         self.initial_balance = initial_balance
         self.config = config
         self.model_manager = model_manager
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.data_provider = data_provider
+        self.reconciliation_diagnostics = ReconciliationDiagnostics(
+            enabled=diagnostics_enabled, clock=self.clock
+        )
         self.max_positions = max_positions
         self.position_size_percent = position_size_percent / 100.0  # Convert to decimal
         self.trading_fee = trading_fee
@@ -337,6 +344,7 @@ class SimulatedTradingManager:
     def start_trading(self, symbols: List[str], position_size_percent: float = None, max_positions: int = None) -> None:
         """Start simulated trading for specified symbols."""
         self.symbols_to_trade = symbols
+        self.reconciliation_diagnostics.reset(self.symbols_to_trade)
         self.is_trading = True
         self.last_signal_check = datetime.now(timezone.utc)
         
@@ -405,11 +413,15 @@ class SimulatedTradingManager:
                 for symbol, position in positions_copy.items():
                     if position.status == 'open':
                         try:
-                            # Create a data provider for this symbol
-                            data_provider = CoinbaseDataProvider(symbol)
-                            
-                            # Get current orderbook data to extract current price
+                            # Reuse an injected provider in tests/controlled runs; retain
+                            # the existing per-symbol provider as the default.
+                            data_provider = self.data_provider or CoinbaseDataProvider(symbol)
+                            self.reconciliation_diagnostics.record_fetch_attempt(symbol)
+                            # Get current orderbook data to extract current price.
                             orderbook_data = await data_provider.get_order_book(level=1)
+                            self.reconciliation_diagnostics.record_fetch_result(
+                                symbol, True, observed_at=self.clock()
+                            )
                             
                             if orderbook_data and 'bids' in orderbook_data and 'asks' in orderbook_data:
                                 bids = orderbook_data['bids']
@@ -427,6 +439,7 @@ class SimulatedTradingManager:
                                     else:
                                         logger.warning(f"Invalid price for {symbol}: {current_price}")
                         except Exception as e:
+                            self.reconciliation_diagnostics.record_fetch_result(symbol, False)
                             logger.warning(f"Error updating price for {symbol}: {e}")
                             continue
             
@@ -579,11 +592,17 @@ class SimulatedTradingManager:
         executable_signals = []
         for signal in signals:
             symbol = signal.get('symbol')
+            self.reconciliation_diagnostics.record_signal(bool(signal.get('signal_generated', False)))
             # Broadcast signal immediately via WebSocket for real-time frontend updates
             self._broadcast_signal(signal)
 
             if self._should_process_signal(signal):
                 executable_signals.append(signal)
+                self.reconciliation_diagnostics.record_gate("passed")
+            else:
+                blocker = signal.get('blocker_reason') or "filtered"
+                self.reconciliation_diagnostics.record_gate(blocker)
+                self.reconciliation_diagnostics.record_blocker(blocker)
         
         # Sort signals based on prioritization
         def get_sort_key(signal):
@@ -755,6 +774,8 @@ class SimulatedTradingManager:
             model_confidence=signal.get('model_confidence')
         )
         self.trades.append(trade)
+        self.reconciliation_diagnostics.record_paper_intent()
+        self.reconciliation_diagnostics.record_fill()
         
         # Save and broadcast
         self._save_trade_to_db(trade)
@@ -806,6 +827,8 @@ class SimulatedTradingManager:
             model_confidence=signal.get('model_confidence')
         )
         self.trades.append(trade)
+        self.reconciliation_diagnostics.record_paper_intent()
+        self.reconciliation_diagnostics.record_fill()
 
         # Save and broadcast
         self._save_trade_to_db(trade)
@@ -832,6 +855,10 @@ class SimulatedTradingManager:
         if symbol in self.positions:
             self.positions[symbol].status = 'closed'
             logger.info(f"Closed position for {symbol}: {reason}")
+
+    def get_reconciliation_diagnostics(self) -> Dict[str, Any]:
+        """Return opt-in diagnostics without exposing trade or model payloads."""
+        return self.reconciliation_diagnostics.snapshot(self.clock())
 
     async def force_close_all_positions(self, reason: str = "Server shutdown") -> None:
         """Force close all open positions."""
