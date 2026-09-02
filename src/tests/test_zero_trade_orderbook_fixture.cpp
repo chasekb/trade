@@ -51,6 +51,7 @@ Json::Value replaySummary(const Json::Value &fixture) {
     input.symbols.push_back(record);
   }
   input.trade_count = fixture["stage_counts"]["persisted_trades"].asUInt();
+  input.stage_counts = fixture["stage_counts"];
   return makeDiagnosisSummary(input);
 }
 
@@ -96,6 +97,7 @@ int main() {
          "zero-trade execution and persistence results are explicit");
   expect(fixture["dominant_blocker"]["code"].asString() ==
                  "ml_confidence_below_threshold" &&
+             fixture["dominant_blocker"]["category"].asString() == "ml_gate" &&
              fixture["dominant_blocker"]["count"].asUInt() == 1115,
          "fixture identifies the ML confidence blocker without relaxing a gate");
 
@@ -170,6 +172,8 @@ int main() {
              !first["by_primary_status"].isMember("trade_open") &&
              !first["by_primary_status"].isMember("trade_completed"),
          "production reconciliation keeps terminal status categories distinct");
+  expect(first["stage_counts"] == fixture["stage_counts"],
+         "production reconciliation exposes all deterministic stage counts");
   expect(first["dominant_blocker"]["code"].asString() ==
                  "ml_confidence_below_threshold" &&
              first["dominant_blocker"]["count"].asUInt() == 1 &&

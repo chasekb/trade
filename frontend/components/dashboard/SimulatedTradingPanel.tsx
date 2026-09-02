@@ -32,40 +32,6 @@ type CoinbaseProduct = {
   id?: string;
 };
 
-function diagnosisReason(diagnosis: {
-  status?: {
-    primary?: string;
-    reason?: { code?: string; message?: string } | null;
-  };
-  gates?: Record<string, unknown>;
-}): string {
-  const statusReason = diagnosis.status?.reason;
-  if (diagnosis.status?.primary === 'gates_blocked') {
-    const gateReasons = Object.values(diagnosis.gates ?? {}).flatMap((gate) => {
-      if (!gate || typeof gate !== 'object') {
-        return [];
-      }
-      const reasons = (gate as { reasons?: unknown }).reasons;
-      if (!Array.isArray(reasons)) {
-        return [];
-      }
-      return reasons.flatMap((reason) => {
-        if (!reason || typeof reason !== 'object') {
-          return [];
-        }
-        const typedReason = reason as { code?: unknown; message?: unknown };
-        const code = typeof typedReason.code === 'string' ? typedReason.code : '';
-        const message = typeof typedReason.message === 'string' ? typedReason.message : '';
-        return code && message ? [`${code}: ${message}`] : code || message ? [code || message] : [];
-      });
-    });
-    if (gateReasons.length > 0) {
-      return gateReasons.join('; ');
-    }
-  }
-  return statusReason?.message || statusReason?.code || 'Awaiting evaluation';
-}
-
 // Trading Configuration Section
 function TradingConfiguration({
   strategy,
@@ -592,7 +558,6 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const {
     data: orderBookData,
     isLoading: isSignalsLoading,
-    isFetching: isSignalsFetching,
     error: signalsError,
     refetch: refetchSignals,
   } = useOrderBookSignals(
@@ -604,7 +569,11 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     'simulated',
     status.sessionId,
   );
-  const { data: diagnosisData } = useSimulatedTradingDiagnosis(status.isActive, status.sessionId);
+  const {
+    data: diagnosisData,
+    isLoading: isDiagnosisLoading,
+    error: diagnosisError,
+  } = useSimulatedTradingDiagnosis(status.isActive, status.sessionId);
   // The canonical session snapshot includes every selected symbol, including
   // symbols without a signal row. Prefer it over the signal endpoint's
   // compatibility/coverage projection when both requests are available.
@@ -826,86 +795,26 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           <CardTitle>Order Book Signals</CardTitle>
         </CardHeader>
         <CardContent>
-          {status.isActive && diagnosisSnapshot && (
-            <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-semibold text-slate-800">Per-symbol execution diagnosis</p>
-                <span className="text-xs text-slate-500">
-                  As of {diagnosisSnapshot.as_of
-                    ? new Date(diagnosisSnapshot.as_of).toLocaleString()
-                    : 'pending'}
-                </span>
-              </div>
-              {diagnosisSnapshot.summary?.message && (
-                <p className="mt-1 text-slate-700">{diagnosisSnapshot.summary.message}</p>
-              )}
-              <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-                <span>Selected: {diagnosisSnapshot.summary?.selected_count ?? diagnosisSnapshot.selected_symbol_count ?? 0}</span>
-                <span>Terminal: {diagnosisSnapshot.summary?.terminal_count ?? 0}</span>
-                <span>Trades: {diagnosisSnapshot.summary?.trade_count ?? 0}</span>
-                <span>Outcome: {diagnosisSnapshot.summary?.outcome ?? 'not yet determined'}</span>
-              </div>
-              {(diagnosisSnapshot.symbols?.length ?? 0) > 0 && (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-full text-xs">
-                    <thead>
-                      <tr className="text-left uppercase tracking-wide text-slate-500">
-                        <th className="px-2 py-1">Symbol</th>
-                        <th className="px-2 py-1">Status</th>
-                        <th className="px-2 py-1">Reason</th>
-                        <th className="px-2 py-1">Updated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {diagnosisSnapshot.symbols?.map((diagnosis) => (
-                        <tr key={diagnosis.symbol} className="border-t border-slate-200">
-                          <td className="px-2 py-1 font-medium">{diagnosis.symbol}</td>
-                          <td className="px-2 py-1">{diagnosis.status?.primary ?? 'pending'}</td>
-                          <td className="px-2 py-1">{diagnosisReason(diagnosis)}</td>
-                          <td className="px-2 py-1 text-slate-500">
-                            {diagnosis.updated_at ? new Date(diagnosis.updated_at).toLocaleString() : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
           {!status.isActive ? (
             <div className="text-center py-8 text-gray-500" role="status">
               <p>Start trading to see order book signals for the selected symbols.</p>
             </div>
-          ) : isSignalsLoading || (isSignalsFetching && !orderBookData) ? (
-            <div className="text-center py-8" role="status">
-              <p>Loading order book signals...</p>
-            </div>
-          ) : signalsError ? (
-            <div className="text-center py-8 text-red-600" role="alert">
-              <p>Failed to load order book signals.</p>
-              <p className="mt-1 text-sm">{signalsError instanceof Error ? signalsError.message : 'Unknown request error'}</p>
-              <Button className="mt-3" variant="secondary" size="sm" onClick={() => void refetchSignals()}>
-                Refresh signals
-              </Button>
-            </div>
-          ) : !orderBookData || signalsToDisplay.length === 0 ? (
-            <div className="text-center py-8 text-gray-500" role="status">
-              <p>No order book signals are available for the active symbol universe yet.</p>
-              {isSignalsFetching && <p className="mt-1 text-sm">Refreshing signals...</p>}
-            </div>
           ) : (
-            <>
-              <OrderBookSignalsTable
-                signals={signalsToDisplay}
-                pagination={orderBookData.pagination}
-                currentPage={currentPage}
-                pageSize={pageSize}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
-                summary={signalsSummary}
-              />
-            </>
+            <OrderBookSignalsTable
+              signals={signalsToDisplay}
+              selectedSymbols={activeSymbols}
+              viewModel={orderBookData?.view_model}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+              diagnosis={diagnosisSnapshot}
+              pagination={orderBookData?.pagination}
+              summary={{ ...signalsSummary, ...(diagnosisSnapshot ? { diagnostics: diagnosisSnapshot } : {}) }}
+              loading={isSignalsLoading || (isDiagnosisLoading && !diagnosisSnapshot)}
+              error={signalsError || diagnosisError}
+              onRetry={() => { void refetchSignals(); }}
+            />
           )}
         </CardContent>
       </Card>

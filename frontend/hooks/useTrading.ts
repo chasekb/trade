@@ -8,7 +8,16 @@ import {
   OrderBookSignalDiagnostics,
   SimulatedTradingDiagnosisSummary,
   SimulatedTradingSymbolDiagnosis,
+  OrderBookSignalsResponse,
 } from '@/types/trading';
+import {
+  mergeOrderBookSignalEvent,
+  reconcileOrderBookSignals,
+  reconcileOrderBookSignalDiagnostics,
+  projectOrderBookSignalPage,
+  OrderBookSignalEvent,
+  OrderBookSignalsViewModel,
+} from '@/lib/orderBookSignalsViewModel';
 
 type TradingParameterValue = string | number | boolean | undefined;
 type TradingParameters = Record<string, TradingParameterValue>;
@@ -78,23 +87,8 @@ export function normalizeTradingStatusPayload(
   };
 }
 
-type OrderBookSignalsData = {
-  signals: OrderBookSignal[];
-  pagination?: {
-    current_page?: number;
-    page?: number;
-    per_page?: number;
-    limit?: number;
-    total_signals?: number;
-    total_pages?: number;
-    has_next?: boolean;
-    has_prev?: boolean;
-  };
-  total_analyzed?: number;
-  active_signals?: number;
-  last_updated?: string;
-  average_strength?: number;
-  diagnostics?: OrderBookSignalDiagnostics;
+type OrderBookSignalsData = OrderBookSignalsResponse & {
+  view_model?: OrderBookSignalsViewModel;
 };
 
 type WebSocketPayload = {
@@ -200,13 +194,15 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
         if (variables.mode === 'simulated') {
           queryClient.removeQueries({ queryKey: ['simulated-trading-stats'] });
           queryClient.removeQueries({ queryKey: ['orderbook-signals', variables.mode] });
+          queryClient.removeQueries({ queryKey: ['simulated-trading-diagnosis'] });
         }
+        const startedSessionId = responseData.session_id ?? responseData.data?.session_id;
         setStatus({
           isActive: true,
           mode: variables.mode,
           strategy: variables.strategy,
           symbols: variables.symbols,
-          ...(responseData.session_id ? { sessionId: responseData.session_id } : {}),
+          ...(startedSessionId ? { sessionId: startedSessionId } : {}),
         });
 
         queryClient.setQueryData(['trading-status', mode], responseData);
@@ -251,6 +247,7 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
         if (mode === 'simulated') {
           queryClient.removeQueries({ queryKey: ['simulated-trading-stats'] });
           queryClient.removeQueries({ queryKey: ['orderbook-signals', mode] });
+          queryClient.removeQueries({ queryKey: ['simulated-trading-diagnosis'] });
         }
         if (mode === 'simulated') {
           queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
@@ -537,9 +534,22 @@ export function applySimulatedTradingDiagnosisEvent(
   return updated;
 }
 
-function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: number, perPage: number) {
+function mergeOrderBookSignalResponses(
+  responses: OrderBookSignalsData[],
+  page: number,
+  perPage: number,
+  selectedSymbols: string[] = [],
+  sessionId?: string,
+) {
   const normalizedResponses = responses.filter(Boolean);
-  const allSignals = normalizedResponses.flatMap((response) => response.signals ?? []);
+  const signalBySymbol = new Map<string, OrderBookSignal>();
+  normalizedResponses.flatMap((response) => response.signals ?? []).forEach((signal) => {
+    const existing = signalBySymbol.get(signal.symbol);
+    if (!existing || new Date(signal.timestamp).getTime() > new Date(existing.timestamp).getTime()) {
+      signalBySymbol.set(signal.symbol, signal);
+    }
+  });
+  const allSignals = Array.from(signalBySymbol.values());
   allSignals.sort((left, right) => {
     const strengthDiff = (right.signal_strength ?? 0) - (left.signal_strength ?? 0);
     if (strengthDiff !== 0) {
@@ -555,10 +565,6 @@ function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: 
   });
 
   const total = allSignals.length;
-  const totalPages = total === 0 ? 0 : Math.ceil(total / perPage);
-  const currentPage = Math.max(1, page);
-  const startIndex = (currentPage - 1) * perPage;
-  const pageSignals = allSignals.slice(startIndex, startIndex + perPage);
 
   const lastUpdated = responses.reduce((latest, response) => {
     if (!response.last_updated) {
@@ -625,21 +631,30 @@ function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: 
     coverage_complete: (merged.coverage_complete ?? true) && (current.coverage_complete ?? true),
   } as OrderBookSignalDiagnostics), {} as OrderBookSignalDiagnostics);
 
+  const viewModel = reconcileOrderBookSignals({
+    ...(sessionId ? { sessionId } : {}),
+    ...(selectedSymbols.length > 0 ? { selectedSymbols } : {}),
+    ...(diagnostics ? { diagnosis: diagnostics } : {}),
+    signals: allSignals,
+  });
+  const projected = projectOrderBookSignalPage(viewModel, page, perPage);
+
   return {
-    signals: pageSignals,
+    signals: projected.signals,
     pagination: {
-      page: currentPage,
-      limit: perPage,
-      total,
-      total_pages: totalPages,
-      has_next: currentPage < totalPages,
-      has_prev: currentPage > 1,
+      page: projected.pagination.page,
+      limit: projected.pagination.perPage,
+      total: projected.pagination.total,
+      total_pages: projected.pagination.totalPages,
+      has_next: projected.pagination.hasNext,
+      has_prev: projected.pagination.hasPrevious,
     },
     total_analyzed: totalAnalyzed,
     active_signals: activeSignals,
     last_updated: lastUpdated,
     average_strength: averageStrength,
     ...(diagnostics ? { diagnostics } : {}),
+    view_model: viewModel,
   };
 }
 
@@ -656,6 +671,7 @@ export function useOrderBookSignals(
   // Enable query when trading is active, even if symbols aren't loaded yet
   // This allows WebSocket updates to populate the widget immediately
   const isEnabled = enabled;
+  const queryClient = useQueryClient();
   const requestSymbols = symbols && symbols.length > 0
     ? Array.from(new Set(symbols)).sort()
     : undefined;
@@ -694,8 +710,28 @@ export function useOrderBookSignals(
             .map((response) => response.data)
             .filter((data): data is OrderBookSignalsData => Boolean(data)),
           page,
-          perPage
+          perPage,
+          requestSymbols ?? [],
+          sessionId,
         );
+        const cachedDiagnosis = queryClient.getQueryData<OrderBookSignalDiagnostics>([
+          'simulated-trading-diagnosis', sessionId,
+        ]);
+        if (cachedDiagnosis) {
+          merged.diagnostics = merged.diagnostics
+            ? reconcileOrderBookSignalDiagnostics(cachedDiagnosis, merged.diagnostics)
+            : cachedDiagnosis;
+        }
+        const previous = queryClient.getQueryData<OrderBookSignalsData>([
+          'orderbook-signals', mode, requestSymbols, page, perPage, strategy, sessionId,
+        ]);
+        merged.view_model = reconcileOrderBookSignals({
+          ...(sessionId ? { sessionId } : {}),
+          selectedSymbols: requestSymbols ?? [],
+          ...(merged.diagnostics ? { diagnosis: merged.diagnostics } : {}),
+          signals: merged.view_model.rows.flatMap((row) => row.signal ? [row.signal] : []),
+          ...(previous?.view_model ? { previous: previous.view_model } : {}),
+        });
         if (failedChunks.length > 0) {
           merged.diagnostics = {
             ...(merged.diagnostics ?? {}),
@@ -703,17 +739,67 @@ export function useOrderBookSignals(
             failed_request_symbols: failedChunks,
             coverage_complete: false,
           };
+          merged.view_model = reconcileOrderBookSignals({
+            ...(sessionId ? { sessionId } : {}),
+            selectedSymbols: requestSymbols ?? [],
+            ...(merged.diagnostics ? { diagnosis: merged.diagnostics } : {}),
+            signals: merged.view_model.rows.flatMap((row) => row.signal ? [row.signal] : []),
+            ...(previous?.view_model ? { previous: previous.view_model } : {}),
+            failedSymbols: failedChunks,
+          });
         }
-        return merged;
+        return {
+          ...merged,
+          diagnostics: merged.view_model.diagnostics ?? merged.diagnostics,
+        };
       }
 
+      const requestPage = requestSymbols && requestSymbols.length > perPage
+        ? { page: 1, per_page: requestSymbols.length }
+        : { page, per_page: perPage };
       const response = await (sessionId
-        ? apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode, sessionId)
-        : apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode));
+        ? apiClient.getOrderBookSignals(requestSymbols, requestPage, mode, sessionId)
+        : apiClient.getOrderBookSignals(requestSymbols, requestPage, mode));
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch order book signals');
       }
-      return response.data;
+      if (!response.data) {
+        throw new Error('Order-book signal response was empty');
+      }
+      const previous = queryClient.getQueryData<OrderBookSignalsData>([
+        'orderbook-signals', mode, requestSymbols, page, perPage, strategy, sessionId,
+      ]);
+      const cachedDiagnosis = queryClient.getQueryData<OrderBookSignalDiagnostics>([
+        'simulated-trading-diagnosis', sessionId,
+      ]);
+      const responseDiagnosis = response.data.diagnostics
+        ? cachedDiagnosis
+          ? reconcileOrderBookSignalDiagnostics(cachedDiagnosis, response.data.diagnostics)
+          : response.data.diagnostics
+        : cachedDiagnosis;
+      const viewModel = reconcileOrderBookSignals({
+        ...(sessionId ? { sessionId } : {}),
+        selectedSymbols: requestSymbols ?? [],
+        ...(responseDiagnosis ? { diagnosis: responseDiagnosis } : {}),
+        signals: response.data.signals ?? [],
+        ...(previous?.view_model ? { previous: previous.view_model } : {}),
+      });
+      const projected = projectOrderBookSignalPage(viewModel, page, perPage);
+      return {
+        ...response.data,
+        signals: projected.signals,
+        pagination: {
+          ...(response.data.pagination ?? {}),
+          page: projected.pagination.page,
+          limit: projected.pagination.perPage,
+          total: projected.pagination.total,
+          total_pages: projected.pagination.totalPages,
+          has_next: projected.pagination.hasNext,
+          has_prev: projected.pagination.hasPrevious,
+        },
+        ...(viewModel.diagnostics ? { diagnostics: viewModel.diagnostics } : {}),
+        view_model: viewModel,
+      };
     },
     enabled: isEnabled,
     staleTime: 3000, // Consider data fresh for 3 seconds
@@ -777,14 +863,20 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
 }
 
 export function useSimulatedTradingDiagnosis(enabled: boolean = true, sessionId?: string) {
+  const queryClient = useQueryClient();
+  const diagnosisQueryKey = ['simulated-trading-diagnosis', sessionId];
   return useQuery({
-    queryKey: ['simulated-trading-diagnosis', sessionId],
+    queryKey: diagnosisQueryKey,
     queryFn: async () => {
       const response = await apiClient.getSimulatedTradingDiagnosis(sessionId);
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch simulated trading diagnosis');
       }
-      return response.data ?? undefined;
+      const incoming = response.data ?? undefined;
+      const previous = queryClient.getQueryData<OrderBookSignalDiagnostics>(diagnosisQueryKey);
+      return incoming
+        ? reconcileOrderBookSignalDiagnostics(previous, incoming)
+        : previous;
     },
     enabled,
     staleTime: 2 * 1000,
@@ -799,8 +891,9 @@ export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: stri
   const [connected, setConnected] = useState(false);
   const queryClient = useQueryClient();
 
-  // Apply every incoming signal to the display cache immediately. Coinbase
-  // pacing is enforced server-side; the UI must not throttle signal updates.
+  // Apply every incoming signal to the canonical cache immediately. The
+  // visible page is only a projection, so page 2+ and diagnosis-only rows are
+  // not lost when a WebSocket event arrives.
   const applySignals = useCallback((incomingSignals: OrderBookSignal[]) => {
     if (incomingSignals.length === 0) {
       return;
@@ -816,10 +909,7 @@ export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: stri
       const querySymbols = queryKey[2] as string[] | undefined;
       const querySessionId = queryKey[6] as string | undefined;
       const page = queryKey[3] as number;
-
-      if (page !== 1) {
-        return;
-      }
+      const perPage = queryKey[4] as number;
 
       const relevantSignals = incomingSignals.filter((signal) =>
         (!querySymbols || querySymbols.length === 0 || querySymbols.includes(signal.symbol)) &&
@@ -830,22 +920,25 @@ export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: stri
       }
 
       queryClient.setQueryData<OrderBookSignalsData>(queryKey, (oldData) => {
-        const currentSignals = oldData?.signals || [];
-
-        // Merge by symbol, keeping whichever signal has the freshest timestamp
-        const signalMap = new Map<string, OrderBookSignal>();
-        currentSignals.forEach((s: OrderBookSignal) => signalMap.set(s.symbol, s));
-        relevantSignals.forEach((signal) => {
-          const existingSignal = signalMap.get(signal.symbol);
-          if (!existingSignal || new Date(signal.timestamp) > new Date(existingSignal.timestamp)) {
-            signalMap.set(signal.symbol, signal);
-          }
+        const currentModel = oldData?.view_model ?? reconcileOrderBookSignals({
+          ...(querySessionId ? { sessionId: querySessionId } : {}),
+          ...(querySymbols ? { selectedSymbols: querySymbols } : {}),
+          ...(oldData?.diagnostics ? { diagnosis: oldData.diagnostics } : {}),
+          signals: oldData?.signals ?? [],
         });
-
-        const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-        const latestTimestamp = updatedSignals.reduce((latest, signal) => {
+        const updatedModel = relevantSignals.reduce((model, signal) => {
+          const event: OrderBookSignalEvent = {
+            ...(querySessionId ? { sessionId: querySessionId } : {}),
+            ...(signal.sequence !== undefined ? { sequence: signal.sequence } : {}),
+            ...(signal.event_id ? { eventId: signal.event_id } : {}),
+            signal,
+          };
+          return mergeOrderBookSignalEvent(model, event);
+        }, currentModel);
+        const canonicalSignals = updatedModel.rows
+          .flatMap((row) => row.signal ? [row.signal] : []);
+        const projected = projectOrderBookSignalPage(updatedModel, page, perPage);
+        const latestTimestamp = canonicalSignals.reduce((latest, signal) => {
           return !latest || new Date(signal.timestamp).getTime() > new Date(latest).getTime()
             ? signal.timestamp
             : latest;
@@ -853,36 +946,41 @@ export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: stri
 
         if (!oldData) {
           return {
-            signals: updatedSignals,
-            total_analyzed: updatedSignals.length,
-            active_signals: updatedSignals.filter(s => s.signal_generated).length,
-            average_strength: updatedSignals.length === 0
+            signals: projected.signals,
+            total_analyzed: updatedModel.rows.length,
+            active_signals: updatedModel.counts.activeSignals,
+            average_strength: canonicalSignals.length === 0
               ? 0
-              : updatedSignals.reduce((sum, s) => sum + (s.signal_strength ?? 0), 0) / updatedSignals.length,
+              : canonicalSignals.reduce((sum, s) => sum + (s.signal_strength ?? 0), 0) / canonicalSignals.length,
             last_updated: latestTimestamp,
             pagination: {
-              current_page: 1,
-              per_page: 100, // Default to larger page size for live view
-              total_signals: updatedSignals.length,
-              total_pages: 1,
-              has_next: false,
-              has_prev: false
-            }
+              current_page: projected.pagination.page,
+              per_page: projected.pagination.perPage,
+              total_signals: projected.pagination.total,
+              total_pages: projected.pagination.totalPages,
+              has_next: projected.pagination.hasNext,
+              has_prev: projected.pagination.hasPrevious,
+            },
+            view_model: updatedModel,
           };
         }
 
         return {
           ...oldData,
-          signals: updatedSignals,
-          total_analyzed: updatedSignals.length,
-          active_signals: updatedSignals.filter(s => s.signal_generated).length,
+          signals: projected.signals,
+          total_analyzed: updatedModel.rows.length,
+          active_signals: updatedModel.counts.activeSignals,
           last_updated: latestTimestamp,
           pagination: {
             ...oldData.pagination,
-            total_signals: updatedSignals.length,
-            // Update total pages based on current per_page setting
-            total_pages: Math.ceil(updatedSignals.length / (oldData.pagination?.per_page || 10))
-          }
+            total_signals: projected.pagination.total,
+            current_page: projected.pagination.page,
+            per_page: projected.pagination.perPage,
+            total_pages: projected.pagination.totalPages,
+            has_next: projected.pagination.hasNext,
+            has_prev: projected.pagination.hasPrevious,
+          },
+          view_model: updatedModel,
         };
       });
     });
@@ -988,8 +1086,43 @@ export function useSimTradingWebSocket(enabled: boolean = true, sessionId?: stri
               diagnosis,
             };
             const diagnosisQueryKey = ['simulated-trading-diagnosis', eventSessionId ?? sessionId];
-            queryClient.setQueryData<OrderBookSignalDiagnostics>(diagnosisQueryKey, (current) =>
-              applySimulatedTradingDiagnosisEvent(current, diagnosisEvent));
+            const nextDiagnosis = queryClient.setQueryData<OrderBookSignalDiagnostics | undefined>(
+              diagnosisQueryKey,
+              (current) => applySimulatedTradingDiagnosisEvent(current, diagnosisEvent),
+            );
+            if (nextDiagnosis) {
+              queryClient.getQueryCache().getAll()
+                .filter((query) => query.queryKey[0] === 'orderbook-signals' && query.queryKey[1] === 'simulated')
+                .forEach((query) => {
+                  const queryKey = query.queryKey;
+                  const querySessionId = queryKey[6] as string | undefined;
+                  if (querySessionId && eventSessionId && querySessionId !== eventSessionId) return;
+                  queryClient.setQueryData<OrderBookSignalsData>(queryKey, (oldData) => {
+                    if (!oldData) return oldData;
+                    const querySymbols = queryKey[2] as string[] | undefined;
+                    const currentModel = oldData.view_model ?? reconcileOrderBookSignals({
+                      ...(querySessionId ? { sessionId: querySessionId } : {}),
+                      ...(querySymbols ? { selectedSymbols: querySymbols } : {}),
+                      ...(oldData.diagnostics ? { diagnosis: oldData.diagnostics } : {}),
+                      signals: oldData.signals ?? [],
+                    });
+                    const model = reconcileOrderBookSignals({
+                      ...(querySessionId ? { sessionId: querySessionId } : {}),
+                      selectedSymbols: currentModel.selectedSymbols,
+                      diagnosis: nextDiagnosis,
+                      signals: currentModel.rows.flatMap((row) => row.signal ? [row.signal] : []),
+                      previous: currentModel,
+                    });
+                    return {
+                      ...oldData,
+                      diagnostics: nextDiagnosis,
+                      view_model: model,
+                      total_analyzed: model.rows.length,
+                      active_signals: model.counts.activeSignals,
+                    };
+                  });
+                });
+            }
             window.dispatchEvent(new CustomEvent('sim-trading-diagnosis-update', { detail: diagnosisEvent }));
           }
           return;

@@ -47,6 +47,11 @@ constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kTransformerLookback = 60;
 constexpr std::size_t kTransformerFeatureWidth = 353;
 constexpr std::size_t kMaxRecentTrades = 100;
+// Public Coinbase order books are one request per product. Keep each worker
+// iteration bounded and rotate the selected universe instead of blocking one
+// simulated tick on a full-universe sweep. Requests within a batch remain
+// sequential, so this does not increase provider request concurrency.
+constexpr std::size_t kLiveQuoteSymbolsPerTick = 8;
 
 constexpr double kDefaultInitialCapital = 10000.0;
 
@@ -76,6 +81,8 @@ Json::Value makeSafeExecutionError(const std::string &code, const int attempts,
 
 std::string formatNowIsoUtc() {
   const auto now = std::chrono::system_clock::now();
+  const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()) % 1000;
   const auto t = std::chrono::system_clock::to_time_t(now);
   std::tm tm{};
 #ifdef _WIN32
@@ -84,7 +91,8 @@ std::string formatNowIsoUtc() {
   gmtime_r(&t, &tm);
 #endif
   std::ostringstream oss;
-  oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+  oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S") << '.'
+      << std::setfill('0') << std::setw(3) << millis.count() << 'Z';
   return oss.str();
 }
 
@@ -482,6 +490,7 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
 }
 
 Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) const {
+  const auto serialization_started = std::chrono::steady_clock::now();
   Json::Value out;
   out["signal_id"] = signal.signal_id;
   out["session_id"] = signal.session_id;
@@ -507,6 +516,11 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   out["strength_composition"] = signal.payload.get("strength_composition", Json::Value(Json::objectValue));
   out["execution_analysis"] =
       signal.payload.get("execution_analysis", Json::Value(Json::objectValue));
+  if (signal.payload.isMember("cadence")) {
+    out["cadence"] = signal.payload["cadence"];
+  }
+  cadence_diagnostics_.recordSerialization(std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - serialization_started).count());
   return out;
 }
 
@@ -660,6 +674,7 @@ void SimulatedTradingService::queueSignalWriteLocked(const SignalRecord &signal)
 
 void SimulatedTradingService::queueTradeWriteLocked(const TradeRecord &trade) {
   pending_trade_writes_.push_back(trade);
+  ++simulated_fills_;
   session_trade_inputs_.push_back(TradePerformanceInput{
       trade.pnl, trade.fees, trade.quantity, trade.price, trade.timestamp_iso});
 }
@@ -790,6 +805,11 @@ void SimulatedTradingService::applyLiveFillLocked(const OrderIntent &intent,
 
   total_fees_ += fill.total_fees;
   queueTradeWriteLocked(trade);
+  if (intent.action == "close") {
+    ++trade_completed_events_;
+  } else {
+    ++trade_open_events_;
+  }
   recent_trades_.push_back(trade);
   auto &diagnosis = diagnosisForSymbolLocked(intent.product_id);
   diagnosis["execution"]["state"] = "filled";
@@ -938,6 +958,7 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
   }
 
   for (const auto &symbol : symbols) {
+    const auto request_started = std::chrono::steady_clock::now();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_requested_ || shutdown_requested_) {
@@ -967,6 +988,16 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
     if (!fetched) {
       const std::string category = classifyMarketDataErrorCode(error);
       const int retries = std::max(0, attempts - 1);
+      const double request_elapsed_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - request_started).count();
+      cadence_diagnostics_.recordQuoteRequest(category, attempts, request_elapsed_ms);
+      cadence_diagnostics_.recordError("quote_request", category, attempts, nowIsoUtc());
+      Json::Value cadence = cadence_diagnostics_.correlationFor(symbol, "dropped");
+      if (!cadence.empty()) {
+        cadence["attempt"] = attempts;
+        cadence["attempts"] = attempts;
+        cadence["reason"] = category;
+      }
       int http_status = 0;
       const auto http_pos = error.find("HTTP ");
       if (category == "exchange_response" && http_pos != std::string::npos) {
@@ -980,6 +1011,7 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
       const std::string safe_error = safeMarketDataErrorMessage(category);
       {
         std::lock_guard<std::mutex> lock(mutex_);
+        ++quote_failures_;
         auto &status = market_data_status_[symbol];
         status.status = "failed";
         status.category = category;
@@ -994,6 +1026,7 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
         diagnosis["market_data"]["error"] =
             makeSafeMarketDataError(category, attempts, occurred_at, http_status);
         diagnosis["quote"]["state"] = "unknown";
+        if (!cadence.empty()) diagnosis["cadence"] = cadence;
         markDiagnosisStatusLocked(diagnosis, "data_unavailable", true, category,
                                   safe_error);
       }
@@ -1015,10 +1048,29 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
     quote.imbalance = book.imbalance;
     quote.volume = book.bid_volume + book.ask_volume;
     quote.depth = book.depth;
+    const double request_elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - request_started).count();
+    cadence_diagnostics_.recordQuoteRequest(quote.valid ? "success" : "invalid",
+                                            attempts, request_elapsed_ms);
+    if (!quote.valid) {
+      cadence_diagnostics_.recordError("quote_request", "invalid", attempts, nowIsoUtc());
+    }
+    Json::Value cadence = cadence_diagnostics_.correlationFor(
+        symbol, quote.valid ? "generated" : "dropped");
+    if (!cadence.empty()) {
+      cadence["attempt"] = attempts;
+      cadence["attempts"] = attempts;
+      if (!quote.valid) cadence["reason"] = "invalid_quote";
+    }
     const std::string observed_at = nowIsoUtc();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto &status = market_data_status_[symbol];
+      if (quote.valid) {
+        ++quote_success_evaluations_;
+      } else {
+        ++quote_failures_;
+      }
       status.status = "refreshed";
       status.category = "ok";
       status.error.clear();
@@ -1047,6 +1099,7 @@ SimulatedTradingService::fetchLiveQuotes(const std::vector<std::string> &symbols
         markDiagnosisStatusLocked(diagnosis, "quote_invalid", true, "invalid_quote",
                                   "The market-data response did not contain a valid quote.");
       }
+      if (!cadence.empty()) diagnosis["cadence"] = cadence;
     }
     if (quote.valid) {
       quotes[symbol] = quote;
@@ -1149,9 +1202,14 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
         << "trade_type = EXCLUDED.trade_type, is_closing_leg = EXCLUDED.is_closing_leg";
 
     DatabaseManager::getInstance().query(sql.str());
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      persisted_trades_ += unique_trades.size();
+    }
   }
   } catch (const std::exception &e) {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!writes.trades.empty()) ++persistence_failures_;
     pending_signal_writes_.insert(pending_signal_writes_.end(), writes.signals.begin(),
                                   writes.signals.end());
     pending_trade_writes_.insert(pending_trade_writes_.end(), writes.trades.begin(),
@@ -1355,6 +1413,9 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
             (transformer_contract_shape && models->transformer_input_ready(transformer_sequence));
         if (transformer_configured && !transformer_ready) {
           ++transformer_warming_symbols_;
+          ++transformer_warmup_events_;
+        } else if (transformer_configured) {
+          ++transformer_ready_evaluations_;
         }
         // A sequence that is still warming up must not run any model
         // inference. In particular, avoid producing a fallback prediction that
@@ -1642,6 +1703,9 @@ void SimulatedTradingService::markDiagnosisStatusLocked(
 
 void SimulatedTradingService::updateDiagnosisFromSignalLocked(const SignalRecord &signal) {
   auto &diagnosis = diagnosisForSymbolLocked(signal.symbol);
+  if (signal.payload.isMember("cadence")) {
+    diagnosis["cadence"] = signal.payload["cadence"];
+  }
   diagnosis["market_data"]["state"] = "ready";
   diagnosis["market_data"]["provider"] = usesLiveMarketData(mode_) ? "coinbase" : "synthetic";
   diagnosis["market_data"]["last_success_at"] = signal.timestamp_iso;
@@ -2105,7 +2169,16 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
   return result;
 }
 
-void SimulatedTradingService::generateTickLocked(const std::map<std::string, MarketQuote> &quotes) {
+std::vector<std::string> SimulatedTradingService::selectLiveQuoteBatchLocked() {
+  const auto selection = selectQuoteBatch(symbols_, live_quote_cursor_, kLiveQuoteSymbolsPerTick);
+  live_quote_cursor_ = selection.next_cursor;
+  last_live_quote_batch_symbols_ = selection.symbols;
+  return selection.symbols;
+}
+
+void SimulatedTradingService::generateTickLocked(
+    const std::map<std::string, MarketQuote> &quotes,
+    const std::vector<std::string> &quote_batch_symbols) {
   if (!active_) {
     return;
   }
@@ -2116,6 +2189,14 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
 
   for (std::size_t index = 0; index < symbols_.size(); ++index) {
     const std::string &symbol = symbols_[index];
+    if (live_mode &&
+        std::find(quote_batch_symbols.begin(), quote_batch_symbols.end(), symbol) ==
+            quote_batch_symbols.end()) {
+      // A rotating live-data batch intentionally leaves the other selected
+      // symbols pending. They were not attempted in this tick, so they must
+      // not be reported as provider failures or counted as dropped signals.
+      continue;
+    }
     const MarketQuote *quote = nullptr;
     const auto quote_it = quotes.find(symbol);
     if (quote_it != quotes.end() && quote_it->second.valid) {
@@ -2129,18 +2210,55 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
                                   "unknown_network_error",
                                   "Market-data provider request failed.");
       }
+      cadence_diagnostics_.recordSignal("dropped", 0.0);
       continue;
     }
+    ++diagnosis_evaluations_;
+    if (!live_mode) ++quote_success_evaluations_;
     ++signals_evaluated_;
+    const auto signal_started_mono = std::chrono::steady_clock::now();
+    const std::string signal_started_at = nowIsoUtc();
     auto signal = buildSignalRecordLocked(symbol, index, quote);
     prices[symbol] = signal.price;
     signal.payload["execution_analysis"] = buildExecutionAnalysisLocked(signal);
+    const std::string signal_completed_at = nowIsoUtc();
+    const double signal_elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - signal_started_mono).count();
+    const bool signal_generated = signal.signal_type != "hold";
+    const bool transformer_warming = signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
+                                         .get("inference_status", Json::Value(""))
+                                         .asString() == "warming_up";
+    if (!signal_generated && !transformer_warming) ++signal_holds_;
+    if (signal_generated) {
+      const auto ml = signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
+      const bool profitability_passed = ml.get("profitability_gate_passed", true).asBool();
+      const bool ml_passed = ml.get("ml_gate_passed", true).asBool();
+      if (profitability_passed) {
+        ++profitability_gate_passed_;
+      } else {
+        ++profitability_gate_blocked_;
+      }
+      if (ml_passed) {
+        ++ml_gate_passed_;
+      } else {
+        ++ml_gate_blocked_;
+      }
+    }
+    const std::string cadence_state = signal_generated ? "generated" : "not_generated";
+    Json::Value cadence = cadence_diagnostics_.correlationFor(symbol, cadence_state);
+    if (!cadence.empty()) {
+      cadence["producer"]["signal_started_at"] = signal_started_at;
+      cadence["producer"]["signal_completed_at"] = signal_completed_at;
+      cadence["producer"]["serialized_at"] = signal_completed_at;
+      cadence["durations_ms"]["signal_generation"] = signal_elapsed_ms;
+      signal.payload["cadence"] = cadence;
+    }
+    cadence_diagnostics_.recordSignal(cadence_state, signal_elapsed_ms);
     recent_signals_[signal.symbol] = signal;
     queueSignalWriteLocked(signal);
     updateDiagnosisFromSignalLocked(signal);
 
     auto position_it = positions_.find(symbol);
-    const bool signal_generated = signal.signal_type != "hold";
     reconciliation_diagnostics_.recordSignal(signal_generated);
     const Json::Value execution_analysis = signal.payload["execution_analysis"];
     reconciliation_diagnostics_.recordGateOutcome(
@@ -2163,7 +2281,6 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
           reconciliation_diagnostics_.recordBlocker(
               analysis.get("blocker_reason", Json::Value("unknown")).asString());
         }
-        updateDiagnosisFromSignalLocked(signal);
         continue;
       }
       if (signal_generated) {
@@ -2242,6 +2359,8 @@ void SimulatedTradingService::generateTickLocked(const std::map<std::string, Mar
 void SimulatedTradingService::workerLoop() {
   TR_LOG_INFO("Simulated trading worker started for session {}", session_id_);
   while (true) {
+    std::uint64_t cadence_tick_id = 0;
+    std::string cadence_outcome = "completed";
     try {
       {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -2274,8 +2393,9 @@ void SimulatedTradingService::workerLoop() {
         if (stop_requested_) {
           settling = true;
         } else {
-          symbols_snapshot = symbols_;
           live_mode = usesLiveMarketData(mode_);
+          symbols_snapshot = live_mode ? selectLiveQuoteBatchLocked() : symbols_;
+          cadence_tick_id = cadence_diagnostics_.beginTick(symbols_.size(), nowIsoUtc());
         }
       }
       if (settling) {
@@ -2284,8 +2404,19 @@ void SimulatedTradingService::workerLoop() {
       }
 
       std::map<std::string, MarketQuote> quotes;
+      const auto quote_batch_started = std::chrono::steady_clock::now();
       if (live_mode) {
         quotes = fetchLiveQuotes(symbols_snapshot);
+      } else {
+        quotes = {};
+      }
+      cadence_diagnostics_.recordQuoteBatch(
+          std::chrono::duration<double, std::milli>(
+              std::chrono::steady_clock::now() - quote_batch_started).count(),
+          live_mode ? quotes.size() : symbols_snapshot.size(),
+          live_mode ? symbols_snapshot.size() - std::min(symbols_snapshot.size(), quotes.size()) : 0);
+      if (live_mode && quotes.size() < symbols_snapshot.size()) {
+        cadence_outcome = "degraded";
       }
 
       PendingWrites writes;
@@ -2296,22 +2427,32 @@ void SimulatedTradingService::workerLoop() {
         if (stop_requested_) {
           stop_after_quotes = true;
         } else {
-          generateTickLocked(quotes);
+          generateTickLocked(quotes, symbols_snapshot);
           writes = takePendingWritesLocked();
           orders = takePendingOrdersLocked();
         }
       }
       if (stop_after_quotes) {
-        continue;
+        // Finish the diagnostic span even when Stop races with quote
+        // completion. The in-flight provider result is intentionally not
+        // applied to the stopped session.
+        cadence_outcome = "cancelled";
+      } else {
+        // Database I/O and exchange orders happen outside the mutex so API
+        // handlers never block behind tick persistence.
+        dispatchOrders(std::move(orders));
+        flushWrites(std::move(writes));
       }
-      // Database I/O and exchange orders happen outside the mutex so API
-      // handlers never block behind tick persistence.
-      dispatchOrders(std::move(orders));
-      flushWrites(std::move(writes));
     } catch (const std::exception &e) {
+      cadence_outcome = "error";
       TR_LOG_ERROR("Simulated trading worker tick failed for session {} (error=redacted)", session_id_);
     } catch (...) {
+      cadence_outcome = "error";
       TR_LOG_ERROR("Simulated trading worker tick failed for session {}: unknown exception", session_id_);
+    }
+
+    if (cadence_tick_id != 0) {
+      cadence_diagnostics_.finishTick(nowIsoUtc(), -1.0, cadence_outcome);
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -2383,7 +2524,38 @@ Json::Value SimulatedTradingService::buildDiagnosisJson() const {
   summary_input.trade_count = session_trade_inputs_.size();
   summary_input.active = active_;
   summary_input.cancelled = session_cancelled_;
+  summary_input.stage_counts["selected_symbols"] = static_cast<Json::UInt64>(symbols_.size());
+  summary_input.stage_counts["diagnosis_evaluations"] = static_cast<Json::UInt64>(diagnosis_evaluations_);
+  summary_input.stage_counts["quote_success_evaluations"] = static_cast<Json::UInt64>(quote_success_evaluations_);
+  summary_input.stage_counts["quote_failures"] = static_cast<Json::UInt64>(quote_failures_);
+  summary_input.stage_counts["transformer_warmup_events"] = static_cast<Json::UInt64>(transformer_warmup_events_);
+  summary_input.stage_counts["transformer_ready_evaluations"] = static_cast<Json::UInt64>(transformer_ready_evaluations_);
+  summary_input.stage_counts["signal_holds"] = static_cast<Json::UInt64>(signal_holds_);
+  summary_input.stage_counts["generated_candidates"] = static_cast<Json::UInt64>(signals_generated_);
+  summary_input.stage_counts["profitability_gate_passed"] = static_cast<Json::UInt64>(profitability_gate_passed_);
+  summary_input.stage_counts["profitability_gate_blocked"] = static_cast<Json::UInt64>(profitability_gate_blocked_);
+  summary_input.stage_counts["ml_gate_passed"] = static_cast<Json::UInt64>(ml_gate_passed_);
+  summary_input.stage_counts["ml_gate_blocked"] = static_cast<Json::UInt64>(ml_gate_blocked_);
+  summary_input.stage_counts["executable_intents"] = static_cast<Json::UInt64>(executable_order_intents_);
+  summary_input.stage_counts["simulated_fills"] = static_cast<Json::UInt64>(simulated_fills_);
+  summary_input.stage_counts["persisted_trades"] = static_cast<Json::UInt64>(persisted_trades_);
+  summary_input.stage_counts["trade_open_events"] = static_cast<Json::UInt64>(trade_open_events_);
+  summary_input.stage_counts["trade_completed_events"] = static_cast<Json::UInt64>(trade_completed_events_);
+  summary_input.stage_counts["persistence_failures"] = static_cast<Json::UInt64>(persistence_failures_);
   result["summary"] = makeDiagnosisSummary(summary_input);
+  result["stage_counts"] = result["summary"]["stage_counts"];
+  result["dominant_blocker"] = result["summary"]["dominant_blocker"];
+  result["cadence"] = cadence_diagnostics_.toJson(result["as_of"].asString());
+  result["quote_scheduler"]["enabled"] = active_ && usesLiveMarketData(mode_);
+  result["quote_scheduler"]["batch_size"] =
+      static_cast<Json::UInt64>(usesLiveMarketData(mode_)
+                                    ? kLiveQuoteSymbolsPerTick
+                                    : symbols_.size());
+  result["quote_scheduler"]["cursor"] = static_cast<Json::UInt64>(live_quote_cursor_);
+  result["quote_scheduler"]["batch_symbols"] = Json::arrayValue;
+  for (const auto &symbol : last_live_quote_batch_symbols_) {
+    result["quote_scheduler"]["batch_symbols"].append(symbol);
+  }
   result["event_type"] = "simulated_trading.symbol_diagnosis";
   result["event_version"] = "1";
   return result;
@@ -2510,6 +2682,7 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   signal_diagnostics["contract"] =
       "Simulated order-book signals are generated once per worker tick and retain the latest record for every selected symbol; display pagination is separate from signal coverage.";
   portfolio["order_book_signal_diagnostics"] = signal_diagnostics;
+  portfolio["cadence"] = cadence_diagnostics_.toJson(nowIsoUtc());
   portfolio["diagnostics"] = buildDiagnosisJson();
   if (diagnostics_enabled_) {
     portfolio["reconciliation_diagnostics"] =
@@ -2668,6 +2841,9 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
                          paramBool(payload, "diagnostics_enabled", false);
   reconciliation_diagnostics_.setEnabled(diagnostics_enabled_);
   reconciliation_diagnostics_.reset(symbols_);
+  ++universe_generation_;
+  cadence_diagnostics_.setEnabled(diagnostics_enabled_);
+  cadence_diagnostics_.reset(session_id_, universe_generation_, symbols_);
 
   // Top-level settings override/backfill the parameters object.
   for (const char *key : {"position_size_percent", "max_positions",
@@ -2715,11 +2891,26 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   recent_trades_.clear();
   recent_signals_.clear();
   execution_blocker_counts_.clear();
+  diagnosis_evaluations_ = 0;
+  quote_success_evaluations_ = 0;
+  quote_failures_ = 0;
   signals_evaluated_ = 0;
   signals_generated_ = 0;
+  signal_holds_ = 0;
+  profitability_gate_passed_ = 0;
+  profitability_gate_blocked_ = 0;
+  ml_gate_passed_ = 0;
+  ml_gate_blocked_ = 0;
   executable_order_intents_ = 0;
   transformer_warming_symbols_ = 0;
+  transformer_warmup_events_ = 0;
+  transformer_ready_evaluations_ = 0;
   transformer_rejected_inputs_ = 0;
+  simulated_fills_ = 0;
+  persisted_trades_ = 0;
+  persistence_failures_ = 0;
+  trade_open_events_ = 0;
+  trade_completed_events_ = 0;
   symbol_diagnoses_.clear();
   diagnosis_sequences_.clear();
   session_cancelled_ = false;
@@ -2729,6 +2920,8 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
   pending_order_symbols_.clear();
   pending_reserved_cash_ = 0.0;
   tick_ = 0;
+  live_quote_cursor_ = 0;
+  last_live_quote_batch_symbols_.clear();
   started_at_ = nowIsoUtc();
   updated_at_ = started_at_;
   start_epoch_seconds_ = nowEpochSeconds();
@@ -2877,6 +3070,7 @@ Json::Value SimulatedTradingService::getLivePortfolioStatus() {
 Json::Value SimulatedTradingService::getOrderBookSignals(
     const std::vector<std::string> &symbols, int page, int per_page,
     const std::string &requested_session_id) {
+  cadence_diagnostics_.recordApiPollCompleted();
   // Snapshot mutable session state before doing any database work. The worker
   // replaces signal rows once per tick, so reading the members directly here
   // races with the worker and can mix lifecycle states in one response.
@@ -2885,13 +3079,30 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
   std::string current_session_id;
   std::string current_mode;
   bool active = false;
+  std::size_t diagnosis_evaluations = 0;
+  std::size_t quote_success_evaluations = 0;
+  std::size_t quote_failures = 0;
   std::size_t signals_evaluated = 0;
   std::size_t signals_generated = 0;
+  std::size_t signal_holds = 0;
+  std::size_t profitability_gate_passed = 0;
+  std::size_t profitability_gate_blocked = 0;
+  std::size_t ml_gate_passed = 0;
+  std::size_t ml_gate_blocked = 0;
   std::size_t executable_order_intents = 0;
   std::size_t transformer_warming_symbols = 0;
+  std::size_t transformer_warmup_events = 0;
+  std::size_t transformer_ready_evaluations = 0;
   std::size_t transformer_rejected_inputs = 0;
+  std::size_t simulated_fills = 0;
+  std::size_t persisted_trades = 0;
+  std::size_t persistence_failures = 0;
+  std::size_t trade_open_events = 0;
+  std::size_t trade_completed_events = 0;
   std::map<std::string, int> execution_blocker_counts;
   std::map<std::string, Json::Value> symbol_diagnoses;
+  std::vector<std::string> last_quote_batch_symbols;
+  std::size_t quote_cursor = 0;
   std::size_t session_trade_count = 0;
   bool session_cancelled = false;
   {
@@ -2901,13 +3112,30 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
     current_session_id = session_id_;
     current_mode = mode_;
     active = active_;
+    diagnosis_evaluations = diagnosis_evaluations_;
+    quote_success_evaluations = quote_success_evaluations_;
+    quote_failures = quote_failures_;
     signals_evaluated = signals_evaluated_;
     signals_generated = signals_generated_;
+    signal_holds = signal_holds_;
+    profitability_gate_passed = profitability_gate_passed_;
+    profitability_gate_blocked = profitability_gate_blocked_;
+    ml_gate_passed = ml_gate_passed_;
+    ml_gate_blocked = ml_gate_blocked_;
     executable_order_intents = executable_order_intents_;
     transformer_warming_symbols = transformer_warming_symbols_;
+    transformer_warmup_events = transformer_warmup_events_;
+    transformer_ready_evaluations = transformer_ready_evaluations_;
     transformer_rejected_inputs = transformer_rejected_inputs_;
+    simulated_fills = simulated_fills_;
+    persisted_trades = persisted_trades_;
+    persistence_failures = persistence_failures_;
+    trade_open_events = trade_open_events_;
+    trade_completed_events = trade_completed_events_;
     execution_blocker_counts = execution_blocker_counts_;
     symbol_diagnoses = symbol_diagnoses_;
+    last_quote_batch_symbols = last_live_quote_batch_symbols_;
+    quote_cursor = live_quote_cursor_;
     session_trade_count = session_trade_inputs_.size();
     session_cancelled = session_cancelled_;
   }
@@ -2961,14 +3189,26 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
       static_cast<Json::UInt64>(transformer_warming_symbols);
   result["diagnostics"]["transformer_rejected_inputs"] =
       static_cast<Json::UInt64>(transformer_rejected_inputs);
-  result["diagnostics"]["coverage_complete"] = all_symbols || selected_symbol_count == 0;
+  result["diagnostics"]["coverage_complete"] = !active &&
+      (all_symbols || selected_symbol_count == 0);
   Json::Value initial_blocker_counts(Json::objectValue);
   for (const auto &[reason, count] : execution_blocker_counts) {
     initial_blocker_counts[reason] = count;
   }
   result["diagnostics"]["execution_blocker_counts"] = initial_blocker_counts;
   result["diagnostics"]["contract"] =
-      "The simulated worker updates every selected symbol once per tick; the response is latest-by-symbol and pagination only controls display rows.";
+      "Live-data simulated sessions fetch a bounded rotating quote batch per worker tick; the response is latest-by-symbol and pagination only controls display rows. Symbols not admitted in the current batch remain pending rather than being reported as provider failures.";
+  result["diagnostics"]["quote_scheduler"]["enabled"] = active && usesLiveMarketData(current_mode);
+  result["diagnostics"]["quote_scheduler"]["batch_size"] =
+      static_cast<Json::UInt64>(usesLiveMarketData(current_mode)
+                                    ? kLiveQuoteSymbolsPerTick
+                                    : session_symbols.size());
+  result["diagnostics"]["quote_scheduler"]["cursor"] =
+      static_cast<Json::UInt64>(quote_cursor);
+  result["diagnostics"]["quote_scheduler"]["batch_symbols"] = Json::arrayValue;
+  for (const auto &symbol : last_quote_batch_symbols) {
+    result["diagnostics"]["quote_scheduler"]["batch_symbols"].append(symbol);
+  }
   const std::vector<std::string> diagnosis_symbols = all_symbols ? session_symbols : requested_symbols;
   result["diagnostics"]["schema_version"] = kSimulatedTradingDiagnosisSchema;
   result["diagnostics"]["session_id"] = session_scope;
@@ -2994,7 +3234,50 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
   diagnosis_input.trade_count = session_trade_count;
   diagnosis_input.active = active;
   diagnosis_input.cancelled = session_cancelled;
+  if (all_symbols) {
+    diagnosis_input.stage_counts["selected_symbols"] =
+        static_cast<Json::UInt64>(session_symbols.size());
+    diagnosis_input.stage_counts["diagnosis_evaluations"] =
+        static_cast<Json::UInt64>(diagnosis_evaluations);
+    diagnosis_input.stage_counts["quote_success_evaluations"] =
+        static_cast<Json::UInt64>(quote_success_evaluations);
+    diagnosis_input.stage_counts["quote_failures"] =
+        static_cast<Json::UInt64>(quote_failures);
+    diagnosis_input.stage_counts["transformer_warmup_events"] =
+        static_cast<Json::UInt64>(transformer_warmup_events);
+    diagnosis_input.stage_counts["transformer_ready_evaluations"] =
+        static_cast<Json::UInt64>(transformer_ready_evaluations);
+    diagnosis_input.stage_counts["signal_holds"] =
+        static_cast<Json::UInt64>(signal_holds);
+    diagnosis_input.stage_counts["generated_candidates"] =
+        static_cast<Json::UInt64>(signals_generated);
+    diagnosis_input.stage_counts["profitability_gate_passed"] =
+        static_cast<Json::UInt64>(profitability_gate_passed);
+    diagnosis_input.stage_counts["profitability_gate_blocked"] =
+        static_cast<Json::UInt64>(profitability_gate_blocked);
+    diagnosis_input.stage_counts["ml_gate_passed"] =
+        static_cast<Json::UInt64>(ml_gate_passed);
+    diagnosis_input.stage_counts["ml_gate_blocked"] =
+        static_cast<Json::UInt64>(ml_gate_blocked);
+    diagnosis_input.stage_counts["executable_intents"] =
+        static_cast<Json::UInt64>(executable_order_intents);
+    diagnosis_input.stage_counts["simulated_fills"] =
+        static_cast<Json::UInt64>(simulated_fills);
+    diagnosis_input.stage_counts["persisted_trades"] =
+        static_cast<Json::UInt64>(persisted_trades);
+    diagnosis_input.stage_counts["persistence_failures"] =
+        static_cast<Json::UInt64>(persistence_failures);
+    diagnosis_input.stage_counts["trade_open_events"] =
+        static_cast<Json::UInt64>(trade_open_events);
+    diagnosis_input.stage_counts["trade_completed_events"] =
+        static_cast<Json::UInt64>(trade_completed_events);
+  }
   result["diagnostics"]["summary"] = makeDiagnosisSummary(diagnosis_input);
+  result["diagnostics"]["stage_counts"] =
+      result["diagnostics"]["summary"]["stage_counts"];
+  result["diagnostics"]["dominant_blocker"] =
+      result["diagnostics"]["summary"]["dominant_blocker"];
+  result["diagnostics"]["cadence"] = cadence_diagnostics_.toJson(result["diagnostics"]["as_of"].asString());
 
   try {
     if (active || !recent_signals.empty()) {
@@ -3069,7 +3352,8 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
         blocker_counts[reason] = count;
       }
       result["diagnostics"]["execution_blocker_counts"] = blocker_counts;
-      result["diagnostics"]["coverage_complete"] = all_symbols || filtered.size() >= requested_symbols.size();
+      result["diagnostics"]["coverage_complete"] =
+          selected_symbol_count == 0 || filtered.size() >= selected_symbol_count;
       result["average_strength"] = filtered.empty() ? 0.0 : strength_sum / static_cast<double>(filtered.size());
       if (latest_ts > 0) {
         result["last_updated"] = epochSecondsToIso(latest_ts);

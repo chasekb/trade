@@ -3,6 +3,8 @@
 #include "exchange/CoinbaseAdvancedClient.hpp"
 #include "trading/TradingStatsCalculator.hpp"
 #include "trading/ReconciliationDiagnostics.hpp"
+#include "trading/CadenceDiagnostics.hpp"
+#include "trading/QuoteBatchScheduler.hpp"
 #include "trading/SimulatedTradingDiagnosis.hpp"
 
 #include <drogon/drogon.h>
@@ -174,7 +176,9 @@ private:
   void ensureSchema();
   void startWorkerLocked();
   void workerLoop();
-  void generateTickLocked(const std::map<std::string, MarketQuote> &quotes);
+  std::vector<std::string> selectLiveQuoteBatchLocked();
+  void generateTickLocked(const std::map<std::string, MarketQuote> &quotes,
+                          const std::vector<std::string> &quote_batch_symbols = {});
   SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index,
                                        const MarketQuote *quote);
   bool signalPassesMlGateLocked(const SignalRecord &signal) const;
@@ -235,6 +239,8 @@ private:
   std::string updated_at_;
   long long start_epoch_seconds_ = 0;
   long long tick_ = 0;
+  std::size_t live_quote_cursor_ = 0;
+  std::vector<std::string> last_live_quote_batch_symbols_;
   int max_positions_ = 100;
   int position_update_interval_ = 5;
   double initial_capital_ = 10000.0;
@@ -252,13 +258,30 @@ private:
   // silently truncated by an arbitrary record count.
   std::map<std::string, SignalRecord> recent_signals_;
   std::map<std::string, int> execution_blocker_counts_;
+  std::size_t diagnosis_evaluations_ = 0;
+  std::size_t quote_success_evaluations_ = 0;
+  std::size_t quote_failures_ = 0;
   std::size_t signals_evaluated_ = 0;
   std::size_t signals_generated_ = 0;
+  std::size_t signal_holds_ = 0;
+  std::size_t profitability_gate_passed_ = 0;
+  std::size_t profitability_gate_blocked_ = 0;
+  std::size_t ml_gate_passed_ = 0;
+  std::size_t ml_gate_blocked_ = 0;
   std::size_t executable_order_intents_ = 0;
   std::size_t transformer_warming_symbols_ = 0;
+  std::size_t transformer_warmup_events_ = 0;
+  std::size_t transformer_ready_evaluations_ = 0;
   std::size_t transformer_rejected_inputs_ = 0;
+  std::size_t simulated_fills_ = 0;
+  std::size_t persisted_trades_ = 0;
+  std::size_t persistence_failures_ = 0;
+  std::size_t trade_open_events_ = 0;
+  std::size_t trade_completed_events_ = 0;
   bool diagnostics_enabled_ = false;
   ReconciliationDiagnostics reconciliation_diagnostics_;
+  mutable CadenceDiagnostics cadence_diagnostics_;
+  std::uint64_t universe_generation_ = 0;
   std::map<std::string, Json::Value> symbol_diagnoses_;
   std::map<std::string, std::uint64_t> diagnosis_sequences_;
   bool session_cancelled_ = false;

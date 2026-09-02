@@ -36,6 +36,7 @@
   },
   "dominant_blocker": {
     "code": "ml_confidence_below_threshold",
+    "category": "ml_gate",
     "count": 1115
   },
   "selected_symbols": ["BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD"],

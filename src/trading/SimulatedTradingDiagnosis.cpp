@@ -48,6 +48,31 @@ std::string messageForReason(const std::string &code, std::size_t count) {
   return code + " (" + std::to_string(count) + ")";
 }
 
+std::string blockerCategory(const std::string &code) {
+  if (code == "ml_confidence_below_threshold" || code == "ml_expected_return_below_threshold") {
+    return "ml_gate";
+  }
+  if (code == "profitability_below_threshold" || code == "fees_exceed_edge") {
+    return "profitability_gate";
+  }
+  if (code == "gate_blocked" || code == "risk_limit") return "policy_gate";
+  if (code == "signal_hold") return "signal";
+  if (code == "tls_handshake" || code == "dns_failure" || code == "timeout" ||
+      code == "network_unreachable" || code == "exchange_response" ||
+      code == "rate_limited" || code == "unknown_network_error") {
+    return "market_data";
+  }
+  if (code == "transformer_warming_up" || code == "lookback_mismatch" ||
+      code == "feature_width_mismatch") return "transformer";
+  if (code == "incomplete_reconciliation" || code == "session_error") return "session";
+  return "execution";
+}
+
+std::string primaryStatus(const Json::Value &record) {
+  return record.get("status", Json::Value(Json::objectValue))
+      .get("primary", Json::Value("pending")).asString();
+}
+
 void addReasonCounts(const Json::Value &record, std::map<std::string, std::size_t> &reasons) {
   const Json::Value status = record.get("status", Json::Value(Json::objectValue));
   const std::string primary = status.get("primary", Json::Value("pending")).asString();
@@ -299,11 +324,99 @@ Json::Value makeDiagnosisSummary(const DiagnosisSummaryInput &input) {
   dominant_blocker["code"] = dominant_blocker_code.empty()
                                   ? Json::Value(Json::nullValue)
                                   : Json::Value(dominant_blocker_code);
+  dominant_blocker["category"] = dominant_blocker_code.empty()
+                                      ? Json::Value(Json::nullValue)
+                                      : Json::Value(blockerCategory(dominant_blocker_code));
   dominant_blocker["count"] = static_cast<Json::UInt64>(dominant_blocker_count);
   result["dominant_blocker"] = dominant_blocker;
 
   result["terminal_count"] = static_cast<Json::UInt64>(terminal_count);
   result["trade_count"] = static_cast<Json::UInt64>(input.trade_count);
+
+  Json::Value stage_counts = input.stage_counts;
+  if (!stage_counts.isObject()) {
+    stage_counts = Json::Value(Json::objectValue);
+  }
+  Json::Value computed_counts(Json::objectValue);
+  computed_counts["selected_symbols"] = static_cast<Json::UInt64>(input.selected_symbols.size());
+  computed_counts["diagnosis_evaluations"] = static_cast<Json::UInt64>(input.symbols.size());
+  std::size_t quote_success = 0;
+  std::size_t quote_failures = 0;
+  std::size_t transformer_warmup = 0;
+  std::size_t transformer_ready = 0;
+  std::size_t signal_holds = 0;
+  std::size_t generated_candidates = 0;
+  std::size_t profitability_passed = 0;
+  std::size_t profitability_blocked = 0;
+  std::size_t ml_passed = 0;
+  std::size_t ml_blocked = 0;
+  std::size_t executable_intents = 0;
+  std::size_t fills = 0;
+  std::size_t open_events = 0;
+  std::size_t completed_events = 0;
+  for (const auto &symbol : input.symbols) {
+    const auto quote = symbol.get("quote", Json::Value(Json::objectValue));
+    const auto quote_state = quote.get("state", Json::Value("")).asString();
+    if (quote_state == "valid") ++quote_success;
+    const auto market_state = symbol.get("market_data", Json::Value(Json::objectValue))
+                                  .get("state", Json::Value(""))
+                                  .asString();
+    if (quote_state == "invalid" || quote_state == "stale" || market_state == "unavailable") {
+      ++quote_failures;
+    }
+    const auto transformer_state = symbol.get("transformer", Json::Value(Json::objectValue))
+                                       .get("state", Json::Value(""))
+                                       .asString();
+    if (transformer_state == "warming_up") ++transformer_warmup;
+    if (transformer_state == "ready") ++transformer_ready;
+    const auto signal_state = symbol.get("signal", Json::Value(Json::objectValue))
+                                  .get("state", Json::Value(""))
+                                  .asString();
+    if (signal_state == "hold") ++signal_holds;
+    if (signal_state == "buy" || signal_state == "sell") ++generated_candidates;
+    const auto gates = symbol.get("gates", Json::Value(Json::objectValue));
+    for (const char *gate : {"profitability", "ml"}) {
+      const auto gate_state = gates.get(gate, Json::Value(Json::objectValue))
+                                  .get("state", Json::Value(""))
+                                  .asString();
+      if (std::string(gate) == "profitability") {
+        if (gate_state == "passed") ++profitability_passed;
+        if (gate_state == "blocked") ++profitability_blocked;
+      } else {
+        if (gate_state == "passed") ++ml_passed;
+        if (gate_state == "blocked") ++ml_blocked;
+      }
+    }
+    if (symbol.get("intent", Json::Value(Json::objectValue))
+            .get("state", Json::Value(""))
+            .asString() == "executable") ++executable_intents;
+    if (symbol.get("execution", Json::Value(Json::objectValue))
+            .get("state", Json::Value(""))
+            .asString() == "filled") ++fills;
+    const std::string status = primaryStatus(symbol);
+    if (status == "trade_open") ++open_events;
+    if (status == "trade_completed") ++completed_events;
+  }
+  computed_counts["quote_success_evaluations"] = static_cast<Json::UInt64>(quote_success);
+  computed_counts["quote_failures"] = static_cast<Json::UInt64>(quote_failures);
+  computed_counts["transformer_warmup_events"] = static_cast<Json::UInt64>(transformer_warmup);
+  computed_counts["transformer_ready_evaluations"] = static_cast<Json::UInt64>(transformer_ready);
+  computed_counts["signal_holds"] = static_cast<Json::UInt64>(signal_holds);
+  computed_counts["generated_candidates"] = static_cast<Json::UInt64>(generated_candidates);
+  computed_counts["profitability_gate_passed"] = static_cast<Json::UInt64>(profitability_passed);
+  computed_counts["profitability_gate_blocked"] = static_cast<Json::UInt64>(profitability_blocked);
+  computed_counts["ml_gate_passed"] = static_cast<Json::UInt64>(ml_passed);
+  computed_counts["ml_gate_blocked"] = static_cast<Json::UInt64>(ml_blocked);
+  computed_counts["executable_intents"] = static_cast<Json::UInt64>(executable_intents);
+  computed_counts["simulated_fills"] = static_cast<Json::UInt64>(fills);
+  computed_counts["persisted_trades"] = static_cast<Json::UInt64>(input.trade_count);
+  computed_counts["trade_open_events"] = static_cast<Json::UInt64>(open_events);
+  computed_counts["trade_completed_events"] = static_cast<Json::UInt64>(completed_events);
+  computed_counts["persistence_failures"] = 0;
+  for (const auto &key : computed_counts.getMemberNames()) {
+    if (!stage_counts.isMember(key)) stage_counts[key] = computed_counts[key];
+  }
+  result["stage_counts"] = stage_counts;
 
   if (input.cancelled) {
     result["status"] = "cancelled";

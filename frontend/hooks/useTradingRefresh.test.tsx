@@ -196,6 +196,33 @@ describe('useOrderBookSignals refresh identity', () => {
     );
   });
 
+  it('fetches complete selected coverage before projecting a later display page', async () => {
+    getOrderBookSignals.mockResolvedValue({
+      status: 'success',
+      data: {
+        signals: [signal('BTC-USD'), signal('ETH-USD'), signal('SOL-USD')],
+        pagination: { page: 1, limit: 3, total: 3, total_pages: 1, has_next: false, has_prev: false },
+      },
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useOrderBookSignals(['BTC-USD', 'ETH-USD', 'SOL-USD'], true, 2, 2, 'orderbook', 'simulated', 'session-1'),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.data?.view_model?.rows).toHaveLength(3));
+    expect(getOrderBookSignals).toHaveBeenCalledWith(
+      ['BTC-USD', 'ETH-USD', 'SOL-USD'],
+      { page: 1, per_page: 3 },
+      'simulated',
+      'session-1',
+    );
+    expect(result.current.data?.signals.map(({ symbol }) => symbol)).toEqual(['SOL-USD']);
+    expect(result.current.data?.view_model?.rows.map(({ symbol }) => symbol)).toEqual(['BTC-USD', 'ETH-USD', 'SOL-USD']);
+  });
+
   it('aggregates per-symbol diagnosis summaries across request chunks', async () => {
     const symbols = Array.from({ length: 51 }, (_, index) => `ASSET-${index}-USD`);
     getOrderBookSignals.mockImplementation(async (chunk: string[]) => ({

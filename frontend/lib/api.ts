@@ -1,5 +1,5 @@
 // API client for trading dashboard
-import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParams, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
+import { ApiClientObservation, ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParams, OrderBookSignal, OrderBookSignalDiagnostics, OrderBookSignalsResponse } from '@/types/trading';
 
 // Always use same-origin requests from the browser and let Next.js rewrites
 // proxy to the appropriate backend target for the current environment.
@@ -66,6 +66,34 @@ type LocalSimTradingSession = {
 
 let localSimTradingSession: LocalSimTradingSession | null = null;
 let liveParitySessionActive = false;
+let apiRequestSequence = 0;
+
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function clientObservation(
+  requestId: string,
+  requestedAt: string,
+  startedMono: number,
+  receivedAt: string,
+  receivedMono: number,
+  parseDurationMs?: number,
+  errorClass?: string,
+): ApiClientObservation {
+  return {
+    transport: 'api_poll',
+    client_request_id: requestId,
+    requested_at: requestedAt,
+    received_at: receivedAt,
+    received_mono_ms: receivedMono,
+    api_duration_ms: Math.max(0, receivedMono - startedMono),
+    ...(parseDurationMs !== undefined ? { parse_duration_ms: Math.max(0, parseDurationMs) } : {}),
+    ...(errorClass ? { error_class: errorClass } : {}),
+  };
+}
 
 function setLocalSimTradingSession(strategy: string, symbols: string[], parameters: Record<string, any>) {
   const now = new Date().toISOString();
@@ -677,6 +705,9 @@ class ApiClient {
     endpoint: string,
     options?: RequestInit
   ): Promise<ApiResponse<T>> {
+    const requestedAt = new Date().toISOString();
+    const startedMono = monotonicNow();
+    const requestId = `browser-tab:request-${++apiRequestSequence}`;
     try {
       const url = `${API_BASE_URL}${endpoint}`;
       const response = await fetch(url, {
@@ -691,19 +722,28 @@ class ApiClient {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      const parseStartedMono = monotonicNow();
       const data = await response.json();
+      const receivedMono = monotonicNow();
+      const receivedAt = new Date().toISOString();
       // Wrap the backend response in the expected ApiResponse format
       return {
         status: 'success' as const,
         data: data,
-        timestamp: new Date().toISOString(),
+        timestamp: receivedAt,
+        client: clientObservation(requestId, requestedAt, startedMono, receivedAt,
+          receivedMono, receivedMono - parseStartedMono),
       };
     } catch (error) {
       console.error(`API request failed for ${endpoint}:`, error);
+      const receivedMono = monotonicNow();
+      const receivedAt = new Date().toISOString();
       return {
         status: 'error' as const,
         error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
+        timestamp: receivedAt,
+        client: clientObservation(requestId, requestedAt, startedMono, receivedAt,
+          receivedMono, undefined, error instanceof Error ? 'request_error' : 'unknown_error'),
       };
     }
   }
@@ -1026,15 +1066,7 @@ class ApiClient {
     params?: { page?: number; per_page?: number },
     mode: 'live' | 'simulated' = 'live',
     sessionId?: string,
-  ): Promise<ApiResponse<{
-    signals: OrderBookSignal[];
-    pagination?: any;
-    total_analyzed?: number;
-    active_signals?: number;
-    last_updated?: string;
-    average_strength?: number;
-    diagnostics?: OrderBookSignalDiagnostics;
-  }>> {
+  ): Promise<ApiResponse<OrderBookSignalsResponse>> {
     if (mode === 'simulated' && !liveParitySessionActive && (FORCE_LOCAL_SIM_TRADING || localSimTradingSession?.active)) {
       const page = params?.page || 1;
       const perPage = params?.per_page || 10;
@@ -1059,7 +1091,7 @@ class ApiClient {
 
     try {
       const endpoint = mode === 'live' ? 'live-signals' : 'simulated-signals';
-      const response = await this.request<{ signals: OrderBookSignal[]; pagination?: any; total_analyzed?: number; active_signals?: number; last_updated?: string; average_strength?: number; diagnostics?: OrderBookSignalDiagnostics; }>(`/api/orderbook/${endpoint}${query ? `?${query}` : ''}`);
+      const response = await this.request<OrderBookSignalsResponse>(`/api/orderbook/${endpoint}${query ? `?${query}` : ''}`);
       return response;
     } catch (error) {
       return {

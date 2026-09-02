@@ -99,6 +99,11 @@ int main() {
              blocked_summary["message"].asString().find("policy gate blocked") !=
                  std::string::npos,
          "gate summary retains generic and detailed policy reasons");
+  expect(blocked_summary["dominant_blocker"]["code"].asString() ==
+             "ml_confidence_below_threshold" &&
+             blocked_summary["dominant_blocker"]["category"].asString() == "ml_gate" &&
+             blocked_summary["dominant_blocker"]["count"].asUInt() == 1,
+         "dominant blocker includes an unambiguous category and count");
 
   input.selected_symbols.clear();
   input.symbols.clear();

@@ -43,6 +43,8 @@ set(SOURCES
     src/trading/PositionSizingPolicy.cpp
     src/trading/ExecutionPreflight.cpp
     src/trading/DiagnosticsContract.cpp
+    src/trading/CadenceDiagnostics.cpp
+    src/trading/QuoteBatchScheduler.cpp
     src/trading/StrategySignal.cpp
     src/trading/StrategyExpectancyHarness.cpp
     src/trading/ExecutionReconciliation.cpp
@@ -292,3 +294,17 @@ add_executable(test_zero_trade_orderbook_fixture
     src/trading/SimulatedTradingDiagnosis.cpp)
 target_include_directories(test_zero_trade_orderbook_fixture PRIVATE include)
 target_link_libraries(test_zero_trade_orderbook_fixture PRIVATE JsonCpp::JsonCpp)
+add_test(NAME zero_trade_orderbook_fixture COMMAND test_zero_trade_orderbook_fixture)
+
+add_executable(test_cadence_diagnostics
+    src/tests/test_cadence_diagnostics.cpp
+    src/trading/CadenceDiagnostics.cpp)
+target_include_directories(test_cadence_diagnostics PRIVATE include)
+target_link_libraries(test_cadence_diagnostics PRIVATE JsonCpp::JsonCpp)
+add_test(NAME cadence_diagnostics COMMAND test_cadence_diagnostics)
+
+add_executable(test_quote_batch_scheduler
+    src/tests/test_quote_batch_scheduler.cpp
+    src/trading/QuoteBatchScheduler.cpp)
+target_include_directories(test_quote_batch_scheduler PRIVATE include)
+add_test(NAME quote_batch_scheduler COMMAND test_quote_batch_scheduler)

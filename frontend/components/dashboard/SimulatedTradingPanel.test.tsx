@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import SimulatedTradingPanel from './SimulatedTradingPanel';
 
 const mockUseLiveTrading = jest.fn();
@@ -28,7 +28,6 @@ jest.mock('./RecentTradesTable', () => ({ RecentTradesTable: () => null }));
 jest.mock('./StrategySelector', () => ({ StrategySelector: () => null }));
 jest.mock('./TradingControls', () => ({ TradingControls: () => null }));
 jest.mock('./StrategyConfigForm', () => ({ StrategyConfigForm: () => null }));
-jest.mock('./OrderBookSignalsTable', () => ({ OrderBookSignalsTable: () => null }));
 jest.mock('./ExecutionReconciliationTable', () => ({ ExecutionReconciliationTable: () => null }));
 
 const activeStatus = {
@@ -83,7 +82,7 @@ describe('SimulatedTradingPanel widget states', () => {
     renderPanel();
 
     expect(screen.getByText('Loading statistics...')).toBeInTheDocument();
-    expect(screen.getByText('Loading order book signals...')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading order-book signal coverage');
   });
 
   it('shows visible request failures instead of rendering blank widgets', () => {
@@ -104,11 +103,11 @@ describe('SimulatedTradingPanel widget states', () => {
     renderPanel();
 
     expect(screen.getByText('Failed to load statistics.')).toBeInTheDocument();
-    expect(screen.getByText('Failed to load order book signals.')).toBeInTheDocument();
-    expect(screen.getByText('signals unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('signals unavailable');
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to refresh all order-book signals');
   });
 
-  it('distinguishes an empty active session from a failed request', () => {
+  it('distinguishes an active no-trade session from a failed request', () => {
     mockUseSimulatedTradingStats.mockReturnValue({ data: emptyStats, isLoading: false, error: null, refetch: jest.fn() });
     mockUseOrderBookSignals.mockReturnValue({
       data: { signals: [], pagination: { total_pages: 0, total: 0, has_next: false, has_prev: false } },
@@ -121,8 +120,8 @@ describe('SimulatedTradingPanel widget states', () => {
     renderPanel();
 
     expect(screen.getByText(/No simulated trades have been recorded yet/)).toBeInTheDocument();
-    expect(screen.getByText(/No order book signals are available/)).toBeInTheDocument();
-    expect(screen.queryByText('Failed to load order book signals.')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: /Order-book signals grouped by Outcome/ })).getByText('Pending evaluation')).toBeInTheDocument();
+    expect(screen.queryByText('Unable to refresh all order-book signals')).not.toBeInTheDocument();
   });
 
   it('keeps per-symbol diagnosis visible when the latest signal page is empty', () => {
@@ -159,10 +158,11 @@ describe('SimulatedTradingPanel widget states', () => {
 
     renderPanel();
 
-    expect(screen.getByText('Per-symbol execution diagnosis')).toBeInTheDocument();
-    expect(screen.getByText('data_unavailable')).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: /Order-book signals grouped by Outcome/ });
+    expect(within(table).getByText('Data unavailable')).toBeInTheDocument();
+    const details = screen.getByRole('button', { name: 'Show details for BTC-USD' });
+    fireEvent.click(details);
     expect(screen.getByText('TLS handshake failed while contacting the market-data provider.')).toBeInTheDocument();
-    expect(screen.getByText(/No trades recorded: TLS handshake failed/)).toBeInTheDocument();
   });
 
   it('uses the canonical diagnosis query when signal loading fails', () => {
@@ -185,10 +185,12 @@ describe('SimulatedTradingPanel widget states', () => {
 
     renderPanel();
 
-    expect(screen.getByText('Per-symbol execution diagnosis')).toBeInTheDocument();
-    expect(screen.getByText('hold')).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: /Order-book signals grouped by Outcome/ });
+    expect(within(table).getByText('Valid HOLD')).toBeInTheDocument();
+    const details = screen.getByRole('button', { name: 'Show details for BTC-USD' });
+    fireEvent.click(details);
     expect(screen.getByText('Strategy returned HOLD.')).toBeInTheDocument();
-    expect(screen.getByText('Failed to load order book signals.')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('signal request failed');
   });
 
   it('prefers the canonical diagnosis snapshot over the signal coverage projection', () => {
@@ -219,8 +221,12 @@ describe('SimulatedTradingPanel widget states', () => {
 
     renderPanel();
 
-    expect(screen.getByText('gates_blocked')).toBeInTheDocument();
-    expect(screen.getByText('ml_confidence_below_threshold: ML confidence is below the configured threshold.')).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: /Order-book signals grouped by Outcome/ });
+    expect(within(table).getByText('Gate blocked')).toBeInTheDocument();
+    expect(within(table).getByText('gate_blocked')).toBeInTheDocument();
+    const details = screen.getByRole('button', { name: 'Show details for BTC-USD' });
+    fireEvent.click(details);
+    expect(screen.getByText('Signal was blocked by one or more policy gates.')).toBeInTheDocument();
     expect(screen.queryByText('Strategy returned HOLD.')).not.toBeInTheDocument();
   });
 

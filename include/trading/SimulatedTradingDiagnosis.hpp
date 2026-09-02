@@ -21,6 +21,7 @@ struct DiagnosisSummaryInput {
   bool active = false;
   bool cancelled = false;
   bool fatal_error = false;
+  Json::Value stage_counts = Json::Value(Json::objectValue);
 };
 
 Json::Value makeEmptySymbolDiagnosis(const std::string &symbol,
