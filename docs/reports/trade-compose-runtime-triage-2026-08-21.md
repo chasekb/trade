@@ -140,3 +140,28 @@ The repository evidence came from the separate repository-check task. These
 are deliberately separated so a healthy runtime does not get presented as a
 passing C++ test, and a passing Compose config check does not get presented as
 proof of application workload compatibility.
+
+## Remote CI closeout
+
+This report is carried on the dependent closeout branch. The prerequisite
+report commit was pushed as `0346757f86cbc41232cb7a74bb82f736cbc5bf99` and its
+exact pull-request validation run completed successfully:
+
+```text
+Workflow: Docker Build Validation
+Run: 32621600528
+URL: https://github.com/chasekb/trade/actions/runs/32621600528
+Head SHA: 0346757f86cbc41232cb7a74bb82f736cbc5bf99
+Conclusion: success
+Build C++ Backend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/32621600528/job/97150452653
+Build Frontend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/32621600528/job/97150452683
+Publish Frontend manifest: skipped (pull-request gate)
+Publish C++ Backend manifest: skipped (pull-request gate)
+```
+
+The two publication jobs are intentionally skipped by the pull-request
+workflow condition; no image publication was requested or performed. No
+local C++ build, CTest run, or image build was used as a substitute for the
+remote CI gate.
