@@ -3,6 +3,7 @@ version: '3.8'
 services:
   # Backend API Service (Python FastAPI)
   backend:
+    image: trade-backend:${TAG:-dev}
     build:
       context: .
       dockerfile: Dockerfile
@@ -41,6 +42,7 @@ services:
 
   # Frontend Service (Next.js TypeScript)
   frontend:
+    image: trade-frontend:${TAG:-dev}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -65,6 +67,7 @@ services:
 
   # Vector Database for ML Features
   qdrant:
+    image: trade-qdrant:${TAG:-dev}
     build:
       context: .
       dockerfile: qdrant.Dockerfile
@@ -85,7 +88,7 @@ services:
 
   # Main Database
   db:
-    image: postgres:15-alpine
+    image: docker.io/library/postgres:15-alpine
     environment:
       POSTGRES_DB: trading_db
       POSTGRES_USER: trading_user
@@ -105,7 +108,7 @@ services:
 
   # Cache Service
   redis:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
@@ -121,6 +124,7 @@ services:
 
   # ML Model Server
   ml-server:
+    image: trade-ml-server:${TAG:-dev}
     build:
       context: .
       dockerfile: src/trade_bot/ml/Dockerfile
