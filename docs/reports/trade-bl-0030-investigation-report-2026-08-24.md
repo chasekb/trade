@@ -24,6 +24,10 @@ The runtime evidence was preserved in the terminal capture:
 
 The source inventory was prepared against the trade repository around commit `8af7838c9112e4f88c0f358504877d054ce9eb0c`; the report incorporates the later reconciliation and validation handoffs without treating later source/history as proof that the paper session was rerun on that code. The exact raw HTTP payload, response bodies, browser network trace, WebSocket frames, per-request timestamps, and model identifier were not retained.
 
+### Source-baseline traceability note
+
+All `src/...`, `frontend/...`, and `CMakeLists.txt` line/function references in this report are references to the investigated source baseline `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not an assertion that those paths exist in every later checkout. In particular, the documentation-only review checkout used for this report contains the report commits but does not contain the C++ `src/trading`, `src/api`, `src/ml`, or `src/exchange` paths named below. Reviewers must resolve those references against the pinned baseline (or its corresponding repository history) before treating them as independently revalidated. This distinction prevents a documentation branch from being mistaken for a rerun or a source-level verification of the retained session.
+
 ## Reproduction context and exact steps
 
 ### Observed identifiers and timestamps
