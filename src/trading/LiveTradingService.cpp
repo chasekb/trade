@@ -504,8 +504,10 @@ std::string LiveTradingService::positionManagementStateLocked(
 bool LiveTradingService::hasAcceptedPendingOrderLocked(const std::string &symbol) const {
   return std::any_of(pending_live_orders_.begin(), pending_live_orders_.end(),
                      [&symbol](const PendingLiveOrder &pending) {
-                       return pending.intent.product_id == symbol &&
-                              !pending.order_id.empty();
+                       return coinbaseProductIdForAsset(pending.intent.product_id) ==
+                                  coinbaseProductIdForAsset(symbol) &&
+                              !pending.order_id.empty() && !pending.fill_applied &&
+                              pending.persisted;
                      });
 }
 
@@ -1386,7 +1388,8 @@ void LiveTradingService::applyLiveAccountSnapshotLocked(
     unrealized_pnl_ += position.unrealized_pnl;
   }
   for (auto it = positions_.begin(); it != positions_.end();) {
-    if (account_symbols.count(it->first) == 0 && pending_order_symbols_.count(it->first) == 0) {
+    if (account_symbols.count(it->first) == 0 &&
+        !hasAcceptedPendingOrderLocked(it->first)) {
       auto floor_it = managed_quantity_floors_.find(it->first);
       if (floor_it != managed_quantity_floors_.end() &&
           floor_it->second.second > 0) {
