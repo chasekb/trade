@@ -1,334 +1,112 @@
-# Trading Bot - Advanced Trading System
+# Trade
 
-A comprehensive trading bot system with web dashboard, backtesting, live trading capabilities, and **Machine Learning Trading Optimization**.
+Trade is a containerized trading system with a Drogon C++ backend and a
+Next.js/React dashboard. The backend owns all `/api/*` routes, live and
+simulated execution, ML inference, and PostgreSQL/Redis integration.
 
-## 🏗️ Project Structure
+## Repository layout
 
-```
+```text
 trade/
-├── app.py                      # FastAPI backend server (Docker deployment)
-├── docker-compose.yml          # Docker Compose deployment configuration
-├── Dockerfile                  # Backend Docker container configuration
-├── frontend/                   # Next.js React/TypeScript frontend
-├── README.md                   # This file
-│
-├── archive/                    # Archived unused code (see archive/README.md)
-│   └── vanilla_js_dashboard/  # Previously used vanilla JS dashboard
-│
-├── config/                     # Configuration files
-│   ├── pyproject.toml         # Python project configuration
-│   ├── requirements.txt       # Python dependencies
-│   ├── uv.lock               # UV lock file
-│   ├── package.json          # Node.js dependencies
-│   ├── package-lock.json     # Node.js lock file
-│   ├── playwright.config.ts  # Playwright configuration
-│   └── vector-db-config.yaml # Vector database configuration
-│
-├── src/                       # Source code
-│   └── trade_bot/            # Main application package
-│       ├── core/             # Core functionality
-│       ├── data/             # Data handling and providers
-│       ├── database/         # Database management
-│       ├── trading/          # Trading strategies and execution
-│       ├── ml/               # Machine Learning components
-│       └── web/              # Web dashboard and API
-│
-├── tests/                     # Test suite
-│   ├── unit/                 # Unit tests
-│   ├── integration/          # Integration tests
-│   └── e2e/                  # End-to-end tests
-│
-├── data/                      # Data storage
-│   ├── databases/            # SQLite databases
-│   ├── outputs/              # Generated output files
-│   └── cache/                # Cached data and node_modules
-│
-├── docs/                      # Documentation
-│   ├── examples/             # Example code and tutorials
-│   ├── CHANGELOG.md          # Version history
-│   ├── PROJECT_OVERVIEW.md   # Project overview
-│   ├── spec.md               # Technical specifications
-│   ├── TEST_RESULTS.md       # Test results
-│   ├── TYPESCRIPT_TRANSITION.md # React/TypeScript transition documentation
-│   ├── WEBSOCKET_SUBSCRIPTIONS.md # WebSocket documentation
-│   └── ML_TRADING_OPTIMIZATION.md # ML system documentation
-│
-└── rules/                     # Development rules and guidelines
-    ├── 01-core.md
-    ├── 02-request.md
-    └── ... (other rule files)
+├── src/                    # C++ backend implementation
+├── include/                # C++ headers and API contracts
+├── frontend/               # Next.js 16 / React 19 dashboard
+├── data/                   # Runtime and model assets (some subtrees tracked)
+├── docs/                   # Current contracts, architecture, and operations docs
+├── CMakeLists.txt          # Backend and CTest targets
+├── Dockerfile.cpp         # C++ backend image
+├── docker-compose.yml      # Published-image development/runtime stack
+└── docker-compose.test.yml # Containerized C++ test entry point
 ```
 
-## ✨ Key Features
+The former Python/FastAPI application is archived history, not a runtime
+dependency. Do not use the old `app.py`, `src/trade_bot/`, port 8000, ML-server,
+or Qdrant instructions as current setup instructions.
 
-### 🎯 **Integrated ML Trading System**
-- **One Command Setup**: `docker-compose up` starts everything
-- **Automatic Service Management**: Vector database and ML services start automatically
-- **Seamless Trading Integration**: ML predictions available for simulated and live trading
-- **Real-time ML Dashboard**: Built-in ML management interface at `http://localhost:3000`
-- **Health Monitoring**: Automatic service health checks and status monitoring
-- **Graceful Shutdown**: Proper cleanup when stopping the system
+## Runtime services
 
-### 🏗️ **Modern Architecture**
-- **Microservices Design**: Modular, scalable component architecture
-- **Async/Await**: High-performance asynchronous Python
-- **Vector Database**: Qdrant for ML pattern matching and similarity search
-- **Caching Layer**: Redis for high-performance data caching
-- **WebSocket Integration**: Real-time data streaming
-- **RESTful API**: FastAPI with automatic OpenAPI documentation
+`docker-compose.yml` runs:
 
-## 🚀 Quick Start
+- `cpp-backend`: Drogon HTTP server, container port 8080, host port 8081
+- `frontend`: Next.js dashboard on host port 3000
+- `db`: PostgreSQL 15, container port 5432, host port 15432 by default
+- `redis`: Redis 7 on port 6379
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- UV package manager
-- Qdrant (for ML vector database)
-- Redis (for ML caching)
+The frontend uses same-origin browser requests and Next.js rewrites them to the
+backend. Containers use `cpp-backend:8080` and `db:5432`; host-side clients use
+the published ports. Backend and frontend health checks gate startup.
 
-### Installation
-```bash
-# Install Python dependencies
-uv sync
+## Quick start
 
-# Install Node.js dependencies
-npm install --prefix data/cache
-
-# Install ML dependencies
-pip install scikit-learn pandas numpy joblib requests
-```
-
-### Security Setup
-**IMPORTANT:** Before running the application, you must set up your Coinbase API credentials securely.
-
-1. **Copy the environment template:**
-   ```bash
-   cp docs/env.example .env
-   ```
-
-2. **Get your Coinbase API credentials** from [Coinbase Pro API Settings](https://pro.coinbase.com/profile/api)
-
-3. **Update your `.env` file** with your actual credentials
-
-4. **Configure all trading settings** through the web dashboard's Live Trading tab
-
-5. **See [Security Setup Guide](docs/SECURITY_SETUP.md)** for detailed instructions
-
-**⚠️ Never commit your `.env` file or expose your API credentials!**
-```
-
-### Running the Application
-
-#### Docker Compose Deployment (Recommended)
-```bash
-# Start all services using Docker Compose
-docker-compose up
-```
-
-This single command starts:
-- **Frontend**: Next.js React dashboard on `http://localhost:3000`
-- **Backend**: FastAPI server on `http://localhost:8000`
-- Qdrant vector database on `http://localhost:6333`
-- Redis cache on `localhost:6379`
-- PostgreSQL database on `localhost:5432`
-- All ML services available for trading
-
-#### Development Mode (Individual Services)
-If you need to run services individually for development:
+Prerequisites: Podman or Docker Compose, and a repository `.env` containing the
+database settings and any required Coinbase credentials. Never commit `.env`.
 
 ```bash
-# Start backend only
-docker-compose up backend
-
-# Start frontend only (requires backend running)
-cd frontend && npm run dev
-
-# Start databases only
-docker-compose up db redis qdrant
+cp env.example .env
+podman-compose up --no-build
 ```
 
-#### Previous CLI Commands (Archived)
-The previous CLI interface using `main.py` has been archived. If you need to restore the vanilla JavaScript dashboard for comparison or testing, see `archive/README.md` for restoration instructions.
-
-## 📊 Features
-
-- **Web Dashboard**: Real-time trading dashboard with candlestick charts
-- **Backtesting**: Historical strategy testing with comprehensive metrics
-- **Data Providers**: Coinbase Pro API integration for real market data
-- **Trading Strategies**: Multiple built-in strategies (RSI, MACD, Bollinger Bands, etc.)
-- **Simulated Trading**: Paper trading with realistic execution simulation
-- **WebSocket Integration**: Real-time data streaming
-- **Database Storage**: SQLite for persistent data storage
-- **🤖 Machine Learning Trading Optimization**:
-  - **ML-Enhanced Order Book Strategy**: Real-time ML predictions for trading signals
-  - **Vector Database**: Qdrant vector database for pattern matching and similarity search
-  - **Ensemble Models**: Random Forest, Gradient Boosting, Neural Networks
-  - **Feature Engineering**: Advanced order book feature extraction
-  - **Model Management**: Versioning, hot-swapping, and rollback capabilities
-  - **Real-time Inference**: Sub-second ML predictions during live trading
-  - **Performance Monitoring**: Comprehensive ML model performance tracking
-
-## 🔧 Configuration
-
-Configuration files are located in the `config/` directory:
-- `pyproject.toml`: Python project settings
-- `requirements.txt`: Python dependencies
-- `package.json`: Node.js dependencies
-- `playwright.config.ts`: E2E testing configuration
-- `vector-db-config.yaml`: Vector database configuration for ML system
-
-## 🧪 Testing
+The default Compose images are the `dev` images published to GHCR. To use
+locally built images, build them first and then run with `--no-build`:
 
 ```bash
-# Run unit tests
-python -m pytest tests/unit/
-
-# Run integration tests
-python -m pytest tests/integration/
-
-# Run E2E tests
-npx playwright test
+podman-compose build
+podman-compose up --no-build
 ```
 
-## 📈 Data Management
+For another host PostgreSQL port, set `POSTGRES_HOST_PORT`; the internal
+database address remains `db:5432`:
 
-- **Databases**: Stored in `data/databases/`
-- **Outputs**: Generated files in `data/outputs/`
-- **Cache**: Temporary data in `data/cache/`
-
-## 🌐 Web Dashboard
-
-Access the web dashboard at `http://localhost:3000` after running:
 ```bash
-docker-compose up
+POSTGRES_HOST_PORT=55432 podman-compose up --no-build
 ```
 
-Features:
-- Real-time price charts
-- Trading strategy configuration
-- Backtest results visualization
-- Live trading interface
-- Data feed monitoring
-- **🤖 Integrated ML Trading Optimization**:
-  - ML model status and performance metrics
-  - Feature importance visualization
-  - Model control interface (train, update, rollback)
-  - Real-time ML system monitoring
-  - ML vs baseline strategy comparison
-  - **Automatic ML Service Management**: Vector database and ML services start automatically
-  - **Trading Integration**: ML predictions available for simulated and live trading
+Open the dashboard at http://localhost:3000. The backend health endpoint is
+http://localhost:8081/health.
 
-## 🤖 Machine Learning Trading Optimization
+## Frontend development
 
-The ML Trading Optimization system enhances trading decisions using machine learning:
-
-### ML System Architecture
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Trading Bot   │    │  ML Optimizer   │    │ Vector Database │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │ Order Book  │ │───▶│ │ Data        │ │───▶│ │ Qdrant      │ │
-│ │ Strategy    │ │    │ │ Collector   │ │    │ │ Vector DB   │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │ ML Enhanced │ │◀───│ │ Model       │ │◀───│ │ Redis       │ │
-│ │ Strategy    │ │    │ │ Manager     │ │    │ │ Cache       │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │ ML Model Server │
-                       │ (FastAPI)       │
-                       └─────────────────┘
-```
-
-### Key Components
-- **Data Collection**: Extract order book signals and trade outcomes
-- **Feature Engineering**: Transform raw data into ML-ready features
-- **Model Training**: Ensemble models (RF, GB, NN, Linear)
-- **Vector Database**: Qdrant for pattern matching and similarity search
-- **Model Management**: Versioning, deployment, and rollback
-- **Real-time Inference**: Sub-second ML predictions during trading
-
-### ML Services (Automatically Started with Docker Compose)
-- **Qdrant Vector DB**: `http://localhost:6333` - Feature vector storage
-- **Redis Cache**: `localhost:6379` - High-performance caching
-- **PostgreSQL DB**: `localhost:5432` - Main database
-- **Backend API**: `http://localhost:8000` - FastAPI backend server
-- **Web Dashboard**: `http://localhost:3000` - Next.js React dashboard
-
-### ML Service Management
-- **Automatic Startup**: All ML services start automatically with `docker-compose up`
-- **Health Monitoring**: Built-in health checks and service status monitoring
-- **Graceful Shutdown**: Proper cleanup when web dashboard stops
-- **Trading Integration**: ML predictions seamlessly integrated into trading strategies
-
-## 📚 Documentation
-
-Detailed documentation is available in the `docs/` directory:
-- [Project Overview](docs/PROJECT_OVERVIEW.md)
-- [Web Dashboard Guide](docs/WEB_DASHBOARD_README.md)
-- [WebSocket Subscriptions](docs/WEBSOCKET_SUBSCRIPTIONS.md)
-- [Test Results](docs/TEST_RESULTS.md)
-- [🤖 ML Trading Optimization](docs/ML_TRADING_OPTIMIZATION.md) - Complete ML system documentation
-- [Vector Database Service](docs/VECTOR_DATABASE_SERVICE.md) - Integrated service management
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-#### ML Services Not Starting
 ```bash
-# Check if Qdrant and Redis are installed
-which qdrant
-which redis-server
-
-# Install missing services
-# For macOS with Homebrew:
-brew install qdrant redis
-
-# For Ubuntu/Debian:
-sudo apt-get install qdrant redis-server
+cd frontend
+npm install
+npm test
+npx tsc --noEmit
+npm run lint
+npm run dev
 ```
 
-#### Port Conflicts
-If ports 3000, 8000, 6333, 6379, or 5432 are already in use:
+The canonical simulated-statistics normalization is in
+`frontend/lib/simulatedTradingStats.ts`; keep new calculations there and add
+tests beside it.
+
+## C++ tests
+
+The C++ dependencies are provided by the container toolchain. Run the test
+stack with:
+
 ```bash
-# Check what's using the ports
-lsof -i :3000  # Frontend
-lsof -i :8000  # Backend
-lsof -i :6333  # Qdrant
-lsof -i :6379  # Redis
-lsof -i :5432  # PostgreSQL
-
-# Stop conflicting services or modify ports in docker-compose.yml
+podman-compose -f docker-compose.test.yml up --build cpp-test
 ```
 
-#### ML Model Training Issues
-```bash
-# Start the application with Docker Compose
-docker-compose up
+The complete list of backend test targets is defined in `CMakeLists.txt`.
 
-# Access the dashboard at http://localhost:3000
-# Use the ML Analytics tab to start simulated trading and generate training data
-```
+## CI and image promotion
 
-#### Service Health Checks
-```bash
-# Check service status
-curl http://localhost:6333/health        # Qdrant
-redis-cli -p 6379 ping                  # Redis
-curl http://localhost:8000/health       # Backend API
-curl http://localhost:3000/api/health   # Frontend API
-```
+`.github/workflows/docker-build.yml` is the Docker Build Validation workflow.
+Pushes to `dev` and `main` build the C++ and frontend images for the configured
+architectures and publish branch-tagged GHCR images. A promotion from `dev` to
+`main` must use the exact candidate head SHA, wait for that SHA's required jobs
+to pass, and then merge. Do not use an older successful run as proof.
 
-## 🤝 Contributing
+See:
 
-Please read the development rules in the `rules/` directory before contributing.
+- [Architecture](docs/ARCHITECTURE.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [API reference](docs/API_REFERENCE.md)
+- [Strategy objective](docs/STRATEGY_OBJECTIVE.md)
+- [Strategy diagnostics contract](docs/STRATEGY_DIAGNOSTICS_CONTRACT.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
 
-## 📄 License
-
-This project is proprietary software. All rights reserved.
+Historical migration plans and archived reports remain under `docs/archive/`,
+`docs/working/`, and `docs/reports/`; they are evidence, not current runtime
+instructions.

@@ -1,8 +1,79 @@
 import React, { useState } from 'react';
+import { Button } from '@/components/ui/Button';
 
-export function OpenPositionsSection({ positions }: { positions: any[] }) {
+type OpenPositionRow = {
+    symbol?: string;
+    side?: string;
+    quantity?: number | string;
+    entry_price?: number | string | null;
+    current_price?: number | string;
+    unrealized_pnl?: number | string;
+    entry_time?: string;
+    session_managed?: boolean;
+    inherited_quantity?: number | string;
+    management_state?: string;
+    eligible_for_strategy_management?: boolean;
+};
+
+const managementLabel = (position: OpenPositionRow) => {
+    if (position.management_state === 'account_managed') return 'Account-managed';
+    if (position.management_state === 'eligible_account_holding') return 'Eligible account holding';
+    if (position.management_state === 'session_managed' || position.session_managed !== false) return 'Session-managed';
+    return 'Coinbase holding';
+};
+
+export function OpenPositionsSection({
+    positions,
+    onClose,
+    onLiquidateHolding,
+    onLiquidateAllHoldings,
+    liquidationDisabledReason,
+}: {
+    positions: OpenPositionRow[];
+    onClose?: (symbol: string) => void;
+    onLiquidateHolding?: (symbol: string) => void;
+    onLiquidateAllHoldings?: () => void;
+    liquidationDisabledReason?: string | null;
+}) {
     const [page, setPage] = useState(1);
     const [perPage, setPerPage] = useState(10);
+    const [closingPosition, setClosingPosition] = useState<string | null>(null);
+    const [liquidatingPosition, setLiquidatingPosition] = useState<string | null>(null);
+    const [liquidatingAll, setLiquidatingAll] = useState(false);
+    const coinbaseHoldingCount = positions.filter((position) => position.session_managed === false).length;
+
+    const handleClose = async (symbol: string) => {
+        if (onClose) {
+            setClosingPosition(symbol);
+            try {
+                await onClose(symbol);
+            } finally {
+                setClosingPosition(null);
+            }
+        }
+    };
+
+    const handleLiquidateHolding = async (symbol: string) => {
+        if (onLiquidateHolding) {
+            setLiquidatingPosition(symbol);
+            try {
+                await onLiquidateHolding(symbol);
+            } finally {
+                setLiquidatingPosition(null);
+            }
+        }
+    };
+
+    const handleLiquidateAll = async () => {
+        if (onLiquidateAllHoldings) {
+            setLiquidatingAll(true);
+            try {
+                await onLiquidateAllHoldings();
+            } finally {
+                setLiquidatingAll(false);
+            }
+        }
+    };
 
     const totalPages = Math.ceil(positions.length / perPage) || 1;
     const start = (page - 1) * perPage;
@@ -14,6 +85,17 @@ export function OpenPositionsSection({ positions }: { positions: any[] }) {
             <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-gray-700">Open Positions</h4>
                 <div className="flex items-center space-x-2 text-sm">
+                    {coinbaseHoldingCount > 0 && onLiquidateAllHoldings && (
+                        <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={Boolean(liquidationDisabledReason) || liquidatingAll}
+                            title={liquidationDisabledReason || undefined}
+                            onClick={handleLiquidateAll}
+                        >
+                            {liquidatingAll ? 'Liquidating...' : `Liquidate all Coinbase holdings (${coinbaseHoldingCount})`}
+                        </Button>
+                    )}
                     <label className="text-gray-700">Show</label>
                     <select
                         value={perPage}
@@ -38,13 +120,20 @@ export function OpenPositionsSection({ positions }: { positions: any[] }) {
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Entry</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unrealized P&L</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Management</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Opened</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {pageData.map((pos: any, index: number) => (
-                            <tr key={`${pos.symbol}-${pos.entry_time}-${index}`}>
-                                <td className="px-4 py-2 text-sm text-gray-900">{pos.symbol}</td>
+                        {pageData.map((pos: OpenPositionRow, index: number) => {
+                            const symbol = pos.symbol ?? '';
+                            const canClose = (!onClose || pos.session_managed !== false) && symbol.length > 0;
+                            const canLiquidate = pos.session_managed === false && Boolean(onLiquidateHolding) && symbol.length > 0;
+
+                            return (
+                            <tr key={`${symbol}-${pos.entry_time}-${index}`}>
+                                <td className="px-4 py-2 text-sm text-gray-900">{symbol}</td>
                                 <td className="px-4 py-2 text-sm">
                                     <span className={`px-2 py-1 rounded-full text-xs ${(pos.side || '').toUpperCase() === 'LONG'
                                         ? 'bg-green-100 text-green-800'
@@ -54,15 +143,45 @@ export function OpenPositionsSection({ positions }: { positions: any[] }) {
                                     </span>
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-900">{Number(pos.quantity || 0).toFixed(4)}</td>
-                                <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.entry_price || 0).toFixed(4)}</td>
+                                <td className="px-4 py-2 text-sm text-gray-900">{pos.entry_price != null ? `$${Number(pos.entry_price).toFixed(4)}` : '—'}</td>
                                 <td className="px-4 py-2 text-sm text-gray-900">${Number(pos.current_price || 0).toFixed(4)}</td>
                                 <td className={`px-4 py-2 text-sm font-medium ${Number(pos.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                     }`}>
                                     ${Number(pos.unrealized_pnl || 0).toFixed(2)}
                                 </td>
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                    <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                                        {managementLabel(pos)}
+                                    </span>
+                                </td>
                                 <td className="px-4 py-2 text-sm text-gray-900">{(pos.entry_time ? new Date(pos.entry_time) : new Date()).toLocaleString()}</td>
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                    {canClose ? (
+                                        <Button
+                                            size="sm"
+                                            variant="danger"
+                                            disabled={closingPosition === symbol}
+                                            onClick={() => handleClose(symbol)}
+                                        >
+                                            {closingPosition === symbol ? 'Closing...' : 'Close'}
+                                        </Button>
+                                    ) : canLiquidate ? (
+                                        <Button
+                                            size="sm"
+                                            variant="danger"
+                                            disabled={Boolean(liquidationDisabledReason) || liquidatingPosition === symbol}
+                                            title={liquidationDisabledReason || undefined}
+                                            onClick={() => handleLiquidateHolding(symbol)}
+                                        >
+                                            {liquidatingPosition === symbol ? 'Liquidating...' : 'Liquidate holding'}
+                                        </Button>
+                                    ) : (
+                                        <span className="text-xs text-gray-500">Coinbase holding</span>
+                                    )}
+                                </td>
                             </tr>
-                        ))}
+                        );
+                        })}
                     </tbody>
                 </table>
             </div>

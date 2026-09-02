@@ -1,0 +1,14 @@
+# Order-book signal reconciliation
+
+The frontend keeps one canonical order-book view model per active session in `view_model` on the React Query `orderbook-signals` cache. Its identity is `(session_id, symbol)`, and `selectedSymbols` is the authoritative universe for the active query. A diagnosis-only symbol therefore remains represented even when the signal endpoint has no current quote. `failedSymbols` is retained in the model so a transient request failure cannot silently become `pending` on a refresh without a replacement.
+
+HTTP refreshes and chunk responses are merged by symbol. A diagnosis with a sequence number replaces an older diagnosis only when its sequence is newer (or equal for an authoritative snapshot). Signal events use sequence first, then event ID, then timestamp; a sequence-bearing WebSocket event is authoritative over an unsequenced poll, and later unsequenced polls cannot roll it back. Repeated event IDs and older versions are ignored. WebSocket updates apply to every cached display page, while `signals` remains a legacy signal-only page projection; consumers that need complete coverage should read `view_model.rows`.
+
+Rows preserve separate diagnosis and signal subrecords and expose mutually exclusive outcomes: pending, request/data/quote failures, transformer warming, rejected model input, HOLD, gate-blocked, intent-blocked, execution failure, executable, open trade, and completed trade. Candidate side, blocker, model/quote state, execution state, and trade state remain separate fields. Counts are calculated from the full canonical universe, not the visible page. Legacy page projections use one stable strength, timestamp, symbol tie-break order.
+
+Compatibility notes:
+
+- `OrderBookSignalPagination` and `OrderBookSignalsResponse` type the existing API envelope while retaining legacy `current_page`/`page`, `per_page`/`limit`, and `total_signals`/`total` aliases.
+- Existing consumers may continue using `data.signals` and server pagination. New consumers should use `data.view_model` and derive display pagination locally. The table prefers `view_model` whenever available, so raw signal/diagnosis props cannot overwrite reconciled rows.
+- Starting or stopping a simulated session already removes the mode alias cache; the session-scoped model rejects old WebSocket events and resets old rows when a new session reuses symbols. Universe changes are reconciled against the new selected-symbol set, dropping symbols no longer selected and seeding new ones as pending.
+- A full request failure remains a React Query error so retry UI can be shown; partial chunk failures set `coverage_complete=false` and add explicit failed-symbol rows instead of returning an apparently empty result. Diagnosis polling also merges into the diagnosis cache by per-symbol sequence, preserving newer WebSocket state.

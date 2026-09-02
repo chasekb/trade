@@ -1,4 +1,10 @@
-# Frontend Architecture
+# Frontend architecture
+
+Current runtime note: this Next.js application talks to the Drogon C++ backend
+through same-origin requests and the Next.js rewrites. The host backend URL is
+`http://localhost:8081`; `http://localhost:8000` and the former Python service
+are retired. See [API_REFERENCE.md](API_REFERENCE.md) for the current route
+registry.
 
 This document describes the architecture of the Next.js React frontend for the Trading Bot dashboard.
 
@@ -263,7 +269,7 @@ export function useOrderBookSignals(symbols: string[]) {
   const [signals, setSignals] = useState<Signal[]>([]);
   
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws');
+    const ws = new WebSocket('ws://localhost:8081/ws');
     
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
