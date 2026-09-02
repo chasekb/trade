@@ -130,7 +130,7 @@ This single command starts:
 - **Backend**: FastAPI server on `http://localhost:8000`
 - Qdrant vector database on `http://localhost:6333`
 - Redis cache on `localhost:6379`
-- PostgreSQL database on `localhost:5432`
+- PostgreSQL database on `localhost:${POSTGRES_HOST_PORT:-5433}` (host port is configurable; containers use `db:5432`)
 - All ML services available for trading
 
 #### Development Mode (Individual Services)
@@ -295,16 +295,17 @@ sudo apt-get install qdrant redis-server
 ```
 
 #### Port Conflicts
-If ports 3000, 8000, 6333, 6379, or 5432 are already in use:
+If ports 3000, 8000, 6333, 6379, or the PostgreSQL host port are already in use:
 ```bash
 # Check what's using the ports
 lsof -i :3000  # Frontend
 lsof -i :8000  # Backend
 lsof -i :6333  # Qdrant
 lsof -i :6379  # Redis
-lsof -i :5432  # PostgreSQL
+lsof -i :5433  # PostgreSQL (default host port)
 
-# Stop conflicting services or modify ports in docker-compose.yml
+# Stop conflicting services or set POSTGRES_HOST_PORT to another free host port.
+# Example: POSTGRES_HOST_PORT=15432 docker compose up
 ```
 
 #### ML Model Training Issues
