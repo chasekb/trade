@@ -36,6 +36,10 @@ async def stop_live_trading(request: dict):
     except RuntimeError:
         raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    # Cancel pending quote work before changing trading state. In-flight
+    # requests are generation-safe and cannot become post-stop intents.
+    if getattr(app_state, "data_handlers", None) is not None:
+        app_state.data_handlers.live_signal_scheduler.cancel()
     return await app_state.trading_handlers.stop_live_trading(request)
 
 @router.get("/api/trading/live/positions")

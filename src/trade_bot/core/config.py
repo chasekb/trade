@@ -38,6 +38,18 @@ class TradingConfig:
     coinbase_min_request_interval: float = 0.1  # Minimum seconds between requests (100ms)
     coinbase_rate_limit_enabled: bool = True  # Enable/disable rate limiting
 
+    # Bounded live order-book scheduling. These are explicit safety limits;
+    # they are never derived from hardware concurrency or silently applied to
+    # the user-selected universe.
+    live_quote_queue_capacity: int = 500
+    live_quote_max_concurrency: int = 4
+    live_quote_request_rate: float = 20.0
+    live_quote_request_burst: int = 4
+    live_quote_max_attempts: int = 2
+    live_quote_timeout_seconds: float = 10.0
+    live_quote_max_age_seconds: float = 5.0
+    live_signal_retention: int = 1000
+
     # ML server configuration
     ml_server_host: str = "ml-server"  # ML server host
     ml_server_port: int = 8002  # ML server port
@@ -76,6 +88,14 @@ class TradingConfig:
             coinbase_max_concurrent_requests=int(os.getenv("COINBASE_MAX_CONCURRENT_REQUESTS", "5")),
             coinbase_min_request_interval=float(os.getenv("COINBASE_MIN_REQUEST_INTERVAL", "0.1")),
             coinbase_rate_limit_enabled=os.getenv("COINBASE_RATE_LIMIT_ENABLED", "true").lower() == "true",
+            live_quote_queue_capacity=int(os.getenv("LIVE_QUOTE_QUEUE_CAPACITY", "500")),
+            live_quote_max_concurrency=int(os.getenv("LIVE_QUOTE_MAX_CONCURRENCY", "4")),
+            live_quote_request_rate=float(os.getenv("LIVE_QUOTE_REQUEST_RATE", "20.0")),
+            live_quote_request_burst=int(os.getenv("LIVE_QUOTE_REQUEST_BURST", "4")),
+            live_quote_max_attempts=int(os.getenv("LIVE_QUOTE_MAX_ATTEMPTS", "2")),
+            live_quote_timeout_seconds=float(os.getenv("LIVE_QUOTE_TIMEOUT_SECONDS", "10.0")),
+            live_quote_max_age_seconds=float(os.getenv("LIVE_QUOTE_MAX_AGE_SECONDS", "5.0")),
+            live_signal_retention=int(os.getenv("LIVE_SIGNAL_RETENTION", "1000")),
             ml_server_host=os.getenv("ML_SERVER_HOST", "ml-server"),
             ml_server_port=int(os.getenv("ML_SERVER_PORT", "8002")),
             enable_dca=os.getenv("ENABLE_DCA", "false").lower() == "true",

@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import HTTPException
 import requests
 import json
+from ...trading.live_signal_scheduler import BoundedQuoteScheduler, SchedulerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,21 @@ class DataHandlers:
         self._feature_importance_cache: Dict[str, Any] = {}
         self._feature_importance_cache_ttl: int = 300  # Cache for 5 minutes
         self._signal_cache: List[Dict[str, Any]] = []
+        self._live_signal_diagnostics: Dict[str, Any] = {
+            "normalized_contract": "bounded-live-equivalent",
+            "queue_depth": 0,
+            "backing_off": False,
+        }
+        self.live_signal_scheduler = BoundedQuoteScheduler(SchedulerConfig(
+            queue_capacity=getattr(config, 'live_quote_queue_capacity', 500),
+            max_concurrency=getattr(config, 'live_quote_max_concurrency', 4),
+            request_rate=getattr(config, 'live_quote_request_rate', 20.0),
+            request_burst=getattr(config, 'live_quote_request_burst', 4),
+            max_attempts=getattr(config, 'live_quote_max_attempts', 2),
+            request_timeout=getattr(config, 'live_quote_timeout_seconds', 10.0),
+            max_quote_age=getattr(config, 'live_quote_max_age_seconds', 5.0),
+            retention=getattr(config, 'live_signal_retention', 1000),
+        ))
         # WebSocket manager for broadcasting signals
         self.websocket_manager = None
     
@@ -624,19 +640,20 @@ class DataHandlers:
 
                     return error_signal
 
-            # Generate signals individually as order book data becomes available (not waiting for all symbols)
-            import asyncio
-            signals = []
-            # Process symbols individually to generate signals as data is retrieved
-            for symbol in symbol_list:
-                try:
-                    signal = await generate_signal_for_symbol(symbol)
-                    if signal:  # Only add non-empty signals
-                        signals.append(signal)
-                        logger.info(f"Generated signal for {symbol} individually: {signal.get('signal', 'hold')} (strength: {signal.get('signal_strength', 0):.2f})")
-                except Exception as e:
-                    logger.error(f"Failed to generate signal for {symbol}: {e}")
-                    continue
+            # Drain the selected universe through a bounded, freshness-aware
+            # scheduler. This preserves coverage goals without unbounded
+            # asyncio fan-out and makes cancellation/rate-limit behavior
+            # observable to the API.
+            await self.live_signal_scheduler.enqueue(symbol_list)
+
+            async def scheduled_signal(symbol: str) -> Dict[str, Any]:
+                signal = await generate_signal_for_symbol(symbol)
+                if signal:
+                    signal["observed_at"] = datetime.now().timestamp()
+                return signal or {"symbol": symbol, "observed_at": datetime.now().timestamp()}
+
+            signals = await self.live_signal_scheduler.run(scheduled_signal)
+            self._live_signal_diagnostics = self.live_signal_scheduler.diagnostics()
             
             # Sort signals by signal strength (descending)
             signals.sort(key=lambda x: x.get('signal_strength', 0), reverse=True)
@@ -676,6 +693,7 @@ class DataHandlers:
                 "active_signals": active_signals,
                 "average_strength": avg_strength,
                 "last_updated": datetime.now().isoformat(),
+                "diagnostics": self._live_signal_diagnostics,
                 "pagination": {
                     "current_page": page,
                     "per_page": per_page,
