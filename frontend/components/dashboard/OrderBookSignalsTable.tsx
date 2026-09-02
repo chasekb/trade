@@ -1,24 +1,41 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { DataTable } from '@/components/ui/DataTable';
-import Tooltip from '@/components/ui/Tooltip';
-import { DataTableColumn, OrderBookSignal } from '@/types/trading';
+import { DataTableColumn, OrderBookSignal, OrderBookSignalDiagnostics } from '@/types/trading';
 
+const formatCounts = (counts?: Record<string, number>) => {
+    if (!counts || Object.keys(counts).length === 0) return 'none';
+    return Object.entries(counts)
+        .sort(([, left], [, right]) => right - left)
+        .map(([key, value]) => `${formatLabel(key)}: ${value}`)
+        .join(', ');
+};
+
+const formatLabel = (value: string) => value.replace(/_/g, ' ');
+
+// Updated interface to separate server pagination from client pagination state
 export function OrderBookSignalsTable({
     signals,
-    pagination,
+    pagination, // Server-side pagination info (optional, mainly for consistency)
+    currentPage,
+    pageSize,
     onPageChange,
     onPageSizeChange,
     summary,
 }: {
     signals: OrderBookSignal[];
     pagination?: {
-        current_page: number;
-        per_page: number;
+        current_page?: number;
+        page?: number;
+        per_page?: number;
+        limit?: number;
         total_pages: number;
-        total_signals: number;
+        total_signals?: number;
+        total?: number;
         has_next: boolean;
         has_prev: boolean;
     };
+    currentPage: number;
+    pageSize: number;
     onPageChange?: (page: number) => void;
     onPageSizeChange?: (pageSize: number) => void;
     summary?: {
@@ -26,47 +43,15 @@ export function OrderBookSignalsTable({
         active_signals?: number;
         average_strength?: number;
         last_updated?: string;
+        diagnostics?: OrderBookSignalDiagnostics;
     };
 }) {
-    const [sortKey, setSortKey] = useState<keyof OrderBookSignal | null>('timestamp');
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-
-    const handleSort = (key: string) => {
-        const newDirection = sortKey === key && sortDirection === 'asc' ? 'desc' : 'asc';
-        setSortKey(key as keyof OrderBookSignal);
-        setSortDirection(newDirection);
-    };
-
-    const sortedSignals = useMemo(() => {
-        if (!sortKey || !signals) return signals || [];
-
-        return [...signals].sort((a, b) => {
-            const aVal = a[sortKey];
-            const bVal = b[sortKey];
-
-            // Handle null/undefined values to be consistently at the start or end
-            if (aVal == null) return 1;
-            if (bVal == null) return -1;
-
-            let comparison = 0;
-            if (aVal < bVal) {
-                comparison = -1;
-            } else if (aVal > bVal) {
-                comparison = 1;
-            }
-
-            return sortDirection === 'desc' ? comparison * -1 : comparison;
-        });
-    }, [signals, sortKey, sortDirection]);
-
-    // Use pagination from props
-    const activePage = pagination?.current_page || 1;
-    const activePageSize = pagination?.per_page || 10;
-    const totalPages = pagination?.total_pages || 1;
-    const totalSignals = (summary?.total_analyzed ?? pagination?.total_signals ?? (signals?.length || 0));
-
-    // Data is paginated by the server, so we use it directly.
-    const paginatedSignals = sortedSignals;
+    const activePage = currentPage;
+    const activePageSize = pageSize;
+    // Page math must use the actual signal count; summary.total_analyzed counts
+    // analyzed symbols, which is a different (usually larger) population.
+    const totalSignals = pagination?.total_signals ?? pagination?.total ?? signals.length;
+    const totalPages = pagination?.total_pages || Math.max(1, Math.ceil(totalSignals / Math.max(activePageSize, 1)));
 
     const handlePageChange = (page: number) => {
         onPageChange?.(page);
@@ -136,22 +121,7 @@ export function OrderBookSignalsTable({
             header: 'Strength',
             sortable: true,
             className: "px-2 py-2",
-            render: (value, row) => {
-                const composition = row.strength_composition || {};
-                const tooltipContent = (
-                    <div>
-                        <p className="font-bold mb-1">Signal Strength: {(value || 0).toFixed(2)}</p>
-                        <p className="text-xs mb-2">This is the ML model's confidence in the signal. It is composed of the following features, weighted by their learned importance:</p>
-                        <ul className="list-disc list-inside text-xs">
-                            {Object.entries(composition).map(([key, val]) => (
-                                <li key={key}>
-                                    <span className="font-semibold">{key.replace(/_/g, ' ')}:</span> {val.importance_percent.toFixed(1)}%
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                );
-
+            render: (value) => {
                 return (
                     <div className="flex items-center">
                         <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
@@ -184,7 +154,7 @@ export function OrderBookSignalsTable({
             key: 'criteria_analysis',
             header: 'Criteria',
             className: "px-2 py-2",
-            render: (value, row) => {
+            render: (value) => {
                 const criteria = value || {};
                 const squeeze = criteria.bid_ask_squeeze || {};
                 const imbalanceBuy = criteria.volume_imbalance_buy || {};
@@ -218,15 +188,22 @@ export function OrderBookSignalsTable({
             key: 'ml_analysis',
             header: 'ML Analysis',
             className: "px-2 py-2",
-            render: (value, row) => {
+            render: (value) => {
                 const ml = value || {};
                 if (!ml.ml_enabled) {
                     return <span className="text-xs text-gray-400">No ML</span>;
                 }
 
-                // Fix: Clamp win probability to 100%
                 const rawWinProb = ml.win_probability || 0;
-                const winProb = Math.min(rawWinProb, 100);
+                const winProb = Math.min(rawWinProb * 100, 100);
+                const expectedReturn = (ml.expected_return || 0) * 100;
+                const expectedReturnAvailable = ml.expected_return_available !== false;
+                const feeAdjustedReturn = typeof ml.fee_adjusted_expected_return === 'number'
+                    ? ml.fee_adjusted_expected_return * 100
+                    : null;
+                const requiredEdge = typeof ml.required_edge === 'number'
+                    ? ml.required_edge * 100
+                    : null;
 
                 return (
                     <div className="text-xs space-y-1">
@@ -235,18 +212,33 @@ export function OrderBookSignalsTable({
                             <span className={`font-medium ${winProb >= 60 ? 'text-green-600' :
                                 winProb >= 40 ? 'text-yellow-600' : 'text-red-600'
                                 }`}>
-                                Win Probability: {winProb.toFixed(1)}%
+                                Win Probability: {winProb.toFixed(2)}%
                             </span>
                         </div>
                         <div className="text-gray-500">
-                            Expected Return: {(ml.expected_return || 0).toFixed(1)}%
+                            Expected Return: {expectedReturnAvailable ? `${expectedReturn.toFixed(2)}%` : 'Unavailable'}
                         </div>
+                        {ml.diagnostic_factor && (
+                            <div className="text-gray-500">
+                                Factor: {formatLabel(ml.diagnostic_factor)}
+                            </div>
+                        )}
+                        {feeAdjustedReturn !== null && (
+                            <div className={feeAdjustedReturn >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                Fee-Adjusted Edge: {feeAdjustedReturn.toFixed(2)}%
+                            </div>
+                        )}
+                        {requiredEdge !== null && (
+                            <div className="text-gray-500">
+                                Required Edge: {requiredEdge.toFixed(2)}%
+                            </div>
+                        )}
                     </div>
                 );
             },
         },
         {
-            key: 'timestamp' as keyof OrderBookSignal,
+            key: 'signal_reason' as keyof OrderBookSignal,
             header: 'Details',
             className: "px-2 py-2",
             render: (value, row) => (
@@ -267,10 +259,20 @@ Criteria Analysis:
 
 ${row.ml_analysis?.ml_enabled ? `
 ML Analysis:
-- Win Probability: ${(row.ml_analysis.win_probability).toFixed(4)}%
-- Expected Return: ${(row.ml_analysis.expected_return).toFixed(4)}%
+- Win Probability: ${(row.ml_analysis.win_probability * 100).toFixed(2)}%
+- Expected Return: ${row.ml_analysis.expected_return_available === false ? 'Unavailable' : `${(row.ml_analysis.expected_return * 100).toFixed(2)}%`}
+${typeof row.ml_analysis.fee_adjusted_expected_return === 'number' ? `- Fee-Adjusted Edge: ${(row.ml_analysis.fee_adjusted_expected_return * 100).toFixed(2)}%\n` : ''}${typeof row.ml_analysis.required_edge === 'number' ? `- Required Edge: ${(row.ml_analysis.required_edge * 100).toFixed(2)}%\n` : ''}${row.ml_analysis.diagnostic_factor ? `- Diagnostic Factor: ${row.ml_analysis.diagnostic_factor}\n` : ''}${row.ml_analysis.factoring_semantics ? `- Factoring Semantics: ${row.ml_analysis.factoring_semantics}\n` : ''}${row.ml_analysis.profitability_gate_reason ? `- Profitability Gate: ${row.ml_analysis.profitability_gate_reason}\n` : ''}
 - Confidence: ${(row.ml_analysis.confidence * 100).toFixed(2)}%
 - Model: ${row.ml_analysis.model_version || 'N/A'}
+
+Execution Analysis:
+${row.execution_analysis ? `- Executable Intent: ${row.execution_analysis.executable_intent ? 'yes' : 'no'}
+- Blocker: ${row.execution_analysis.blocker_reason || 'N/A'}
+- Intended Side: ${row.execution_analysis.intended_side || 'N/A'}
+- Strength Bucket: ${row.execution_analysis.strength_bucket || 'N/A'}
+- Expected Return Bucket: ${row.execution_analysis.expected_return_bucket || 'N/A'}
+- Allocated USD: ${typeof row.execution_analysis.allocated_usd === 'number' ? `$${row.execution_analysis.allocated_usd.toFixed(2)}` : 'N/A'}
+` : 'No execution analysis available'}
 
 Analytics:
 ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 0) ? JSON.stringify(row.ml_analysis.analytics, null, 2) : 'No detailed analytics available (Empty/Null)'}
@@ -288,7 +290,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
 
     return (
         <div className="space-y-4">
-            {/* Pagination Controls */}
+            {/* Pagination Controls - Use actual client-side pagination info */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                     <label className="text-sm text-gray-700">Show:</label>
@@ -350,24 +352,58 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                 </div>
             </div>
 
+            {summary?.diagnostics && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                    <div className="font-medium mb-1">Live order-book analysis coverage</div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                        <div>Selected: {summary.diagnostics.selected_symbol_count ?? summary.diagnostics.requested_symbol_count ?? 0}</div>
+                        <div>Attempted this tick: {summary.diagnostics.quote_attempted_symbol_count ?? 0}</div>
+                        <div>Quote successes: {summary.diagnostics.quote_success_symbol_count ?? 0}</div>
+                        <div>Missing latest rows: {summary.diagnostics.missing_latest_signal_count ?? summary.diagnostics.quote_skipped_symbol_count ?? 0}</div>
+                    </div>
+                    <div className="mt-1 text-xs text-blue-800">
+                        Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? signals.length}.
+                    </div>
+                    <div className="mt-1 text-xs text-blue-800">
+                        Executable intents: {summary.diagnostics.executable_order_intent_count ?? 0}. Blockers: {formatCounts(summary.diagnostics.execution_blocker_counts)}.
+                    </div>
+                    <div className="mt-1 text-xs text-blue-800">
+                        Strength buckets: {formatCounts(summary.diagnostics.execution_strength_bucket_counts)}. Expected-return buckets: {formatCounts(summary.diagnostics.execution_expected_return_bucket_counts)}.
+                    </div>
+                    {summary.diagnostics.missing_latest_signal_symbols && summary.diagnostics.missing_latest_signal_symbols.length > 0 && (
+                        <div className="mt-1 text-xs text-blue-800">
+                            Awaiting latest quote/signal: {summary.diagnostics.missing_latest_signal_symbols.slice(0, 8).join(', ')}{summary.diagnostics.missing_latest_signal_symbols.length > 8 ? ` +${summary.diagnostics.missing_latest_signal_symbols.length - 8} more` : ''}
+                        </div>
+                    )}
+                    {summary.diagnostics.widget_coverage_contract && (
+                        <div className="mt-1 text-xs text-blue-700">{summary.diagnostics.widget_coverage_contract}</div>
+                    )}
+                    {summary.diagnostics.contract && (
+                        <div className="mt-1 text-xs text-blue-700">{summary.diagnostics.contract}</div>
+                    )}
+                    {(summary.diagnostics.failed_request_symbol_count ?? 0) > 0 && (
+                        <div className="mt-1 text-xs text-red-700">
+                            Request failures: {summary.diagnostics.failed_request_symbol_count} selected symbols were not refreshed.
+                            {summary.diagnostics.failed_request_symbols?.slice(0, 8).join(', ')}
+                            {(summary.diagnostics.failed_request_symbols?.length ?? 0) > 8 ? '…' : ''}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Data Table */}
             <DataTable
-                data={paginatedSignals}
+                data={signals}
                 columns={columns}
                 loading={false}
-                sorting={{
-                    key: sortKey || 'timestamp',
-                    direction: sortDirection,
-                    onSort: handleSort,
-                }}
                 className="w-full"
             />
 
-            {/* Statistics Summary */}
-            {signals && signals.length > 0 && (
+            {/* Statistics Summary - Use actual sorted data for calculations */}
+            {signals.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
                     <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{totalSignals}</div>
+                        <div className="text-lg font-semibold text-gray-900">{summary?.total_analyzed ?? totalSignals}</div>
                         <div className="text-sm text-gray-600">Total Analyzed</div>
                     </div>
                     <div className="text-center">
@@ -387,7 +423,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                     </div>
                     <div className="text-center">
                         <div className="text-lg font-semibold text-gray-900">
-                            {(summary?.last_updated ? new Date(summary.last_updated) : new Date()).toLocaleTimeString()}
+                            {summary?.last_updated ? new Date(summary.last_updated).toLocaleTimeString() : 'Unavailable'}
                         </div>
                         <div className="text-sm text-gray-600">Last Updated</div>
                     </div>

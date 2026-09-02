@@ -1,155 +1,118 @@
 version: '3.8'
 
 services:
-  # Backend API Service (Python FastAPI)
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # C++ Backend Service (New)
+  cpp-backend:
+    image: ${CPP_BACKEND_IMAGE:-ghcr.io/chasekb/trade/cpp-backend:dev}
     ports:
-      - "8000:8000"
-    volumes:
-      # Mount source code for development
-      - .:/app
-      # Persist database files
-      - ./data:/app/data
-      # Mount logs
-      - ./outputs:/app/outputs
-      - ./logs:/app/logs
+      - "${CPP_BACKEND_HOST_PORT:-8081}:8080"
     environment:
-      - DATABASE_URL=postgresql://trading_user:trading_password@db:5432/trading_db
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379
-      - QDRANT_URL=http://qdrant:6333
-      - ML_SERVER_URL=http://ml-server:8002
-      - ENV=production
-      - PORT=8000
-      - PYTHONPATH=/app/src
+      - ENV=development
+      - TRAINED_MODELS_DIR=/app/data/trained_models
+    dns:
+      # Keep Podman's network-local resolver first for db/redis service names,
+      # then fall back to public DNS for external providers such as Coinbase.
+      - 10.89.3.1
+      - 1.1.1.1
+      - 8.8.8.8
+    user: "0:0"
+    volumes:
+      - ./.env:/app/.env:ro,Z
+      - ./data/cpp_assets:/app/data/cpp_assets:ro,Z
+      - ./data/onnx:/app/data/onnx:U,Z
+      - trade-trained-models:/app/data/trained_models
     depends_on:
-      - db
-      - redis
-      - qdrant
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - trading-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "/bin/bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080; printf \"GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q healthy <&3'",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    command: ["python", "app.py"]
 
   # Frontend Service (Next.js TypeScript)
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ${FRONTEND_IMAGE:-ghcr.io/chasekb/trade/frontend:dev}
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-      - NEXT_PUBLIC_WS_URL=ws://backend:8000
+      - HOSTNAME=0.0.0.0
+      - BACKEND_URL=http://cpp-backend:8080
+      - NEXT_PUBLIC_API_URL=http://cpp-backend:8080
+      - NEXT_PUBLIC_WS_URL=ws://cpp-backend:8080
       - NEXT_PUBLIC_NODE_ENV=production
       - NEXT_PUBLIC_APP_VERSION=1.0.0
     depends_on:
-      - backend
+      cpp-backend:
+        condition: service_healthy
     networks:
       - trading-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "(command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:3000/api/health >/dev/null) || (command -v wget >/dev/null 2>&1 && wget -q -O- http://127.0.0.1:3000/api/health >/dev/null)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
-  # Vector Database for ML Features
-  qdrant:
-    build:
-      context: .
-      dockerfile: qdrant.Dockerfile
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    networks:
-      - trading-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   # Main Database
   db:
-    image: postgres:15-alpine
+    image: docker.io/library/postgres:15-alpine
     environment:
-      POSTGRES_DB: trading_db
-      POSTGRES_USER: trading_user
-      POSTGRES_PASSWORD: trading_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/databases/postgres:/var/lib/postgresql/data:Z
     ports:
-      - "5432:5432"
+      # Keep the host binding configurable so this stack can coexist with
+      # another local PostgreSQL service. Containers still use db:5432.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     networks:
       - trading-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trading_user -d trading_db"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
   # Cache Service
   redis:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/cache/redis:/data:Z
     networks:
       - trading-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # ML Model Server
-  ml-server:
-    build:
-      context: .
-      dockerfile: src/trade_bot/ml/Dockerfile
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./data:/app/data
-    environment:
-      - DATABASE_URL=postgresql://trading_user:trading_password@db:5432/trading_db
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-    depends_on:
-      - db
-      - qdrant
-    networks:
-      - trading-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://ml-server:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-volumes:
-  postgres_data:
-  redis_data:
-  qdrant_storage:
 
 networks:
   trading-network:
     driver: bridge
+
+volumes:
+  trade-trained-models:

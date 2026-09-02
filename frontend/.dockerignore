@@ -1,0 +1,12 @@
+node_modules/
+.next/
+coverage/
+.turbo/
+.git/
+.vscode/
+.DS_Store
+.env
+.env.*
+*.log
+*.swp
+*.bak

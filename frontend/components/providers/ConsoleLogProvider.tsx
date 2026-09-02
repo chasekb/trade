@@ -7,7 +7,7 @@ const ConsoleLogProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const originalConsoleLog = console.log;
 
-    console.log = (...args: any[]) => {
+    console.log = (...args: unknown[]) => {
       // Call the original console.log so that messages still appear in the browser console
       originalConsoleLog.apply(console, args);
 
@@ -16,7 +16,7 @@ const ConsoleLogProvider = ({ children }: { children: React.ReactNode }) => {
         if (typeof arg === 'object' && arg !== null) {
           try {
             return JSON.stringify(arg);
-          } catch (error) {
+          } catch {
             return 'Unserializable object';
           }
         }
