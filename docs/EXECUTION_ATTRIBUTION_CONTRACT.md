@@ -148,8 +148,8 @@ CREATE TABLE generated_signal_outcomes (
   exit_rule VARCHAR(32), diagnostic_detail VARCHAR(255),
   observed_at TIMESTAMP NOT NULL, payload JSONB,
   UNIQUE (session_id, event_id),
-  UNIQUE (session_id, signal_id, event_sequence),
-  UNIQUE (session_id, intent_id, event_version)
+  UNIQUE (session_id, signal_id, event_sequence, event_version),
+  UNIQUE (session_id, intent_id, event_sequence, event_version)
 );
 CREATE INDEX generated_signal_outcomes_scope_idx
   ON generated_signal_outcomes (session_id, trade_type, observed_at);
@@ -159,17 +159,24 @@ CREATE INDEX generated_signal_outcomes_intent_idx
   ON generated_signal_outcomes (session_id, intent_id, event_sequence);
 ```
 
-The table is append-only: never update an earlier lifecycle row. `event_sequence` starts
-at 1 for an evaluation and increments for each observation; `event_version` increments
-for a corrected observation of the same sequence. A producer retries the same event with
-the same `(session_id,event_id)` and must be idempotent; it may not create a new sequence.
-A retry after a new authoritative observation appends the next sequence for the same
-`intent_id`. `executable_intent -> submitted_pending -> rejected|terminal_unfilled|
+The table is append-only: never update or delete an earlier lifecycle row. For each
+`signal_id`, `event_sequence=1` is the evaluation and each later observation increments
+the sequence. `event_version` starts at 1 for that observation; a correction to an
+already emitted observation appends the same sequence with the next version. Therefore
+the relational uniqueness key is `(session_id, signal_id, event_sequence, event_version)`;
+the shorter `(session_id, signal_id, event_sequence)` key must not be used because it
+would prohibit corrections. A producer retry of the same event uses the same
+`(session_id,event_id)` and is a no-op; it must not create a new sequence or version.
+A new authoritative observation appends the next sequence for the same `intent_id`.
+`executable_intent -> submitted_pending -> rejected|terminal_unfilled|
 partially_executed|fully_executed` are legal transitions. `blocked_intent` and
 `explicit_skip` are terminal evaluations. `reconciliation_error` may be followed by a
-new authoritative terminal event, but never by an invented fill. Restart recovery
-queries open `submitted_pending`/`reconciliation_error` intents by stable
-`client_order_id` and `external_order_id` before dispatching again.
+new authoritative terminal event, but never by an invented fill. A terminal state may
+not transition to another terminal state except through a correction version that
+preserves the original event sequence and explains the correction in `diagnostic_detail`.
+Restart recovery queries open `submitted_pending`/`reconciliation_error` intents by stable
+`client_order_id` and `external_order_id` before dispatching again. If both IDs are absent,
+the intent is not safely retryable and remains `reconciliation_error`.
 
 `individual_trades` remains the executed-fill projection, with `trade_id`, session,
 trade type, strategy, symbol, side, actual fill fields, fees, and explicit
@@ -225,6 +232,16 @@ excluded from all PnL/win/loss denominators and never treated as losses. A facto
 all impact fields are null and `insufficient_data=true`. Legacy `win_rate` (0-100) and
 positive `average_loss` remain supported as aliases; `total_fees` is not added twice to
 net PnL.
+
+`by_diagnostic_factor` is an array with one row per canonical factor (including zero
+counts when the caller requests a complete taxonomy). Each row has `factor`, `evaluated`,
+`blocked_intents`, `impact_population`, `executed_count`, `pnl_population`, `win_count`,
+`loss_count`, `average_realized_pnl`, `average_win_pnl`, `average_loss_magnitude`,
+`win_rate_pct`, and `insufficient_data`. Factor rows use the same formulas and null rules
+as strategy rows; `impact_population` describes factor reach and is not a substitute for
+`pnl_population`. `dimensions` uses the same row shape keyed by `symbol`, `side`,
+`strength_bucket`, or `expected_return_bucket`. Blocked/skipped records can increase
+counts in those rows but cannot enter any realized-PnL population.
 
 The frontend preserves null versus zero, unknown future enum values as `unknown`, and
 coverage/truncation warnings. It never infers execution from `executable_intent=true`.
