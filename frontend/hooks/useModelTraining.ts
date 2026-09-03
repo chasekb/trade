@@ -21,9 +21,60 @@ export function useModelTraining() {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
 
+  const watchTrainingCompletion = () => {
+    let attempts = 0;
+    const maxAttempts = 120; // ~4 minutes at 2s interval
+    const intervalId = setInterval(async () => {
+      attempts += 1;
+      try {
+        const statusResp = await apiClient.getMLStatus();
+        if (statusResp.status === 'error' || !statusResp.data) {
+          if (attempts >= maxAttempts) {
+            clearInterval(intervalId);
+          }
+          return;
+        }
+
+        const status = statusResp.data.status;
+        if (status === 'completed') {
+          clearInterval(intervalId);
+          queryClient.invalidateQueries({ queryKey: ['ml', 'models'] });
+          queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+          return;
+        }
+
+        if (status === 'failed') {
+          clearInterval(intervalId);
+          queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+          showError('Model training failed');
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(intervalId);
+        }
+      } catch {
+        if (attempts >= maxAttempts) {
+          clearInterval(intervalId);
+        }
+      }
+    }, 2000);
+  };
+
   const trainMutation = useMutation({
-    mutationFn: async (batchTraining?: boolean): Promise<MLTrainingResponse> => {
-      const response = await apiClient.trainMLModel(batchTraining);
+    mutationFn: async (
+      input?: boolean | {
+        batchTraining?: boolean;
+        autoSetActive?: boolean;
+        modelType?: 'random_forest' | 'gradient_boosting' | 'transformer';
+        modelName?: string;
+      }
+    ): Promise<MLTrainingResponse> => {
+      const options = typeof input === 'boolean'
+        ? { batchTraining: input }
+        : input;
+
+      const response = await apiClient.trainMLModel(options);
       if (response.status === 'error' || !response.data) {
         throw new Error(response.error || 'Failed to train model');
       }
@@ -34,6 +85,7 @@ export function useModelTraining() {
         showSuccess(data.message || 'Model training completed successfully');
         // Refetch ML dashboard data
         queryClient.invalidateQueries({ queryKey: ['ml', 'dashboard'] });
+        watchTrainingCompletion();
       } else {
         showError(data.error || 'Model training failed');
       }
@@ -178,6 +230,34 @@ export function useModelTraining() {
     },
   });
 
+  const resetDatabasesMutation = useMutation({
+    mutationFn: async () => {
+      if (!confirm('Are you sure you want to RESET ALL DATABASES? This will delete all training data, trading history, and cache. This action CANNOT be undone.')) {
+        throw new Error('Reset cancelled by user');
+      }
+      const response = await apiClient.resetDatabases();
+      if (response.status === 'error' || !response.data) {
+        throw new Error(response.error || 'Failed to reset databases');
+      }
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (data.status === 'success') {
+        showSuccess(data.message || 'Databases reset successfully');
+        // Invalidate all relevant queries
+        queryClient.invalidateQueries({ queryKey: ['ml'] });
+        queryClient.invalidateQueries({ queryKey: ['trading'] });
+      } else {
+        showError(data.error || 'Failed to reset databases');
+      }
+    },
+    onError: (error) => {
+      if (error.message !== 'Reset cancelled by user') {
+        showError(error.message || 'Failed to reset databases');
+      }
+    },
+  });
+
   return {
     // Training
     trainModel: trainMutation.mutate,
@@ -205,5 +285,9 @@ export function useModelTraining() {
     isDeletingModel: deleteModelMutation.isPending,
     deleteAllModels: deleteAllModelsMutation.mutate,
     isDeletingAllModels: deleteAllModelsMutation.isPending,
+    
+    // Reset Databases
+    resetDatabases: resetDatabasesMutation.mutate,
+    isResettingDatabases: resetDatabasesMutation.isPending,
   };
 }

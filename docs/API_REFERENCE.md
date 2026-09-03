@@ -246,6 +246,72 @@ GET /api/ml/pnl-trades?limit=10&sort_by=pnl
 }
 ```
 
+### Execution Attribution
+
+#### Get Execution Reconciliation
+```http
+GET /api/trading/execution-reconciliation?hours=24&session_id=&trade_type=
+```
+
+Reconciles generated signals to execution outcomes by strategy and blocker
+bucket over a trailing window. Read-only diagnostic: it never starts, stops, or
+authorizes trading.
+
+**Parameters:**
+- `hours` (integer, optional): trailing window in hours, clamped to 1–720 (default: 24)
+- `session_id` (string, optional): restrict to one trading session
+- `trade_type` (string, optional): restrict outcomes to `simulated`, `live_parity`, `live_paper`, or `live`
+- `max_signals` (integer, optional): signal-row cap, clamped to 100–200000 (default: 20000)
+
+**Units:** `win_rate` is a 0–100 percentage, `average_loss` is a positive
+magnitude, and `expectancy` is per decided (non-zero-PnL) closing leg, net of
+fees. `profit_factor` is `0` with `profit_factor_undefined: true` when a window
+has winners but no losers.
+
+**Response:**
+```json
+{
+  "window_hours": 24,
+  "signal_rows": 1840,
+  "outcome_rows": 26,
+  "signal_rows_truncated": false,
+  "by_strategy": [
+    {
+      "strategy": "orderbook",
+      "signals_evaluated": 1840,
+      "signals_generated": 412,
+      "executable_intents": 13,
+      "blocked_intents": 399,
+      "closing_legs": 13,
+      "winners": 4,
+      "losers": 9,
+      "win_rate": 30.77,
+      "average_win": 1.85,
+      "average_loss": 2.40,
+      "expectancy": -1.09,
+      "profit_factor": 0.34,
+      "profit_factor_undefined": false,
+      "total_pnl": -14.20,
+      "total_fees": 3.90,
+      "intent_conversion_rate": 0.0316,
+      "outcome_coverage": 1.0,
+      "outcomes_unexplained": false,
+      "negative_expectancy_flag": true,
+      "dominant_blocker": "spot_cannot_open_short",
+      "blockers": [
+        {
+          "reason": "spot_cannot_open_short",
+          "count": 320,
+          "share": 0.802,
+          "blocked_expected_return_sum": -1.42
+        }
+      ]
+    }
+  ],
+  "overall": { "strategy": "overall" }
+}
+```
+
 ## Simulated Trading Endpoints
 
 ### Session Management
@@ -262,7 +328,9 @@ Content-Type: application/json
   "position_size": 0.1,
   "stop_loss": 0.02,
   "take_profit": 0.03,
-  "order_prioritization": "signal_strength"
+  "order_prioritization": "signal_strength",
+  "confidence_threshold": 0.6,
+  "fallback_to_baseline": true
 }
 ```
 
@@ -274,6 +342,8 @@ Content-Type: application/json
 - `stop_loss` (number, optional): Stop loss percentage
 - `take_profit` (number, optional): Take profit percentage
 - `order_prioritization` (string, optional): Order execution priority - `signal_strength`, `win_probability`, or `expected_return` (default: signal_strength)
+- `confidence_threshold` (number, optional): Minimum confidence for ML strategy (default: 0.6)
+- `fallback_to_baseline` (boolean, optional): Whether ML strategy falls back to standard order book analysis on failure (default: true)
 
 **Response:**
 ```json

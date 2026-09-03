@@ -36,9 +36,12 @@ const columns = [
   {
     key: 'timestamp',
     header: 'Timestamp',
-    render: (timestamp: number) => {
-      const date = new Date(timestamp * 1000);
-      return <div>{date.toLocaleString()}</div>;
+    render: (timestamp: number | string) => {
+      // Accept epoch seconds, epoch milliseconds, or ISO strings.
+      const date = typeof timestamp === 'number'
+        ? new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp)
+        : new Date(timestamp);
+      return <div>{Number.isNaN(date.getTime()) ? '-' : date.toLocaleString()}</div>;
     },
   },
 ];

@@ -194,7 +194,15 @@ function BacktestControls({ onRun, loading, canRun }: BacktestControlsProps) {
 }
 
 // Backtest Results Component
+const TRADES_PER_PAGE = 10;
+
 function BacktestResults({ results, loading }: BacktestResultsProps) {
+  const [tradesPage, setTradesPage] = useState(1);
+
+  React.useEffect(() => {
+    setTradesPage(1);
+  }, [results]);
+
   if (loading) {
     return (
       <Card>
@@ -248,7 +256,7 @@ function BacktestResults({ results, loading }: BacktestResultsProps) {
     { key: 'metric', header: 'Metric', sortable: true },
     { key: 'value', header: 'Value', sortable: true, render: (value, item) => {
       if (item.format === 'currency') {
-        return <span className={value >= 0 ? 'text-green-600' : 'text-red-600'}>
+        return <span className={typeof value === 'number' && value < 0 ? 'text-red-600' : 'text-green-600'}>
           ${typeof value === 'number' ? value.toFixed(2) : value}
         </span>;
       }
@@ -314,13 +322,16 @@ function BacktestResults({ results, loading }: BacktestResultsProps) {
           </CardHeader>
           <CardContent>
             <DataTable
-              data={mockResults.trades}
+              data={mockResults.trades.slice(
+                (tradesPage - 1) * TRADES_PER_PAGE,
+                tradesPage * TRADES_PER_PAGE,
+              )}
               columns={tradeColumns}
               className="w-full"
               pagination={{
-                currentPage: 1,
-                totalPages: Math.ceil(mockResults.trades.length / 10),
-                onPageChange: () => {},
+                currentPage: tradesPage,
+                totalPages: Math.ceil(mockResults.trades.length / TRADES_PER_PAGE),
+                onPageChange: setTradesPage,
               }}
             />
           </CardContent>

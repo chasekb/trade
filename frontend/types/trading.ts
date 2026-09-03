@@ -95,10 +95,20 @@ export interface OrderBookSignal {
     ml_enabled: boolean;
     win_probability: number;
     expected_return: number;
+    expected_return_available?: boolean;
+    diagnostics_available?: boolean;
+    fee_adjusted_expected_return?: number;
+    required_edge?: number;
+    profitability_gate_passed?: boolean;
+    profitability_gate_reason?: string;
+    diagnostic_factor?: string;
+    factoring_semantics?: string;
     confidence: number;
     model_version: string;
     features_used?: string[];
     prediction_timestamp: string;
+    // Backend analytics are model-version specific and intentionally opaque to the table layer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     analytics?: any;
   };
   strength_composition?: {
@@ -107,11 +117,58 @@ export interface OrderBookSignal {
       importance_percent: number;
     };
   };
+  execution_analysis?: {
+    strategy?: string;
+    symbol?: string;
+    signal_generated?: boolean;
+    intended_action?: string;
+    intended_side?: string;
+    executable_intent?: boolean;
+    blocked?: boolean;
+    blocker_reason?: string;
+    diagnostic_factor?: string;
+    strength_bucket?: string;
+    expected_return_bucket?: string;
+    expected_return?: number;
+    fee_adjusted_expected_return?: number;
+    required_edge?: number;
+    allocated_usd?: number;
+    available_cash?: number;
+    estimated_fee?: number;
+    minimum_notional?: number;
+  };
   // Legacy properties for backward compatibility
   buy_volume?: number;
   sell_volume?: number;
   imbalance_ratio?: number;
   prediction?: 'BUY' | 'SELL' | 'HOLD';
+}
+
+export interface OrderBookSignalDiagnostics {
+  selected_symbol_count?: number;
+  requested_symbol_count?: number;
+  quote_attempted_symbol_count?: number;
+  quote_success_symbol_count?: number;
+  quote_skipped_symbol_count?: number;
+  current_batch_symbols?: string[];
+  current_latest_signal_count?: number;
+  missing_latest_signal_count?: number;
+  missing_latest_signal_symbols?: string[];
+  failed_request_symbol_count?: number;
+  failed_request_symbols?: string[];
+  recent_signal_record_count?: number;
+  active_recent_signal_records?: number;
+  signals_evaluated?: number;
+  signals_generated?: number;
+  transformer_warming_symbols?: number;
+  transformer_rejected_inputs?: number;
+  executable_order_intent_count?: number;
+  execution_blocker_counts?: Record<string, number>;
+  execution_strength_bucket_counts?: Record<string, number>;
+  execution_expected_return_bucket_counts?: Record<string, number>;
+  coverage_complete?: boolean;
+  widget_coverage_contract?: string;
+  contract?: string;
 }
 
 export interface PriceDataPoint {
@@ -183,6 +240,8 @@ export interface StatCardProps {
 export interface DataTableColumn<T> {
   key: keyof T;
   header: React.ReactNode;
+  // Column renderers are key-specific but the table stores them in a shared array.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render?: (value: any, item: T) => React.ReactNode;
   sortable?: boolean;
   className?: string;
@@ -212,6 +271,7 @@ export interface StrategyParameter {
   name: string;
   label: string;
   type: 'number' | 'text' | 'select';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default: any;
   min?: number;
   max?: number;
@@ -249,6 +309,7 @@ export interface TradingConfig {
   symbols: string[];
   universeType?: UniverseType;
   customSymbols?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parameters: Record<string, any>;
   positionSizePercent?: number;
   maxPositions?: number;
@@ -258,6 +319,7 @@ export interface TradingConfig {
 export interface OrderBookPreset {
   name: string;
   label: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
 }
 
@@ -288,7 +350,9 @@ export interface TradingControlsProps {
 
 export interface StrategyConfigFormProps {
   strategy: TradingStrategy;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onChange: (config: Record<string, any>) => void;
   className?: string;
 }
@@ -301,6 +365,7 @@ export interface BacktestFormProps {
     symbols: string[];
     startDate: string;
     endDate: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     config: Record<string, any>;
   };
   onChange: (parameters: Partial<BacktestFormProps['parameters']>) => void;
@@ -314,6 +379,7 @@ export interface BacktestControlsProps {
 }
 
 export interface BacktestResultsProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   results: any;
   loading: boolean;
 }
@@ -340,12 +406,34 @@ export interface MLPerformanceMetrics {
   win_rate?: number;
   total_feature_vectors?: number;
   total_used_samples?: number;
+  validation_strategy?: string;
+  feature_set_version?: string;
+  walk_forward_folds?: Array<{
+    fold_index?: number;
+    train_start_timestamp?: number;
+    train_end_timestamp?: number;
+    test_start_timestamp?: number;
+    test_end_timestamp?: number;
+    metrics?: Record<string, number | string>;
+  }>;
+  cohort_metrics?: Array<{
+    regime?: string;
+    sample_count?: number;
+    winning_trades?: number;
+    losing_trades?: number;
+    win_rate?: number;
+    avg_pnl?: number;
+    profit_factor?: number;
+    max_drawdown?: number;
+  }>;
   error?: string;
 }
 
-export interface MLFeatureImportance {
-  [featureName: string]: number;
-}
+export type MLFeatureImportance = Record<string, number> | Array<{
+  name?: string;
+  importance?: number;
+  correlation_to_pnl?: number;
+}>;
 
 export interface MLDashboardData {
   status: MLModelStatus;

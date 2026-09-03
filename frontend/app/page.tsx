@@ -2,16 +2,54 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { TradingStatisticsDashboard } from '@/components/dashboard/TradingStatisticsDashboard';
 import LiveTradingPanel from '@/components/dashboard/LiveTradingPanel';
 import SimulatedTradingPanel from '@/components/dashboard/SimulatedTradingPanel';
 import BacktestingPanel from '@/components/dashboard/BacktestingPanel';
 import MLAnalyticsDashboard from '@/components/dashboard/MLAnalyticsDashboard';
 import { PositionsTable } from '@/components/dashboard/PositionsTable';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { cn } from '@/lib/utils';
 
 type TabType = 'overview' | 'live-trading' | 'simulated-trading' | 'positions' | 'backtesting' | 'ml-analytics';
+
+const TAB_LABELS: Record<TabType, string> = {
+  overview: 'Overview',
+  'live-trading': 'Live Trading',
+  'simulated-trading': 'Simulated Trading',
+  positions: 'Positions',
+  backtesting: 'Backtesting',
+  'ml-analytics': 'ML Analytics',
+};
+
+function TabErrorFallback({
+  error,
+  retry,
+  tabLabel,
+}: {
+  error: Error;
+  retry: () => void;
+  tabLabel: string;
+}) {
+  return (
+    <section
+      role="alert"
+      className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-900 shadow-sm"
+    >
+      <h2 className="text-lg font-semibold">{tabLabel} tab failed to render</h2>
+      <p className="mt-2 text-sm text-red-800">
+        The rest of the dashboard is still available. Retry this tab or switch tabs while the issue is investigated.
+      </p>
+      <details className="mt-4 rounded bg-white/70 p-3 text-xs text-red-700">
+        <summary className="cursor-pointer font-medium">Diagnostic message</summary>
+        <pre className="mt-2 whitespace-pre-wrap">{error.message || 'Unknown dashboard error'}</pre>
+      </details>
+      <Button className="mt-4" onClick={retry}>
+        Retry {tabLabel}
+      </Button>
+    </section>
+  );
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -98,7 +136,14 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="transition-all duration-300 ease-in-out">
-          {renderTabContent()}
+          <ErrorBoundary
+            key={activeTab}
+            fallback={(props) => (
+              <TabErrorFallback {...props} tabLabel={TAB_LABELS[activeTab]} />
+            )}
+          >
+            {renderTabContent()}
+          </ErrorBoundary>
         </div>
       </main>
 
@@ -110,7 +155,7 @@ export default function Dashboard() {
               Advanced Trading System v2.0 - Real-time trading insights powered by ML
             </p>
             <div className="flex items-center space-x-4 text-sm text-gray-500">
-              <span>Last updated: {new Date().toLocaleString()}</span>
+              <span>Last updated: live</span>
               <span>•</span>
               <span>Status: Operational</span>
             </div>

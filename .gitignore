@@ -23,6 +23,7 @@ MANIFEST
 
 # Virtual environments
 .env
+legacy_python/.venv
 .venv
 env/
 venv/
@@ -50,6 +51,8 @@ Thumbs.db
 secrets.txt
 rules/
 
+data/
+
 # Logs
 *.log
 logs/
@@ -61,7 +64,9 @@ temp/
 tmp/
 
 # Test outputs
+legacy_python/test_outputs/
 test_outputs/
+legacy_python/.pytest_cache/
 .pytest_cache/
 .coverage
 htmlcov/

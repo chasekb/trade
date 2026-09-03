@@ -405,7 +405,7 @@ docker-compose restart backend
 ```bash
 lsof -i :8000
 lsof -i :3000
-lsof -i :6333
+lsof -i :16333
 ```
 
 **Kill Existing Process:**
