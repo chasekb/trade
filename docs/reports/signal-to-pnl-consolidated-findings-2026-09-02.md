@@ -1,75 +1,182 @@
-# Consolidated signal-to-PnL findings — 2026-09-02
+# Consolidated signal-to-PnL findings
 
-Task: `t_05547fdf`; consolidated deliverable for `t_64b8df98`.
+Date: 2026-09-02 (consolidated and revalidated 2026-09-04)
+Repository: `https://github.com/chasekb/trade`
+Scope: read-only source and evidence synthesis from the four upstream investigations.
 
-## Scope and verdict
+## Executive conclusion
 
-This is a read-only source/evidence synthesis of the selected-universe, market-data, signal, execution, fill, accounting, frontend, and test investigations. No live parameters, production behavior, credentials, sessions, orders, account state, or external trading systems were changed. Local builds/tests were not run under the remote-only Kanban policy.
+The implementation has a fail-closed path between a generated signal and a submitted live order. A valid market-data observation can produce a persisted signal, but it becomes an executable intent only after profitability, model-confidence, account, position, pending-order, risk, sizing, minimum-notional, direction, and explicit-live-execution checks. An executable intent is persisted before exchange submission; acknowledgement is not a fill, and fills are settled from exchange data before terminal accounting.
 
-The checked-in path is fail-closed at activation, quote absence, profitability/confidence, account authority, duplicate/pending/max-position, sizing, minimum-notional entry, cash, spot-direction, explicit-execution, persistence, and inconclusive-order-recovery boundaries. The dominant evidence gaps are runtime/provider and cross-layer joins: per-symbol latency/errors/rate limits and quote age; selected-universe browser fallback; signal→intent→order→fill→PnL joins; calibration/after-cost expectancy; realized slippage; mixed inherited/managed close reproduction; snapshot failure after fill; and browser-rendered payloads.
+The source and deterministic fixtures prove the gate relationships and several accounting transformations. They do not prove the observed runtime cause of any particular low-signal, no-order, or no-positive-PnL period. The missing proof is a representative, read-only runtime join from selected symbols through quote timestamps, signals, intents, orders, fills, and realized PnL, together with browser payload/render evidence and calibrated model outcomes.
+
+No live parameters, production behavior, credentials, account state, sessions, orders, or external trading systems were changed by this investigation or report.
 
 ## Ordered end-to-end flow
 
-1. **Request and activation.** `frontend/lib/api.ts:620-672` (`buildStartTradingPayload`) removes synthetic capital fields in live mode and sends the selected `symbols`, strategy, parameters, sizing/max-position fields, and explicit execution flag. `frontend/lib/api.ts:812-815` posts `/api/trading/live/start`; `src/api/PredictController.cpp:1348-1357` forwards to `LiveTradingService::startSession`. `src/trading/LiveTradingService.cpp:2767-2917` loads `COINBASE_API_KEY`/`COINBASE_API_SECRET` through `Config::getInstance()` (`src/config/Config.cpp:23-70`), requires an authenticated snapshot, preserves the requested universe, requires `live_order_execution=true`, applies account state, and recovers persisted pending orders.
-2. **Universe and quotes.** `workerLoop` (`src/trading/LiveTradingService.cpp:2309-2403`) uses the full selected vector. `selectLiveQuoteBatchLocked` (`:1244-1263`) has no cap when `live_quote_symbols_per_tick_cap=0`; `fetchLiveQuotes` (`:1208-1242`) calls `CoinbaseAdvancedClient::getOrderBook` once per symbol and omits failed calls. `include/exchange/CoinbaseAdvancedClient.hpp:63-67` specifies bounded blocking calls outside service locks. The worker diagnostics (`:2352-2373`) currently report attempted=requested and skipped=0 even when calls fail: actual `quotes.size()` is the valid-success count.
-3. **Signal construction.** `buildSignalRecordLocked` (`src/trading/LiveTradingService.cpp:1516-1803`) updates history and emits order-book or indicator signals. Order-book activity uses `abs(imbalance)*1.15` and threshold `0.22` (`:1553-1557`). Indicator evaluation is `src/trading/StrategySignal.cpp:113-303`; insufficient history produces an expected HOLD. ML inference/fallback is `:1637-1702`; the heuristic is labeled `heuristic-fallback` and uses `orderbook_expected_return_scale_percent`. `evaluateOrderBookProfitabilityGate` (`src/trading/StrategySignal.cpp:305-341`) compares directional expected return to fee+spread+slippage. Defaults live in `src/trading/LiveTradingService.cpp:38-47` and `include/trading/StrategySignal.hpp:46-54`.
-4. **Generated signal versus executable intent.** A raw candidate failing profitability is mutated to `hold` before persistence (`src/trading/LiveTradingService.cpp:1733-1769`); it is therefore not a durable generated-but-blocked row. For post-gate signals, `buildEntryExecutionAnalysisLocked` (`:1835-1931`) evaluates blockers in order: post-gate HOLD/no signal; ML confidence; account-managed entry authority; existing position; pending symbol; max positions; invalid/non-positive size or price; Coinbase `$1` entry minimum (`src/exchange/CoinbaseOrder.cpp:15-40`); spot-only sell/short restriction; cash after pending reservations and fees (`include/trading/PortfolioAccounting.hpp:43-50`); explicit live execution/credentials. Only then is `executable_intent=true`. `positionSizeUsdForSignal` (`:409-479`) and `calculate_position_size_usd` (`src/trading/PositionSizingPolicy.cpp:78-84`) reduce a configured ceiling; they do not inflate a too-small allocation to exchange minimum.
-5. **Queue, persistence, and submission.** `openPositionLocked` (`:1991-2049`) and `addToPositionLocked` (`:2051-2102`) repeat safety gates, reserve cash, and mark `pending_order_symbols_` via `queueOrderIntentLocked` (`:638-645`). `dispatchOrders` (`:1035-1104`) persists `live_coinbase_orders` (`persistSubmittedOrder`, `:859-918`) before calling `CoinbaseAdvancedClient::placeMarketOrder` (`src/exchange/CoinbaseAdvancedClient.cpp:299-380`). The primary key/client-id conflict path prevents duplicate exchange calls; `recoverPendingOrders` (`:963-1033`) covers crash windows. Acceptance is not a fill: unresolved orders remain pending; `resolvePendingLiveOrders` (`:1106-1205`) resolves by client id and requires terminal history.
-6. **Fill and settlement.** `parseOrderFill` (`src/exchange/CoinbaseOrder.cpp:53-109`) validates terminal status and, for positive fills, actual filled value, average price, and fees. `applyLiveFillLocked` (`src/trading/LiveTradingService.cpp:654-857`) releases reservations, ignores zero-fill terminal outcomes, updates positions, and writes actual fill price/value/fees. Managed close gross PnL uses `(exit-managed_entry)*managed_closed_quantity*direction`; inherited closes are excluded from session performance. `flushWrites` (`:1409-1513`) persists `individual_trades`; status JSON (`:2597-2620`) filters account-managed/liquidation rows from strategy statistics.
-7. **Reporting and reconciliation.** `TradingStatsService::getTradingStats` and `TradingStatsCalculator` (`src/trading/TradingStatsService.cpp:94-150`; `src/trading/TradingStatsCalculator.cpp:81-153`) sum gross PnL and fees and derive net. `PredictController::executionReconciliation` (`src/api/PredictController.cpp:1673-1803`) and `src/trading/ExecutionReconciliation.cpp:26-113` classify closing legs and report net realized PnL for closing legs while excluding opening legs from win/loss denominators. Live portfolio JSON (`src/trading/LiveTradingService.cpp:2446-2523`) exposes account cash, reservations, positions, gross `realized_pnl_`, fees, and net value-based PnL. `frontend/lib/liveTabProducer.ts` and dashboard consumers normalize/display these fields.
+### 1. Universe selection and start payload
 
-## Signal-to-intent divergence matrix
+* `frontend/components/dashboard/SimulatedTradingPanel.tsx:57-60` owns product data, symbol mode, selected universe type (default `all_usd`), and custom text.
+* `frontend/components/dashboard/SimulatedTradingPanel.tsx:87-124` fetches Coinbase `/products` when backend categories are missing or aliased, filters online/non-disabled products, and derives the selection without a slice cap. Discovery failure falls back to `frontend/lib/symbolUniverse.ts:3` (`FALLBACK_COINBASE_SYMBOLS`).
+* `frontend/lib/symbolUniverse.ts:68-95` derives predefined categories; `:109-119` rejects incomplete/aliased backend categories; `:122-160` resolves predefined or custom selections and returns null for invalid custom input.
+* `src/api/PredictController.cpp:1386-1413` emits hardcoded category responses. The response omits several declared keys and contains a narrower static `all_usd` list, so the frontend normally compensates with direct Coinbase discovery.
+* `frontend/lib/api.ts:787-879` constructs the start payload and sends the exact symbols array to `/api/trading/live/start`. Live mode removes synthetic capital fields; simulated mode keeps them.
+* `src/api/PredictController.cpp:1348-1357` forwards the JSON body to `LiveTradingService::startSession`.
+* `src/trading/LiveTradingService.cpp:2810-2821` copies `payload.symbols` verbatim, defaulting only an empty selection to BTC-USD/ETH-USD/SOL-USD. It does not revalidate products before starting the worker.
 
-| Divergence/blocker | Where confirmed | Result and evidence status |
+Confirmed implication: frontend-selected symbols and backend category output can differ; discovery/CORS/fallback behavior is not proven for a specific runtime without captured browser/network evidence.
+
+### 2. Session initialization and persistence
+
+`src/trading/LiveTradingService.cpp:2767-2927` takes the lifecycle lock, ensures tables, obtains the Coinbase account snapshot, installs symbols/strategy/parameters, rejects synthetic capital fields in live mode, requires explicit `live_order_execution`, establishes the account baseline, recovers persisted submitting/pending orders, and starts the worker.
+
+`src/trading/LiveTradingService.cpp:332-402` creates or repairs `order_book_signals`, `individual_trades`, and `live_coinbase_orders`. Signals and trades are queued and batch-upserted by `flushWrites` at `:1409-1513`; accepted orders are persisted before exchange submission and terminal status is updated after settlement.
+
+`include/trading/LiveTradingService.hpp:97-146` defines market state, rolling history, signal fields, and `MarketQuote`; `:239-291` defines session state, caches, pending writes/orders, account snapshot, and exchange client. `recent_signals_` is trimmed at `src/trading/LiveTradingService.cpp:1934-1941`; current-session `session_trade_inputs_` is retained separately.
+
+### 3. Quotes, cadence, and freshness
+
+`src/trading/LiveTradingService.cpp:1208-1242` (`fetchLiveQuotes`) iterates selected symbols sequentially and calls Coinbase `getOrderBook`; failures are logged and omitted. `src/exchange/CoinbaseAdvancedClient.cpp:514-560` requests level-2 books, derives best bid/ask, midpoint, absolute spread, aggregate depth, and imbalance, and rejects empty/invalid books.
+
+`src/exchange/CoinbaseAdvancedClient.cpp:119-227` uses a 10-second Drogon request timeout and 15-second future wait. Public order-book requests have no retry/backoff. No exchange quote timestamp or max-age check is carried into `MarketQuote`.
+
+`src/trading/LiveTradingService.cpp:1244-1263` selects the full symbols vector. Diagnostics at `:2561-2568` explicitly report no quote cap and no fan-out limit. `workerLoop` at `:2309-2437` resolves pending fills, flushes writes, snapshots symbols, fetches all quotes and account state, generates one tick, dispatches orders, and immediately repeats; there is no normal cadence sleep or hard cap. Fetch duration and estimated request rate are logged at `:2352-2373`.
+
+Confirmed source defect: the fan-out diagnostic reports attempted=requested and skipped=0 at `:2363-2367` even when individual requests fail; actual quote success is based on valid quote count. This can distort coverage displays, but a runtime sample is needed to quantify its effect.
+
+### 4. Signal construction
+
+`src/trading/LiveTradingService.cpp:2226-2307` (`generateTickLocked`) skips symbols without valid quotes, calls `buildSignalRecordLocked`, stores each signal, builds execution analysis, and only then considers opens/adds/closes.
+
+`src/trading/LiveTradingService.cpp:1516-1802` updates per-symbol state, records local generation time, computes return, appends midpoint to a 512-entry rolling history, and records spread/bid/ask/depth/volume/imbalance. Order-book strength is `min(1, abs(imbalance)*1.15)` and requires strength >= 0.22; direction follows imbalance sign.
+
+`src/trading/StrategySignal.cpp:113-303` implements buy-and-hold, DCA, SMA/EMA, RSI, Bollinger, MACD, stochastic, Fibonacci, warm-up holds, and unknown-strategy holds. Indicator strategies require rolling history. Warm-up states are marked `data_status=insufficient` at `LiveTradingService.cpp:1593-1600`; valid no-trade states remain sufficient.
+
+For `ml_enhanced_orderbook`, `LiveTradingService.cpp:1633-1684` computes features and model outputs when the model pack is ready. If inference is unavailable or fails, `:1686-1730` uses the labeled heuristic fallback or marks expected-return diagnostics unavailable. This is not empirical calibration evidence.
+
+### 5. Profitability and confidence gates
+
+`src/trading/StrategySignal.cpp:305-341` (`evaluateOrderBookProfitabilityGate`) requires minimum strength and a directional expected edge strictly greater than round-trip fee + spread + slippage. Equality, negative edge, or unavailable expected return fails closed.
+
+Defaults are declared at `src/trading/LiveTradingService.cpp:38-47` (1.5% round-trip fee, 0.2% slippage buffer, 0.22 minimum strength). Parameter application and diagnostic recording are at `:1733-1770`. A generated candidate that fails becomes a sufficient HOLD with a gate reason.
+
+The ML confidence gate is at `:1805-1832`; loaded-model buys require `win_probability >= confidence_threshold`, sells require `<= 1-confidence_threshold`. Heuristic fallback behavior depends on `fallback_to_baseline`.
+
+### 6. Generated signal versus executable intent
+
+`buildEntryExecutionAnalysisLocked` at `src/trading/LiveTradingService.cpp:1835-1931` records whether the candidate is an executable intent and names blockers including:
+
+* no signal or insufficient data;
+* profitability or ML confidence gate;
+* account/position management disabled;
+* existing position or pending order;
+* max positions;
+* non-positive position size or price;
+* below minimum notional;
+* spot cannot open short;
+* insufficient cash; and
+* live execution disabled.
+
+This is the key divergence boundary: signal fields describe the generated observation and model decision, while executable analysis adds current account, position, reservation, risk, and mode state. A generated signal therefore may be persisted and displayed while no intent is queued.
+
+`openPositionLocked` at `:1991-2049` repeats safety checks and calls `positionSizeUsdForSignal` (`:409-479`). It uses current cash/positions, initial capital where applicable, cached live metrics, estimated fees, pending reservations, Coinbase minimum notional, spot-only direction rules, and explicit live execution. Close paths at `:2104-2149` use managed/account quantities and pending-order checks; liquidation checks at `:2154-2223` include finite values and minimum notional.
+
+The complete divergence list established by source is:
+
+| Generated signal condition | Execution consequence | Classification |
 |---|---|---|
-| Missing/failed quote | `fetchLiveQuotes` `:1208-1242` | Symbol has no signal row; runtime cause/coverage needs per-symbol responses, errors, latency, and timestamps. |
-| Warm-up/weak activity | signal builders; `StrategySignal.cpp:113-303` | Legitimate HOLD/insufficient strategy outcome; no executable intent. |
-| Fee/spread/slippage hurdle | `evaluateOrderBookProfitabilityGate`; `buildSignalRecordLocked:1733-1769` | Candidate is rewritten to HOLD before persistence; not a generated-vs-intent divergence in stored rows. |
-| ML confidence/fallback policy | `signalPassesMlGateLocked:1805-1832` | Generated signal can be blocked; calibration and realized after-cost attribution are unverified. |
-| Existing position / pending order | `buildEntryExecutionAnalysisLocked:1880-1886` | Duplicate/concurrent intent suppressed. |
-| Max positions / risk | `:1888-1897` | Entry suppressed at configured cap; deterministic blocker behavior confirmed. |
-| Invalid/non-positive size or price | `:1900-1904` | Fail-closed sizing suppression; allocation distribution is missing runtime evidence. |
-| Minimum notional | `:1906-1909`; `CoinbaseOrder.cpp:15-40` | Buy entry below $1 never becomes executable; sizing does not inflate it. Automated/manual close paths lack equivalent guard, so any dust rejection requires exchange payload/order row. |
-| Cash/reservations/fees | `:1915-1921`; `PortfolioAccounting.hpp:43-50` | Available cash after pending reservations and estimated buy fee suppresses intent. |
-| Spot direction | `:1911-1913` | Sell/open-short signal blocked as `spot_cannot_open_short`; legitimate account/exchange constraint. |
-| Account authority | `:1875-1878`; trade types | Inherited/account-managed restrictions suppress entry and can exclude close PnL from strategy stats. |
-| Explicit execution gate | `:1923-1926` and activation | No authenticated/explicitly enabled execution, no intent submission. |
-| Intent accepted vs actual fill | `dispatchOrders`, `resolvePendingLiveOrders` | Durable order can be pending/rejected/partial/filled; acceptance is not PnL evidence. Missing representative joins. |
+| Missing/invalid quote | No signal for that symbol in the tick | Market-data coverage/freshness; fail-closed suppression |
+| Indicator warm-up / insufficient history | Sufficient or insufficient HOLD, no intent | Legitimate market/strategy outcome |
+| Weak order-book strength | Candidate converted to HOLD | Profitability hurdle / blocker suppression |
+| Expected edge <= fee + spread + slippage | Candidate converted to HOLD | Profitability hurdle / trading economics |
+| Missing expected-return diagnostic | Fail-closed attribution/no intent | Blocker suppression; calibration evidence gap |
+| ML confidence outside threshold | HOLD/no intent | Blocker suppression/calibration |
+| Existing position | Duplicate/open suppression or close-policy path | Blocker suppression |
+| Pending order | Duplicate submission suppressed | Blocker suppression |
+| Max-position cap | Open suppressed | Sizing/blocker suppression |
+| Non-positive/invalid size or price | Open suppressed | Sizing/blocker suppression |
+| Coinbase minimum notional | Open/close suppressed | Sizing |
+| Insufficient cash after pending reservations and estimated fee | Buy suppressed | Sizing/blocker suppression |
+| Spot-only sell/short restriction | Opening short suppressed | Blocker suppression/legitimate policy |
+| Account snapshot/authority unavailable | Session start fails or account state remains prior in memory | Market-data freshness/unknown runtime behavior |
+| `live_order_execution` disabled | No live submission | Explicit safety gate |
+| Accepted order unresolved | Order remains pending; not a fill | Fill lifecycle, not a signal divergence |
 
-Manual submission (`PredictController.cpp:1290-1303` → `submitLiveOrder`, `LiveTradingService.cpp:3062-3147`) checks active session, execution, amount, cash/holdings, and pending symbols but not max-position, freshness, market-hours, or equivalent min-notional. Automated managed close (`closePositionLocked:2104-2152`) likewise lacks min-notional/current-quote checks; unmanaged liquidation (`liquidateCoinbaseHoldingLocked:2154-2224`) does check estimated `$1` notional.
+No source evidence proves how often each divergence occurs in production or which one explains a particular observed period.
 
-## Failure-mode classification
+### 7. Intent persistence, submission, and fills
 
-| Observed issue | Classification | Confirmed behavior / missing evidence |
-|---|---|---|
-| Sequential full-universe fan-out, no cadence sleep/cap; uneven effective freshness possible | market-data coverage/freshness; trading economics | Source-confirmed. Need complete loop timestamps, symbol count, latency, request rate, rate-limit headers/statuses. |
-| Diagnostics overstate attempted/skipped coverage | frontend artifact; market-data coverage | Source-confirmed at `:2352-2373`; need runtime batch with provider failure to measure UI distortion. |
-| No exchange quote timestamp/max-age validation or duplicate-signal cooldown | market-data coverage/freshness; blocker suppression | Source-confirmed absence. Need provider timestamps, tick timing, and agreed TTL to establish impact. |
-| Browser/API category mismatch or six-symbol fallback | frontend artifact; market-data coverage | Source path is confirmed; affected-environment browser response/CORS and selected-symbol capture are missing. |
-| Heuristic/model confidence and expected return lack empirical calibration | calibration | Source/tests establish arithmetic only. Need model metadata, reliability curves, cohorts, realized joins, after-cost expectancy. |
-| Fee/spread/slippage hurdle and min-notional/cash/risk blockers | profitability hurdle; trading economics; sizing; blocker suppression | Intentional fail-closed behavior; runtime pass/block rates need signal/allocation/account snapshots. |
-| Partial/terminal/rejected/inconclusive exchange outcomes | fill slippage; legitimate market outcome; unknown | State machine and parser are confirmed. Actual classification requires Coinbase historical payload plus durable order row. |
-| Paper fills use signal price/fixed fee, not bid/ask or realized slippage | trading economics | Legitimate model limitation; paper expectancy must not be presented as live fill economics. |
-| Mixed inherited + managed partial close zeroes whole close PnL | accounting/attribution | Confirmed source issue (`applyLiveFillLocked:711-730`); reproduction with mixed holding and partial close is missing. |
-| Post-fill account snapshot failure leaves cash stale | accounting/attribution | Confirmed source behavior; need a trace with known fill and failed refresh. |
-| Portfolio `realized_pnl` gross versus reconciliation net | accounting/attribution; frontend artifact | Confirmed contract mismatch/label ambiguity; need same-session field-by-field API payload comparison. |
-| No durable quote/order/fill link or slippage fields | fill slippage; unknown | Confirmed schema gap; need representative order-book snapshot, client/order id, terminal response, and trade row. |
-| Recent-trade JSON omits `is_closing_leg` | frontend artifact | Confirmed serializer omission (`LiveTradingService.cpp:545-564`, simulated `:604-623`); browser-rendered impact still unverified. |
-| Warm-up HOLD, spot 24/7 behavior, or ordinary rejection after valid market conditions | legitimate market outcome | Warm-up and spot constraint confirmed; market-hours intent and any actual rejection payload remain policy/runtime questions. |
-| Any unexplained no-PnL or missing trade | unknown | Required evidence: signal/order/trade joins, exchange terminal history, account snapshots, and frontend/backend payload comparison. |
+Accepted intents are persisted before exchange submission. `src/exchange/CoinbaseAdvancedClient.cpp:297-393` submits quote/base market IOC orders, polls up to five times, and leaves accepted-but-unresolved orders pending. `src/trading/LiveTradingService.cpp:1106-1205` resolves order IDs/fills, applies actual `fill.total_fees` at `:654-857`, writes the trade, marks terminal status, and refreshes account state.
 
-## Tests and replay evidence
+This ordering distinguishes generated signal, executable intent, accepted exchange order, and settled fill. A displayed signal or accepted order is not evidence of a fill or realized PnL.
 
-Source/test inventory reports these deterministic targets: `src/tests/test_strategy_signal.cpp` (`CMakeLists.txt:151-156`); `test_position_sizing_policy.cpp` (`:138-143`); `test_coinbase_order.cpp` (`:184-192`); `test_portfolio_accounting.cpp` (`:145-149`); `test_execution_reconciliation.cpp` (`:166-171`); `test_strategy_expectancy_harness.cpp`; plus `src/tests/test_trading_stats_calculator.cpp` and frontend suites including `frontend/lib/executionReconciliation.test.ts`, `liveTabProducer.test.ts`, `simulatedTradingStats.test.ts`, `symbolUniverse.test.ts`, `apiSizing.test.ts`, `startTradingPayload.test.ts`, and dashboard/page tests. Historical evidence recorded 10 frontend Jest suites/58 tests and standalone C++ reconciliation assertions passing in `docs/reports/execution-reconciliation-closeout-2026-08-08.md`; exact-SHA Docker Build Validation evidence in the parent investigations recorded all six required jobs successful for the verified report commits.
+### 8. Position, accounting, attribution, and frontend reporting
 
-These are unit/fixture and paper-replay surfaces, not a checked-in end-to-end mocked-Coinbase live-worker replay. No runtime fill payloads, representative signal-to-PnL joins, calibration curves, or browser-rendered dashboard capture were available. The `StrategyExpectancyHarness` is deterministic indicator/paper replay, not live exchange replay.
+The fill/PnL trace identified these confirmed or source-established issues:
 
-## Confirmed versus hypothesized conclusions
+* Mixed inherited/session-managed closes can suppress managed-slice realized-PnL attribution (high-severity accounting/attribution finding).
+* Live cash is snapshot-dependent after settlement (medium).
+* Portfolio `realized_pnl` is gross while reconciliation is net unless the consumer applies the documented distinction (medium).
+* No durable execution-vs-quote/order-to-fill linkage exists for realized slippage attribution (unknown until runtime persistence is inspected).
+* Paper fills do not model bid/ask or realized slippage; this is a model limitation, not evidence of a live defect.
+* Recent-trade JSON omits an explicit `is_closing_leg` marker, creating a frontend attribution ambiguity.
 
-**Confirmed:** selected symbols are attempted in source order; failed quotes are omitted; quote age is not validated; profitability failure is rewritten to HOLD; all listed live blockers are fail-closed; buy entry minimum is `$1`; reservations and cash gates apply; persisted order recovery separates acceptance from terminal fill; actual terminal values/fees drive live settlement; paper fills are synthetic; mixed-close attribution and gross/net labeling/schema omissions exist as described.
+The relevant verification scope includes `src/trading/LiveTradingService.cpp`, portfolio/accounting paths, durable `live_coinbase_orders` and `individual_trades` records, and the reconciliation endpoint described below. The exact exchange fill payloads and persisted samples were unavailable in the read-only investigation.
 
-**Not established (hypotheses requiring evidence):** provider rate limits caused observed low coverage; stale responses caused weak signals; model miscalibration caused unprofitable outcomes; min-notional/cash/max-position/pending blockers explain a particular missing trade; Coinbase slippage caused a particular PnL result; frontend rendering caused a displayed discrepancy; market-hours behavior caused a no-trade result. These cannot be inferred from source inspection or aggregate counts.
+## Failure-mode classification table
+
+| Observed/source-established issue | Classification | Status and impact | Missing evidence or boundary |
+|---|---|---|---|
+| Sequential full-universe fetch on every loop; no cap, retry, backoff, cadence sleep, or freshness threshold | Market-data coverage/freshness; trading economics | Confirmed source behavior; can create uneven effective freshness and provider pressure | Timestamped loop, per-symbol latency/status, headers, request counts, selected-universe size |
+| Attempted/skipped diagnostics hardcoded to requested/zero | Frontend artifact | Confirmed observability defect; can overstate coverage | Runtime batch with provider failure and rendered dashboard comparison |
+| No exchange quote timestamp/max-age validation | Market-data coverage/freshness | Confirmed source gap; valid delayed response cannot be distinguished from fresh data | Exchange timestamps, response timing, worker timestamps, agreed max age |
+| Backend category list incomplete; frontend direct discovery/fallback may narrow universe | Frontend artifact; market-data coverage | Confirmed contract mismatch; environment-dependent selected universe | Browser payloads, CORS/network result, selected symbols, product-list completeness |
+| Expected return/confidence fallback/model output not empirically calibrated | Calibration | Confirmed evidence gap, not proof of bad predictions | Versioned model metadata, calibration curves, cohorts, realized after-cost joins |
+| Fee/spread/slippage hurdle blocks otherwise valid candidate | Profitability hurdle; trading economics | Confirmed intentional gate; actual frequency unknown | Runtime signal and gate-reason counts |
+| Warm-up HOLD or strategy-specific one-shot/interval behavior | Legitimate market outcome | Confirmed policy behavior | Per-symbol history/tick sequence for a disputed timestamp |
+| Existing/pending/max-position/min-notional/cash/direction blockers | Sizing; blocker suppression; legitimate policy | Confirmed deterministic safety behavior; transforms/suppresses intent | Runtime blocker counts and account/position snapshots |
+| Account refresh failure leaves prior in-memory state while worker can continue processing | Market-data coverage/freshness; unknown | Source path is established; unsafe observed consequence is unproven | Runtime failure followed by intent/submission, snapshot age, exchange state |
+| Mixed inherited/session-managed close attribution | Accounting/attribution | Confirmed source-level high-severity defect; reproduction still needed | Representative mixed partial-close reproduction and row-level joins |
+| Gross portfolio PnL versus net reconciliation labels | Accounting/attribution | Confirmed semantic mismatch risk | Same-session API payload comparison and consumer calculations |
+| Missing quote-to-fill durable linkage | Fill slippage | Unknown realized slippage, not proof of slippage amount | Persisted order/fill records plus contemporaneous quote/order payloads |
+| Paper fills omit bid/ask and realized slippage | Trading economics | Confirmed legitimate model limitation | Live-parity comparison if paper/live discrepancy is alleged |
+| Recent-trade JSON omits closing-leg marker | Frontend artifact | Confirmed attribution ambiguity | Same-session backend payload and browser rendering |
+| Any particular no-positive-PnL result or Coinbase rate-limit claim | Unknown until runtime evidence | Cannot be assigned to a single cause from source or fixtures | Authorized representative runtime window joining all stages |
+
+## Verification surfaces and observed evidence
+
+Backend targets are registered in `CMakeLists.txt:89-234` and selected by the remote `Dockerfile.cpp:244-256` CTest filter: `transformer_onnx_export|portfolio_accounting|trading_stats_calculator|position_sizing_policy|strategy_signal|strategy_expectancy_harness|execution_reconciliation|coinbase_auth|coinbase_order|coinbase_portfolio`.
+
+Relevant deterministic tests and harnesses:
+
+* `src/tests/test_strategy_signal.cpp`: indicator fixtures, warm-up and unknown-strategy HOLDs, unavailable expected-return fail-safe, directional fee/spread/slippage semantics, and order-book fallback.
+* `src/tests/test_strategy_expectancy_harness.cpp`: strategy fixture rows, generated/fill/blocked counts, fee-negative blocks, positive expectancy and negative-expectancy regression.
+* `src/tests/test_position_sizing_policy.cpp`: risk inputs, caps, zero sizing, minimum profitable notional, fee/slippage/spread blocks, and unprofitable override.
+* `src/tests/test_execution_reconciliation.cpp`: generated/executable/blocked counts, open/close outcomes, blocker buckets, PnL/fees, unexplained outcomes, and coverage metrics.
+* `src/tests/test_portfolio_accounting.cpp`: open/mark/close identity, cash, exposure, sizing capital, exits, and managed versus pre-existing holdings.
+* Frontend suites: `frontend/lib/symbolUniverse.test.ts`, `apiSizing.test.ts`, `startTradingPayload.test.ts`, `executionReconciliation.test.ts`, `liveTabProducer.test.ts`, `simulatedTradingStats.test.ts`, `localSimulatedFallbackSignals.test.ts`, `frontend/hooks/useTradingStrategyParameters.test.tsx`, `frontend/components/dashboard/__tests__/dashboard-tables.test.tsx`, and `frontend/app/page.test.tsx`.
+
+Replay and read-only evidence paths include `include/trading/StrategyExpectancyHarness.hpp`, `src/trading/StrategyExpectancyHarness.cpp`, `docs/reports/strategy-expectancy-harness-closeout-2026-08-03.md`, `docs/reports/live-parity-paper-and-blocker-attribution-progress-2026-08-08.md`, `docs/reports/execution-reconciliation-closeout-2026-08-08.md`, and `docs/reports/simulated-vs-live-trading-gap-review.md`. The reconciliation endpoint is `GET /api/trading/execution-reconciliation?hours=&session_id=&trade_type=&max_signals=`; it joins `order_book_signals.signal_data` to `individual_trades` and reports truncation/unexplained outcomes.
+
+Historical evidence recorded by the upstream test inventory: frontend Jest 10 suites/58 tests and standalone C++ reconciliation assertions passed; exact-SHA Docker Build Validation run `31274960164` passed all six required jobs for historical commit `d5a21160f24fe1ea6b6729a1bbac7611d12f20f2`. These are historical receipts, not a claim about this documentation commit or a current runtime window. Upstream source-trace reports separately record successful exact-SHA validation for their own commits (`653f7420a77ce17052e601d0aa9885ec8145ea52` and `e3787a929a86575e1d449f5ec365c3d15eb5561b`). No local builds or tests were run for this documentation-only synthesis.
+
+## Conflicting findings and evidence precedence
+
+1. Historical throughput closeout documents describe bounded cadence, while the current source trace at `LiveTradingService.cpp:2309-2437` reports immediate full-universe repetition and diagnostics showing no cap. Current source is authoritative for current behavior; deployment image/runtime evidence is still required to establish production behavior.
+2. Frontend unit tests prove category normalization and no hidden slicing, but backend category output is incomplete and direct browser discovery/fallback is environment-dependent. Unit behavior is not browser/network proof.
+3. Deterministic expectancy and gate fixtures prove arithmetic and fail-closed relationships, but they do not establish empirical calibration, realized slippage, or live after-cost expectancy.
+4. Reconciliation schemas can report blocker and PnL relationships, but without a representative joined runtime window they cannot explain an individual reported discrepancy.
+
+## Required next evidence
+
+* A read-only, authorized representative runtime batch with selected-universe count, every symbol's provider status/error/latency, request headers where safe, quote/exchange timestamps, worker start/end, account snapshot age, and generated signal rows.
+* A joined signal -> execution-analysis -> intent -> durable order -> acknowledgement/fill -> position/PnL export for that same window, including blocker reasons, fees, quantities, and terminal states.
+* Versioned model-pack metadata and out-of-sample calibration/reliability by symbol/regime, joined to realized after-cost outcomes.
+* Captured browser network/API payloads and rendered values for selected universe, coverage diagnostics, blocker attribution, recent trades, and PnL.
+* A controlled mixed inherited/session-managed partial-close reproduction and a persisted fill/quote comparison for realized slippage.
+
+Until those artifacts exist, classify actual runtime no-trade and no-positive-PnL causes as unknown rather than inferring them from source-only evidence.
 
 ## Safety statement
 
-No live parameters or production behavior were changed. Any remediation of mixed-close attribution, quote diagnostics/freshness, order-to-fill linkage, or gross/net labels requires separate reviewed implementation work and must preserve the current fail-closed execution gates.
+This report is documentation-only. No live parameters or production behavior were changed; no live session, order, account mutation, credential, or external trading action was performed.
