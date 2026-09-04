@@ -13,7 +13,7 @@
     ],
     "scope": "confirmed for observed failed Coinbase order-book fetches; underlying transport cause and whole-session causality remain open",
     "confidence": "medium for observed failure records and source gate; low for complete recurrence and causal attribution",
-    "rationale": "538 observed failed fetch warnings across 301 symbols yielded no preserved successes. Source tracing shows empty/error fetch results become hold/signal_generated=False and are rejected before simulated execution. No evidence establishes stale successful data or a freshness threshold as the cause."
+    "rationale": "538 observed failed fetch warnings across 301 symbols yielded no preserved successes. The current C++ source traces failed order-book fetches to omitted quote entries; simulated status records the failure, while the live path logs the error and continues without that symbol. No evidence establishes stale successful data or a freshness threshold as the cause."
   },
   "affected_symbols": [
     {
@@ -6784,9 +6784,9 @@
   ],
   "retry_behavior": {
     "runtime_observed": "retries=1 on preserved warning records",
-    "source_behavior": "no per-request order-book retry loop; shared host cooldown begins after three failures with exponential backoff capped at 120 seconds",
-    "source_reference": "src/trade_bot/data/data_provider.py:343-395 and :81-89",
-    "evidence_class": "runtime retry label is fact; source policy is fact; mapping all aggregate records to exact request sequences is unknown"
+    "source_behavior": "simulated fetchLiveQuotes attempts each symbol up to two times and stops early for TLS/DNS/exchange-response categories; live fetchLiveQuotes makes one attempt per symbol. Both paths omit failed symbols from quotes. This checkout has no tracked Python data_provider.py path, so the earlier Python retry description is not current-source evidence.",
+    "source_reference": "src/trading/SimulatedTradingService.cpp:879-937; src/trading/LiveTradingService.cpp:1208-1242",
+    "evidence_class": "runtime retry label is fact; current C++ simulated/live policies are source facts; mapping all aggregate records to exact request sequences is unknown"
   },
   "runtime_code_trace": [
     {
@@ -6810,28 +6810,20 @@
   ],
   "source_trace": [
     {
-      "reference": "src/trade_bot/web/web_components/websocket_manager.py:182-238",
-      "finding": "10-second simulated loop fetches and forwards signals."
+      "reference": "src/exchange/CoinbaseAdvancedClient.cpp:514-560",
+      "finding": "CoinbaseAdvancedClient::getOrderBook requests /products/<product_id>/book?level=2, rejects malformed or empty books, and returns false with an error."
     },
     {
-      "reference": "src/trade_bot/web/web_handlers/data_handlers.py:151-166",
-      "finding": "per-symbol CoinbaseDataProvider level-2 fetch; nonempty bids/asks required."
+      "reference": "src/trading/SimulatedTradingService.cpp:879-937",
+      "finding": "SimulatedTradingService::fetchLiveQuotes retries each symbol up to two times, records failure status/category/error/retries, omits failed symbols from quotes, and records last_success_at only after success."
     },
     {
-      "reference": "src/trade_bot/data/data_provider.py:343-395",
-      "finding": "cooldown, DNS preflight, non-200, and exceptions return empty data."
+      "reference": "src/trading/LiveTradingService.cpp:1208-1242",
+      "finding": "LiveTradingService::fetchLiveQuotes makes one order-book request per symbol, logs symbol/error on failure, omits that symbol from quotes, and continues; this function does not record category, retries, or last_success_at."
     },
     {
-      "reference": "src/trade_bot/web/web_handlers/data_handlers.py:428-449,530-546",
-      "finding": "missing/error data becomes hold/data_status=insufficient/signal_generated=False."
-    },
-    {
-      "reference": "src/trade_bot/trading/simulated_trading_manager.py:506-534",
-      "finding": "hold/not-generated signals rejected before execution."
-    },
-    {
-      "reference": "src/trade_bot/data/data_provider.py:397-410",
-      "finding": "timestamp retained, but no age/max-freshness comparison found."
+      "reference": "current-checkout audit",
+      "finding": "The prior Python source references are not tracked in this checkout; simulated hold/signal and freshness conclusions require separate runtime/component alignment and are not asserted as current C++ behavior."
     }
   ],
   "telemetry_and_discrepancies": [
