@@ -26,7 +26,7 @@ The source inventory was prepared against the trade repository around commit `8a
 
 ### Source-baseline traceability note
 
-All `src/...`, `frontend/...`, and `CMakeLists.txt` line/function references in this report are references to the investigated source baseline `8af7838c9112e4f88c0f358504877d054ce9eb0c`, not an assertion that those paths exist in every later checkout. In particular, the documentation-only review checkout used for this report contains the report commits but does not contain the C++ `src/trading`, `src/api`, `src/ml`, or `src/exchange` paths named below. Reviewers must resolve those references against the pinned baseline (or its corresponding repository history) before treating them as independently revalidated. This distinction prevents a documentation branch from being mistaken for a rerun or a source-level verification of the retained session.
+All `src/...`, `frontend/...`, and `CMakeLists.txt` line/function references in this report are references to the investigated source baseline `8af7838c9112e4f88c0f358504877d054ce9eb0c`. The trade report checkout at this branch does contain the cited C++ and frontend paths; the earlier “documentation-only checkout” limitation referred only to the separate Hermes reviewer checkout used during review, not to this trade repository. Reviewers should still resolve source references against the pinned baseline (or its corresponding repository history) because this report does not assert that the retained paper session was rerun on a later source revision.
 
 ## Reproduction context and exact steps
 
@@ -85,6 +85,8 @@ Symbol-keyed maps may serialize lexicographically, and signal endpoints/display 
 ## Complete per-symbol reconciliation
 
 “Unavailable” means the evidence does not establish a value; it is not a zero or a pass. A terminal gate is the last observed decision for this window, not proof that later fee, sizing, position, or fill gates would have passed or failed.
+
+The seven rows below are transcribed from the immutable per-symbol reconciliation artifact at commit [`784bb9d8bc1edf18fe92e155b860042767f0aceb`](https://github.com/chasekb/trade/blob/784bb9d8bc1edf18fe92e155b860042767f0aceb/docs/reports/trade-bl-0030-per-symbol-reconciliation-2026-08-23.md). The underlying runtime counts and selected-symbol list are also recorded in the immutable evidence inventory at commit [`bdae98e93fe4a7e7a92a2128b2f3265ba6dcaf30`](https://github.com/chasekb/trade/blob/bdae98e93fe4a7e7a92a2128b2f3265ba6dcaf30/docs/investigations/trade-bl-0030-evidence-inventory-2026-08-23.md). Row-specific provenance is: BTC-USD, ETH-USD, ADA-USD, and LTC-USD map to the reconciliation artifact’s `profitability_gate` rows; SOL-USD, DOT-USD, and XRP-USD map to its `no_signal` rows. The same artifact supplies the 20-evaluation count and `warming_up` Transformer state for every row. The runtime terminal capture named above is not durably available to downstream reviewers; its reported worker start/stop lines (2658/2666) are retained only in the upstream handoff, so those lines are not presented as independently retrievable evidence.
 
 | Symbol | Freshness/fetch | Evaluations | Transformer state | Signal / terminal gate | Paper intents | Fills | Classification |
 |---|---|---:|---|---|---:|---:|---|
@@ -164,7 +166,7 @@ Checks and evidence used:
 - Runtime no-build stack health checks: `GET http://127.0.0.1:8081/health`, `GET http://127.0.0.1:8081/api/trading/live/status`, and the supported frontend/backend smoke path. The backend health endpoint returned HTTP 200 in the preserved runtime handoff.
 - Runtime/session reconciliation for `sim_1787459668`, including seven-symbol coverage, 140 evaluations, zero intents/fills, terminal gates, and Transformer state.
 - Preserved terminal artifact: `/home/kahlil/.hermes/cache/terminal-output/out-1787468841-3649500-8390.log`.
-- Supporting checked-in evidence from the upstream investigation/reconciliation tasks: `docs/investigations/trade-bl-0030-evidence-inventory-2026-08-23.md` and `docs/reports/trade-bl-0030-per-symbol-reconciliation-2026-08-23.md` in their originating evidence commits/workspaces. This report is the consolidated checked-in handoff for reviewers.
+- Supporting immutable evidence artifacts: [evidence inventory at commit `bdae98e93fe4a7e7a92a2128b2f3265ba6dcaf30`](https://github.com/chasekb/trade/blob/bdae98e93fe4a7e7a92a2128b2f3265ba6dcaf30/docs/investigations/trade-bl-0030-evidence-inventory-2026-08-23.md) and [per-symbol reconciliation at commit `784bb9d8bc1edf18fe92e155b860042767f0aceb`](https://github.com/chasekb/trade/blob/784bb9d8bc1edf18fe92e155b860042767f0aceb/docs/reports/trade-bl-0030-per-symbol-reconciliation-2026-08-23.md). These artifacts are the sources for the runtime aggregate and seven table rows; this report is the consolidated checked-in handoff for reviewers.
 
 No local Docker/Podman image build, CMake build, C++ unit test, frontend build, replay, order submission, account mutation, or schema mutation was performed under the remote-only verification policy. Remote CI is the required compile/build gate for this documentation change.
 
