@@ -1,0 +1,358 @@
+{
+  "report": "per-symbol blocker reconciliation",
+  "report_date": "2026-09-04",
+  "scope": "Read-only reconciliation of the reported Coinbase, schema/statistics, Transformer, simulated-worker, and paper-trading leads. No code, configuration, database, account, exchange, or runtime state was changed.",
+  "source_qualification": {
+    "current_checkout": {
+      "repository": "chasekb/trade",
+      "head": "ded76aa",
+      "tree": "Python/Next.js",
+      "note": "The current checkout does not contain the older C++ paths cited by the 2026-08-23 runtime investigations. C++ findings below are explicitly qualified to their cited source snapshots and are not silently attributed to ded76aa."
+    },
+    "evidence_basis": [
+      "Parent task t_b948e6c4 Coinbase freshness handoff and committed artifact docs/reports/coinbase-freshness-lead-reconciliation-2026-09-04.json",
+      "Parent task t_4c2df7ea schema/statistics investigation handoff",
+      "Parent task t_bd743ad8 Transformer reload/readiness handoff",
+      "Parent task t_d892d89f simulated-worker/paper-execution handoff",
+      "Parent task t_acd60adf current checkout universe/widget audit",
+      "Parent task t_64b8df98 order-book signal-to-PnL handoff"
+    ]
+  },
+  "timeline": [
+    {
+      "timestamp": "2026-08-23T04:10:23.381Z/2026-08-23T04:10:23.382Z",
+      "event": "Transformer-only reload",
+      "evidence": "60x353 Transformer session loaded; model manager ready; logged expected input dimension 0",
+      "interpretation": "The zero is derived from absent regressor/classifier sessions and is not the Transformer width."
+    },
+    {
+      "timestamp": "2026-08-23T04:31:54Z",
+      "event": "Signal pagination request",
+      "evidence": "HTTP 200 advertised 468 rows/94 pages while returned signals=[]",
+      "interpretation": "Confirmed PostgreSQL pg_input_is_valid compatibility issue in the inspected snapshot; separate from worker execution."
+    },
+    {
+      "timestamp": "2026-08-23T04:34:28Z/2026-08-23T04:35:38Z",
+      "event": "Simulated paper session sim_1787459668",
+      "evidence": "Worker started; seven selected symbols processed for 140 evaluations; all symbols refreshed/sufficient; 0 generated signals, 0 intents, 0 fills",
+      "interpretation": "This is the authoritative observed paper window for per-symbol outcome classification."
+    },
+    {
+      "timestamp": "2026-08-23T04:34:41Z/2026-08-23T04:35:24Z",
+      "event": "Per-symbol paper evaluations",
+      "evidence": "20 evaluations per symbol; Transformer state warming_up for all seven",
+      "interpretation": "Warm-up is a confirmed blocker for this observation window; later execution gates were not reached."
+    },
+    {
+      "timestamp": "2026-08-24T01:34:31.313",
+      "event": "Recovered Coinbase YB-USD fetch failure",
+      "evidence": "request failed (network or TLS error); retry_count=1",
+      "interpretation": "Confirmed failed observed fetch, but no timestamped join ties it to sim_1787459668. Transport root cause and whole-session causality remain open."
+    }
+  ],
+  "aggregate_fetch_evidence": {
+    "observed_records": 538,
+    "affected_symbols": 301,
+    "attempts": 538,
+    "successes": 0,
+    "failures": 538,
+    "exact_timestamped_attempts_recovered": 5,
+    "successful_snapshot_timestamp": null,
+    "data_age_seconds": null,
+    "freshness_classification": "unknown_not_observed",
+    "limitations": [
+      "537 aggregate records lack individual timestamps and exact error text",
+      "No request/trace IDs or selected-universe payload was preserved",
+      "No successful snapshot exists from which quote age can be computed",
+      "DNS, connection, timeout, certificate, protocol, provider, and container-network causes cannot be distinguished"
+    ],
+    "source_refs": [
+      "src/exchange/CoinbaseAdvancedClient.cpp:514-560 (source-head-qualified)",
+      "src/trading/SimulatedTradingService.cpp:879-937 (source-head-qualified)",
+      "src/trading/LiveTradingService.cpp:1208-1242 (source-head-qualified)"
+    ],
+    "classification": "confirmed blocker for the observed failed fetches; separate open issue for transport recurrence and session-wide causality",
+    "confidence": "medium for counts/source behavior; low for complete recurrence and causality"
+  },
+  "per_symbol": [
+    {
+      "symbol": "BTC-USD",
+      "selected": true,
+      "fetch_attempts": "not available per symbol in preserved paper capture",
+      "fetch_successes": "not available per symbol",
+      "fetch_failures": "not available per symbol",
+      "data_age_seconds": null,
+      "data_status": "refreshed_and_sufficient",
+      "model": "Transformer ready at session level; per-symbol Run reachability not captured",
+      "warmup": "warming_up for all observed evaluations",
+      "evaluations": 20,
+      "signals": 0,
+      "signal_state": "no generated executable signal observed",
+      "gate_result": "profitability_gate",
+      "fee_spread_slippage": "not reached independently",
+      "minimum_notional": "not reached",
+      "cash_position": "not reached",
+      "pending_order": "not reached",
+      "paper_mode_gate": "no paper intent generated",
+      "paper_intents": 0,
+      "fills": 0,
+      "errors": ["Transformer warming_up in paper window"],
+      "classification": "confirmed blocker for observed window: Transformer warm-up; profitability gate state also observed, but downstream gates are not causal because no executable signal reached them",
+      "confidence": "high for counts and reported state; medium for causal ordering from summarized runtime evidence"
+    },
+    {
+      "symbol": "ETH-USD",
+      "selected": true,
+      "fetch_attempts": "not available per symbol in preserved paper capture",
+      "fetch_successes": "not available per symbol",
+      "fetch_failures": "not available per symbol",
+      "data_age_seconds": null,
+      "data_status": "refreshed_and_sufficient",
+      "model": "Transformer ready at session level; per-symbol Run reachability not captured",
+      "warmup": "warming_up for all observed evaluations",
+      "evaluations": 20,
+      "signals": 0,
+      "signal_state": "no generated executable signal observed",
+      "gate_result": "profitability_gate",
+      "fee_spread_slippage": "not reached independently",
+      "minimum_notional": "not reached",
+      "cash_position": "not reached",
+      "pending_order": "not reached",
+      "paper_mode_gate": "no paper intent generated",
+      "paper_intents": 0,
+      "fills": 0,
+      "errors": ["Transformer warming_up in paper window"],
+      "classification": "confirmed blocker for observed window: Transformer warm-up; profitability gate state also observed, but downstream gates are not causal because no executable signal reached them",
+      "confidence": "high for counts and reported state; medium for causal ordering from summarized runtime evidence"
+    },
+    {
+      "symbol": "SOL-USD",
+      "selected": true,
+      "fetch_attempts": "not available per symbol in preserved paper capture",
+      "fetch_successes": "not available per symbol",
+      "fetch_failures": "not available per symbol",
+      "data_age_seconds": null,
+      "data_status": "refreshed_and_sufficient",
+      "model": "Transformer ready at session level; per-symbol Run reachability not captured",
+      "warmup": "warming_up for all observed evaluations",
+      "evaluations": 20,
+      "signals": 0,
+      "signal_state": "no_signal",
+      "gate_result": "no_signal",
+      "fee_spread_slippage": "not reached",
+      "minimum_notional": "not reached",
+      "cash_position": "not reached",
+      "pending_order": "not reached",
+      "paper_mode_gate": "no paper intent generated",
+      "paper_intents": 0,
+      "fills": 0,
+      "errors": ["Transformer warming_up in paper window"],
+      "classification": "confirmed blocker for observed window: Transformer warm-up; no_signal is observed output, not proof of a provider or execution failure",
+      "confidence": "high for counts and state; low for successful per-symbol inference reachability"
+    },
+    {
+      "symbol": "ADA-USD",
+      "selected": true,
+      "fetch_attempts": "not available per symbol in preserved paper capture",
+      "fetch_successes": "not available per symbol",
+      "fetch_failures": "not available per symbol",
+      "data_age_seconds": null,
+      "data_status": "refreshed_and_sufficient",
+      "model": "Transformer ready at session level; per-symbol Run reachability not captured",
+      "warmup": "warming_up for all observed evaluations",
+      "evaluations": 20,
+      "signals": 0,
+      "signal_state": "no generated executable signal observed",
+      "gate_result": "profitability_gate",
+      "fee_spread_slippage": "not reached independently",
+      "minimum_notional": "not reached",
+      "cash_position": "not reached",
+      "pending_order": "not reached",
+      "paper_mode_gate": "no paper intent generated",
+      "paper_intents": 0,
+      "fills": 0,
+      "errors": ["Transformer warming_up in paper window"],
+      "classification": "confirmed blocker for observed window: Transformer warm-up; profitability gate state also observed, but downstream gates are not causal because no executable signal reached them",
+      "confidence": "high for counts and reported state; medium for causal ordering from summarized runtime evidence"
+    },
+    {
+      "symbol": "DOT-USD",
+      "selected": true,
+      "fetch_attempts": "not available per symbol in preserved paper capture",
+      "fetch_successes": "not available per symbol",
+      "fetch_failures": "not available per symbol",
+      "data_age_seconds": null,
+      "data_status": "refreshed_and_sufficient",
+      "model": "Transformer ready at session level; per-symbol Run reachability not captured",
+      "warmup": "warming_up for all observed evaluations",
+      "evaluations": 20,
+      "signals": 0,
+      "signal_state": "no_signal",
+      "gate_result": "no_signal",
+      "fee_spread_slippage": "not reached",
+      "minimum_notional": "not reached",
+      "cash_position": "not reached",
+      "pending_order": "not reached",
+      "paper_mode_gate": "no paper intent generated",
+      "paper_intents": 0,
+      "fills": 0,
+      "errors": ["Transformer warming_up in paper window"],
+      "classification": "confirmed blocker for observed window: Transformer warm-up; no_signal is observed output, not proof of a provider or execution failure",
+      "confidence": "high for counts and state; low for successful per-symbol inference reachability"
+    },
+    {
+      "symbol": "XRP-USD",
+      "selected": true,
+      "fetch_attempts": "not available per symbol in preserved paper capture",
+      "fetch_successes": "not available per symbol",
+      "fetch_failures": "not available per symbol",
+      "data_age_seconds": null,
+      "data_status": "refreshed_and_sufficient",
+      "model": "Transformer ready at session level; per-symbol Run reachability not captured",
+      "warmup": "warming_up for all observed evaluations",
+      "evaluations": 20,
+      "signals": 0,
+      "signal_state": "no_signal",
+      "gate_result": "no_signal",
+      "fee_spread_slippage": "not reached",
+      "minimum_notional": "not reached",
+      "cash_position": "not reached",
+      "pending_order": "not reached",
+      "paper_mode_gate": "no paper intent generated",
+      "paper_intents": 0,
+      "fills": 0,
+      "errors": ["Transformer warming_up in paper window"],
+      "classification": "confirmed blocker for observed window: Transformer warm-up; no_signal is observed output, not proof of a provider or execution failure",
+      "confidence": "high for counts and state; low for successful per-symbol inference reachability"
+    },
+    {
+      "symbol": "LTC-USD",
+      "selected": true,
+      "fetch_attempts": "not available per symbol in preserved paper capture",
+      "fetch_successes": "not available per symbol",
+      "fetch_failures": "not available per symbol",
+      "data_age_seconds": null,
+      "data_status": "refreshed_and_sufficient",
+      "model": "Transformer ready at session level; per-symbol Run reachability not captured",
+      "warmup": "warming_up for all observed evaluations",
+      "evaluations": 20,
+      "signals": 0,
+      "signal_state": "no generated executable signal observed",
+      "gate_result": "profitability_gate",
+      "fee_spread_slippage": "not reached independently",
+      "minimum_notional": "not reached",
+      "cash_position": "not reached",
+      "pending_order": "not reached",
+      "paper_mode_gate": "no paper intent generated",
+      "paper_intents": 0,
+      "fills": 0,
+      "errors": ["Transformer warming_up in paper window"],
+      "classification": "confirmed blocker for observed window: Transformer warm-up; profitability gate state also observed, but downstream gates are not causal because no executable signal reached them",
+      "confidence": "high for counts and reported state; medium for causal ordering from summarized runtime evidence"
+    }
+  ],
+  "lead_reconciliation": [
+    {
+      "lead": "Coinbase YB-USD TLS/network failure",
+      "classification": "confirmed blocker for observed fetch; separate open issue for transport root cause and session causality",
+      "timestamp": "2026-08-24T01:34:31.313",
+      "support": "Exact recovered warning and retry_count=1; aggregate 538/538 failures across 301 symbols",
+      "causal_limit": "No successful snapshots, selected-universe payload, request IDs, or join to sim_1787459668"
+    },
+    {
+      "lead": "individual_trades missing is_closing_leg",
+      "classification": "confirmed reconciliation-completeness blocker; not worker suppression",
+      "timestamp": "not preserved as a raw timestamp in the checked-in evidence",
+      "support": "DataCollector/execution reconciliation catches the query exception, retains prior signal rows, and returns empty/zero outcomes or partial attribution",
+      "source_refs": ["src/ml/DataCollector.cpp:41-60", "src/trading/SimulatedTradingService.cpp:338-365", "src/trading/LiveTradingService.cpp:356-383", "src/api/PredictController.cpp:1762-1792"],
+      "causal_limit": "Can hide or zero reconciliation output; does not prevent the worker from evaluating symbols"
+    },
+    {
+      "lead": "pg_input_is_valid PostgreSQL compatibility error",
+      "classification": "confirmed separate signal-pagination/diagnostic issue in inspected snapshot; later fix exists in 39e0f95 but is absent from this worktree",
+      "timestamp": "2026-08-23T04:31:54Z",
+      "support": "HTTP 200 with advertised 468 rows/94 pages and signals=[]",
+      "causal_limit": "Does not alter worker execution; can obscure signal pagination diagnostics"
+    },
+    {
+      "lead": "Transformer expected input dimension 0",
+      "classification": "ruled out as Transformer dimensional blocker; separate misleading telemetry defect",
+      "timestamp": "2026-08-23T04:10:23.381Z/2026-08-23T04:10:23.382Z",
+      "support": "Transformer session contract is 60x353 and model manager reports ready; zero is derived from absent non-Transformer sessions",
+      "causal_limit": "Successful per-symbol Run reachability is not present in available logs"
+    },
+    {
+      "lead": "Transformer warm-up",
+      "classification": "confirmed blocker for the observed paper window",
+      "timestamp": "2026-08-23T04:34:41Z/2026-08-23T04:35:24Z",
+      "support": "All seven symbols warming_up across 140 evaluations; 0 signals/intents/fills",
+      "causal_limit": "Does not establish behavior outside this short window"
+    },
+    {
+      "lead": "Simulated worker failed to start",
+      "classification": "ruled out for observed session",
+      "timestamp": "2026-08-23T04:34:28Z/2026-08-23T04:35:38Z",
+      "support": "Worker started and processed all seven selected symbols, 20 evaluations each",
+      "causal_limit": "No claim about other sessions"
+    },
+    {
+      "lead": "Profitability, fee/spread/slippage, minimum-notional, cash/position, pending-order, and paper-fill gates",
+      "classification": "not reached in observed paper window; no causal classification",
+      "timestamp": "2026-08-23T04:34:41Z/2026-08-23T04:35:24Z",
+      "support": "0 generated signals and 0 paper intents mean these downstream gates were not exercised",
+      "causal_limit": "The four profitability_gate labels are observed strategy states, not evidence that later execution gates rejected orders"
+    },
+    {
+      "lead": "Current Python backend selected-universe slicing",
+      "classification": "confirmed contract risk in current checkout; not correlated to the 2026-08-23 paper window",
+      "timestamp": "current source at ded76aa; no runtime timestamp",
+      "support": "trading_handlers validates max_universe_size then slices to configured max_symbols_per_request",
+      "source_refs": ["src/trade_bot/web/web_handlers/trading_handlers.py:25-61"],
+      "causal_limit": "No deployed/browser payload or runtime capture proves this affected the seven-symbol session"
+    },
+    {
+      "lead": "Current Python live executor fee=0.0",
+      "classification": "confirmed accounting limitation; separate from no-intent/no-fill observation",
+      "timestamp": "current source at ded76aa; no runtime timestamp",
+      "support": "trade_executor persists fee=0.0 from order response",
+      "source_refs": ["src/trade_bot/trading/live_components/trade_executor.py:23-51"],
+      "causal_limit": "Cannot explain zero fills or zero intents; it affects realized-cost/PnL trust after execution"
+    }
+  ],
+  "database_statistics_diagnosis": {
+    "answer": "Yes, unrelated database/statistics failures could hide execution diagnosis, but they do not establish execution suppression.",
+    "evidence": [
+      "Missing is_closing_leg can cause reconciliation to return partial/zero outcomes with an error.",
+      "TradingStatsService can return empty statistics/default numeric zeros on its query exception.",
+      "The active simulated status uses in-memory session trade inputs, and the paper window independently recorded all seven symbols, 140 evaluations, and explicit no-trade states."
+    ],
+    "classification": "confirmed observability/reconciliation completeness issue; independent of worker-start and paper-gate outcomes",
+    "confidence": "high for source behavior; medium for runtime co-occurrence because the raw missing-column timestamp is not checked in"
+  },
+  "causality_and_gaps": {
+    "supported_chain": "Worker started -> seven selected symbols processed -> all data marked refreshed/sufficient -> Transformer rows warming_up -> 140 evaluations -> 0 generated signals -> 0 paper intents -> 0 fills.",
+    "not_supported": [
+      "A Coinbase failure caused the seven-symbol paper result",
+      "The Transformer Run function successfully inferred each symbol",
+      "Profitability, ML confidence, minimum-notional, cash, position, pending-order, fee, spread, slippage, or paper-fill gates rejected an intent",
+      "The database/statistics errors suppressed worker execution",
+      "The observed window represents production recurrence or explains all positive-PnL outcomes"
+    ],
+    "required_followup_evidence": [
+      "Complete timestamped per-symbol request/error/latency/quote-age capture tied to a selected-universe and session ID",
+      "Per-symbol model Run entry/exit and readiness/warm-up transition records",
+      "Append-only generated -> blocked/skipped -> intent -> submitted -> fill -> realized-PnL join",
+      "Read-only reproduction of missing-column and mixed-close reconciliation behavior",
+      "Deployment-safe browser/API/CORS capture of selected universe and widget payload"
+    ]
+  },
+  "verification": {
+    "artifact_type": "machine-readable JSON",
+    "json_validation": "write completed through verified file tool; no code/build/test commands run",
+    "git_status_before": "clean",
+    "runtime_side_effects": false,
+    "orders_or_account_mutations": false,
+    "configuration_changes": false,
+    "code_changes": false
+  }
+}
