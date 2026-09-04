@@ -244,7 +244,16 @@ The no-push inspection evidence carried forward here is:
   workflow files were absent from the current commit tree and neither was
   triggered for the unpushed base SHA.
 
-This report-only update will be committed and pushed on the task branch. The
-closeout commit SHA, remote ref readback, and any resulting CI status must be
-recorded below after the push; no local builds or tests are run for this
-report-only task.
+The report-only update was committed as
+`1ebf0120e128ce821388b723b4d1095ac479adb7` with message
+`docs(trade): record task closeout evidence` and pushed to
+`origin/wt/t_d76fccdb`. Remote ref readback matched that exact SHA:
+
+```text
+1ebf0120e128ce821388b723b4d1095ac479adb7 refs/heads/wt/t_d76fccdb
+```
+
+The final pushed SHA has no matching GitHub Actions runs, check-runs, or
+status contexts (`0` each). No mandatory CI was triggered for this
+report-only branch push; therefore there are no required CI job names or
+terminal statuses to report for this SHA. No local builds or tests were run.
