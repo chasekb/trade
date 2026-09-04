@@ -201,5 +201,9 @@ int main() {
 
   drogon::app().addListener("0.0.0.0", port).setThreadNum(4).run();
 
+  // Drogon has stopped serving requests; finish any detached-origin training
+  // work before static cache/model services are destroyed at process exit.
+  api::PredictController::waitForTraining();
+
   return 0;
 }
