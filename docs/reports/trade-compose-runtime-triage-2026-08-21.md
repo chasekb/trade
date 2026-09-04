@@ -253,7 +253,8 @@ The report-only update was committed as
 1ebf0120e128ce821388b723b4d1095ac479adb7 refs/heads/wt/t_d76fccdb
 ```
 
-The final pushed SHA has no matching GitHub Actions runs, check-runs, or
-status contexts (`0` each). No mandatory CI was triggered for this
-report-only branch push; therefore there are no required CI job names or
-terminal statuses to report for this SHA. No local builds or tests were run.
+The initial report-only pushed SHA had no matching GitHub Actions runs,
+check-runs, or status contexts (`0` each). No mandatory CI was triggered for
+that report-only branch push; therefore there were no required CI job names or
+terminal statuses to report for that SHA. The subsequent report amendment was
+also pushed on this branch; no local builds or tests were run.
