@@ -201,19 +201,21 @@ repository, and CI evidence. The assigned worktree started clean at
 `ded76aa07dac3a44e17be3bc27e6b1354392cc48`; the report was absent from that
 base checkout and was restored unchanged before this section was added.
 
-The update is limited to this report. After commit and push, the final SHA,
-remote branch, and any exact-SHA workflow result will be recorded here. The
-required CI matrix for the preserved evidence is the Docker Build Validation
-matrix above; no local builds, image pulls, CMake builds, CTest runs, or C++
-test execution are permitted as substitutes.
+The update is limited to this report. The first report-only commit was pushed
+to `origin/wt/t_1c2b91c5` as
+`9f46c23b54ea466c5ea575310e0448896eb9568d`:
+https://github.com/chasekb/trade/commit/9f46c23b54ea466c5ea575310e0448896eb9568d
+The required CI matrix for the preserved evidence is the Docker Build
+Validation matrix above; no local builds, image pulls, CMake builds, CTest
+runs, or C++ test execution are permitted as substitutes.
 
 ## Current closeout verification
 
 The dependent closeout inspection was performed against unchanged HEAD
-`ded76aa07dac3a44e17be3bc27e6b1354392cc48`. The working tree had no staged,
-unstaged, or untracked files, and `git diff --check` passed. Because this
-closeout inspection introduced no repository change, no commit or push was
-created and remote CI was not required for this no-op state.
+`ded76aa07dac3a44e17be3bc27e6b1354392cc48`. Before this report update, the
+working tree had no staged, unstaged, or untracked files, and `git diff --check`
+passed. That inspection itself introduced no change; this report-only update
+was subsequently committed and pushed as documented above.
 
 The read-only GitHub checks for this unchanged, unpushed SHA returned zero
 Actions runs, zero check-runs, and zero statuses. The status API represented
