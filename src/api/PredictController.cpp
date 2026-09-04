@@ -1719,6 +1719,9 @@ void PredictController::executionReconciliation(
   resp["signal_rows"] = 0;
   resp["outcome_rows"] = 0;
   resp["signal_rows_truncated"] = false;
+  resp["contract_version"] = 2;
+  resp["coverage_complete"] = true;
+  resp["bucket_policy_version"] = "backend-v1";
   resp["by_strategy"] = Json::arrayValue;
 
   std::vector<SignalAttribution> signals;
@@ -1731,28 +1734,29 @@ void PredictController::executionReconciliation(
       return !exists.empty() && !exists[0]["relname"].is_null();
     };
 
-    if (tableExists("order_book_signals")) {
+    if (tableExists("generated_signal_outcomes")) {
       constexpr std::size_t kSignalPageSize = 5000;
       std::size_t page_offset = 0;
       std::size_t fetched = 0;
       bool exhausted = false;
       while (!exhausted && !resp["signal_rows_truncated"].asBool()) {
         std::ostringstream sql;
-        sql << "SELECT symbol, signal_type, signal_data FROM order_book_signals WHERE timestamp >= "
-            << window_start;
+        sql << "SELECT symbol, signal_id, strategy, side, intended_action, outcome_state, trade_type, "
+            << "signal_generated, strength, expected_return, fee_adjusted_expected_return, "
+            << "diagnostic_factor, blocker_reason, payload FROM generated_signal_outcomes "
+            << "WHERE EXTRACT(EPOCH FROM observed_at) >= " << window_start;
         if (!session_id.empty()) {
           sql << " AND session_id = '" << session_id << "'";
         }
-        sql << " ORDER BY timestamp DESC LIMIT " << kSignalPageSize << " OFFSET " << page_offset;
+        sql << " ORDER BY observed_at DESC LIMIT " << kSignalPageSize << " OFFSET " << page_offset;
 
         const auto rows = DatabaseManager::getInstance().query(sql.str());
         exhausted = rows.size() < kSignalPageSize;
         for (const auto &row : rows) {
           const Json::Value payload =
-              row["signal_data"].is_null() ? Json::Value(Json::objectValue)
-                                           : parse_json_object(row["signal_data"].c_str());
-          if (!trade_type.empty() &&
-              payload.get("trade_type", Json::Value("")).asString() != trade_type) {
+              row["payload"].is_null() ? Json::Value(Json::objectValue)
+                                       : parse_json_object(row["payload"].c_str());
+          if (!trade_type.empty() && row["trade_type"].c_str() != trade_type) {
             continue;
           }
           if (++fetched > static_cast<std::size_t>(max_signals)) {
@@ -1765,21 +1769,18 @@ void PredictController::executionReconciliation(
           SignalAttribution attribution;
           attribution.symbol = row["symbol"].is_null() ? "" : row["symbol"].c_str();
           attribution.strategy = analysis.get("strategy", Json::Value("")).asString();
-          const std::string signal_type =
-              row["signal_type"].is_null() ? "" : row["signal_type"].c_str();
           attribution.signal_generated =
-              analysis.isMember("signal_generated")
-                  ? analysis["signal_generated"].asBool()
-                  : (!signal_type.empty() && signal_type != "hold");
+              row["signal_generated"].is_null() ? false : row["signal_generated"].as<bool>();
           attribution.executable_intent =
-              analysis.get("executable_intent", Json::Value(false)).asBool();
-          attribution.blocker_reason = analysis.get("blocker_reason", Json::Value("")).asString();
-          attribution.intended_side = analysis.get("intended_side", Json::Value("")).asString();
-          attribution.diagnostic_factor =
-              analysis.get("diagnostic_factor", Json::Value("")).asString();
-          attribution.expected_return = analysis.get("expected_return", Json::Value(0.0)).asDouble();
-          attribution.fee_adjusted_expected_return =
-              analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble();
+              row["outcome_state"].c_str() == std::string("executable_intent");
+          attribution.blocker_reason = row["blocker_reason"].is_null() ? "" : row["blocker_reason"].c_str();
+          attribution.intended_side = row["side"].is_null() ? "" : row["side"].c_str();
+          attribution.diagnostic_factor = row["diagnostic_factor"].is_null() ? "" : row["diagnostic_factor"].c_str();
+          attribution.strength = row["strength"].is_null() ? 0.0 : row["strength"].as<double>();
+          attribution.strength_bucket = attribution.strength < 0.22 ? "weak" : (attribution.strength < 0.5 ? "medium" : "strong");
+          attribution.expected_return = row["expected_return"].is_null() ? 0.0 : row["expected_return"].as<double>();
+          attribution.expected_return_bucket = attribution.expected_return < 0.0 ? "negative" : (attribution.expected_return <= 1e-9 ? "near_zero" : "positive");
+          attribution.fee_adjusted_expected_return = row["fee_adjusted_expected_return"].is_null() ? 0.0 : row["fee_adjusted_expected_return"].as<double>();
           signals.push_back(std::move(attribution));
         }
         page_offset += rows.size();
@@ -1822,6 +1823,23 @@ void PredictController::executionReconciliation(
   resp["outcome_rows"] = static_cast<Json::UInt64>(outcomes.size());
 
   const auto report = trade::trading::reconcileExecution(signals, outcomes);
+  auto dimension_summary = [&signals](const std::function<std::string(const SignalAttribution &)> &key_fn) {
+    Json::Value result(Json::objectValue);
+    for (const auto &signal : signals) {
+      const std::string key = key_fn(signal).empty() ? "unknown" : key_fn(signal);
+      Json::Value &row = result[key];
+      row["evaluated"] = row.get("evaluated", 0).asUInt64() + 1;
+      row["signals_generated"] = row.get("signals_generated", 0).asUInt64() + (signal.signal_generated ? 1 : 0);
+      row["executable_intents"] = row.get("executable_intents", 0).asUInt64() + (signal.executable_intent ? 1 : 0);
+      row["blocked_intents"] = row.get("blocked_intents", 0).asUInt64() + (signal.signal_generated && !signal.executable_intent ? 1 : 0);
+    }
+    return result;
+  };
+  resp["by_symbol"] = dimension_summary([](const SignalAttribution &s) { return s.symbol; });
+  resp["by_side"] = dimension_summary([](const SignalAttribution &s) { return s.intended_side; });
+  resp["by_strength_bucket"] = dimension_summary([](const SignalAttribution &s) { return s.strength_bucket; });
+  resp["by_expected_return_bucket"] = dimension_summary([](const SignalAttribution &s) { return s.expected_return_bucket; });
+  resp["by_diagnostic_factor"] = dimension_summary([](const SignalAttribution &s) { return s.diagnostic_factor; });
   for (const auto &[strategy, metrics] : report.by_strategy) {
     resp["by_strategy"].append(reconciliation_to_json(metrics));
   }
