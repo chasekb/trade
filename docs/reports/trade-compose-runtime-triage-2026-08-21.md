@@ -165,3 +165,30 @@ The two publication jobs are intentionally skipped by the pull-request
 workflow condition; no image publication was requested or performed. No
 local C++ build, CTest run, or image build was used as a substitute for the
 remote CI gate.
+
+The subsequent exact-SHA workflow-dispatch rerun completed successfully for
+the dependent closeout commit `74fc2904deca95df2c35ba26c11b474e91695461`:
+
+```text
+Workflow: Docker Build Validation
+Run: 33670366125
+URL: https://github.com/chasekb/trade/actions/runs/33670366125
+Head SHA: 74fc2904deca95df2c35ba26c11b474e91695461
+Conclusion: success
+Build C++ Backend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/33670366125/job/100400219122
+Build C++ Backend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/33670366125/job/100400219417
+Build Frontend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/33670366125/job/100400219381
+Build Frontend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/33670366125/job/100400219542
+Publish Frontend manifest: success
+  https://github.com/chasekb/trade/actions/runs/33670366125/job/100400678002
+Publish C++ Backend manifest: success
+  https://github.com/chasekb/trade/actions/runs/33670366125/job/100485936090
+```
+
+This workflow-dispatch matrix is the final remote verification for the
+dependent closeout commit. No local C++ build, CTest run, or image build was
+used as a substitute for this gate.
