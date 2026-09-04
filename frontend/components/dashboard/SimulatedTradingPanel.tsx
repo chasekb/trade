@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LiveTradingPanelProps, TradingStrategy } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLiveTrading, useOrderBookSignals, useProducts, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
+import { useLiveTrading, useOrderBookSignals, useProducts, useSimulatedTradingStats, useSimTradingWebSocket, useExecutionReconciliation } from '@/hooks/useTrading';
 import { OpenPositionsSection } from './OpenPositionsSection';
 import { StrategySelector } from './StrategySelector';
 import { TradingControls } from './TradingControls';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { OrderBookSignalsTable } from './OrderBookSignalsTable';
+import ExecutionAttributionSummary from './ExecutionAttributionSummary';
 // Trading Configuration Section
 function TradingConfiguration({
   strategy,
@@ -304,6 +305,7 @@ function TradingConfiguration({
 function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
   const queryClient = useQueryClient();
   const { data: stats, isLoading, error } = useSimulatedTradingStats(isTradingActive);
+  const { data: attribution } = useExecutionReconciliation(isTradingActive);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
@@ -424,6 +426,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        <ExecutionAttributionSummary title="Outcome & blocker attribution" report={attribution} />
         {/* Main Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-lg">

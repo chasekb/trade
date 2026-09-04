@@ -172,6 +172,25 @@ export function useLivePortfolio(enabled: boolean = true) {
   });
 }
 
+// Generated-signal outcome and blocker attribution report.
+export function useExecutionReconciliation(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['execution-reconciliation'],
+    queryFn: async () => {
+      const response = await apiClient.getExecutionReconciliation();
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch execution attribution');
+      }
+      const payload = response.data as any;
+      return payload?.data || payload;
+    },
+    enabled,
+    staleTime: 5 * 1000,
+    refetchInterval: enabled ? 10 * 1000 : false,
+    refetchOnWindowFocus: true,
+  });
+}
+
 // Simulated Trading Statistics Hook
 
 export function useSimulatedTradingStats(enabled: boolean = true) {

@@ -1,0 +1,52 @@
+{
+  "contract_version": 2,
+  "session_id": "sim_fixture",
+  "trade_type": "live_parity",
+  "coverage_complete": true,
+  "signal_rows": 4,
+  "outcome_rows": 1,
+  "signal_rows_truncated": false,
+  "bucket_policy_version": "fixture-1",
+  "by_strategy": [
+    {
+      "strategy": "orderbook",
+      "evaluated": 4,
+      "signals_generated": 3,
+      "explicit_skips": 1,
+      "executable_intents": 1,
+      "blocked_intents": 2,
+      "executed_count": 1,
+      "pnl_population": 1,
+      "win_count": 1,
+      "loss_count": 0,
+      "win_rate_pct": 100.0,
+      "average_realized_pnl": 0.012,
+      "average_win_pnl": 0.012,
+      "average_loss_magnitude": null,
+      "blocker_counts": {"pending_order": 1, "spot_cannot_open_short": 1},
+      "diagnostic_factor_counts": {"weak_strength": 1, "account_exchange_blocker": 1},
+      "dimensions": {
+        "by_symbol": {
+          "BTC-USD": {"evaluated": 2, "blocked_intents": 1, "executed_count": 1, "win_rate_pct": 100.0, "average_realized_pnl": 0.012},
+          "ETH-USD": {"evaluated": 2, "blocked_intents": 1, "explicit_skips": 1, "executed_count": 0, "win_rate_pct": null, "average_realized_pnl": null}
+        },
+        "by_side": {
+          "buy": {"evaluated": 3, "blocked_intents": 1, "executed_count": 1, "win_rate_pct": 100.0, "average_realized_pnl": 0.012},
+          "sell": {"evaluated": 1, "blocked_intents": 1, "executed_count": 0, "win_rate_pct": null, "average_realized_pnl": null}
+        },
+        "by_strength_bucket": {
+          "medium": {"evaluated": 2, "executed_count": 1, "win_rate_pct": 100.0, "average_realized_pnl": 0.012},
+          "weak": {"evaluated": 2, "blocked_intents": 2, "executed_count": 0, "win_rate_pct": null, "average_realized_pnl": null}
+        },
+        "by_expected_return_bucket": {
+          "positive": {"evaluated": 2, "executed_count": 1, "win_rate_pct": 100.0, "average_realized_pnl": 0.012},
+          "missing": {"evaluated": 1, "explicit_skips": 1, "executed_count": 0, "win_rate_pct": null, "average_realized_pnl": null}
+        }
+      }
+    }
+  ],
+  "by_diagnostic_factor": [
+    {"factor": "weak_strength", "evaluated": 1, "blocked_intents": 1, "impact_population": 0, "executed_count": 0, "pnl_population": 0, "win_rate_pct": null, "insufficient_data": true}
+  ],
+  "overall": {"evaluated": 4, "signals_generated": 3, "explicit_skips": 1, "blocked_intents": 2, "executed_count": 1, "pnl_population": 1, "win_rate_pct": 100.0, "average_realized_pnl": 0.012}
+}

@@ -193,6 +193,20 @@ class ApiClient {
     return this.request('/api/live-portfolio/status');
   }
 
+  async getExecutionReconciliation(params?: {
+    session_id?: string;
+    trade_type?: string;
+    start_time?: string;
+    end_time?: string;
+  }): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value) query.append(key, value);
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return this.request(`/api/execution/reconciliation${suffix}`);
+  }
+
   // Order Book Signals
   async getOrderBookSignals(
     symbols?: string[],

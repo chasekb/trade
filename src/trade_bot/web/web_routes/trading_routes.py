@@ -3,6 +3,7 @@
 import asyncio
 import random
 import logging
+from typing import Optional
 from fastapi import APIRouter, HTTPException
 
 from ..web_components import get_app_state
@@ -287,6 +288,41 @@ async def get_trades_stats():
         raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
     check_handlers_ready("trading_handlers", app_state.trading_handlers)
     return await app_state.trading_handlers.get_simulated_trading_status()
+
+@router.get("/api/execution/reconciliation")
+async def get_execution_reconciliation(
+    session_id: Optional[str] = None,
+    trade_type: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+):
+    """Return attribution, or an explicit incomplete report if unavailable."""
+    try:
+        app_state = get_app_state()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Service unavailable - application not initialized")
+    check_handlers_ready("trading_handlers", app_state.trading_handlers)
+    producer = getattr(app_state.trading_handlers, "get_execution_reconciliation", None)
+    if producer is not None:
+        return await producer(
+            session_id=session_id,
+            trade_type=trade_type,
+            start_time=start_time,
+            end_time=end_time,
+        )
+    return {
+        "contract_version": 2,
+        "session_id": session_id,
+        "trade_type": trade_type,
+        "coverage_complete": False,
+        "signal_rows": 0,
+        "outcome_rows": 0,
+        "signal_rows_truncated": False,
+        "by_strategy": [],
+        "by_diagnostic_factor": [],
+        "overall": None,
+        "warning": "Attribution producer is not available; no execution was inferred.",
+    }
 
 @router.get("/api/trades/paginated")
 async def get_trades_paginated(page: int = 1, per_page: int = 10, session_id: str = None):
