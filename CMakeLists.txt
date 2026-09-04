@@ -47,6 +47,7 @@ set(SOURCES
     src/trading/QuoteBatchScheduler.cpp
     src/trading/StrategySignal.cpp
     src/trading/StrategyExpectancyHarness.cpp
+    src/trading/OrderBookBaselineReport.cpp
     src/trading/ExecutionReconciliation.cpp
     src/trading/ReconciliationDiagnostics.cpp
     src/trading/SimulatedTradingDiagnosis.cpp
