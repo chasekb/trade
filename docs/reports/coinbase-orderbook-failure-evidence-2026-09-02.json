@@ -19,7 +19,12 @@
     "capture_window": "last 5000 lines at investigation time",
     "raw_log_file_available": false,
     "runtime_component": "cpp-backend",
-    "parsing": "Each timestamped warning line matching Failed to fetch order book for SYMBOL was counted once; wrapped continuation lines were not used for counts."
+    "parsing": "Each timestamped warning line matching Failed to fetch order book for SYMBOL was counted once; wrapped continuation lines were not used for counts.",
+    "per_attempt_correlation": {
+      "status": "unavailable",
+      "reason": "The raw scrollback/log file was not preserved. Only the YB-USD timestamp was separately retained; the other 537 records are aggregate per-symbol counts without individual timestamps or exact error text.",
+      "acceptance_criterion_met": false
+    }
   },
   "observed_window": {
     "first_failure_timestamp": "2026-08-23 20:03:48.490",
@@ -3955,40 +3960,42 @@
     "TLS/network order-book failures are not isolated to YB-USD: 538 warning records across 301 symbols were visible in the captured window.",
     "Every parsed warning reports category=tls and retries=1 in the wrapped continuation text observed in the pane.",
     "Failures occur across a broad symbol set and over many hours, consistent with a shared transport/runtime failure rather than a symbol-specific Coinbase product issue; provider-side versus DNS/container/certificate cause is not distinguishable from the generic message.",
-    "No success lines, last-success timestamps, selected-universe payload, request start/end pair, or downstream signal/intent/fill counters were preserved in the pane capture."
+    "No success lines, last-success timestamps, selected-universe payload, request start/end pair, or downstream signal/intent/fill counters were preserved in the pane capture.",
+    "The requested exact per-attempt correlation is unavailable for 537 of 538 records because raw scrollback was not preserved; the aggregate counts must not be treated as a complete attempt ledger."
   ],
   "code_trace": [
     {
-      "path": "src/trade_bot/data/data_provider.py",
-      "lines": "343-395",
-      "symbol": "CoinbaseDataProvider.get_order_book",
-      "finding": "Skips during provider cooldown, enforces rate limit, performs DNS preflight, calls Coinbase /products/<product_id>/book with aiohttp, returns empty data on non-200/exception, increments failures and begins cooldown after three failures."
+      "path": "src/exchange/CoinbaseAdvancedClient.cpp",
+      "lines": "514-560",
+      "symbol": "CoinbaseAdvancedClient::getOrderBook",
+      "finding": "Calls the public Coinbase /products/<product_id>/book?level=2 endpoint through request(); rejects malformed responses and empty best bid/ask data, returning false with an error string."
     },
     {
-      "path": "src/trade_bot/core/universe_selector.py",
-      "lines": "113-179",
-      "symbol": "UniverseSelector._get_signal_for_symbol",
-      "finding": "Fetches order book for order-book strategies; only adds it when non-empty. Exception handling warns and returns None for OrderBookStrategy, preventing a signal for that symbol."
+      "path": "src/trading/SimulatedTradingService.cpp",
+      "lines": "879-937",
+      "symbol": "SimulatedTradingService::fetchLiveQuotes",
+      "finding": "Attempts each symbol up to two times, records failure status/category/error/retries, logs the failed fetch, omits the symbol from quotes, and records last_success_at only after a successful fetch. TLS/DNS/exchange-response categories stop the retry loop early."
     },
     {
-      "path": "src/trade_bot/trading/simulated_trading_manager.py",
-      "lines": "395-431",
-      "symbol": "SimulatedTradingManager._update_all_position_prices",
-      "finding": "Position-price refresh fetches level-1 order books and leaves the position unchanged when the response is empty/invalid; this is a separate consumer from signal generation."
+      "path": "src/trading/LiveTradingService.cpp",
+      "lines": "1208-1242",
+      "symbol": "LiveTradingService::fetchLiveQuotes",
+      "finding": "Calls getOrderBook once per symbol; on failure logs only symbol and error, omits that symbol from quotes, and continues. This live path does not record category, retries, or last_success_at in this function."
     }
   ],
   "classification": {
     "coinbase_tls_lead": "confirmed blocker for the observed failed fetches; separate open issue for root cause and complete recurrence",
-    "why": "The pane directly records hundreds of TLS-category order-book failures, including YB-USD, while the checked-in consumer returns empty/None on failed order-book data and therefore cannot produce an order-book signal for that symbol.",
+    "why": "The pane directly records hundreds of TLS-category order-book failures, including YB-USD. Current C++ consumers show failed order-book fetches are omitted from quote maps; the simulated path records failure status and last_success_at only on success, while the live path logs the failure and continues without category/retry fields. The evidence confirms failed fetches can block downstream quote-dependent processing, but it does not establish a complete per-attempt causal chain.",
     "not_proven": [
       "Whether every selected symbol failed in each tick.",
       "Any successful recovery or exact data age.",
       "Whether failures caused all zero trades or UI cadence.",
       "Underlying TLS/DNS/certificate/provider cause."
     ],
-    "confidence": "medium-low overall"
+    "confidence": "low overall for complete recurrence/causality; medium for the counted warning records and bounded source behavior"
   },
   "reconciliation_gaps": [
+    "The exact per-attempt timestamp/symbol/outcome/error/retry acceptance criterion is unavailable for 537 records; recover raw structured logs or recapture them before treating the ledger as complete.",
     "Preserve raw structured runtime logs or status snapshots with request timestamps and selected universe.",
     "Expose/record last_success_at and compute data age at observation time.",
     "Correlate per-symbol failure with signal, gate, paper-intent, and fill outcomes.",
