@@ -363,6 +363,30 @@ void SimulatedTradingService::ensureSchema() {
         "ALTER TABLE individual_trades ALTER COLUMN is_closing_leg DROP NOT NULL");
     DatabaseManager::getInstance().query(
         "UPDATE individual_trades SET is_closing_leg = NULL WHERE is_closing_leg = FALSE AND pnl <> 0");
+    DatabaseManager::getInstance().query(R"SQL(
+      CREATE TABLE IF NOT EXISTS generated_signal_outcomes (
+        id BIGSERIAL PRIMARY KEY, event_id TEXT NOT NULL,
+        contract_version INTEGER NOT NULL, session_id TEXT NOT NULL,
+        trade_type TEXT NOT NULL, signal_id TEXT NOT NULL, intent_id TEXT,
+        event_sequence INTEGER NOT NULL, event_version INTEGER NOT NULL,
+        outcome_state TEXT NOT NULL, strategy TEXT NOT NULL, symbol TEXT NOT NULL,
+        side TEXT NOT NULL, intended_action TEXT NOT NULL,
+        signal_generated BOOLEAN NOT NULL, strength REAL,
+        strength_bucket TEXT NOT NULL, expected_return REAL,
+        expected_return_bucket TEXT NOT NULL, fee_adjusted_expected_return REAL,
+        required_edge REAL, diagnostic_factor TEXT NOT NULL,
+        blocker_reason TEXT, skip_reason TEXT, client_order_id TEXT,
+        external_order_id TEXT, trade_id TEXT, observed_at TIMESTAMPTZ NOT NULL,
+        payload JSONB, UNIQUE (session_id, event_id),
+        UNIQUE (session_id, signal_id, event_sequence, event_version)
+      )
+    )SQL");
+    DatabaseManager::getInstance().query(
+        "CREATE INDEX IF NOT EXISTS generated_signal_outcomes_scope_idx "
+        "ON generated_signal_outcomes (session_id, trade_type, observed_at)");
+    DatabaseManager::getInstance().query(
+        "CREATE INDEX IF NOT EXISTS generated_signal_outcomes_dimensions_idx "
+        "ON generated_signal_outcomes (strategy, symbol, side, outcome_state)");
   } catch (const std::exception &e) {
     TR_LOG_WARN("Failed to ensure simulated trading schema: {}", e.what());
   }
@@ -985,6 +1009,37 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
         << "total_signals = EXCLUDED.total_signals";
 
     DatabaseManager::getInstance().query(sql.str());
+    std::ostringstream outcomes_sql;
+    outcomes_sql << "INSERT INTO generated_signal_outcomes (event_id, contract_version, session_id, trade_type, signal_id, intent_id, event_sequence, event_version, outcome_state, strategy, symbol, side, intended_action, signal_generated, strength, strength_bucket, expected_return, expected_return_bucket, fee_adjusted_expected_return, required_edge, diagnostic_factor, blocker_reason, skip_reason, observed_at, payload) VALUES ";
+    bool outcome_first = true;
+    for (const auto &[signal_id, signal] : unique_signals) {
+      const Json::Value analysis = signal->payload.get("execution_analysis", Json::Value(Json::objectValue));
+      const bool generated = analysis.get("signal_generated", signal->signal_type != "hold").asBool();
+      const bool executable = analysis.get("executable_intent", Json::Value(false)).asBool();
+      const std::string state = !generated ? "explicit_skip" : (executable ? "executable_intent" : "blocked_intent");
+      const double expected = analysis.get("expected_return", Json::Value(0.0)).asDouble();
+      const std::string strength_bucket = signal->strength < 0.22 ? "weak" : (signal->strength < 0.5 ? "medium" : "strong");
+      const std::string expected_bucket = expected < 0.0 ? "negative" : (expected <= 1e-9 ? "near_zero" : "positive");
+      std::string factor = analysis.get("diagnostic_factor", Json::Value("none")).asString();
+      if (factor == "profitability_gate" || factor == "ml_confidence_gate") factor = "below_required_edge";
+      if (factor.empty() || factor == "hold") factor = "none";
+      const std::string blocker = generated && !executable ? analysis.get("blocker_reason", Json::Value("unknown")).asString() : "";
+      if (!outcome_first) outcomes_sql << ",";
+      outcome_first = false;
+      outcomes_sql << "('" << escapeSql(signal->signal_id + "_evaluation") << "',2,'" << escapeSql(signal->session_id)
+                   << "','" << escapeSql(mode_) << "','" << escapeSql(signal->signal_id) << "'," << (generated ? "'" + escapeSql(signal->signal_id) + "'" : "NULL")
+                   << ",1,1,'" << state << "','" << escapeSql(analysis.get("strategy", Json::Value(strategy_)).asString())
+                   << "','" << escapeSql(signal->symbol) << "','" << escapeSql(analysis.get("intended_side", Json::Value("none")).asString())
+                   << "','" << escapeSql(analysis.get("intended_action", Json::Value("none")).asString()) << "'," << (generated ? "TRUE" : "FALSE")
+                   << "," << signal->strength << ",'" << strength_bucket << "'," << expected << ",'" << expected_bucket << "',"
+                   << analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble() << "," << analysis.get("required_edge", Json::Value(0.0)).asDouble()
+                   << ",'" << escapeSql(factor) << "'," << (blocker.empty() ? "NULL" : "'" + escapeSql(blocker) + "'") << ","
+                   << (generated ? "NULL" : "'no_signal'") << ",to_timestamp(" << signal->timestamp << "),'" << escapeSql(jsonToString(signal->payload)) << "'::jsonb)";
+    }
+    if (!outcome_first) {
+      outcomes_sql << " ON CONFLICT (session_id, event_id) DO NOTHING";
+      DatabaseManager::getInstance().query(outcomes_sql.str());
+    }
   }
 
   if (!writes.trades.empty()) {
