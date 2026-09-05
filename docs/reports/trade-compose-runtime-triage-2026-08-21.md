@@ -249,7 +249,7 @@ gate.
 
 ## Final report revision closeout
 
-This final report revision was committed and pushed as
+The report evidence was initially committed and pushed as
 `e435a729dd77cd610388b41ef3844cbf6e5a9253` on `wt/t_29973145`:
 
 ```text
@@ -257,6 +257,10 @@ Remote ref: refs/heads/wt/t_29973145
 Remote SHA: e435a729dd77cd610388b41ef3844cbf6e5a9253
 Changed path: docs/reports/trade-compose-runtime-triage-2026-08-21.md
 ```
+
+The follow-up closeout commit carrying this final-report wording was
+`0f1438f`; the remote branch was read back at that SHA before this report was
+finalized.
 
 No new remote CI run or check-run was created for this report-only branch
 revision: the current commit tree has no workflow files and the repository's
