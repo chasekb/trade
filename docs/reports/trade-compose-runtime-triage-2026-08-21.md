@@ -258,9 +258,9 @@ for the remote gate.
   `origin/wt/t_d10e1097-closeout` (remote `git@github.com:chasekb/trade.git`).
 - Assigned closeout ref readback: this report content was also pushed as
   `316acfdc39542a84886cf2f7b96cc1b20c8915c2` to
-  `origin/wt/t_7a654b0e` (same remote). The final annotated ref is
-  `131d9e879d1e9c039215b64977869941f5614302`; local `HEAD` and that remote ref
-  match.
+  `origin/wt/t_7a654b0e` (same remote); subsequent closeout annotation commits
+  `131d9e879d1e9c039215b64977869941f5614302` and
+  `cc3fe44` were pushed to that same ref.
 - Required CI: Docker Build Validation run `33959798194`,
   https://github.com/chasekb/trade/actions/runs/33959798194, terminal
   `success` for `da9329faa8367aab0b8cb14bb8885e885b870d2a`. Every required job
