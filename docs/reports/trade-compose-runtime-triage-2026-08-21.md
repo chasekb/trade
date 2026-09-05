@@ -192,3 +192,30 @@ Publish C++ Backend manifest: success
 This workflow-dispatch matrix is the final remote verification for the
 dependent closeout commit. No local C++ build, CTest run, or image build was
 used as a substitute for this gate.
+
+The report-only closeout commit `45e5acaf9c89449509aba3c6b11f9c5e020253c9`
+was then verified by the exact-SHA rerun (attempt 2):
+
+```text
+Workflow: Docker Build Validation
+Run: 33924011851 (attempt 2)
+URL: https://github.com/chasekb/trade/actions/runs/33924011851
+Head SHA: 45e5acaf9c89449509aba3c6b11f9c5e020253c9
+Conclusion: success
+Build C++ Backend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/33924011851/job/101210217562
+Build C++ Backend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/33924011851/job/101210217622
+Build Frontend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/33924011851/job/101210217649
+Build Frontend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/33924011851/job/101210217673
+Publish Frontend manifest: success
+  https://github.com/chasekb/trade/actions/runs/33924011851/job/101210416785
+Publish C++ Backend manifest: success
+  https://github.com/chasekb/trade/actions/runs/33924011851/job/101254759632
+```
+
+This exact-SHA matrix is terminal success for the report-only closeout
+commit. No local C++ build, CTest run, or image build was used as a substitute
+for the remote gate.
