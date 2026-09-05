@@ -256,6 +256,9 @@ for the remote gate.
   included.
 - Pushed report commit: `a1ef521e9e4dbedfc331df114c7b6a97191f70de` on
   `origin/wt/t_d10e1097-closeout` (remote `git@github.com:chasekb/trade.git`).
+- Assigned closeout ref readback: this report content was also pushed as
+  `316acfdc39542a84886cf2f7b96cc1b20c8915c2` to
+  `origin/wt/t_7a654b0e` (same remote); local `HEAD` and that remote ref match.
 - Required CI: Docker Build Validation run `33959798194`,
   https://github.com/chasekb/trade/actions/runs/33959798194, terminal
   `success` for `da9329faa8367aab0b8cb14bb8885e885b870d2a`. Every required job
