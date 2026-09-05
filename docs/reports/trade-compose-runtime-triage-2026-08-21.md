@@ -246,3 +246,21 @@ Publish C++ Backend manifest: success
 All six required jobs are terminal success for the exact pushed SHA. No local
 C++ build, CTest run, or image build was used as a substitute for the remote
 gate.
+
+## Final report revision closeout
+
+This final report revision was committed and pushed as
+`e435a729dd77cd610388b41ef3844cbf6e5a9253` on `wt/t_29973145`:
+
+```text
+Remote ref: refs/heads/wt/t_29973145
+Remote SHA: e435a729dd77cd610388b41ef3844cbf6e5a9253
+Changed path: docs/reports/trade-compose-runtime-triage-2026-08-21.md
+```
+
+No new remote CI run or check-run was created for this report-only branch
+revision: the current commit tree has no workflow files and the repository's
+active workflows do not trigger for this task branch. The successful
+six-job Docker Build Validation run above remains the exact-SHA evidence for
+`da9329faa8367aab0b8cb14bb8885e885b870d2a`; it is not misattributed to this
+final report revision.
