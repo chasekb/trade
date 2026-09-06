@@ -273,3 +273,30 @@ Publish C++ Backend manifest: success
 This exact-SHA matrix is terminal success for the report-evidence commit. No
 local C++ build, CTest run, or image build was used as a substitute for the
 remote gate.
+
+The final report closeout commit `9ac3165b535e73c1f4df31a0f5913712fce03884`
+was verified by the exact-SHA workflow-dispatch run:
+
+```text
+Workflow: Docker Build Validation
+Run: 34022724710 (attempt 1)
+URL: https://github.com/chasekb/trade/actions/runs/34022724710
+Head SHA: 9ac3165b535e73c1f4df31a0f5913712fce03884
+Conclusion: success
+Build C++ Backend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34022724710/job/101458150794
+Build C++ Backend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34022724710/job/101458150815
+Build Frontend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34022724710/job/101458150759
+Build Frontend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34022724710/job/101458150673
+Publish Frontend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34022724710/job/101458328468
+Publish C++ Backend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34022724710/job/101503041245
+```
+
+This exact-SHA matrix is terminal success for the final report closeout
+commit. No local C++ build, CTest run, or image build was used as a substitute
+for the remote gate.
