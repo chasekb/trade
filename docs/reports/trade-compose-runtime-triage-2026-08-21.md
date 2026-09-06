@@ -91,9 +91,9 @@ commit or push occurred and no SHA-associated CI run was created. The current
 change is limited to this checked-in report. Its final commit and any CI
 results created by publishing that report are recorded below after verification.
 
-- Final commit SHA: pending until commit
-- Push: pending until commit
-- Required CI jobs: pending until the pushed SHA is observed
+- Report publication commit SHA: `737264635722827a445f699bcfc5fe1ed7c0c64f`
+- Push: completed to `origin/wt/t_65f8f68d` and verified by remote ref readback
+- Required CI jobs for this pushed SHA: none observed; GitHub returned zero check runs and no workflow runs for this head
 
 No local image build, image pull, CMake build, CTest run, or C++ test execution
 was used as a substitute for remote CI verification.
