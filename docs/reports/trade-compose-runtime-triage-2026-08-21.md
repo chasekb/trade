@@ -297,3 +297,12 @@ the combined commit status was `pending` with zero statuses. This is recorded
 as non-applicable remote CI for the no-change assessment, not as a successful
 job result. This report-only closeout is the only repository change in the
 publication worktree; no local build or test was run.
+
+The report-only closeout was pushed on branch `wt/t_a23e29f3` as
+`7286c78675cebec6dfa505d9a55931490ae42329`:
+
+https://github.com/chasekb/trade/commit/7286c78675cebec6dfa505d9a55931490ae42329
+
+That push had no associated Actions run or check-run for its exact SHA. The
+working tree was clean after the push; this evidence amendment is the only
+subsequent file change.
