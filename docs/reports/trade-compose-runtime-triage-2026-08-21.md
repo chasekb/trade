@@ -382,3 +382,35 @@ Publish C++ Backend manifest: success
 All six required matrix and publication jobs reached terminal success for
 the pushed closeout SHA. No local C++ build, CTest run, or image build was
 used as a substitute for this remote gate.
+
+The subsequent report-only closeout commit `7d4ba52e4a61b3d2a6e69b90f37315e8fc02f499`
+was pushed to `wt/t_d10e1097-closeout` and its exact-SHA workflow-dispatch run
+reached terminal failure because the GitHub-hosted Docker daemon returned HTTP
+500 while booting `moby/buildkit:buildx-stable-1` in the `Set up Docker Buildx`
+step. The failure occurred before any project build step ran:
+
+```text
+Workflow: Docker Build Validation
+Run: 34136055414
+URL: https://github.com/chasekb/trade/actions/runs/34136055414
+Head SHA: 7d4ba52e4a61b3d2a6e69b90f37315e8fc02f499
+Conclusion: failure
+Build C++ Backend (amd64): failure — Set up Docker Buildx (HTTP 500)
+  https://github.com/chasekb/trade/actions/runs/34136055414/job/101787174350
+Build C++ Backend (arm64): failure — Set up Docker Buildx (HTTP 500)
+  https://github.com/chasekb/trade/actions/runs/34136055414/job/101787174228
+Build Frontend (amd64): failure — Set up Docker Buildx (HTTP 500)
+  https://github.com/chasekb/trade/actions/runs/34136055414/job/101787173870
+Build Frontend (arm64): failure — Set up Docker Buildx (HTTP 500)
+  https://github.com/chasekb/trade/actions/runs/34136055414/job/101787174155
+Publish Frontend manifest: skipped
+  https://github.com/chasekb/trade/actions/runs/34136055414/job/101787239173
+Publish C++ Backend manifest: skipped
+  https://github.com/chasekb/trade/actions/runs/34136055414/job/101787231239
+```
+
+This terminal failure is remote runner/BuildKit infrastructure evidence, not
+a source compilation or test result. The prior pushed closeout SHA
+`bb36774ab1f3298e977aaca3e81af7b32b250f72` remains covered by run
+`34080863373`, whose complete six-job matrix reached success; the newer
+report-only SHA has an open remote-CI limitation until a retry succeeds.
