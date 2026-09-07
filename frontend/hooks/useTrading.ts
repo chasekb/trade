@@ -1,59 +1,109 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
-import { apiClient, queryKeys } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 import {
   TradingMode,
   TradingStrategy,
-  SymbolMode,
-  UniverseType,
   OrderBookSignal,
+  OrderBookSignalDiagnostics,
 } from '@/types/trading';
+
+type TradingParameterValue = string | number | boolean | undefined;
+type TradingParameters = Record<string, TradingParameterValue>;
+
+type TradingStatusPayload = {
+  status?: string;
+  isActive?: boolean;
+  is_active?: boolean;
+  is_trading?: boolean;
+  mode?: TradingMode;
+  strategy?: TradingStrategy;
+  strategy_type?: TradingStrategy;
+  symbols?: string[];
+  session_id?: string;
+  data?: TradingStatusPayload;
+  portfolio?: unknown;
+  stats?: unknown;
+  recent_trades?: unknown;
+  current_capital?: unknown;
+};
+
+type OrderBookSignalsData = {
+  signals: OrderBookSignal[];
+  pagination?: {
+    current_page?: number;
+    page?: number;
+    per_page?: number;
+    limit?: number;
+    total_signals?: number;
+    total_pages?: number;
+    has_next?: boolean;
+    has_prev?: boolean;
+  };
+  total_analyzed?: number;
+  active_signals?: number;
+  last_updated?: string;
+  average_strength?: number;
+  diagnostics?: OrderBookSignalDiagnostics;
+};
+
+type WebSocketPayload = {
+  type?: string;
+  data?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseWebSocketPayload(raw: string): WebSocketPayload {
+  const parsed: unknown = JSON.parse(raw || '{}');
+  return isRecord(parsed) ? parsed : {};
+}
 
 // Live Trading Hooks
 
-export function useLiveTrading() {
+export function useLiveTrading(mode: TradingMode = 'simulated') {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState({
     isActive: false,
-    mode: 'simulated' as TradingMode,
+    mode,
     strategy: 'orderbook' as TradingStrategy,
     symbols: [] as string[],
   });
 
   // Query to keep status in sync with backend (especially for symbols added in background)
   const { data: backendStatus } = useQuery({
-    queryKey: ['trading-status'],
+    queryKey: ['trading-status', mode],
     queryFn: async () => {
-      const response = await apiClient.getSimulatedTradingStatus();
+      const response = await apiClient.getTradingStatus(mode);
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch trading status');
       }
       return response.data;
     },
-    enabled: status.isActive, // Only poll when trading is active
-    refetchInterval: status.isActive ? 5000 : false, // Poll every 5 seconds when active
+    enabled: mode === 'live' || status.isActive,
+    refetchInterval: status.isActive ? 5000 : (mode === 'live' ? 10000 : false),
     staleTime: 1000, // Consider data fresh for 1 second
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
-    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 
-  // Update local status when backend status changes
-  useEffect(() => {
-    if (backendStatus) {
-      setStatus({
-        isActive: backendStatus.is_trading || false,
-        mode: 'simulated',
-        strategy: backendStatus.strategy_type || 'orderbook',
-        symbols: backendStatus.symbols || [],
-      });
-    }
-  }, [backendStatus]);
+  const backendPayload = backendStatus as TradingStatusPayload | undefined;
+  const displayStatus = backendPayload ? {
+    isActive: backendPayload.isActive ?? backendPayload.is_active ?? backendPayload.is_trading ?? false,
+    // The session's real mode comes from the backend; fall back to the tab's
+    // own mode rather than assuming simulated.
+    mode: backendPayload.mode || mode,
+    strategy: backendPayload.strategy_type || backendPayload.strategy || 'orderbook' as TradingStrategy,
+    symbols: backendPayload.symbols || [],
+  } : status;
 
   const startTradingMutation = useMutation({
     mutationFn: async (config: {
       mode: TradingMode;
       strategy: TradingStrategy;
       symbols: string[];
-      parameters: Record<string, any>;
+      parameters: TradingParameters;
       position_size_percent?: number;
       max_positions?: number;
       position_update_interval?: number;
@@ -74,19 +124,35 @@ export function useLiveTrading() {
         apiConfig.position_update_interval = config.position_update_interval;
       }
 
-      return apiClient.startTrading(
+      const response = await apiClient.startTrading(
         config.mode,
         config.strategy,
         config.symbols,
         config.parameters,
         apiConfig
       );
+
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to start trading');
+      }
+
+      return response;
     },
     onSuccess: (response, variables) => {
-      // The async trading endpoint returns a plain object like:
-      // { status: 'started', is_active: true, ... }
-      // Fall back to ApiResponse shape if used in future.
-      const isStarted = (response as any)?.status === 'started' || (response as any)?.is_active === true || (response as any)?.data?.is_active === true;
+      const responseData: TradingStatusPayload = response.data ?? response;
+      // Accept multiple response shapes from backend variants:
+      // - { status: 'started', is_active: true }
+      // - { status: 'success', session_id: '...' }
+      // - ApiResponse-wrapped payloads with data.is_active/session_id
+      const isStarted =
+        responseData.status === 'started' ||
+        responseData.status === 'success' ||
+        responseData.is_active === true ||
+        responseData.isActive === true ||
+        Boolean(responseData.session_id) ||
+        responseData.data?.is_active === true ||
+        Boolean(responseData.data?.session_id);
+
       if (isStarted) {
         setStatus({
           isActive: true,
@@ -94,53 +160,277 @@ export function useLiveTrading() {
           strategy: variables.strategy,
           symbols: variables.symbols,
         });
+
+        queryClient.setQueryData(['trading-status', mode], responseData);
+        if (
+          mode === 'simulated' &&
+          responseData &&
+          typeof responseData === 'object' &&
+          ('portfolio' in responseData || 'stats' in responseData || 'recent_trades' in responseData || 'current_capital' in responseData)
+        ) {
+          queryClient.setQueryData(['simulated-trading-stats'], responseData);
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
+        if (mode === 'simulated') {
+          queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+        }
+        if (mode === 'live') {
+          queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+          queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
+        }
+        queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
       }
     },
   });
 
   const stopTradingMutation = useMutation({
-    mutationFn: () => apiClient.stopTrading(),
+    mutationFn: async () => {
+      const response = await apiClient.stopTrading(mode);
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to stop trading');
+      }
+      return response;
+    },
     onSuccess: (response) => {
-      if (response.status === 'success') {
+      const responseStatus = (response as { status: string }).status;
+      if (responseStatus === 'success' || responseStatus === 'settling') {
         setStatus(prev => ({ ...prev, isActive: false, symbols: [] }));
+        queryClient.setQueryData(['trading-status', mode], response);
+        queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
+        if (mode === 'simulated') {
+          queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+        }
+        if (mode === 'live') {
+          queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+          queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
+        }
+        queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
       }
     },
   });
 
   const updateStrategyParamsMutation = useMutation({
-    mutationFn: (params: Record<string, any>) => apiClient.updateStrategyParameters(params),
+    mutationFn: (params: TradingParameters) => apiClient.updateStrategyParameters(params, mode),
     onSuccess: () => {
-      // Optionally refetch status or handle success
+      queryClient.invalidateQueries({ queryKey: ['trading-status', mode] });
+      if (mode === 'simulated') {
+        queryClient.invalidateQueries({ queryKey: ['simulated-trading-stats'] });
+      }
+      if (mode === 'live') {
+        queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['orderbook-signals', mode] });
+    },
+  });
+
+  const closePositionMutation = useMutation({
+    mutationFn: (symbol: string) => apiClient.closePosition(symbol),
+    onSuccess: () => {
+      // Refetch portfolio status to update positions list
+      queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+      queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
+    },
+  });
+
+  const liquidateCoinbaseHoldingsMutation = useMutation({
+    mutationFn: (symbols?: string[]) => apiClient.liquidateCoinbaseHoldings(symbols),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live-portfolio-status'] });
+      queryClient.invalidateQueries({ queryKey: ['live-tab-producer'] });
+      queryClient.invalidateQueries({ queryKey: ['trading-status', 'live'] });
     },
   });
 
   return {
-    status,
+    status: displayStatus,
     startTrading: startTradingMutation.mutateAsync,
     stopTrading: stopTradingMutation.mutateAsync,
     updateStrategyParameters: updateStrategyParamsMutation.mutateAsync,
-    loading: startTradingMutation.isPending || stopTradingMutation.isPending,
-    error: startTradingMutation.error || stopTradingMutation.error,
+    closePosition: closePositionMutation.mutateAsync,
+    liquidateCoinbaseHoldings: liquidateCoinbaseHoldingsMutation.mutateAsync,
+    loading: startTradingMutation.isPending || stopTradingMutation.isPending || closePositionMutation.isPending || liquidateCoinbaseHoldingsMutation.isPending,
+    error: startTradingMutation.error || stopTradingMutation.error || closePositionMutation.error || liquidateCoinbaseHoldingsMutation.error,
   };
 }
 
 // Order Book Signals Hook with Pagination Support
+const ORDERBOOK_SYMBOL_CHUNK_SIZE = 50;
+
+function chunkOrderBookSymbols(symbols?: string[]) {
+  if (!symbols || symbols.length === 0) {
+    return [] as string[][];
+  }
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < symbols.length; i += ORDERBOOK_SYMBOL_CHUNK_SIZE) {
+    chunks.push(symbols.slice(i, i + ORDERBOOK_SYMBOL_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function mergeCountMap(left?: Record<string, number>, right?: Record<string, number>) {
+  const merged: Record<string, number> = { ...(left ?? {}) };
+  for (const [key, value] of Object.entries(right ?? {})) {
+    merged[key] = (merged[key] ?? 0) + value;
+  }
+  return merged;
+}
+
+function mergeOrderBookSignalResponses(responses: OrderBookSignalsData[], page: number, perPage: number) {
+  const normalizedResponses = responses.filter(Boolean);
+  const allSignals = normalizedResponses.flatMap((response) => response.signals ?? []);
+  allSignals.sort((left, right) => {
+    const strengthDiff = (right.signal_strength ?? 0) - (left.signal_strength ?? 0);
+    if (strengthDiff !== 0) {
+      return strengthDiff;
+    }
+
+    const timeDiff = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
+    return left.symbol.localeCompare(right.symbol);
+  });
+
+  const total = allSignals.length;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / perPage);
+  const currentPage = Math.max(1, page);
+  const startIndex = (currentPage - 1) * perPage;
+  const pageSignals = allSignals.slice(startIndex, startIndex + perPage);
+
+  const lastUpdated = responses.reduce((latest, response) => {
+    if (!response.last_updated) {
+      return latest;
+    }
+    if (!latest) {
+      return response.last_updated;
+    }
+    return new Date(response.last_updated).getTime() > new Date(latest).getTime()
+      ? response.last_updated
+      : latest;
+  }, '' as string);
+
+  const totalAnalyzed = responses.reduce((sum, response) => sum + (response.total_analyzed ?? response.signals?.length ?? 0), 0);
+  const activeSignals = responses.reduce((sum, response) => {
+    const computedActiveSignals = response.signals?.reduce(
+      (count: number, signal: OrderBookSignal) => count + (signal.signal_generated ? 1 : 0),
+      0
+    );
+    return sum + (response.active_signals ?? computedActiveSignals ?? 0);
+  }, 0);
+  const averageStrength = total === 0
+    ? 0
+    : allSignals.reduce((sum, signal) => sum + (signal.signal_strength ?? 0), 0) / total;
+  const diagnosticRows = normalizedResponses
+    .map((response) => response.diagnostics)
+    .filter(Boolean) as OrderBookSignalDiagnostics[];
+  const diagnostics = diagnosticRows.length === 0 ? undefined : diagnosticRows.reduce((merged, current) => ({
+    ...merged,
+    ...current,
+    selected_symbol_count: (merged.selected_symbol_count ?? 0) + (current.selected_symbol_count ?? current.requested_symbol_count ?? 0),
+    requested_symbol_count: (merged.requested_symbol_count ?? 0) + (current.requested_symbol_count ?? 0),
+    quote_attempted_symbol_count: (merged.quote_attempted_symbol_count ?? 0) + (current.quote_attempted_symbol_count ?? 0),
+    quote_success_symbol_count: (merged.quote_success_symbol_count ?? 0) + (current.quote_success_symbol_count ?? 0),
+    quote_skipped_symbol_count: (merged.quote_skipped_symbol_count ?? 0) + (current.quote_skipped_symbol_count ?? 0),
+    current_latest_signal_count: (merged.current_latest_signal_count ?? 0) + (current.current_latest_signal_count ?? 0),
+    recent_signal_record_count: (merged.recent_signal_record_count ?? 0) + (current.recent_signal_record_count ?? 0),
+    active_recent_signal_records: (merged.active_recent_signal_records ?? 0) + (current.active_recent_signal_records ?? 0),
+    executable_order_intent_count: (merged.executable_order_intent_count ?? 0) + (current.executable_order_intent_count ?? 0),
+    execution_blocker_counts: mergeCountMap(merged.execution_blocker_counts, current.execution_blocker_counts),
+    execution_strength_bucket_counts: mergeCountMap(merged.execution_strength_bucket_counts, current.execution_strength_bucket_counts),
+    execution_expected_return_bucket_counts: mergeCountMap(merged.execution_expected_return_bucket_counts, current.execution_expected_return_bucket_counts),
+    missing_latest_signal_count: (merged.missing_latest_signal_count ?? 0) + (current.missing_latest_signal_count ?? 0),
+    missing_latest_signal_symbols: [
+      ...((merged.missing_latest_signal_symbols as string[] | undefined) ?? []),
+      ...((current.missing_latest_signal_symbols as string[] | undefined) ?? []),
+    ],
+    current_batch_symbols: [
+      ...((merged.current_batch_symbols as string[] | undefined) ?? []),
+      ...((current.current_batch_symbols as string[] | undefined) ?? []),
+    ],
+    coverage_complete: (merged.coverage_complete ?? true) && (current.coverage_complete ?? true),
+  }), {} as OrderBookSignalDiagnostics);
+
+  return {
+    signals: pageSignals,
+    pagination: {
+      page: currentPage,
+      limit: perPage,
+      total,
+      total_pages: totalPages,
+      has_next: currentPage < totalPages,
+      has_prev: currentPage > 1,
+    },
+    total_analyzed: totalAnalyzed,
+    active_signals: activeSignals,
+    last_updated: lastUpdated,
+    average_strength: averageStrength,
+    ...(diagnostics ? { diagnostics } : {}),
+  };
+}
+
 
 export function useOrderBookSignals(
   symbols?: string[],
   enabled: boolean = true,
   page: number = 1,
   perPage: number = 10,
-  strategy?: string
+  strategy?: string,
+  mode: 'live' | 'simulated' = 'live'
 ) {
   // Enable query when trading is active, even if symbols aren't loaded yet
   // This allows WebSocket updates to populate the widget immediately
   const isEnabled = enabled;
+  const requestSymbols = symbols && symbols.length > 0 ? symbols : undefined;
 
   return useQuery({
-    queryKey: ['orderbook-signals', symbols, enabled, page, perPage, strategy], // Include strategy in key to invalidate cache when strategy changes
+    queryKey: ['orderbook-signals', mode, requestSymbols, enabled, page, perPage, strategy],
     queryFn: async () => {
-      const response = await apiClient.getOrderBookSignals(symbols, { page, per_page: perPage });
+      if (requestSymbols && requestSymbols.length > ORDERBOOK_SYMBOL_CHUNK_SIZE) {
+        const chunks = chunkOrderBookSymbols(requestSymbols);
+        const chunkRequests = chunks.map((chunk) =>
+          // Fetch every selected symbol in each request chunk, then apply widget
+          // pagination after merging. The page size controls display only; it
+          // must not cap selected-universe signal coverage.
+          apiClient.getOrderBookSignals(chunk, { page: 1, per_page: chunk.length }, mode)
+        );
+        const settled = await Promise.allSettled(chunkRequests);
+        const successfulResponses = settled
+          .filter((result): result is PromiseFulfilledResult<Awaited<typeof chunkRequests[number]>> => result.status === 'fulfilled')
+          .map((result) => result.value)
+          .filter((response) => response.status === 'success' && response.data);
+        const failedChunks = settled.flatMap((result, index) => {
+          if (result.status === 'rejected' || result.value.status === 'error') {
+            return chunks[index];
+          }
+          return [];
+        });
+
+        if (successfulResponses.length === 0 && failedChunks.length > 0) {
+          throw new Error(`Order-book signal requests failed for ${failedChunks.length} selected symbols`);
+        }
+
+        const merged = mergeOrderBookSignalResponses(
+          successfulResponses
+            .map((response) => response.data)
+            .filter((data): data is OrderBookSignalsData => Boolean(data)),
+          page,
+          perPage
+        );
+        if (failedChunks.length > 0) {
+          merged.diagnostics = {
+            ...(merged.diagnostics ?? {}),
+            failed_request_symbol_count: failedChunks.length,
+            failed_request_symbols: failedChunks,
+            coverage_complete: false,
+          };
+        }
+        return merged;
+      }
+
+      const response = await apiClient.getOrderBookSignals(requestSymbols, { page, per_page: perPage }, mode);
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to fetch order book signals');
       }
@@ -148,9 +438,8 @@ export function useOrderBookSignals(
     },
     enabled: isEnabled,
     staleTime: 3000, // Consider data fresh for 3 seconds
-    refetchInterval: false, // Disable auto-refetch to prevent overwriting live WebSocket data
+    refetchInterval: enabled ? 3000 : false, // Keep signals moving in active simulation sessions
     refetchOnWindowFocus: true,
-    refetchIntervalInBackground: true,
     refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
@@ -172,6 +461,23 @@ export function useLivePortfolio(enabled: boolean = true) {
   });
 }
 
+export function useLiveTabProducer(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['live-tab-producer'],
+    queryFn: async () => {
+      const response = await apiClient.getLiveTabProducerStatus();
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to fetch live tab producer status');
+      }
+      return response.data;
+    },
+    enabled,
+    staleTime: 5 * 1000,
+    refetchInterval: enabled ? 10 * 1000 : false,
+    refetchOnWindowFocus: true,
+  });
+}
+
 // Simulated Trading Statistics Hook
 
 export function useSimulatedTradingStats(enabled: boolean = true) {
@@ -188,134 +494,110 @@ export function useSimulatedTradingStats(enabled: boolean = true) {
     staleTime: 2 * 1000, // 2 seconds - consider data fresh for 2 seconds
     refetchInterval: enabled ? 3 * 1000 : false, // Refresh every 3 seconds when enabled for near real-time updates
     refetchOnWindowFocus: true, // Refetch when tab becomes visible again
-    refetchIntervalInBackground: true, // Continue polling even when tab is hidden
   });
 }
 
 // Simulated Trading WebSocket Hook
 
-// Simulated Trading WebSocket Hook with FIFO Signal Queue
-
 export function useSimTradingWebSocket(enabled: boolean = true) {
   const [connected, setConnected] = useState(false);
-  const [signalQueue, setSignalQueue] = useState<OrderBookSignal[]>([]);
-  const [processingSignal, setProcessingSignal] = useState<OrderBookSignal | null>(null);
   const queryClient = useQueryClient();
 
-  // Queue processing function - processes one signal at a time with delay
-  const processNextSignal = useCallback(() => {
-    if (signalQueue.length > 0 && !processingSignal) {
-      const nextSignal = signalQueue[0];
-      setProcessingSignal(nextSignal);
-      setSignalQueue(prev => prev.slice(1));
-
-      console.log('🎯 Processing signal from queue:', nextSignal.symbol, nextSignal.timestamp);
-
-      // Add to display cache (same logic as before)
-      const allQueries = queryClient.getQueryCache().getAll();
-      const orderbookQueries = allQueries.filter((q: any) =>
-        q.queryKey[0] === 'orderbook-signals'
-      );
-
-      orderbookQueries.forEach((query: any) => {
-        const queryKey = query.queryKey;
-        const querySymbols = queryKey[1] as string[] | undefined;
-        const page = queryKey[3] as number;
-
-        if (page === 1) {
-          const isRelevant = !querySymbols || querySymbols.length === 0 || querySymbols.includes(nextSignal.symbol);
-
-          if (isRelevant) {
-            queryClient.setQueryData(queryKey, (oldData: any) => {
-              // If no data exists yet (initial load), initialize with the new signal
-              if (!oldData) {
-                return {
-                  signals: [nextSignal],
-                  total_analyzed: 1,
-                  active_signals: nextSignal.signal_generated ? 1 : 0,
-                  average_strength: nextSignal.signal_strength || 0,
-                  last_updated: new Date().toISOString(),
-                  pagination: {
-                    current_page: 1,
-                    per_page: 100, // Default to larger page size for live view
-                    total_signals: 1,
-                    total_pages: 1,
-                    has_next: false,
-                    has_prev: false
-                  }
-                };
-              }
-
-              const currentSignals = oldData.signals || [];
-
-              // Create a map of existing signals by symbol for easy lookup and update
-              const signalMap = new Map<string, OrderBookSignal>();
-              currentSignals.forEach((s: OrderBookSignal) => signalMap.set(s.symbol, s));
-
-              // Update or add the new signal
-              const existingSignal = signalMap.get(nextSignal.symbol);
-
-              // Only update if the new signal is fresher (newer timestamp) or if the symbol doesn't exist
-              if (!existingSignal || new Date(nextSignal.timestamp) > new Date(existingSignal.timestamp)) {
-                signalMap.set(nextSignal.symbol, nextSignal);
-              }
-
-              // Convert map back to array and sort by timestamp descending
-              const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-              );
-
-              return {
-                ...oldData,
-                signals: updatedSignals,
-                total_analyzed: updatedSignals.length,
-                active_signals: updatedSignals.filter(s => s.signal_generated).length,
-                last_updated: new Date().toISOString(),
-                pagination: {
-                  ...oldData.pagination,
-                  total_signals: updatedSignals.length,
-                  // Update total pages based on current per_page setting
-                  total_pages: Math.ceil(updatedSignals.length / (oldData.pagination?.per_page || 10))
-                }
-              };
-            });
-          }
-        }
-      });
-
-      // Process next signal after delay (configurable, default 1 second)
-      const processingDelay = parseInt(process.env.NEXT_PUBLIC_SIGNAL_PROCESSING_DELAY || '1000');
-      setTimeout(() => {
-        setProcessingSignal(null);
-        // Continue processing queue if more signals exist
-        // The useEffect hook will trigger the next processing cycle when processingSignal becomes null
-
-      }, processingDelay);
-    }
-  }, [signalQueue, processingSignal, queryClient]);
-
-  useEffect(() => {
-    // Auto-process queue when signals are added and not currently processing
-    if (signalQueue.length > 0 && !processingSignal) {
-      processNextSignal();
-    }
-  }, [signalQueue, processingSignal, processNextSignal]);
-
-  useEffect(() => {
-    console.log('🚀 useSimTradingWebSocket hook called with enabled:', enabled);
-    console.log('📊 Current queue length:', signalQueue.length, 'Processing:', !!processingSignal);
-    if (!enabled) {
-      console.log('🌐 WebSocket disabled - not connecting');
+  // Apply every incoming signal to the display cache immediately. Coinbase
+  // pacing is enforced server-side; the UI must not throttle signal updates.
+  const applySignals = useCallback((incomingSignals: OrderBookSignal[]) => {
+    if (incomingSignals.length === 0) {
       return;
     }
 
-    const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
+    const allQueries = queryClient.getQueryCache().getAll();
+    const orderbookQueries = allQueries.filter((q) =>
+      q.queryKey[0] === 'orderbook-signals' && q.queryKey[1] === 'simulated'
+    );
+
+    orderbookQueries.forEach((query) => {
+      const queryKey = query.queryKey;
+      const querySymbols = queryKey[2] as string[] | undefined;
+      const page = queryKey[4] as number;
+
+      if (page !== 1) {
+        return;
+      }
+
+      const relevantSignals = incomingSignals.filter((signal) =>
+        !querySymbols || querySymbols.length === 0 || querySymbols.includes(signal.symbol)
+      );
+      if (relevantSignals.length === 0) {
+        return;
+      }
+
+      queryClient.setQueryData<OrderBookSignalsData>(queryKey, (oldData) => {
+        const currentSignals = oldData?.signals || [];
+
+        // Merge by symbol, keeping whichever signal has the freshest timestamp
+        const signalMap = new Map<string, OrderBookSignal>();
+        currentSignals.forEach((s: OrderBookSignal) => signalMap.set(s.symbol, s));
+        relevantSignals.forEach((signal) => {
+          const existingSignal = signalMap.get(signal.symbol);
+          if (!existingSignal || new Date(signal.timestamp) > new Date(existingSignal.timestamp)) {
+            signalMap.set(signal.symbol, signal);
+          }
+        });
+
+        const updatedSignals = Array.from(signalMap.values()).sort((a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        const latestTimestamp = updatedSignals.reduce((latest, signal) => {
+          return !latest || new Date(signal.timestamp).getTime() > new Date(latest).getTime()
+            ? signal.timestamp
+            : latest;
+        }, '');
+
+        if (!oldData) {
+          return {
+            signals: updatedSignals,
+            total_analyzed: updatedSignals.length,
+            active_signals: updatedSignals.filter(s => s.signal_generated).length,
+            average_strength: updatedSignals.length === 0
+              ? 0
+              : updatedSignals.reduce((sum, s) => sum + (s.signal_strength ?? 0), 0) / updatedSignals.length,
+            last_updated: latestTimestamp,
+            pagination: {
+              current_page: 1,
+              per_page: 100, // Default to larger page size for live view
+              total_signals: updatedSignals.length,
+              total_pages: 1,
+              has_next: false,
+              has_prev: false
+            }
+          };
+        }
+
+        return {
+          ...oldData,
+          signals: updatedSignals,
+          total_analyzed: updatedSignals.length,
+          active_signals: updatedSignals.filter(s => s.signal_generated).length,
+          last_updated: latestTimestamp,
+          pagination: {
+            ...oldData.pagination,
+            total_signals: updatedSignals.length,
+            // Update total pages based on current per_page setting
+            total_pages: Math.ceil(updatedSignals.length / (oldData.pagination?.per_page || 10))
+          }
+        };
+      });
+    });
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const base = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8081';
     const wsUrl = base.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
 
-    console.log('🔌 Attempting to connect to WebSocket:', wsUrl);
-    console.log('📡 Environment NEXT_PUBLIC_WS_URL:', process.env.NEXT_PUBLIC_WS_URL);
-    console.log('🌐 Running in browser:', typeof window !== 'undefined');
-    console.log('🚀 Trading enabled:', enabled);
 
     const ws = new WebSocket(wsUrl);
     let pingInterval: NodeJS.Timeout | null = null;
@@ -326,7 +608,6 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
         if (ws.readyState === WebSocket.OPEN) {
           try {
             ws.send(JSON.stringify({ type: 'ping' }));
-            console.log('💓 Sent ping to maintain connection');
           } catch (error) {
             console.error('❌ Failed to send ping:', error);
           }
@@ -335,17 +616,14 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
     };
 
     const onOpen = () => {
-      console.log('✅ WebSocket connection opened successfully');
       setConnected(true);
       startHeartbeat();
     };
 
     const onClose = (event: CloseEvent) => {
-      console.log('❌ WebSocket connection closed:', {
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean
-      });
+      if (!event.wasClean) {
+        console.warn('WebSocket connection closed unexpectedly:', event.code, event.reason);
+      }
       setConnected(false);
       if (pingInterval) {
         clearInterval(pingInterval);
@@ -372,12 +650,11 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
 
     const onMessage = (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data || '{}');
+        const payload = parseWebSocketPayload(event.data);
         const type = payload?.type;
         const data = payload?.data;
 
         if (type === 'pong') {
-          console.log('💓 Received pong from server');
           return;
         }
 
@@ -398,37 +675,28 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
           window.dispatchEvent(new CustomEvent('sim-trading-stats-update', { detail: normalized }));
         }
 
-        // ENQUEUE orderbook signals into FIFO queue for sequential processing
-        if (type === 'orderbook_signals_update' && data) {
-          console.log('📥 Received orderbook_signals_update WebSocket message:', data);
-          apiClient.logMessage('Order book signal received and queued for sequential processing');
+        // Handle log messages
+        if (type === 'log_message' && data) {
+          window.dispatchEvent(new CustomEvent('bot-log-message', { detail: data }));
+        }
 
+        // Apply orderbook signals to the display cache as soon as they arrive
+        if (type === 'orderbook_signals_update' && data) {
           try {
             // Handle both array of signals (from signals key) or single signal object
-            const signalsList = Array.isArray(data.signals) ? data.signals : (Array.isArray(data) ? data : [data]);
+            const signalsList = isRecord(data) && Array.isArray(data.signals)
+              ? data.signals
+              : (Array.isArray(data) ? data : [data]);
 
             if (!signalsList || signalsList.length === 0) return;
 
-            // Add signals to queue (FIFO)
-            setSignalQueue(prevQueue => {
-              const filteredSignals = signalsList.filter((newSignal: OrderBookSignal) => {
-                if (!newSignal || !newSignal.symbol) return false;
+            const validSignals = signalsList.filter((newSignal): newSignal is OrderBookSignal =>
+              isRecord(newSignal) && typeof newSignal.symbol === 'string'
+            );
 
-                // Avoid duplicates in queue
-                const isDuplicate = prevQueue.some(queuedSignal =>
-                  queuedSignal.symbol === newSignal.symbol && queuedSignal.timestamp === newSignal.timestamp
-                );
-                return !isDuplicate;
-              });
-
-              const updatedQueue = [...prevQueue, ...filteredSignals];
-              console.log('🗂️ Added', filteredSignals.length, 'signals to queue. Queue length:', updatedQueue.length);
-
-              return updatedQueue;
-            });
-
+            applySignals(validSignals);
           } catch (e) {
-            console.error('❌ Failed to enqueue orderbook signals:', e);
+            console.error('❌ Failed to apply orderbook signals:', e);
           }
         }
       } catch (e) {
@@ -466,13 +734,10 @@ export function useSimTradingWebSocket(enabled: boolean = true) {
       try { ws.removeEventListener('message', onMessage); } catch { }
       try { ws.close(); } catch { }
     };
-  }, [enabled, queryClient]);
+  }, [enabled, queryClient, applySignals]);
 
   return {
     connected,
-    signalQueue,
-    processingSignal,
-    queueLength: signalQueue.length
   };
 }
 
@@ -518,7 +783,7 @@ export function useBacktest() {
     mutationFn: (config: {
       strategy: TradingStrategy;
       symbols: string[];
-      parameters: Record<string, any>;
+      parameters: TradingParameters;
       start_date: string;
       end_date: string;
     }) => apiClient.runBacktest(config),
@@ -566,7 +831,23 @@ export function useStrategyParameters() {
       'ml_enhanced_orderbook': [
         { name: 'ml_server_url', label: 'ML Server URL', type: 'text' as const, default: 'http://localhost:8002' },
         { name: 'confidence_threshold', label: 'Confidence Threshold', type: 'number' as const, default: 0.6, min: 0, max: 1, step: 0.1 },
-        { name: 'fallback_to_baseline', label: 'Fallback to Baseline', type: 'select' as const, default: 'true', options: ['true', 'false'] }
+        { name: 'fallback_to_baseline', label: 'Fallback to Baseline', type: 'select' as const, default: 'true', options: ['true', 'false'] },
+        { name: 'order_book_level', label: 'Order Book Level', type: 'number' as const, default: 2, min: 1, max: 3 },
+        { name: 'trade_history_limit', label: 'Trade History Limit', type: 'number' as const, default: 1000, min: 10, max: 1000 },
+        { name: 'bid_ask_spread_threshold', label: 'Bid-Ask Spread Threshold (%)', type: 'number' as const, default: 0.5, min: 0.01, max: 1.0, step: 0.01 },
+        { name: 'volume_imbalance_threshold', label: 'Volume Imbalance Threshold', type: 'number' as const, default: 0.3, min: 0.1, max: 0.9, step: 0.1 },
+        { name: 'large_trade_threshold', label: 'Large Trade Threshold ($)', type: 'number' as const, default: 2000, min: 1000, max: 100000 },
+        { name: 'data_analysis_mode', label: 'Data Analysis Mode', type: 'select' as const, default: 'all', options: ['recent', 'all', 'sampled'] },
+        { name: 'recent_data_limit', label: 'Recent Data Limit', type: 'number' as const, default: 200, min: 10, max: 1000 },
+        { name: 'sampling_ratio', label: 'Sampling Ratio', type: 'number' as const, default: 0.1, min: 0.01, max: 1.0, step: 0.01 },
+        { name: 'max_symbols_per_request', label: 'Max Symbols Per Request', type: 'number' as const, default: 1000, min: 10, max: 10000 },
+        { name: 'max_universe_size', label: 'Max Universe Size', type: 'number' as const, default: 500, min: 1, max: 5000 },
+        { name: 'round_trip_fee_percent', label: 'Round-Trip Fee Hurdle (%)', type: 'number' as const, default: 1.5, min: 0, max: 5, step: 0.1 },
+        { name: 'slippage_buffer_percent', label: 'Slippage Buffer (%)', type: 'number' as const, default: 0.2, min: 0, max: 5, step: 0.1 },
+        { name: 'min_orderbook_signal_strength', label: 'Minimum Fee-Adjusted Signal Strength', type: 'number' as const, default: 0.22, min: 0, max: 1, step: 0.01 },
+        { name: 'minimum_net_pnl_usd', label: 'Minimum Net P&L Per Trade ($)', type: 'number' as const, default: 0, min: 0, max: 100, step: 0.01 },
+        { name: 'allow_unprofitable_trades', label: 'Allow Unprofitable Sim Trades', type: 'select' as const, default: 'false', options: ['true', 'false'] },
+        { name: 'max_positions_per_session', label: 'Max Positions Per Session', type: 'number' as const, default: 100, min: 1, max: 1000 }
       ],
       'orderbook': [
         { name: 'order_book_level', label: 'Order Book Level', type: 'number' as const, default: 2, min: 1, max: 3 },
@@ -579,6 +860,9 @@ export function useStrategyParameters() {
         { name: 'sampling_ratio', label: 'Sampling Ratio', type: 'number' as const, default: 0.1, min: 0.01, max: 1.0, step: 0.01 },
         { name: 'max_symbols_per_request', label: 'Max Symbols Per Request', type: 'number' as const, default: 1000, min: 10, max: 10000 },
         { name: 'max_universe_size', label: 'Max Universe Size', type: 'number' as const, default: 500, min: 1, max: 5000 },
+        { name: 'round_trip_fee_percent', label: 'Round-Trip Fee Hurdle (%)', type: 'number' as const, default: 1.5, min: 0, max: 5, step: 0.1 },
+        { name: 'slippage_buffer_percent', label: 'Slippage Buffer (%)', type: 'number' as const, default: 0.2, min: 0, max: 5, step: 0.1 },
+        { name: 'min_orderbook_signal_strength', label: 'Minimum Fee-Adjusted Signal Strength', type: 'number' as const, default: 0.22, min: 0, max: 1, step: 0.01 },
         { name: 'max_positions_per_session', label: 'Max Positions Per Session', type: 'number' as const, default: 100, min: 1, max: 1000 }
       ],
       'dca': [
@@ -602,7 +886,13 @@ export function useStrategyParameters() {
       large_trade_threshold: 10000,
       data_analysis_mode: 'recent',
       recent_data_limit: 50,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.6,
+      max_positions_per_session: 25,
+      minimum_net_pnl_usd: 0.25,
+      allow_unprofitable_trades: 'false'
     },
     'moderate': {
       order_book_level: 2,
@@ -612,7 +902,13 @@ export function useStrategyParameters() {
       large_trade_threshold: 5000,
       data_analysis_mode: 'recent',
       recent_data_limit: 100,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.4,
+      max_positions_per_session: 100,
+      minimum_net_pnl_usd: 0.1,
+      allow_unprofitable_trades: 'false'
     },
     'aggressive': {
       order_book_level: 2,
@@ -622,7 +918,13 @@ export function useStrategyParameters() {
       large_trade_threshold: 2000,
       data_analysis_mode: 'all',
       recent_data_limit: 200,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.22,
+      max_positions_per_session: 100,
+      minimum_net_pnl_usd: 0,
+      allow_unprofitable_trades: 'false'
     },
     'very-aggressive': {
       order_book_level: 2,
@@ -632,7 +934,13 @@ export function useStrategyParameters() {
       large_trade_threshold: 1000,
       data_analysis_mode: 'all',
       recent_data_limit: 500,
-      sampling_ratio: 0.1
+      sampling_ratio: 0.1,
+      round_trip_fee_percent: 1.5,
+      slippage_buffer_percent: 0.2,
+      min_orderbook_signal_strength: 0.15,
+      max_positions_per_session: 250,
+      minimum_net_pnl_usd: 0,
+      allow_unprofitable_trades: 'false'
     }
   });
 

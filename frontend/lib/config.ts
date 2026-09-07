@@ -38,7 +38,7 @@ const getConfig = (): AppConfig => {
 
   return {
     api: {
-      baseUrl: process.env.NEXT_PUBLIC_API_URL || (isDevelopment ? 'http://localhost:8000' : ''),
+      baseUrl: process.env.NEXT_PUBLIC_API_URL || (isDevelopment ? 'http://localhost:8081' : ''),
       endpoints: {
         trading: {
           stats: '/api/trades/stats',
@@ -53,7 +53,7 @@ const getConfig = (): AppConfig => {
       },
     },
     websocket: {
-      url: process.env.NEXT_PUBLIC_WS_URL || (isDevelopment ? 'ws://localhost:8000' : ''),
+      url: process.env.NEXT_PUBLIC_WS_URL || (isDevelopment ? 'ws://localhost:8081' : ''),
       reconnectInterval: 5000,
       maxReconnectAttempts: 10,
     },
