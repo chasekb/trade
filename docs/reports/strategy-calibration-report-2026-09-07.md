@@ -89,6 +89,8 @@ Primary source paths inspected:
 
 The upstream calibration artifact's exact-SHA workflow evidence was run `32618280684`, terminal success, with required jobs `Build C++ Backend (amd64)` and `Build Frontend (amd64)` successful. That CI result validates the artifact commit only; it is not evidence for the separate regression-test commit.
 
+Delivery pull request: https://github.com/chasekb/trade/pull/59 (base `dev`). The final report commit must be verified by a matching exact-head-SHA Actions run before delivery closeout.
+
 ## Limits and future rerun contract
 
 A future calibration rerun requires timestamped rows containing strategy, symbol, emitted strength, raw indicator distance, regime, entry and exit timestamps, holding period, realized gross PnL, fees, spread, slippage, and action/blocker fields. It must declare per-strategy and per-bucket sample thresholds, use chronological leakage-free folds, run paired baseline/candidate outputs on identical rows, and publish fold-level plus aggregate metrics with sample counts and stability intervals. The ablation must compare raw indicator distance against profitability diagnostics and preserve enough provenance to reproduce each bucket.
