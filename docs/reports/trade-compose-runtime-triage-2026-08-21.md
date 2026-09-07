@@ -414,3 +414,13 @@ a source compilation or test result. The prior pushed closeout SHA
 `bb36774ab1f3298e977aaca3e81af7b32b250f72` remains covered by run
 `34080863373`, whose complete six-job matrix reached success; the newer
 report-only SHA has an open remote-CI limitation until a retry succeeds.
+
+The final pushed report SHA `87e2411c6b6a2560e9662f318129be662298e64f`
+has no associated GitHub Actions run (`gh run list --repo chasekb/trade
+--commit 87e2411c6b6a2560e9662f318129be662298e64f` returned no runs). The
+latest available run on `wt/t_d10e1097-closeout` is the predecessor run
+`34136055414` above, whose four Buildx failures and two skipped publication
+jobs do not verify the final SHA. No cancellation or timeout was reported;
+the exact-SHA six-job gate therefore remains unavailable and is not claimed
+as successful. The report closeout worktree was clean, and no unrelated files
+were changed.
