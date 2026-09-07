@@ -355,3 +355,30 @@ All six required matrix and publication jobs reached terminal success. No
 local C++ build, CTest run, or image build was used as a substitute for this
 remote gate. The closeout branch remains clean after the report commit; no
 unrelated files were changed.
+
+The pushed closeout SHA `bb36774ab1f3298e977aaca3e81af7b32b250f72` was
+verified by exact-SHA workflow-dispatch run `34080863373`:
+
+```text
+Workflow: Docker Build Validation
+Run: 34080863373
+URL: https://github.com/chasekb/trade/actions/runs/34080863373
+Head SHA: bb36774ab1f3298e977aaca3e81af7b32b250f72
+Conclusion: success
+Build C++ Backend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34080863373/job/101615728781
+Build C++ Backend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34080863373/job/101615728640
+Build Frontend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34080863373/job/101615728772
+Build Frontend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34080863373/job/101615728750
+Publish Frontend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34080863373/job/101615938658
+Publish C++ Backend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34080863373/job/101694061605
+```
+
+All six required matrix and publication jobs reached terminal success for
+the pushed closeout SHA. No local C++ build, CTest run, or image build was
+used as a substitute for this remote gate.
