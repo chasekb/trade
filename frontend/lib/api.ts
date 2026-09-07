@@ -1,5 +1,5 @@
 // API client for trading dashboard
-import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParams, OrderBookSignal } from '@/types/trading';
+import { ApiResponse, TradingStats, Position, PaginatedResponse, PaginationParams, OrderBookSignal, TradingMode, SimulationStatus } from '@/types/trading';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -116,7 +116,7 @@ class ApiClient {
 
   // Trading operations
   async startTrading(
-    mode: 'live' | 'simulated',
+    mode: TradingMode,
     strategy: string,
     symbols: string[],
     parameters: Record<string, any>,
@@ -136,6 +136,7 @@ class ApiClient {
         symbols,
         strategy_type: strategy,
         strategy_params: parameters,
+        mode,
         initial_balance: 10000.0,
         max_positions: config.max_positions,
         position_size_percent: config.position_size_percent,
@@ -184,7 +185,7 @@ class ApiClient {
   }
 
   // Simulated Trading Status
-  async getSimulatedTradingStatus(): Promise<ApiResponse<any>> {
+  async getSimulatedTradingStatus(): Promise<ApiResponse<SimulationStatus>> {
     return this.request('/api/simulated-trading/status');
   }
 

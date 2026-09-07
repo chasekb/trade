@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { LiveTradingPanelProps, TradingStrategy } from '@/types/trading';
+import { LiveTradingPanelProps, TradingMode, TradingStrategy, SimulationStatus } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
 import { OpenPositionsSection } from './OpenPositionsSection';
@@ -301,6 +301,48 @@ function TradingConfiguration({
 
 // Main Simulated Trading Panel Component
 // Simulated Trading Statistics Component
+export function SimulationOutcomeSummary({ status }: { status?: SimulationStatus }) {
+  const summary = status?.summary;
+  const blocked = status?.blocked_intents || [];
+  const hasSummary = !!summary || blocked.length > 0;
+
+  if (!hasSummary) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Execution outcomes</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-gray-600">
+          Accounting mode: <strong>{status?.mode || 'simulated'}</strong>
+          {status?.mode === 'paper_live' && ' (paper only; no Coinbase orders are submitted)'}
+        </p>
+        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+          <div><span className="block text-gray-500">Generated</span><strong>{summary?.generated ?? summary?.signals_generated ?? 0}</strong></div>
+          <div><span className="block text-gray-500">Actionable</span><strong>{summary?.signals_actionable ?? 0}</strong></div>
+          <div><span className="block text-gray-500">Paper filled</span><strong className="text-green-700">{summary?.paper_fills ?? 0}</strong></div>
+          <div><span className="block text-gray-500">Paper blocked</span><strong className="text-amber-700">{summary?.paper_blocked ?? blocked.length}</strong></div>
+          <div><span className="block text-gray-500">Live filled</span><strong>{summary?.live_fills ?? 0}</strong></div>
+        </div>
+        {blocked.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+            <h4 className="text-sm font-semibold text-amber-900">Actionable blockers</h4>
+            <ul className="mt-2 space-y-2 text-sm text-amber-900">
+              {blocked.map((intent, index) => (
+                <li key={intent.intent_id || `${intent.symbol || 'intent'}-${index}`}>
+                  <span className="font-medium">{intent.symbol || 'Unknown symbol'}:</span>{' '}
+                  {(intent.blockers || []).map((blocker) => `${blocker.code}: ${blocker.message}`).join('; ') || 'Preflight blocked this intent.'}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: boolean }) {
   const queryClient = useQueryClient();
   const { data: stats, isLoading, error } = useSimulatedTradingStats(isTradingActive);
@@ -414,15 +456,17 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
     .slice(0, 10);
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>Simulated Trading Statistics</CardTitle>
-          <Button variant="secondary" size="sm" onClick={handleRefresh}>
-            <i className="fas fa-sync-alt mr-1"></i>Refresh
-          </Button>
-        </div>
-      </CardHeader>
+    <>
+      <SimulationOutcomeSummary status={stats} />
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle>Simulated Trading Statistics</CardTitle>
+            <Button variant="secondary" size="sm" onClick={handleRefresh}>
+              <i className="fas fa-sync-alt mr-1"></i>Refresh
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent className="space-y-6">
         {/* Main Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -589,12 +633,13 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
           </div>
         )}
       </CardContent>
-    </Card>
+      </Card>
+    </>
   );
 }
 
 export default function SimulatedTradingPanel({ className = '' }: LiveTradingPanelProps) {
-  const { status, startTrading, stopTrading, loading, updateStrategyParameters } = useLiveTrading();
+  const { status, startTrading, stopTrading, loading, error: tradingError, updateStrategyParameters } = useLiveTrading();
   // Start native WebSocket to receive live updates for stats/signals
   useSimTradingWebSocket(status.isActive);
 
@@ -625,6 +670,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     position_size_value: 1,
     initial_portfolio_size: 10000,
   });
+  const [executionMode, setExecutionMode] = useState<TradingMode>('simulated');
   const [symbols, setSymbols] = useState<string[]>(['BTC-USD']);
 
   // Use local symbols for polling; fallback to backend status if empty
@@ -683,7 +729,7 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
         : 100;
 
       const tradingPayload: Parameters<typeof startTrading>[0] = {
-        mode: 'simulated',
+        mode: executionMode,
         strategy,
         symbols,
         parameters: {
@@ -742,6 +788,35 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
 
   return (
     <div className={`space-y-6 ${className}`}>
+      <Card>
+        <CardHeader><CardTitle>Simulation mode</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700" htmlFor="simulated-execution-mode">
+            Market data and execution mode
+          </label>
+          <select
+            id="simulated-execution-mode"
+            value={executionMode}
+            disabled={status.isActive}
+            onChange={(event) => setExecutionMode(event.target.value as TradingMode)}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2"
+          >
+            <option value="simulated">Synthetic simulation</option>
+            <option value="paper_live">Paper live (Coinbase data, no orders)</option>
+          </select>
+          {executionMode === 'paper_live' && (
+            <p className="text-xs text-amber-700">
+              Uses live Coinbase quotes and live preflight gates. Missing or stale quotes remain blocked;
+              synthetic prices are never substituted.
+            </p>
+          )}
+          {tradingError && (
+            <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">
+              {tradingError instanceof Error ? tradingError.message : 'Trading request failed.'}
+            </p>
+          )}
+        </CardContent>
+      </Card>
       {/* Trading Configuration */}
       {!configHidden && (
         <TradingConfiguration
@@ -788,7 +863,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
               <div className="flex items-center">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
                 <span className="text-sm text-green-800">
-                  Trading active: {status.strategy} strategy with {status.symbols?.join(', ')}
+                  Trading active: {status.mode === 'paper_live' ? 'paper-live' : 'synthetic'} {status.strategy} strategy with {status.symbols?.join(', ')}
+                  {status.mode === 'paper_live' && ' — no Coinbase orders are submitted'}
                 </span>
               </div>
             </div>

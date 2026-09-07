@@ -238,7 +238,45 @@ export type TradingStrategy =
   | 'dca'
   | 'buyandhold';
 
-export type TradingMode = 'live' | 'simulated';
+export type TradingMode = 'live' | 'simulated' | 'paper_live';
+export type SimulationOutcome = 'generated' | 'paper_filled' | 'paper_blocked' | 'live_filled' | 'live_blocked';
+
+export interface TradingBlocker {
+  code: string;
+  message: string;
+  category?: string;
+  retryable?: boolean;
+}
+
+export interface SimulationSummary {
+  signals_generated?: number;
+  signals_actionable?: number;
+  paper_fills?: number;
+  paper_blocked?: number;
+  generated?: number;
+  live_fills?: number;
+  total_trades?: number;
+  total_fees?: number;
+  realized_pnl?: number;
+  unrealized_pnl?: number;
+  net_pnl?: number;
+}
+
+export interface SimulationStatus {
+  is_trading?: boolean;
+  strategy_type?: TradingStrategy;
+  symbols?: string[];
+  mode?: TradingMode;
+  summary?: SimulationSummary;
+  blocked_intents?: Array<{
+    intent_id?: string;
+    symbol?: string;
+    blockers?: TradingBlocker[];
+    outcome_type?: SimulationOutcome;
+  }>;
+  portfolio?: Record<string, any>;
+  recent_trades?: Array<Trade & { outcome_type?: SimulationOutcome; trading_mode?: TradingMode }>;
+}
 export type SymbolMode = 'single' | 'universe';
 export type UniverseType = 'major' | 'minor' | 'crypto' | 'all_usd' | 'all_eur' | 'all_usdt' | 'all_btc' | 'all_products' | 'custom';
 

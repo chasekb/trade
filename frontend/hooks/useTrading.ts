@@ -41,7 +41,7 @@ export function useLiveTrading() {
     if (backendStatus) {
       setStatus({
         isActive: backendStatus.is_trading || false,
-        mode: 'simulated',
+        mode: backendStatus.mode || 'simulated',
         strategy: backendStatus.strategy_type || 'orderbook',
         symbols: backendStatus.symbols || [],
       });
@@ -74,13 +74,17 @@ export function useLiveTrading() {
         apiConfig.position_update_interval = config.position_update_interval;
       }
 
-      return apiClient.startTrading(
+      const response = await apiClient.startTrading(
         config.mode,
         config.strategy,
         config.symbols,
         config.parameters,
         apiConfig
       );
+      if (response.status === 'error') {
+        throw new Error(response.error || 'Failed to start trading');
+      }
+      return response;
     },
     onSuccess: (response, variables) => {
       // The async trading endpoint returns a plain object like:
