@@ -1,0 +1,54 @@
+{
+  "evaluation": "strategy-calibration-walk-forward",
+  "report_date": "2026-09-07",
+  "status": "evidence_gated",
+  "disposition": "defer_all",
+  "strategies": ["sma", "ema", "rsi", "bollinger", "macd", "stochastic", "fibonacci", "dca", "buyandhold", "orderbook"],
+  "metrics": {
+    "walk_forward_splits": null,
+    "monotonicity": null,
+    "fee_adjusted_expectancy_delta": null,
+    "average_win_delta": null,
+    "average_loss_delta": null,
+    "drawdown_delta": null,
+    "combined_objective_delta": null,
+    "incremental_predictive_value": null
+  },
+  "blocking_reasons": [
+    "No timestamped historical or live-parity paper outcome dataset with symbol, regime, holding-period, and fee context",
+    "No distinct fitted or implemented candidate ranking mapping for paired comparison",
+    "Current fixtures are deterministic smoke/regression fixtures rather than chronological replay rows"
+  ],
+  "regression_evidence": {
+    "path": "tests/test_ranking_mappings_regression.py",
+    "commit": "2e47b7428f6fa55a6de99a0c6d84a7e1ec6e873e",
+    "contracts": [
+      "signal_strength ranks known-good above known-bad",
+      "expected_return ranks known-good above known-bad",
+      "win_probability ranks known-good above known-bad",
+      "held signals remain filtered",
+      "order_prioritization=none preserves input order"
+    ],
+    "local_execution": false,
+    "exact_sha_ci": "not reported"
+  },
+  "diagnostic_policy": "keep_strength_and_expected_return_separate",
+  "source_paths": [
+    "src/trade_bot/core/universe_selector.py",
+    "src/trade_bot/trading/simulated_trading_manager.py",
+    "src/trade_bot/trading/strategies/",
+    "docs/API_REFERENCE.md",
+    "tests/test_ranking_mappings_regression.py"
+  ],
+  "upstream_artifact": {
+    "commit": "c0c8c3ddaf44ea6ae51d23f5caf206cb83dc6ff1",
+    "path": "docs/reports/artifacts/strategy-calibration-walk-forward-evaluation-2026-08-22.json",
+    "ci_run": "32618280684",
+    "ci_conclusion": "success",
+    "required_jobs": ["Build C++ Backend (amd64)", "Build Frontend (amd64)"]
+  },
+  "verification": {
+    "local_build_or_test_run": false,
+    "static_check": "git diff --check required before push"
+  }
+}
