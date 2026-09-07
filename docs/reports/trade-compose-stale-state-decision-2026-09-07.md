@@ -57,4 +57,42 @@ The reproduction evidence establishes the failed-start cleanup classification an
 
 Implementer task: `t_ab0b62db`.
 
-The owning Compose/process cleanup path is unchanged. The only changed file in this implementation task is this report; no Compose definition, process wrapper, restart policy, or cleanup command was modified. Expected behavior remains project-scoped cleanup of resources created by the selected Compose project, with harmless missing-service reports allowed and unrelated `trade` and `db-postgres` resources preserved. Fresh runtime verification remains the next acceptance gate and must use the bounded cycle above; no local image pull, build, live trading, or account mutation was performed.
+The owning Compose/process cleanup path is unchanged. The only changed file in this implementation task is this report; no Compose definition, process wrapper, restart policy, or cleanup command was modified. Expected behavior remains project-scoped cleanup of resources created by the selected Compose project, with harmless missing-service reports allowed and unrelated `trade` and `db-postgres` resources preserved. No local image pull, build, test, live trading, or account mutation was performed.
+
+## Fresh same-project verification (task `t_1146ef4d`)
+
+Repository provenance: worktree `wt/t_1146ef4d`, final report commit initially based on `ded76aa`; the parent handoff commit `8146771d8236bb62b7f5e103b51cf343d36b28b7` was reconciled into this worktree as `43776cd`. The runtime probe used the checked-in `docker-compose.yml` from this worktree and explicit project `t_1146ef4d_repro`.
+
+Commands executed (bounded, no-build; output was captured from the same host):
+
+```text
+podman-compose -p t_1146ef4d_repro -f docker-compose.yml config
+POSTGRES_HOST_PORT=5432 timeout 180s podman-compose -p t_1146ef4d_repro -f docker-compose.yml up --no-build
+podman ps -a --filter label=com.docker.compose.project=t_1146ef4d_repro
+podman-compose -p t_1146ef4d_repro -f docker-compose.yml down
+POSTGRES_HOST_PORT=5433 timeout 180s podman-compose -p t_1146ef4d_repro -f docker-compose.yml up --no-build
+podman-compose -p t_1146ef4d_repro -f docker-compose.yml down
+```
+
+Results:
+
+- Compose config rendered successfully.
+- Fault injection returned timeout exit `124` after the host reported unresolved short image names (`redis:7-alpine` and generated project image names). It left `t_1146ef4d_repro_db_1` (`58b752bc5dd2`) in `Created` state; dependent service containers were absent.
+- The matching project-scoped `down` returned `0`. Its missing-container messages for absent `ml-server`, `frontend`, `redis`, `qdrant`, and `backend` match the harmless stale-state classification above. The created database residual was removed.
+- Recovery with `POSTGRES_HOST_PORT=5433` reached the same host image-resolution limitation and returned timeout exit `124`; it left `t_1146ef4d_repro_db_1` (`0a328409f638`) in `Created` state. This is an environment/image-resolution failure, not evidence that the non-conflicting port mapping regressed.
+- Final project-scoped `down` returned `0`; selected-container count was `0` and selected-pod count was `0`.
+- Protected readback after cleanup: `db-postgres` remained `c0ea3fd00f77`, `Up` and `healthy`; no existing `trade`-labelled containers were present on this host to change.
+
+## Final acceptance and ownership
+
+| Criterion | Result | Evidence/owner |
+|---|---|---|
+| Reproduce isolated failed-start residual | PASS | Runtime: selected project produced a `Created` database residual; no unrelated project was used. |
+| Classify missing-container messages | PASS | Runtime messages named absent services after partial creation; no matching selected resource survived cleanup. Ownership is podman-compose project-scoped teardown. |
+| Remove all selected residual containers/pods | PASS | Runtime: both `down` operations returned `0`; final selected container and pod filters were empty. |
+| Preserve unrelated resources | PASS | Runtime: `db-postgres` remained healthy; no `trade` project resources were present to mutate. |
+| Reach healthy four-service recovery | NOT VERIFIED | Blocked by host short-name image resolution (`no containers-registries.conf`), despite `--no-build`; requires an operator with the approved local image/registry setup. |
+| Minimal repair conclusion | PASS | Repository/static evidence supports no source or Compose cleanup change; use explicit project identity and non-conflicting `POSTGRES_HOST_PORT`. |
+| Remote CI | NOT APPLICABLE | Repository has no `.github/workflows` definitions; exact-SHA Actions lookup for the parent pushed SHA returned no run. |
+
+Remaining limitation: the cleanup and fail-closed classification are verified on this host, but successful healthy recovery of all four services is intentionally left open until image resolution is available. No source code or Compose change is justified by this probe.
