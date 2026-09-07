@@ -93,6 +93,6 @@ Results:
 | Preserve unrelated resources | PASS | Runtime: `db-postgres` remained healthy; no `trade` project resources were present to mutate. |
 | Reach healthy four-service recovery | NOT VERIFIED | Blocked by host short-name image resolution (`no containers-registries.conf`), despite `--no-build`; requires an operator with the approved local image/registry setup. |
 | Minimal repair conclusion | PASS | Repository/static evidence supports no source or Compose cleanup change; use explicit project identity and non-conflicting `POSTGRES_HOST_PORT`. |
-| Remote CI | NOT APPLICABLE | Repository has no `.github/workflows` definitions; exact-SHA Actions lookup for the parent pushed SHA returned no run. |
+| Remote CI | NOT VERIFIED / NO MATCHING RUN | This checked-in branch has no `.github/workflows` definitions; GitHub’s default-branch workflow listing is not evidence for this SHA, and exact-SHA lookup for `77a9a168d7f9ccb627a2bea5a05987cae55953c3` returned `[]`. |
 
 Remaining limitation: the cleanup and fail-closed classification are verified on this host, but successful healthy recovery of all four services is intentionally left open until image resolution is available. No source code or Compose change is justified by this probe.
