@@ -386,6 +386,7 @@ Publish C++ Backend manifest: completed / success
 All six required jobs were present and terminal-success. No job failed,
 cancelled, timed out, or remained unavailable. The verification was read-only;
 no local image, C++, or CTest build was used as a substitute. This report-only
-change is the only repository change in this worktree; the final report commit
-SHA and its resulting remote CI verification are recorded by the closeout
-handoff after commit and push.
+change is the only repository change in this worktree. The report update was
+committed and pushed as `f5783f0ca83daf058f373b64476be7b60b358c5f`, and the
+downstream closeout handoff records the resulting remote CI verification for
+the final pushed report ref.
