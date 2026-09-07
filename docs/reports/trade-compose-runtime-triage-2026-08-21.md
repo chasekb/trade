@@ -424,3 +424,32 @@ jobs do not verify the final SHA. No cancellation or timeout was reported;
 the exact-SHA six-job gate therefore remains unavailable and is not claimed
 as successful. The report closeout worktree was clean, and no unrelated files
 were changed.
+
+The pushed report closeout SHA `d3eef51ba8a35812fc3e699f7b832760cf48e616`
+was verified by exact-SHA workflow-dispatch run `34137629050`:
+
+```text
+Workflow: Docker Build Validation
+Run: 34137629050
+URL: https://github.com/chasekb/trade/actions/runs/34137629050
+Head SHA: d3eef51ba8a35812fc3e699f7b832760cf48e616
+Conclusion: success
+Build C++ Backend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34137629050/job/101792170166
+Build C++ Backend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34137629050/job/101792169924
+Build Frontend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34137629050/job/101792170186
+Build Frontend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34137629050/job/101792170198
+Publish Frontend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34137629050/job/101792591541
+Publish C++ Backend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34137629050/job/101862193711
+```
+
+All six required matrix and publication jobs reached terminal success for
+the pushed SHA. No failure, cancellation, timeout, or unavailable job was
+observed. No local C++ build, CTest run, or image build was used as a
+substitute for this remote gate; the worktree was clean and no unrelated
+files were changed before this report-only update.
