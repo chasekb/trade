@@ -7,6 +7,7 @@ from datetime import datetime
 from ..core.config import TradingConfig
 from .strategies import (
     TradeSignal, BaseStrategy,
+    StrategyDiagnostics,
     SimpleMovingAverageStrategy,
     BollingerBandsStrategy,
     RSIStrategy,
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     'TradeSignal',
     'BaseStrategy',
+    'StrategyDiagnostics',
     'SimpleMovingAverageStrategy',
     'BollingerBandsStrategy',
     'RSIStrategy',

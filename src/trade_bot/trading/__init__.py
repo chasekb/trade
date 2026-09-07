@@ -2,6 +2,7 @@
 
 from .trading_strategy import (
     TradeSignal, BaseStrategy,
+    StrategyDiagnostics,
     SimpleMovingAverageStrategy,
     BollingerBandsStrategy,
     RSIStrategy,
@@ -19,6 +20,7 @@ from .simulated_trading_manager import SimulatedTradingManager
 __all__ = [
     'TradeSignal',
     'BaseStrategy',
+    'StrategyDiagnostics',
     'SimpleMovingAverageStrategy',
     'BollingerBandsStrategy',
     'RSIStrategy',

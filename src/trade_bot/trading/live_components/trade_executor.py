@@ -6,6 +6,7 @@ from coinbase.rest import RESTClient
 
 from ...core.config import TradingConfig
 from ...data.data_components.trade_handler import TradeHandler
+from ..diagnostics import StrategyDiagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,27 @@ class LiveTradeExecutor:
             api_key=config.api_key,
             api_secret=config.api_secret,
         )
+        self.gate_decisions = {"allowed": 0, "blocked": 0}
 
     async def execute_trade(self, signal: Dict[str, Any]) -> None:
         """Execute a trade using the REST API."""
         try:
+            diagnostics = StrategyDiagnostics.from_signal(
+                signal, fee_rate=self.config.trading_fee_percentage
+            )
+            gate = diagnostics.for_action(
+                signal.get('action', ''),
+                min_confidence=float(signal.get('min_confidence', 0.0)),
+                min_expected_return=float(signal.get('min_expected_return', 0.0)),
+            )
+            if not gate['allowed']:
+                self.gate_decisions['blocked'] += 1
+                logger.warning(
+                    "Live execution blocked by diagnostics: action=%s reasons=%s diagnostics=%s",
+                    signal.get('action'), gate['reasons'], diagnostics.as_dict(),
+                )
+                return
+            self.gate_decisions['allowed'] += 1
             if signal['action'] == 'buy':
                 order = self.rest_client.market_order_buy(
                     product_id=signal['product_id'],

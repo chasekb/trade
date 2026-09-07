@@ -3,11 +3,12 @@ from typing import List
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from ...core.config import TradingConfig
+from ..diagnostics import StrategyDiagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,11 @@ class TradeSignal:
     timestamp: datetime
     reason: str
     strength: float = 0.0
+    diagnostics: StrategyDiagnostics = field(default_factory=StrategyDiagnostics)
+
+    def diagnostics_dict(self) -> Dict[str, Any]:
+        """Expose the shared contract for replay and reporting consumers."""
+        return self.diagnostics.as_dict()
 
 
 class BaseStrategy(ABC):

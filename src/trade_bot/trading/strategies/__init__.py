@@ -1,6 +1,7 @@
 """Trading strategies package."""
 
 from .base import TradeSignal, BaseStrategy
+from ..diagnostics import StrategyDiagnostics
 from .sma import SimpleMovingAverageStrategy
 from .bollinger_bands import BollingerBandsStrategy
 from .rsi import RSIStrategy
@@ -16,6 +17,7 @@ from .orderbook import OrderBookStrategy
 __all__ = [
     'TradeSignal',
     'BaseStrategy',
+    'StrategyDiagnostics',
     'SimpleMovingAverageStrategy',
     'BollingerBandsStrategy',
     'RSIStrategy',

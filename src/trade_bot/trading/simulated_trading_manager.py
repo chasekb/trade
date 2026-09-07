@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import asdict
 
 from .trading_models import Position, Trade, Portfolio
+from .diagnostics import StrategyDiagnostics
 from .strategies.ml_enhanced_orderbook import MLEnhancedOrderBookStrategy
 from .strategies.orderbook import OrderBookStrategy
 from trade_bot.ml.model_manager import ModelManager
@@ -513,6 +514,19 @@ class SimulatedTradingManager:
         signal_action = signal.get('signal')
         model_confidence = signal.get('model_confidence', 0.0)
         confidence_threshold = self.strategy_params.get('confidence_threshold', 0.6)
+        diagnostics = StrategyDiagnostics.from_signal(signal, fee_rate=self.trading_fee,
+                                                     report_only=True)
+        gate = diagnostics.for_action(
+            signal_action or 'hold',
+            min_confidence=confidence_threshold,
+            min_expected_return=float(self.strategy_params.get('min_expected_return', 0.0)),
+        )
+        signal['diagnostics'] = diagnostics.as_dict()
+        signal['diagnostic_gate'] = gate
+        logger.info(
+            "Simulation diagnostic gate: symbol=%s action=%s allowed=%s reasons=%s report_only=%s",
+            symbol, signal_action, gate['allowed'], gate['reasons'], diagnostics.report_only,
+        )
 
         # Track signals above confidence threshold
         if signal_generated and model_confidence >= confidence_threshold:
@@ -530,6 +544,11 @@ class SimulatedTradingManager:
             if signal_generated and model_confidence >= confidence_threshold and signal_action == 'hold':
                 self.signal_to_trade_statistics['filtered_signals']['hold_signal'] += 1
             return False
+
+        # Simulation remains observable for replay even when diagnostics are
+        # unavailable; only the live executor treats this as a hard block.
+        if not gate['allowed']:
+            signal['diagnostics']['report_only'] = True
 
         return True
 
@@ -579,11 +598,14 @@ class SimulatedTradingManager:
         executable_signals = []
         for signal in signals:
             symbol = signal.get('symbol')
-            # Broadcast signal immediately via WebSocket for real-time frontend updates
-            self._broadcast_signal(signal)
-
             if self._should_process_signal(signal):
+                # Broadcast after normalization so replay/UI consumers receive
+                # the same diagnostics and gate attribution used for execution.
+                self._broadcast_signal(signal)
                 executable_signals.append(signal)
+            else:
+                # Preserve filtered signal diagnostics for observability.
+                self._broadcast_signal(signal)
         
         # Sort signals based on prioritization
         def get_sort_key(signal):
