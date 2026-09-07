@@ -36,6 +36,22 @@ This command will build and run all the services defined in the `docker-compose.
 *   **db**: The PostgreSQL database.
 *   **redis**: The Redis cache.
 
+### Host port coexistence
+
+The database listens on `5432` inside the Compose network and is published on
+host port `5433` by default. This avoids colliding with another local
+PostgreSQL installation or Compose project already using host port `5432`.
+The backend continues to use `db:5432`; only host-side clients need the
+published port:
+
+```bash
+# Use a different free host port when needed.
+POSTGRES_HOST_PORT=55432 podman-compose up --no-build
+
+# Restore the conventional host port only when it is free.
+POSTGRES_HOST_PORT=5432 podman-compose up --no-build
+```
+
 ## Individual Component Deployment
 
 The `frontend` and `src/trade_bot/ml` directories contain their own `docker-compose.yml` files, allowing them to be run independently. This is useful for development and testing.

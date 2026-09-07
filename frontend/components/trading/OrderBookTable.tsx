@@ -56,7 +56,8 @@ export function OrderBookTable({
       const bestBid = bids[0][0];
       const bestAsk = asks[0][0];
       const spread = bestAsk - bestBid;
-      const spreadPercent = (spread / bestBid) * 100;
+      const midPrice = (bestBid + bestAsk) / 2;
+      const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
       return { value: spread, percentage: spreadPercent };
     }
     return null;
