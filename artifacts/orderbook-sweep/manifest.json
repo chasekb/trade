@@ -1,0 +1,167 @@
+{
+  "grid": {
+    "imbalance_weight": [
+      0.8,
+      1.0,
+      1.2
+    ],
+    "max_spread_percent": [
+      0.1,
+      0.2,
+      0.35
+    ],
+    "min_orderbook_signal_strength": [
+      0.15,
+      0.2,
+      0.3,
+      0.4
+    ],
+    "orderbook_expected_return_scale_percent": [
+      80.0,
+      100.0,
+      120.0
+    ],
+    "position_size_percent": [
+      1.0,
+      2.0,
+      4.0
+    ],
+    "round_trip_fee_percent": [
+      0.1,
+      0.2
+    ],
+    "slippage_buffer_percent": [
+      0.03,
+      0.08
+    ]
+  },
+  "input": "/run/media/unordered_map/priority_queue/log(perplexity)/-sum/log/Pr(context_for_token)/chasecapitalmanagement/etl/trade/.worktrees/t_a910c474/artifacts/orderbook-sweep/fixture.csv",
+  "input_sha256": "e9e620755f5911c334c7ad6bf03e74c73a1cac809e5f3cc4a448658ecccc7c1c",
+  "rows": 240,
+  "safety": {
+    "live_defaults_changed": false,
+    "negative_expectancy_candidates_rejected": true,
+    "offline_only": true
+  },
+  "schema": "orderbook-parameter-sweep/v1",
+  "summary": {
+    "baseline": {
+      "metrics": {
+        "average_loss": -0.0016741899099007842,
+        "average_win": 0.0012339019114227451,
+        "blocked_intent_rate": 0.325,
+        "expectancy": 0.0004030185339017364,
+        "losses": 6,
+        "max_drawdown": 0.007251081856421522,
+        "negative_expectancy": false,
+        "profit_factor": 1.8425357603186556,
+        "rejected_intent_rate": 0.5,
+        "segments": {
+          "BTC-USD::baseline": {
+            "expectancy": 0.00182794,
+            "negative_expectancy": false,
+            "trades": 3
+          },
+          "BTC-USD::ml": {
+            "expectancy": 0.00036463,
+            "negative_expectancy": false,
+            "trades": 3
+          },
+          "ETH-USD::baseline": {
+            "expectancy": -0.00127341,
+            "negative_expectancy": true,
+            "trades": 6
+          },
+          "ETH-USD::ml": {
+            "expectancy": 0.00223445,
+            "negative_expectancy": false,
+            "trades": 2
+          },
+          "SOL-USD::baseline": {
+            "expectancy": 0.00063038,
+            "negative_expectancy": false,
+            "trades": 5
+          },
+          "SOL-USD::ml": {
+            "expectancy": 0.00095266,
+            "negative_expectancy": false,
+            "trades": 2
+          }
+        },
+        "trade_frequency": 0.175,
+        "trades": 21,
+        "wins": 15
+      },
+      "parameters": {
+        "imbalance_weight": 1.0,
+        "max_spread_percent": 0.2,
+        "min_orderbook_signal_strength": 0.2,
+        "orderbook_expected_return_scale_percent": 100.0,
+        "position_size_percent": 2.0,
+        "round_trip_fee_percent": 0.1,
+        "slippage_buffer_percent": 0.05
+      }
+    },
+    "eligible_count": 450,
+    "selected": {
+      "eligible": true,
+      "metrics": {
+        "average_loss": 0.0,
+        "average_win": 0.003721214408396507,
+        "blocked_intent_rate": 0.8,
+        "expectancy": 0.003721214408396507,
+        "losses": 0,
+        "max_drawdown": 0.0,
+        "negative_expectancy": false,
+        "profit_factor": null,
+        "rejected_intent_rate": 0.10833333333333334,
+        "segments": {
+          "BTC-USD::baseline": {
+            "expectancy": 0.00445589,
+            "negative_expectancy": false,
+            "trades": 3
+          },
+          "BTC-USD::ml": {
+            "expectancy": 0.00242891,
+            "negative_expectancy": false,
+            "trades": 1
+          },
+          "ETH-USD::baseline": {
+            "expectancy": 0.00369649,
+            "negative_expectancy": false,
+            "trades": 1
+          },
+          "ETH-USD::ml": {
+            "expectancy": 0.0052689,
+            "negative_expectancy": false,
+            "trades": 2
+          },
+          "SOL-USD::baseline": {
+            "expectancy": 0.00274592,
+            "negative_expectancy": false,
+            "trades": 2
+          },
+          "SOL-USD::ml": {
+            "expectancy": 0.00270533,
+            "negative_expectancy": false,
+            "trades": 2
+          }
+        },
+        "trade_frequency": 0.09166666666666666,
+        "trades": 11,
+        "wins": 11
+      },
+      "parameters": {
+        "imbalance_weight": 0.8,
+        "max_spread_percent": 0.1,
+        "min_orderbook_signal_strength": 0.4,
+        "orderbook_expected_return_scale_percent": 80.0,
+        "position_size_percent": 4.0,
+        "round_trip_fee_percent": 0.1,
+        "slippage_buffer_percent": 0.03
+      }
+    }
+  },
+  "test_rows": 120,
+  "train_rows": 120
+}
