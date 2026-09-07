@@ -52,3 +52,9 @@ Run only as an approved, bounded runtime probe; do not touch the existing health
 ## Limitations
 
 The reproduction evidence establishes the failed-start cleanup classification and protected-resource behavior. It does not by itself prove a fresh successful recreation from the task worktree; that is intentionally an acceptance check rather than a claim made by this decision report. No local build or test command was run.
+
+## Implementation handoff
+
+Implementer task: `t_ab0b62db`.
+
+The owning Compose/process cleanup path is unchanged. The only changed file in this implementation task is this report; no Compose definition, process wrapper, restart policy, or cleanup command was modified. Expected behavior remains project-scoped cleanup of resources created by the selected Compose project, with harmless missing-service reports allowed and unrelated `trade` and `db-postgres` resources preserved. Fresh runtime verification remains the next acceptance gate and must use the bounded cycle above; no local image pull, build, live trading, or account mutation was performed.
