@@ -41,7 +41,7 @@ export function TradingStatisticsDashboard() {
         <StatCard title="Total Trades" value={stats.total_trades} format="number" />
         <StatCard
           title="Profit Factor"
-          value={stats.profit_factor}
+          value={stats.profit_factor >= 999 ? '∞' : stats.profit_factor}
           format="number"
           className="border-blue-200 bg-blue-50"
         />

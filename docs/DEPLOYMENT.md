@@ -1,58 +1,94 @@
-# Deployment Guide
+# Deployment guide
 
-This document provides a comprehensive guide to deploying the Advanced Trading Bot and its components. The system is designed for a flexible, container-based deployment using Docker and Docker Compose.
+## Stack
 
-## Deployment Options
+The supported deployment is the root `docker-compose.yml` stack:
 
-There are two primary ways to deploy the application:
+| Service | Image/runtime | Container port | Default host port |
+| --- | --- | ---: | ---: |
+| `cpp-backend` | Published Drogon C++ image | 8080 | 8081 |
+| `frontend` | Published Next.js image | 3000 | 3000 |
+| `db` | PostgreSQL 15 | 5432 | 15432 |
+| `redis` | Redis 7 | 6379 | 6379 |
 
-1.  **Full-Stack Deployment**: Run the entire application, including the backend, frontend, ML services, and databases, using the main `docker-compose.yml` file.
-2.  **Individual Component Deployment**: Run individual services (e.g., the frontend) independently using their component-specific `docker-compose.yml` files.
+There are no `backend`, `ml-server`, or `qdrant` services in the supported
+stack. The C++ backend includes the ML inference and API surfaces.
 
-## Full-Stack Deployment (Recommended)
+## Prerequisites
 
-The root `docker-compose.yml` file is the primary method for deploying the entire application. It orchestrates the deployment of all services, ensuring they are configured to work together.
+- Podman Compose or Docker Compose
+- A `.env` file based on `env.example`
+- Coinbase credentials only when using Coinbase-backed live or paper data
 
-### Prerequisites
+Keep credentials out of Git and logs. The Compose file mounts `.env` read-only
+into the backend container.
 
-*   Docker
-*   Docker Compose
+## Start the published development stack
 
-### Instructions
+```bash
+podman-compose up --no-build
+```
 
-1.  **Navigate to the project root directory.**
-2.  **Run the following command:**
+The default image variables resolve to:
 
-    ```bash
-    docker-compose up -d
-    ```
+```text
+ghcr.io/chasekb/trade/cpp-backend:dev
+```
 
-This command will build and run all the services defined in the `docker-compose.yml` file, including:
+Override them explicitly when testing another branch tag:
 
-*   **backend**: The Python FastAPI application.
-*   **frontend**: The Next.js frontend application.
-*   **ml-server**: The ML model server.
-*   **qdrant**: The Qdrant vector database.
-*   **db**: The PostgreSQL database.
-*   **redis**: The Redis cache.
+```bash
+CPP_BACKEND_IMAGE=ghcr.io/chasekb/trade/cpp-backend:dev \
+FRONTEND_IMAGE=ghcr.io/chasekb/trade/frontend:dev \
+podman-compose up --no-build
+```
 
-## Individual Component Deployment
+Compose waits for PostgreSQL, Redis, and the backend/frontend health checks.
+Verify the host-facing services with:
 
-The `frontend` and `src/trade_bot/ml` directories contain their own `docker-compose.yml` files, allowing them to be run independently. This is useful for development and testing.
+```bash
+curl -fsS http://localhost:8081/health
+curl -fsS http://localhost:3000/api/health
+```
 
-### Frontend Deployment
+## Build local images
 
-To run the frontend application independently:
+```bash
+podman-compose build
+podman-compose up --no-build
+```
 
-1.  **Navigate to the `frontend` directory.**
-2.  **Run the following command:**
+The C++ image uses `Dockerfile.cpp` and its vcpkg toolchain. Prefer the
+push-triggered GitHub Actions Docker Build Validation workflow for final
+multi-architecture proof.
 
-    ```bash
-    docker-compose up -d
-    ```
+## Host database port
 
-This will build and run the Next.js frontend, which will be accessible at `http://localhost:3000`.
+Containers always reach PostgreSQL at `db:5432`. Change only the host binding
+when another service occupies the default port:
 
-### ML Service Deployment
+```bash
+POSTGRES_HOST_PORT=55432 podman-compose up --no-build
+```
 
-The ML services can also be run independently. See `docs/VECTOR_DATABASE_SERVICE.md` for more details on the hybrid deployment options for the ML components.
+The default host binding is 15432, not 5432.
+
+## C++ test container
+
+```bash
+podman-compose -f docker-compose.test.yml up --build cpp-test
+```
+
+That service configures CMake with the image's vcpkg toolchain and runs the
+configured CTest target(s). The authoritative target list is in
+`CMakeLists.txt`.
+
+## Stop and inspect
+
+```bash
+podman-compose ps
+podman-compose logs --tail=200 cpp-backend frontend
+podman-compose down
+```
+
+Do not remove `data/databases` or `data/cache` as part of routine cleanup.
