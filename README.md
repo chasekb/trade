@@ -256,7 +256,7 @@ The ML Trading Optimization system enhances trading decisions using machine lear
 ### ML Services (Automatically Started with Docker Compose)
 - **Qdrant Vector DB**: `http://localhost:6333` - Feature vector storage
 - **Redis Cache**: `localhost:6379` - High-performance caching
-- **PostgreSQL DB**: `localhost:5432` - Main database
+- **PostgreSQL DB**: `localhost:5433` - Main database (default host port; containers use `db:5432`)
 - **Backend API**: `http://localhost:8000` - FastAPI backend server
 - **Web Dashboard**: `http://localhost:3000` - Next.js React dashboard
 
