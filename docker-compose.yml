@@ -93,7 +93,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # Keep PostgreSQL on 5432 inside the network; override the host port when needed.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     networks:
       - trading-network
     restart: unless-stopped
