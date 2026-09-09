@@ -16,8 +16,9 @@ void expect(bool condition, const std::string &label) {
   }
 }
 
-Json::Value terminal(const std::string &primary, const std::string &code) {
-  Json::Value symbol = makeEmptySymbolDiagnosis("TEST-USD", 0, "2026-08-28T00:00:00Z");
+Json::Value terminal(const std::string &symbol_id, const std::string &primary,
+                     const std::string &code) {
+  Json::Value symbol = makeEmptySymbolDiagnosis(symbol_id, 0, "2026-08-28T00:00:00Z");
   symbol["status"]["primary"] = primary;
   symbol["status"]["terminal"] = true;
   symbol["status"]["reason"]["code"] = code;
@@ -57,10 +58,10 @@ int main() {
              safe.find("token") == std::string::npos,
          "safe error messages do not expose transport details");
 
-  Json::Value unavailable = terminal("data_unavailable", "tls_handshake");
+  Json::Value unavailable = terminal("BTC-USD", "data_unavailable", "tls_handshake");
   unavailable["market_data"]["state"] = "unavailable";
   unavailable["market_data"]["error"]["code"] = "tls_handshake";
-  Json::Value hold = terminal("hold", "signal_hold");
+  Json::Value hold = terminal("ETH-USD", "hold", "signal_hold");
   hold["signal"]["state"] = "hold";
   hold["intent"]["state"] = "not_created";
 
@@ -84,7 +85,7 @@ int main() {
              summary["message"].asString().find("No trades recorded") != std::string::npos,
          "zero-trade summary contains actionable reasons and message");
 
-  Json::Value blocked = terminal("gates_blocked", "gate_blocked");
+  Json::Value blocked = terminal("TEST-USD", "gates_blocked", "gate_blocked");
   blocked["gates"]["profitability"]["reasons"].append(
       Json::Value(Json::objectValue));
   blocked["gates"]["profitability"]["reasons"][0]["code"] =
@@ -115,10 +116,8 @@ int main() {
          "empty zero-trade sessions cannot claim an unexplained result");
 
   input.selected_symbols = {"BTC-USD", "ETH-USD"};
-  input.symbols = {terminal("hold", "signal_hold"),
-                   terminal("hold", "signal_hold")};
-  input.symbols[0]["symbol"] = "BTC-USD";
-  input.symbols[1]["symbol"] = "BTC-USD";
+  input.symbols = {terminal("BTC-USD", "hold", "signal_hold"),
+                   terminal("BTC-USD", "hold", "signal_hold")};
   const Json::Value incomplete_summary = makeDiagnosisSummary(input);
   bool has_incomplete_reason = false;
   for (const auto &reason : incomplete_summary["no_trade_reasons"]) {
@@ -129,13 +128,14 @@ int main() {
          "duplicate records cannot make an incomplete universe look complete");
 
   input.selected_symbols = {"BTC-USD", "BTC-USD"};
-  input.symbols = {terminal("hold", "signal_hold"), terminal("hold", "signal_hold")};
+  input.symbols = {terminal("BTC-USD", "hold", "signal_hold"),
+                   terminal("BTC-USD", "hold", "signal_hold")};
   const Json::Value duplicate_selection_summary = makeDiagnosisSummary(input);
   expect(duplicate_selection_summary["status"].asString() == "failed",
          "duplicate selected symbols cannot make the universe look complete");
 
   input.selected_symbols = {"TEST-USD"};
-  input.symbols = {terminal("trade_open", "")};
+  input.symbols = {terminal("TEST-USD", "trade_open", "")};
   const Json::Value open_summary = makeDiagnosisSummary(input);
   expect(open_summary["terminal_count"].asInt() == 1 &&
              open_summary["by_primary_status"]["trade_open"].asInt() == 1,
@@ -143,7 +143,7 @@ int main() {
 
   input.trade_count = 1;
   input.selected_symbols = {"TEST-USD"};
-  input.symbols = {terminal("trade_completed", "")};
+  input.symbols = {terminal("TEST-USD", "trade_completed", "")};
   const Json::Value traded = makeDiagnosisSummary(input);
   expect(traded["outcome"].asString() == "trades_recorded" &&
              traded["trade_count"].asInt() == 1,
