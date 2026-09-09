@@ -1,0 +1,302 @@
+#pragma once
+
+#include "exchange/CoinbaseAdvancedClient.hpp"
+#include "trading/TradingStatsCalculator.hpp"
+#include "trading/ReconciliationDiagnostics.hpp"
+#include "trading/CadenceDiagnostics.hpp"
+#include "trading/QuoteBatchScheduler.hpp"
+#include "trading/SimulatedTradingDiagnosis.hpp"
+
+#include <drogon/drogon.h>
+
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <map>
+#include <mutex>
+#include <memory>
+#include <random>
+#include <set>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace trade {
+namespace trading {
+
+class TradingStatsService;
+
+class SimulatedTradingService {
+public:
+  static SimulatedTradingService &getInstance();
+
+  Json::Value startSession(const Json::Value &payload, const std::string &mode);
+  Json::Value stopSession();
+  Json::Value getStatus(const std::string &session_id = "");
+  Json::Value updateStrategyParameters(const Json::Value &payload);
+  Json::Value getLivePortfolioStatus();
+  Json::Value getOrderBookSignals(const std::vector<std::string> &symbols,
+                                  int page,
+                                  int per_page,
+                                  const std::string &session_id = "");
+  Json::Value closePosition(const std::string &symbol);
+  Json::Value getOpenPositions();
+
+private:
+  SimulatedTradingService() = default;
+  ~SimulatedTradingService();
+  SimulatedTradingService(const SimulatedTradingService &) = delete;
+  SimulatedTradingService &operator=(const SimulatedTradingService &) = delete;
+
+  struct PositionState {
+    std::string symbol;
+    std::string side;
+    double quantity = 0.0;
+    double entry_price = 0.0;
+    double current_price = 0.0;
+    double unrealized_pnl = 0.0;
+    double pnl_percentage = 0.0;
+    long long entry_timestamp = 0;
+    std::string entry_time;
+    std::string status = "open";
+    std::size_t age_ticks = 0;
+    // Prediction-time ML values captured at entry; exit rows persist these so
+    // calibration analysis never sees outcome-derived (hindsight) numbers.
+    double entry_win_probability = 0.5;
+    double entry_expected_return = 0.0;
+    double entry_model_confidence = 0.0;
+  };
+
+  struct TradeRecord {
+    std::string trade_id;
+    std::string session_id;
+    std::string symbol;
+    std::string side;
+    double quantity = 0.0;
+    double price = 0.0;
+    long long timestamp = 0;
+    std::string timestamp_iso;
+    std::string strategy_type;
+    std::string signal_reason;
+    double pnl = 0.0;
+    double fees = 0.0;
+    double win_probability = 0.0;
+    double expected_return = 0.0;
+    double model_confidence = 0.0;
+    std::string trade_type = "simulated";
+    bool is_closing_leg = false;
+  };
+
+  // Per-symbol synthetic market state. Imbalance follows a persistent AR(1)
+  // process and feeds the *next* tick's return, so order-flow signals carry a
+  // real (positive-expectancy) edge instead of marking sine-wave extremes.
+  struct SymbolMarketState {
+    double price = 0.0;
+    double imbalance = 0.0;
+    double last_return = 0.0;
+    std::mt19937 rng;
+    // Rolling close history for the indicator strategies (sma/ema/rsi/...).
+    std::deque<double> price_history;
+    long long last_entry_tick = -1;
+  };
+
+  struct SignalRecord {
+    std::string signal_id;
+    std::string session_id;
+    std::string symbol;
+    std::string signal_type;
+    double strength = 0.0;
+    double price = 0.0;
+    long long timestamp = 0;
+    std::string timestamp_iso;
+    Json::Value payload;
+    double spread = 0.0;
+    double imbalance = 0.0;
+    double mid_price = 0.0;
+    double best_bid = 0.0;
+    double best_ask = 0.0;
+    int order_book_depth = 0;
+    double volume = 0.0;
+    int total_signals = 0;
+  };
+
+  // Rows produced under the mutex, flushed to Postgres outside it so API
+  // handlers sharing the mutex never wait on database I/O.
+  struct PendingWrites {
+    std::vector<SignalRecord> signals;
+    std::vector<TradeRecord> trades;
+  };
+
+  // Real market snapshot fetched from Coinbase public endpoints (live mode)
+  // outside the mutex, then consumed by the tick under it.
+  struct MarketQuote {
+    bool valid = false;
+    double mid = 0.0;
+    double spread = 0.0;
+    double best_bid = 0.0;
+    double best_ask = 0.0;
+    double imbalance = 0.0;
+    double volume = 0.0;
+    int depth = 0;
+  };
+
+  struct MarketDataStatus {
+    std::string status = "unavailable";
+    std::string category = "not_requested";
+    std::string error;
+    int retries = 0;
+    std::string last_success_at;
+  };
+
+  // Exchange order produced by a live tick with order execution enabled;
+  // dispatched outside the mutex.
+  struct OrderIntent {
+    std::string product_id;
+    std::string side;
+    double amount = 0.0;
+    bool amount_is_quote = false;
+    std::string reason;
+    std::string action;
+    SignalRecord signal;
+    PositionState position;
+    double reserved_cash = 0.0;
+  };
+
+  struct PendingLiveOrder {
+    std::string order_id;
+    OrderIntent intent;
+  };
+
+  struct OrderDispatchResult {
+    bool attempted = false;
+    bool accepted = false;
+    std::string error;
+  };
+
+  void ensureSchema();
+  void startWorkerLocked();
+  void workerLoop();
+  std::vector<std::string> selectLiveQuoteBatchLocked();
+  void generateTickLocked(const std::map<std::string, MarketQuote> &quotes,
+                          const std::vector<std::string> &quote_batch_symbols = {});
+  SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index,
+                                       const MarketQuote *quote);
+  bool signalPassesMlGateLocked(const SignalRecord &signal) const;
+  Json::Value buildExecutionAnalysisLocked(const SignalRecord &signal) const;
+  void queueSignalWriteLocked(const SignalRecord &signal);
+  void queueTradeWriteLocked(const TradeRecord &trade);
+  PendingWrites takePendingWritesLocked();
+  void flushWrites(PendingWrites &&writes);
+  void queueOrderIntentLocked(OrderIntent intent);
+  std::vector<OrderIntent> takePendingOrdersLocked();
+  OrderDispatchResult dispatchOrders(std::vector<OrderIntent> &&orders);
+  void resolvePendingLiveOrders();
+  void applyLiveFillLocked(const OrderIntent &intent, const exchange::OrderFill &fill);
+  bool liveOrderExecutionEnabledLocked() const;
+  std::map<std::string, MarketQuote> fetchLiveQuotes(const std::vector<std::string> &symbols);
+  void openPositionLocked(const SignalRecord &signal, const std::string &reason);
+  void addToPositionLocked(const SignalRecord &signal, const std::string &reason);
+  Json::Value closePositionLocked(const std::string &symbol, const std::string &reason);
+  void updateMarkToMarketLocked(const std::map<std::string, double> &prices);
+  double basePriceForSymbol(const std::string &symbol) const;
+  double positionSizeUsdForSignal(const SignalRecord &signal) const;
+  long long nowEpochSeconds() const;
+  std::string nowIsoUtc() const;
+  std::string makeId(const std::string &prefix, long long ts, const std::string &symbol,
+                     std::size_t sequence) const;
+  std::string escapeSql(const std::string &value) const;
+  std::string jsonToString(const Json::Value &value) const;
+  Json::Value buildStatusJson() const;
+  Json::Value buildPortfolioJson() const;
+  Json::Value tradeToJson(const TradeRecord &trade) const;
+  Json::Value signalToJson(const SignalRecord &signal) const;
+  Json::Value positionToJson(const PositionState &position) const;
+  Json::Value buildDiagnosisJson() const;
+  Json::Value &diagnosisForSymbolLocked(const std::string &symbol);
+  void touchDiagnosisLocked(Json::Value &diagnosis);
+  void markDiagnosisStatusLocked(Json::Value &diagnosis, const std::string &primary,
+                                 bool terminal, const std::string &code,
+                                 const std::string &message, bool retryable = true);
+  void updateDiagnosisFromSignalLocked(const SignalRecord &signal);
+  void trimHistoryLocked();
+
+  mutable std::mutex mutex_;
+  mutable std::mutex lifecycle_mutex_;
+  std::thread worker_;
+  bool active_ = false;
+  bool stop_requested_ = false;
+  bool shutdown_requested_ = false;
+  bool worker_finished_ = true;
+  std::string session_id_;
+  std::string mode_ = "simulated";
+  // `live_parity` consumes Coinbase public market data and applies the same
+  // spot/minimum/cash/position gates as live mode, but always settles paper
+  // fills locally and never dispatches an exchange order.
+  std::string strategy_ = "orderbook";
+  std::vector<std::string> symbols_;
+  Json::Value parameters_ = Json::objectValue;
+  std::string started_at_;
+  std::string updated_at_;
+  long long start_epoch_seconds_ = 0;
+  long long tick_ = 0;
+  std::size_t live_quote_cursor_ = 0;
+  std::vector<std::string> last_live_quote_batch_symbols_;
+  int max_positions_ = 100;
+  int position_update_interval_ = 5;
+  double initial_capital_ = 10000.0;
+  double cash_ = 10000.0;
+  double realized_pnl_ = 0.0;
+  double unrealized_pnl_ = 0.0;
+  double total_fees_ = 0.0;
+  double total_positions_value_ = 0.0;
+  std::map<std::string, SymbolMarketState> market_state_;
+  std::map<std::string, MarketDataStatus> market_data_status_;
+  std::map<std::string, PositionState> positions_;
+  std::deque<TradeRecord> recent_trades_;
+  // Keep the latest generated signal for every selected symbol. This is a
+  // current-state view, not a capped history, so large universes are not
+  // silently truncated by an arbitrary record count.
+  std::map<std::string, SignalRecord> recent_signals_;
+  std::map<std::string, int> execution_blocker_counts_;
+  std::size_t diagnosis_evaluations_ = 0;
+  std::size_t quote_success_evaluations_ = 0;
+  std::size_t quote_failures_ = 0;
+  std::size_t signals_evaluated_ = 0;
+  std::size_t signals_generated_ = 0;
+  std::size_t signal_holds_ = 0;
+  std::size_t profitability_gate_passed_ = 0;
+  std::size_t profitability_gate_blocked_ = 0;
+  std::size_t ml_gate_passed_ = 0;
+  std::size_t ml_gate_blocked_ = 0;
+  std::size_t executable_order_intents_ = 0;
+  std::size_t transformer_warming_symbols_ = 0;
+  std::size_t transformer_warmup_events_ = 0;
+  std::size_t transformer_ready_evaluations_ = 0;
+  std::size_t transformer_rejected_inputs_ = 0;
+  std::size_t simulated_fills_ = 0;
+  std::size_t persisted_trades_ = 0;
+  std::size_t persistence_failures_ = 0;
+  std::size_t trade_open_events_ = 0;
+  std::size_t trade_completed_events_ = 0;
+  bool diagnostics_enabled_ = false;
+  ReconciliationDiagnostics reconciliation_diagnostics_;
+  mutable CadenceDiagnostics cadence_diagnostics_;
+  std::uint64_t universe_generation_ = 0;
+  std::map<std::string, Json::Value> symbol_diagnoses_;
+  std::map<std::string, std::uint64_t> diagnosis_sequences_;
+  bool session_cancelled_ = false;
+  // Full per-session trade inputs so status stats never rescan the database
+  // while a session is running (recent_trades_ is capped and insufficient).
+  std::vector<TradePerformanceInput> session_trade_inputs_;
+
+  std::vector<SignalRecord> pending_signal_writes_;
+  std::vector<TradeRecord> pending_trade_writes_;
+  std::vector<OrderIntent> pending_orders_;
+  std::vector<PendingLiveOrder> pending_live_orders_;
+  std::set<std::string> pending_order_symbols_;
+  double pending_reserved_cash_ = 0.0;
+  std::unique_ptr<exchange::CoinbaseAdvancedClient> exchange_client_;
+};
+
+} // namespace trading
+} // namespace trade
