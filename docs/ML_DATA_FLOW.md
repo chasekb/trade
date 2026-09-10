@@ -1,4 +1,11 @@
-# ML Data Flow Architecture
+# ML data flow
+
+Current runtime note: the supported ML data path is implemented in the C++
+backend under `src/ml/` and `src/trading/`, exposed by the Drogon controller,
+and consumed by `frontend/`. The Python module paths in this document describe
+the historical migration source and are not deployable runtime paths. Use
+`docs/ARCHITECTURE.md`, `docs/API_REFERENCE.md`, and `CMakeLists.txt` for the
+current implementation and route/source ownership.
 
 This document describes the complete data flow into and out of the Machine Learning models in the Trading Bot system. Understanding this flow is crucial for debugging, optimization, and extending the ML capabilities.
 

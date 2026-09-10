@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, queryKeys } from '@/lib/api';
+import { deriveStats, mergeStats } from '@/lib/simulatedTradingStats';
 import { TradingStats, Position, PaginationParams } from '@/types/trading';
 
 export function useTradingStats() {
@@ -24,34 +25,15 @@ export function useTradingStats() {
       if (typeof response.data === 'object' && ('total_trades' in response.data || 'portfolio' in response.data)) {
         // Format: Direct stats object or portfolio data
         if ((response.data as any).portfolio) {
-          // Convert portfolio data to stats
+          // Convert portfolio data to stats: derive every metric from the trade
+          // list, then let any stats the portfolio explicitly provides win.
           const portfolio = (response.data as any).portfolio;
           const trades = (response.data as any).recent_trades || portfolio.trades || [];
-          const totalTrades = portfolio.total_trades || trades.length || 0;
-          const totalPnl = portfolio.total_pnl || portfolio.net_pnl || 0;
-          const winRate = portfolio.win_rate || (totalTrades > 0 ? (portfolio.winning_trades || 0) / totalTrades * 100 : 0);
-          const winningTrades = portfolio.winning_trades || (trades.filter((t: any) => (t.pnl || 0) > 0).length);
-
-          const result: TradingStats = {
-            total_pnl: totalPnl,
-            total_fees: portfolio.total_fees || 0,
-            net_pnl: portfolio.net_pnl || (totalPnl - (portfolio.total_fees || 0)),
-            win_rate: winRate,
-            total_trades: totalTrades,
-            winning_trades: winningTrades,
-            losing_trades: totalTrades - winningTrades,
-            avg_win: 0,
-            avg_loss: 0,
-            best_trade: 0,
-            worst_trade: 0,
-            profit_factor: 0,
-            sharpe_ratio: 0,
-            max_drawdown: portfolio.max_drawdown || 0,
-            total_volume: 0,
-            avg_trade_size: 0,
-            trades_today: 0,
-          };
-          return result;
+          const derived = deriveStats(
+            trades,
+            portfolio.total_fees !== undefined ? Number(portfolio.total_fees) : undefined,
+          );
+          return mergeStats(portfolio as Partial<TradingStats>, derived);
         }
 
         return response.data as TradingStats;
