@@ -44,6 +44,9 @@ export interface Trade {
 
 export interface OrderBookSignal {
   symbol: string;
+  session_id?: string;
+  event_id?: string;
+  sequence?: number;
   timestamp: string;
   price: number;
   signal: 'buy' | 'sell' | 'hold';
@@ -51,6 +54,7 @@ export interface OrderBookSignal {
   signal_strength: number;
   signal_type?: string;
   signal_reason?: string;
+  cadence?: OrderBookCadenceEvent;
   data_status: 'sufficient' | 'insufficient' | 'none';
   spread: number;
   volume: number;
@@ -95,10 +99,20 @@ export interface OrderBookSignal {
     ml_enabled: boolean;
     win_probability: number;
     expected_return: number;
+    expected_return_available?: boolean;
+    diagnostics_available?: boolean;
+    fee_adjusted_expected_return?: number;
+    required_edge?: number;
+    profitability_gate_passed?: boolean;
+    profitability_gate_reason?: string;
+    diagnostic_factor?: string;
+    factoring_semantics?: string;
     confidence: number;
     model_version: string;
     features_used?: string[];
     prediction_timestamp: string;
+    // Backend analytics are model-version specific and intentionally opaque to the table layer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     analytics?: any;
   };
   strength_composition?: {
@@ -107,11 +121,199 @@ export interface OrderBookSignal {
       importance_percent: number;
     };
   };
+  execution_analysis?: {
+    strategy?: string;
+    symbol?: string;
+    signal_generated?: boolean;
+    intended_action?: string;
+    intended_side?: string;
+    executable_intent?: boolean;
+    blocked?: boolean;
+    blocker_reason?: string;
+    diagnostic_factor?: string;
+    strength_bucket?: string;
+    expected_return_bucket?: string;
+    expected_return?: number;
+    fee_adjusted_expected_return?: number;
+    required_edge?: number;
+    allocated_usd?: number;
+    available_cash?: number;
+    estimated_fee?: number;
+    minimum_notional?: number;
+  };
   // Legacy properties for backward compatibility
   buy_volume?: number;
   sell_volume?: number;
   imbalance_ratio?: number;
   prediction?: 'BUY' | 'SELL' | 'HOLD';
+}
+
+export interface OrderBookSignalDiagnostics {
+  schema_version?: string;
+  session_id?: string;
+  as_of?: string;
+  selected_symbols?: string[];
+  symbols?: SimulatedTradingSymbolDiagnosis[];
+  summary?: SimulatedTradingDiagnosisSummary;
+  selected_symbol_count?: number;
+  requested_symbol_count?: number;
+  quote_attempted_symbol_count?: number;
+  quote_success_symbol_count?: number;
+  quote_skipped_symbol_count?: number;
+  current_batch_symbols?: string[];
+  current_latest_signal_count?: number;
+  missing_latest_signal_count?: number;
+  missing_latest_signal_symbols?: string[];
+  failed_request_symbol_count?: number;
+  failed_request_symbols?: string[];
+  recent_signal_record_count?: number;
+  active_recent_signal_records?: number;
+  signals_evaluated?: number;
+  signals_generated?: number;
+  transformer_warming_symbols?: number;
+  transformer_rejected_inputs?: number;
+  executable_order_intent_count?: number;
+  execution_blocker_counts?: Record<string, number>;
+  execution_strength_bucket_counts?: Record<string, number>;
+  execution_expected_return_bucket_counts?: Record<string, number>;
+  coverage_complete?: boolean;
+  widget_coverage_contract?: string;
+  contract?: string;
+  cadence?: OrderBookCadenceSnapshot;
+  quote_scheduler?: OrderBookQuoteSchedulerSnapshot;
+  stage_counts?: SimulatedTradingDiagnosisStageCounts;
+  dominant_blocker?: SimulatedTradingDiagnosisBlocker;
+}
+
+export type OrderBookCadenceState =
+  | 'generated' | 'not_generated' | 'delayed' | 'retried' | 'merged'
+  | 'dropped' | 'stale_displayed' | 'error';
+
+export interface OrderBookCadenceEvent {
+  schema_version?: string;
+  session_id?: string;
+  universe_generation?: number;
+  trace_id?: string;
+  tick_id?: number;
+  batch_id?: string;
+  event_id?: string;
+  symbol?: string;
+  attempt?: number;
+  attempts?: number;
+  producer?: Record<string, string>;
+  durations_ms?: Record<string, number>;
+  state?: OrderBookCadenceState | string;
+  reason?: string | null;
+}
+
+export interface OrderBookCadenceSnapshot {
+  schema_version?: string;
+  session_id?: string;
+  universe_generation?: number;
+  as_of?: string;
+  thresholds_ms?: Record<string, number>;
+  last_tick?: Record<string, unknown>;
+  counters?: Record<string, number>;
+  histograms?: Record<string, {
+    bounds_ms?: number[];
+    counts?: number[];
+    count?: number;
+    sum_ms?: number;
+    max_ms?: number;
+  }>;
+  coverage?: Record<string, number>;
+  recent_errors?: Array<Record<string, unknown>>;
+  enabled?: boolean;
+}
+
+export interface OrderBookQuoteSchedulerSnapshot {
+  enabled?: boolean;
+  batch_size?: number;
+  cursor?: number;
+  batch_symbols?: string[];
+}
+
+export interface OrderBookSignalPagination {
+  current_page?: number;
+  page?: number;
+  per_page?: number;
+  limit?: number;
+  total_signals?: number;
+  total?: number;
+  total_pages: number;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
+export interface OrderBookSignalsResponse {
+  signals: OrderBookSignal[];
+  pagination?: OrderBookSignalPagination;
+  total_analyzed?: number;
+  active_signals?: number;
+  last_updated?: string;
+  average_strength?: number;
+  diagnostics?: OrderBookSignalDiagnostics;
+}
+
+export interface SimulatedTradingSymbolDiagnosis {
+  symbol: string;
+  sequence?: number;
+  updated_at?: string;
+  status?: {
+    primary?: string;
+    terminal?: boolean;
+    reason?: { code?: string; message?: string; retryable?: boolean } | null;
+    evaluated_at?: string | null;
+  };
+  market_data?: Record<string, unknown>;
+  quote?: Record<string, unknown>;
+  transformer?: Record<string, unknown>;
+  signal?: Record<string, unknown>;
+  gates?: Record<string, unknown>;
+  intent?: Record<string, unknown>;
+  execution?: Record<string, unknown>;
+  trade?: Record<string, unknown>;
+  cadence?: OrderBookCadenceEvent;
+}
+
+export interface SimulatedTradingDiagnosisSummary {
+  status?: string;
+  outcome?: string;
+  selected_count?: number;
+  terminal_count?: number;
+  trade_count?: number;
+  by_primary_status?: Record<string, number>;
+  no_trade_reasons?: Array<{ code: string; count: number }>;
+  stage_counts?: SimulatedTradingDiagnosisStageCounts;
+  dominant_blocker?: SimulatedTradingDiagnosisBlocker;
+  message?: string;
+}
+
+export interface SimulatedTradingDiagnosisStageCounts {
+  selected_symbols?: number;
+  diagnosis_evaluations?: number;
+  quote_success_evaluations?: number;
+  quote_failures?: number;
+  transformer_warmup_events?: number;
+  transformer_ready_evaluations?: number;
+  signal_holds?: number;
+  generated_candidates?: number;
+  profitability_gate_passed?: number;
+  profitability_gate_blocked?: number;
+  ml_gate_passed?: number;
+  ml_gate_blocked?: number;
+  executable_intents?: number;
+  simulated_fills?: number;
+  persisted_trades?: number;
+  trade_open_events?: number;
+  trade_completed_events?: number;
+  persistence_failures?: number;
+}
+
+export interface SimulatedTradingDiagnosisBlocker {
+  code?: string | null;
+  category?: string | null;
+  count?: number;
 }
 
 export interface PriceDataPoint {
@@ -131,6 +333,18 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   timestamp: string;
+  client?: ApiClientObservation;
+}
+
+export interface ApiClientObservation {
+  transport: 'api_poll' | 'websocket';
+  client_request_id: string;
+  requested_at?: string;
+  received_at: string;
+  received_mono_ms: number;
+  api_duration_ms: number;
+  parse_duration_ms?: number;
+  error_class?: string;
 }
 
 export interface PaginationParams {
@@ -183,6 +397,8 @@ export interface StatCardProps {
 export interface DataTableColumn<T> {
   key: keyof T;
   header: React.ReactNode;
+  // Column renderers are key-specific but the table stores them in a shared array.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render?: (value: any, item: T) => React.ReactNode;
   sortable?: boolean;
   className?: string;
@@ -212,6 +428,7 @@ export interface StrategyParameter {
   name: string;
   label: string;
   type: 'number' | 'text' | 'select';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default: any;
   min?: number;
   max?: number;
@@ -249,6 +466,7 @@ export interface TradingConfig {
   symbols: string[];
   universeType?: UniverseType;
   customSymbols?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parameters: Record<string, any>;
   positionSizePercent?: number;
   maxPositions?: number;
@@ -258,6 +476,7 @@ export interface TradingConfig {
 export interface OrderBookPreset {
   name: string;
   label: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
 }
 
@@ -288,7 +507,9 @@ export interface TradingControlsProps {
 
 export interface StrategyConfigFormProps {
   strategy: TradingStrategy;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onChange: (config: Record<string, any>) => void;
   className?: string;
 }
@@ -301,6 +522,7 @@ export interface BacktestFormProps {
     symbols: string[];
     startDate: string;
     endDate: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     config: Record<string, any>;
   };
   onChange: (parameters: Partial<BacktestFormProps['parameters']>) => void;
@@ -314,6 +536,7 @@ export interface BacktestControlsProps {
 }
 
 export interface BacktestResultsProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   results: any;
   loading: boolean;
 }
@@ -340,12 +563,34 @@ export interface MLPerformanceMetrics {
   win_rate?: number;
   total_feature_vectors?: number;
   total_used_samples?: number;
+  validation_strategy?: string;
+  feature_set_version?: string;
+  walk_forward_folds?: Array<{
+    fold_index?: number;
+    train_start_timestamp?: number;
+    train_end_timestamp?: number;
+    test_start_timestamp?: number;
+    test_end_timestamp?: number;
+    metrics?: Record<string, number | string>;
+  }>;
+  cohort_metrics?: Array<{
+    regime?: string;
+    sample_count?: number;
+    winning_trades?: number;
+    losing_trades?: number;
+    win_rate?: number;
+    avg_pnl?: number;
+    profit_factor?: number;
+    max_drawdown?: number;
+  }>;
   error?: string;
 }
 
-export interface MLFeatureImportance {
-  [featureName: string]: number;
-}
+export type MLFeatureImportance = Record<string, number> | Array<{
+  name?: string;
+  importance?: number;
+  correlation_to_pnl?: number;
+}>;
 
 export interface MLDashboardData {
   status: MLModelStatus;
