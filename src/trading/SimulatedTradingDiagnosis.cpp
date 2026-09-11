@@ -270,7 +270,13 @@ Json::Value makeDiagnosisSummary(const DiagnosisSummaryInput &input) {
     const std::string status = symbol.get("status", Json::Value(Json::objectValue))
                                    .get("primary", Json::Value("pending")).asString();
     ++counts[status];
-    if (symbol.get("status", Json::Value(Json::objectValue)).get("terminal", false).asBool()) ++terminal_count;
+    const Json::Value status_record =
+        symbol.get("status", Json::Value(Json::objectValue));
+    if (status_record.isObject() && status_record.isMember("terminal") &&
+        status_record["terminal"].isBool() &&
+        status_record["terminal"].asBool()) {
+      ++terminal_count;
+    }
     if (!isTradeStatus(status)) has_non_trade = true;
     addReasonCounts(symbol, reasons);
   }

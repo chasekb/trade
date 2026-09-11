@@ -2284,17 +2284,18 @@ void SimulatedTradingService::generateTickLocked(
         continue;
       }
       if (signal_generated) {
+        const Json::Value analysis = signal.payload["execution_analysis"];
         std::string blocker;
-        if (!signalPassesMlGateLocked(signal)) {
-          blocker = "ml_confidence_gate";
+        if (!analysis.get("executable_intent", Json::Value(false)).asBool()) {
+          blocker = analysis.get("blocker_reason", Json::Value("intent_not_executable")).asString();
         } else if (static_cast<int>(positions_.size()) >= max_positions_) {
           blocker = "max_positions";
-        } else if (positionSizeUsdForSignal(signal) <= 0.0) {
+        } else if (analysis.get("allocated_usd", Json::Value(0.0)).asDouble() <= 0.0) {
           blocker = "profitability_or_position_size";
         } else if (sanitizeSide(signal.signal_type) != "buy") {
           blocker = "spot_cannot_open_short";
         } else {
-          const double allocated_usd = positionSizeUsdForSignal(signal);
+          const double allocated_usd = analysis.get("allocated_usd", Json::Value(0.0)).asDouble();
           const double fee = signal.price > 0.0 ? allocated_usd * kFeeRate : 0.0;
           const double available_cash = std::max(0.0, cash_ - pending_reserved_cash_);
           if (!hasSufficientCash("buy", available_cash, allocated_usd, fee)) {
