@@ -2,7 +2,7 @@ name: Docker Build Validation
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: [ "main", "dev", "wt/**" ]
   pull_request:
     branches: [ "main", "dev" ]
   workflow_dispatch:
