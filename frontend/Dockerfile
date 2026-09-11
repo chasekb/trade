@@ -18,6 +18,14 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 
+# Build-time API endpoint values for Next.js rewrites/output.
+ARG BACKEND_URL=http://cpp-backend:8080
+ARG NEXT_PUBLIC_API_URL=http://cpp-backend:8080
+ARG NEXT_PUBLIC_WS_URL=ws://cpp-backend:8080
+ENV BACKEND_URL=${BACKEND_URL}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+
 # Install all dependencies in builder stage
 COPY package.json package-lock.json* ./
 RUN npm ci
@@ -47,6 +55,7 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
+ENV HOSTNAME 0.0.0.0
 # Uncomment the following line in case you want to disable telemetry during runtime.
 ENV NEXT_TELEMETRY_DISABLED 1
 
@@ -72,6 +81,6 @@ ENV PORT 3000
 
 # Health check for Docker
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:$PORT/api/health || exit 1
+  CMD node -e "fetch('http://127.0.0.1:' + process.env.PORT + '/api/health').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
 
 CMD ["node", "server.js"]
