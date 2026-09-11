@@ -152,3 +152,23 @@ No local Docker/Podman image builds, CMake builds, or C++ tests were run.
 Fresh runtime smoke evidence and the historical green run above must not be
 combined into a claim that the current SHA passed CI. Closeout requires the
 fresh exact-SHA Docker Build Validation run to complete successfully.
+
+## Authoritative terminal-successful CI evidence
+
+The authoritative terminal-successful Docker Build Validation run is
+[run 34165232663](https://github.com/chasekb/trade/actions/runs/34165232663),
+with head SHA `af13535a6931e60eb81a64d6d9800ab6deceec76`. The run completed
+with conclusion `success`; all six applicable jobs also reached terminal
+success:
+
+- `Build Frontend (amd64)`: success
+- `Build Frontend (arm64)`: success
+- `Build C++ Backend (amd64)`: success
+- `Build C++ Backend (arm64)`: success
+- `Publish Frontend manifest`: success
+- `Publish C++ Backend manifest`: success
+
+This run is authoritative for the exact SHA listed above. It is prior-run
+evidence and is not evidence that a later report-only commit, including any
+new closeout report SHA, passed Docker Build Validation. Any later report
+commit requires its own exact-head CI run before it can be called CI-verified.
