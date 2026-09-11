@@ -76,4 +76,32 @@ describe('order-book signal response normalization', () => {
     expect(result.summary.activeSignals).toBeUndefined();
     expect(result.signals.map(({ symbol }) => symbol)).toEqual(['BTC-USD', 'ETH-USD']);
   });
+
+  it('preserves operational diagnostics, including zeroes and intentional backoff', () => {
+    const result = normalizeOrderBookSignalsResponse({
+      signals: [],
+      diagnostics: {
+        contract_status: 'stale',
+        current_batch: 0,
+        concurrency: 4,
+        configured_exchange_budget: 12,
+        queue_depth: 0,
+        full_universe_sweep_duration_seconds: 9.5,
+        oldest_symbol_age_seconds: 61,
+        stale_count: 2,
+        dropped_count: 0,
+        rate_limit_count: 1,
+        error_count: 0,
+        intentional_backoff: true,
+      },
+    }, 'live');
+
+    expect(result.diagnostics).toEqual(expect.objectContaining({
+      contract_status: 'stale',
+      current_batch: 0,
+      queue_depth: 0,
+      dropped_count: 0,
+      intentional_backoff: true,
+    }));
+  });
 });

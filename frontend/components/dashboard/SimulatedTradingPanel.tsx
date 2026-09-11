@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { LiveTradingPanelProps, TradingStrategy } from '@/types/trading';
+import { LiveTradingPanelProps, TradingStrategy, OrderBookSignalDiagnostics } from '@/types/trading';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useSimulatedTradingStats, useSimTradingWebSocket } from '@/hooks/useTrading';
 import { OpenPositionsSection } from './OpenPositionsSection';
@@ -733,11 +733,13 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     ...(orderBookData?.active_signals !== undefined ? { active_signals: orderBookData.active_signals as number } : {}),
     ...(orderBookData?.average_strength !== undefined ? { average_strength: orderBookData.average_strength as number } : {}),
     ...(orderBookData?.last_updated ? { last_updated: orderBookData.last_updated as string } : {}),
+    ...(orderBookData?.diagnostics ? { diagnostics: orderBookData.diagnostics } : {}),
   } as {
     total_analyzed?: number;
     active_signals?: number;
     average_strength?: number;
     last_updated?: string;
+    diagnostics?: OrderBookSignalDiagnostics;
   };
 
   return (
@@ -809,6 +811,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
             <OrderBookSignalsTable
               signals={signalsToDisplay}
               pagination={orderBookData?.pagination}
+              currentPage={currentPage}
+              pageSize={pageSize}
               onPageChange={handlePageChange}
               onPageSizeChange={handlePageSizeChange}
               summary={signalsSummary}

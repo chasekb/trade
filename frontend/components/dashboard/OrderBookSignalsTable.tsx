@@ -11,6 +11,7 @@ const formatCounts = (counts?: Record<string, number>) => {
 };
 
 const formatLabel = (value: string) => value.replace(/_/g, ' ');
+const formatDiagnosticValue = (value: unknown) => value === undefined || value === null ? 'Unavailable' : String(value);
 
 // Updated interface to separate server pagination from client pagination state
 export function OrderBookSignalsTable({
@@ -357,10 +358,22 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                 <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
                     <div className="font-medium mb-1">Live order-book analysis coverage</div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <div>Selected: {summary.diagnostics.selected_symbol_count ?? summary.diagnostics.requested_symbol_count ?? 0}</div>
-                        <div>Attempted this tick: {summary.diagnostics.quote_attempted_symbol_count ?? 0}</div>
-                        <div>Quote successes: {summary.diagnostics.quote_success_symbol_count ?? 0}</div>
-                        <div>Missing latest rows: {summary.diagnostics.missing_latest_signal_count ?? summary.diagnostics.quote_skipped_symbol_count ?? 0}</div>
+                        <div>Contract status: {formatDiagnosticValue(summary.diagnostics.contract_status)}</div>
+                        <div>Current batch: {formatDiagnosticValue(summary.diagnostics.current_batch)}</div>
+                        <div>Concurrency: {formatDiagnosticValue(summary.diagnostics.concurrency)}</div>
+                        <div>Exchange budget: {formatDiagnosticValue(summary.diagnostics.configured_exchange_budget)}</div>
+                        <div>Queue depth: {formatDiagnosticValue(summary.diagnostics.queue_depth)}</div>
+                        <div>Sweep duration (seconds): {formatDiagnosticValue(summary.diagnostics.full_universe_sweep_duration_seconds)}</div>
+                        <div>Oldest symbol age (seconds): {formatDiagnosticValue(summary.diagnostics.oldest_symbol_age_seconds)}</div>
+                        <div>Stale count: {formatDiagnosticValue(summary.diagnostics.stale_count)}</div>
+                        <div>Dropped count: {formatDiagnosticValue(summary.diagnostics.dropped_count)}</div>
+                        <div>Rate-limit count: {formatDiagnosticValue(summary.diagnostics.rate_limit_count)}</div>
+                        <div>Error count: {formatDiagnosticValue(summary.diagnostics.error_count)}</div>
+                        <div>Intentional backoff: {formatDiagnosticValue(summary.diagnostics.intentional_backoff)}</div>
+                        <div>Selected: {formatDiagnosticValue(summary.diagnostics.selected_symbol_count ?? summary.diagnostics.requested_symbol_count)}</div>
+                        <div>Attempted this tick: {formatDiagnosticValue(summary.diagnostics.quote_attempted_symbol_count)}</div>
+                        <div>Quote successes: {formatDiagnosticValue(summary.diagnostics.quote_success_symbol_count)}</div>
+                        <div>Missing latest rows: {formatDiagnosticValue(summary.diagnostics.missing_latest_signal_count ?? summary.diagnostics.quote_skipped_symbol_count)}</div>
                     </div>
                     <div className="mt-1 text-xs text-blue-800">
                         Current latest-by-symbol signals: {summary.diagnostics.current_latest_signal_count ?? totalSignals ?? 'Unavailable'}. Recent signal records retained: {summary.diagnostics.recent_signal_record_count ?? 'Unavailable'}.

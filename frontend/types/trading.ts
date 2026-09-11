@@ -114,6 +114,38 @@ export interface OrderBookSignal {
   prediction?: 'BUY' | 'SELL' | 'HOLD';
 }
 
+export interface OrderBookSignalDiagnostics {
+ contract_status?: string;
+ current_batch?: number | string;
+ concurrency?: number;
+ configured_exchange_budget?: number | string;
+ queue_depth?: number;
+ full_universe_sweep_duration_seconds?: number;
+ oldest_symbol_age_seconds?: number;
+ stale_count?: number;
+ dropped_count?: number;
+ rate_limit_count?: number;
+ error_count?: number;
+ intentional_backoff?: boolean | string;
+ selected_symbol_count?: number;
+ requested_symbol_count?: number;
+ quote_attempted_symbol_count?: number;
+ quote_success_symbol_count?: number;
+ missing_latest_signal_count?: number;
+ quote_skipped_symbol_count?: number;
+ current_latest_signal_count?: number;
+ recent_signal_record_count?: number;
+ executable_order_intent_count?: number;
+ execution_blocker_counts?: Record<string, number>;
+ execution_strength_bucket_counts?: Record<string, number>;
+ execution_expected_return_bucket_counts?: Record<string, number>;
+ missing_latest_signal_symbols?: string[];
+ failed_request_symbol_count?: number;
+ failed_request_symbols?: string[];
+ widget_coverage_contract?: string;
+ contract?: string;
+}
+
 export interface PriceDataPoint {
   timestamp: string;
   price: number;

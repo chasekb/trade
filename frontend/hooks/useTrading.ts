@@ -41,6 +41,7 @@ type OrderBookSignalsData = {
     per_page?: number | undefined;
     limit?: number | undefined;
     total_signals?: number | undefined;
+    total?: number | undefined;
     total_pages?: number | undefined;
     has_next?: boolean | undefined;
     has_prev?: boolean | undefined;
