@@ -1,0 +1,4914 @@
+{
+  "audit": {
+    "coverage_status": "complete",
+    "duplicate_row_keys": [],
+    "expected_group_count": 26,
+    "missing_groups": [],
+    "observed_group_count": 26,
+    "row_count": 26,
+    "sparse_group_count": 78,
+    "unexpected_groups": []
+  },
+  "configuration": {
+    "cost_model": {
+      "fee_rate": 0.001,
+      "slippage_bps": 1.0,
+      "spread_bps": 2.0
+    },
+    "data_id": "diagnostic_ablation_fixture",
+    "diagnostic_threshold": 0.6,
+    "directions": [
+      "buy",
+      "sell"
+    ],
+    "modes": [
+      "disabled",
+      "report-only",
+      "factored"
+    ],
+    "seed": "fixed-fixture-v1",
+    "strategies": [
+      "orderbook",
+      "ml_enhanced_orderbook",
+      "ml",
+      "sma",
+      "ema",
+      "rsi",
+      "bollinger",
+      "macd",
+      "stochastic",
+      "fibonacci",
+      "atr",
+      "dca",
+      "buy_and_hold"
+    ]
+  },
+  "configuration_hash": "c1de513b0d2ffaeb02033f1247bada48194f65047f5ca93c236a9a5c2419557a",
+  "input": "data/replay/diagnostic_ablation_fixture.jsonl",
+  "input_sha256": "0e29a01a12321e3e3952703b7c62a1b7091f386ad0b53d3d2a10f0de68fec9b8",
+  "live_orders_enabled": false,
+  "meaningful_changes": [
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007399999999999948,
+      "strategy": "atr"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007400000000000021,
+      "strategy": "bollinger"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.00740000000000004,
+      "strategy": "buy_and_hold"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007399999999999995,
+      "strategy": "dca"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007015384615384616,
+      "strategy": "ema"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.0074000000000000316,
+      "strategy": "fibonacci"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007399999999999936,
+      "strategy": "macd"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.00739999999999996,
+      "strategy": "ml"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007400000000000051,
+      "strategy": "ml_enhanced_orderbook"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.0174,
+      "strategy": "orderbook"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007399999999999973,
+      "strategy": "rsi"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007400000000000011,
+      "strategy": "sma"
+    },
+    {
+      "blocked_delta": 1,
+      "direction": "sell",
+      "expectancy_delta": null,
+      "factored_expectancy": null,
+      "meaningful": true,
+      "report_only_expectancy": 0.007399999999999985,
+      "strategy": "stochastic"
+    }
+  ],
+  "modes": [
+    "disabled",
+    "report-only",
+    "factored"
+  ],
+  "offline_only": true,
+  "provenance": {
+    "code": "tools/replay_diagnostic_ablation.py",
+    "data_id": "diagnostic_ablation_fixture",
+    "seed": "fixed-fixture-v1"
+  },
+  "runs": [
+    {
+      "diagnostic_threshold": 0.6,
+      "directional_summary": {
+        "buy": {
+          "expected_return": {
+            "ci95": {
+              "lower": 0.01739999999999998,
+              "method": "normal_95_percent",
+              "supported": true,
+              "upper": 0.017400000000000023
+            },
+            "sample_count": 13,
+            "value": 0.017400000000000002
+          },
+          "sample_quality": "supported"
+        },
+        "sell": {
+          "expected_return": {
+            "ci95": {
+              "lower": 0.0066260446565507,
+              "method": "normal_95_percent",
+              "supported": true,
+              "upper": 0.009653245284277696
+            },
+            "sample_count": 13,
+            "value": 0.008139644970414198
+          },
+          "sample_quality": "supported"
+        }
+      },
+      "mode": "disabled",
+      "results": [
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999964
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999964
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml_enhanced_orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000051
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000051
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml_enhanced_orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00739999999999996
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00739999999999996
+          },
+          "net_return": 0.007399999999999851,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000002
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000002
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "sma",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000011
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000011
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "sma",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999985
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999985
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ema",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007015384615384616
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007015384615384616
+          },
+          "net_return": 0.0070153846153846455,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ema",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999943
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999943
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "rsi",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999973
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999973
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "rsi",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000004
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000004
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "bollinger",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000021
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000021
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "bollinger",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "macd",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999936
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999936
+          },
+          "net_return": 0.007399999999999851,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "macd",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01739999999999997
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01739999999999997
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "stochastic",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999985
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999985
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "stochastic",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "fibonacci",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0074000000000000316
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0074000000000000316
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "fibonacci",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000027
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000027
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "atr",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999948
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999948
+          },
+          "net_return": 0.007399999999999851,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "atr",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999992
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999992
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "dca",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999995
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999995
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "dca",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999957
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999957
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "buy_and_hold",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00740000000000004
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "disabled",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00740000000000004
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "buy_and_hold",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        }
+      ]
+    },
+    {
+      "diagnostic_threshold": 0.6,
+      "directional_summary": {
+        "buy": {
+          "expected_return": {
+            "ci95": {
+              "lower": 0.01739999999999998,
+              "method": "normal_95_percent",
+              "supported": true,
+              "upper": 0.017400000000000023
+            },
+            "sample_count": 13,
+            "value": 0.017400000000000002
+          },
+          "sample_quality": "supported"
+        },
+        "sell": {
+          "expected_return": {
+            "ci95": {
+              "lower": 0.0066260446565507,
+              "method": "normal_95_percent",
+              "supported": true,
+              "upper": 0.009653245284277696
+            },
+            "sample_count": 13,
+            "value": 0.008139644970414198
+          },
+          "sample_quality": "supported"
+        }
+      },
+      "mode": "report-only",
+      "results": [
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999964
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999964
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml_enhanced_orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000051
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000051
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml_enhanced_orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00739999999999996
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00739999999999996
+          },
+          "net_return": 0.007399999999999851,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000002
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000002
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "sma",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000011
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000011
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "sma",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999985
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999985
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ema",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007015384615384616
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007015384615384616
+          },
+          "net_return": 0.0070153846153846455,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ema",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999943
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999943
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "rsi",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999973
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999973
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "rsi",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000004
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000004
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "bollinger",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000021
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007400000000000021
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "bollinger",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "macd",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999936
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999936
+          },
+          "net_return": 0.007399999999999851,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "macd",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01739999999999997
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01739999999999997
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "stochastic",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999985
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999985
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "stochastic",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "fibonacci",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0074000000000000316
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0074000000000000316
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "fibonacci",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000027
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000027
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "atr",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999948
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999948
+          },
+          "net_return": 0.007399999999999851,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "atr",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999992
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999992
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "dca",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999995
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.007399999999999995
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "dca",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 1,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999957
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999957
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "buy_and_hold",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00740000000000004
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "report-only",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.00740000000000004
+          },
+          "net_return": 0.007400000000000073,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "buy_and_hold",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        }
+      ]
+    },
+    {
+      "diagnostic_threshold": 0.6,
+      "directional_summary": {
+        "buy": {
+          "expected_return": {
+            "ci95": {
+              "lower": 0.01739999999999998,
+              "method": "normal_95_percent",
+              "supported": true,
+              "upper": 0.017400000000000023
+            },
+            "sample_count": 13,
+            "value": 0.017400000000000002
+          },
+          "sample_quality": "supported"
+        },
+        "sell": {
+          "expected_return": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "sample_quality": "sparse"
+        }
+      },
+      "mode": "factored",
+      "results": [
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.0174
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_missing": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "orderbook",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 1,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999964
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999964
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml_enhanced_orderbook",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml_enhanced_orderbook",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ml",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000002
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000002
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "sma",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_missing": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "sma",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 1,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999985
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999985
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ema",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "ema",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999943
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999943
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "rsi",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "rsi",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000004
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000004
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "bollinger",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "bollinger",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "macd",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "macd",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01739999999999997
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01739999999999997
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "stochastic",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_missing": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "stochastic",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 1,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.01740000000000006
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "fibonacci",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "fibonacci",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000027
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017400000000000027
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "atr",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "atr",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999992
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999992
+          },
+          "net_return": 0.017400000000000082,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "dca",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_missing": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 0,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "dca",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 1,
+          "wins": 0
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999957
+          },
+          "blocked_executions": 0,
+          "blocker_attribution": {},
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "buy",
+          "executed_trades": 1,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": 0.0,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 1,
+            "value": 0.017399999999999957
+          },
+          "net_return": 0.01739999999999986,
+          "profit_factor": "infinite",
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "buy_and_hold",
+          "trade_frequency": 1.0,
+          "unavailable_diagnostics": 0,
+          "wins": 1
+        },
+        {
+          "average_loss": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "average_win": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "blocked_executions": 1,
+          "blocker_attribution": {
+            "diagnostic_below_threshold": 1
+          },
+          "costs": {
+            "fee_rate": 0.001,
+            "slippage_bps": 1.0,
+            "spread_bps": 2.0
+          },
+          "coverage_status": "covered",
+          "diagnostics_available": 1,
+          "direction": "sell",
+          "executed_trades": 0,
+          "input_decisions": 1,
+          "invalid_diagnostics": 0,
+          "losses": 0,
+          "max_drawdown": null,
+          "mode": "factored",
+          "net_expectancy": {
+            "ci95": {
+              "lower": null,
+              "method": "normal_95_percent",
+              "reason": "requires n >= 2",
+              "supported": false,
+              "upper": null
+            },
+            "sample_count": 0,
+            "value": null
+          },
+          "net_return": null,
+          "profit_factor": null,
+          "sample_count": 1,
+          "sample_quality": "sparse",
+          "strategy": "buy_and_hold",
+          "trade_frequency": 0.0,
+          "unavailable_diagnostics": 0,
+          "wins": 0
+        }
+      ]
+    }
+  ],
+  "schema_version": 2
+}
