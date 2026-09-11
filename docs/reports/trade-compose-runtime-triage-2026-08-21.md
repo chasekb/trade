@@ -485,3 +485,13 @@ run is evidence for the exact prerequisite SHA above, not for a later
 report-only commit. The replacement closeout must verify its own pushed SHA
 separately; no local build, test, image build, or prior-SHA run is a substitute
 for that final-SHA check.
+
+The report-only closeout commit `3c8325fc610153d386d9327aef2ceea9e4f54847`
+was pushed to `wt/t_6eeb3ca2-report-refresh`. At verification time,
+`gh run list --repo chasekb/trade --commit
+3c8325fc610153d386d9327aef2ceea9e4f54847` returned no workflow runs, and the
+commit check-runs endpoint returned `total_count: 0`. The successful run
+`34165232663` above is therefore retained as prerequisite evidence only and
+is not substituted for final-SHA evidence. Final-SHA CI remains unavailable;
+the owner must authorize or trigger an Actions run for the pushed report SHA,
+then verify its head SHA, terminal conclusion, and all six required jobs.
