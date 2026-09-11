@@ -11,7 +11,7 @@ Method
 - Sweep size: 1,296 combinations across min_orderbook_signal_strength, orderbook_expected_return_scale_percent, round_trip_fee_percent, slippage_buffer_percent, max_spread_percent, imbalance_weight, and position_size_percent.
 - Candidate acceptance: directional expected return must exceed fee, slippage, and observed spread. Buy and sell directions are evaluated separately; no absolute-value shortcut is used.
 - Fail-closed rule: a candidate with negative overall expectancy is ineligible. A segment with at least eight trades and negative expectancy also makes it ineligible, so a larger count cannot win by admitting losing trades.
-- Metrics: average win, average loss, expectancy, profit factor, maximum drawdown, trade frequency, rejected intent rate, blocked intent rate, and symbol/branch segments.
+- Metrics: average win, average loss, expectancy, profit factor, maximum drawdown, trade frequency, accepted/rejected/blocked intent rates, directional-gate violations, rejection reasons, and symbol/branch segments.
 
 Evidence
 

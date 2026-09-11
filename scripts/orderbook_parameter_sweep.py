@@ -69,11 +69,17 @@ def read_rows(path: Path) -> list[Observation]:
     rows: list[Observation] = []
     with path.open(newline="", encoding="utf-8") as handle:
         for item in csv.DictReader(handle):
+            branch = item.get("branch", "").strip()
+            gate = item["directional_gate"].strip().lower()
+            if not branch:
+                raise ValueError("input row is missing branch data")
+            if gate not in {"buy", "sell"}:
+                raise ValueError(f"unsupported directional gate: {gate!r}")
             rows.append(Observation(
-                int(item["timestamp"]), item["symbol"], item.get("branch", "unknown"),
+                int(item["timestamp"]), item["symbol"], branch,
                 float(item["imbalance"]), float(item["spread_percent"]),
                 float(item["raw_strength"]), float(item["expected_return_percent"]),
-                float(item["future_return_percent"]), item["directional_gate"],
+                float(item["future_return_percent"]), gate,
             ))
     if not rows:
         raise ValueError("input contains no observations")
@@ -92,7 +98,8 @@ def write_fixture(path: Path, rows: Iterable[Observation]) -> None:
 def evaluate(candidate: Candidate, rows: list[Observation], split: int) -> dict:
     test_rows = [row for row in rows if row.timestamp >= split]
     accepted: list[float] = []
-    rejected = blocked = 0
+    rejected = blocked = directional_violations = 0
+    rejection_reasons = {"directional_gate": 0, "cost": 0, "threshold": 0}
     by_segment: dict[tuple[str, str], list[float]] = {}
     for row in test_rows:
         directional_strength = row.raw_strength * candidate.imbalance_weight
@@ -100,13 +107,21 @@ def evaluate(candidate: Candidate, rows: list[Observation], split: int) -> dict:
         cost = candidate.round_trip_fee_percent + candidate.slippage_buffer_percent + row.spread_percent
         qualifies = directional_strength >= candidate.min_orderbook_signal_strength
         qualifies = qualifies and row.spread_percent <= candidate.max_spread_percent
+        direction_matches_data = (row.directional_gate == "buy" and row.imbalance > 1) or (row.directional_gate == "sell" and row.imbalance < 1)
+        if not direction_matches_data:
+            blocked += 1
+            directional_violations += 1
+            rejection_reasons["directional_gate"] += 1
+            continue
         # Preserve direction: a buy must have positive estimated edge and a sell
         # must have negative raw return before costs; no absolute-value shortcut.
         directional_edge = estimated if row.directional_gate == "buy" else -estimated
         if not qualifies:
             blocked += 1
+            rejection_reasons["threshold"] += 1
         elif directional_edge <= cost:
             rejected += 1
+            rejection_reasons["cost"] += 1
         else:
             result = (row.future_return_percent if row.directional_gate == "buy" else -row.future_return_percent)
             result -= candidate.round_trip_fee_percent + candidate.slippage_buffer_percent
@@ -135,7 +150,9 @@ def evaluate(candidate: Candidate, rows: list[Observation], split: int) -> dict:
         "expectancy": expectancy,
         "profit_factor": sum(wins) / abs(sum(losses)) if losses else (None if wins else 0.0),
         "max_drawdown": drawdown, "trade_frequency": len(accepted) / len(test_rows),
+        "accepted_intent_rate": len(accepted) / len(test_rows),
         "rejected_intent_rate": rejected / len(test_rows), "blocked_intent_rate": blocked / len(test_rows),
+        "directional_gate_violations": directional_violations, "rejection_reasons": rejection_reasons,
         "negative_expectancy": expectancy < 0, "segments": segments,
     }
 
@@ -152,7 +169,7 @@ def sweep(rows: list[Observation], grid: dict[str, list[float]], split: int) -> 
         candidates.append({"parameters": asdict(candidate), "eligible": eligible, "metrics": metrics})
     base_metrics = evaluate(baseline, rows, split)
     eligible = [item for item in candidates if item["eligible"]]
-    eligible.sort(key=lambda item: (item["metrics"]["expectancy"], item["metrics"]["profit_factor"], -item["metrics"]["max_drawdown"], item["metrics"]["trades"]), reverse=True)
+    eligible.sort(key=lambda item: (item["metrics"]["expectancy"], item["metrics"]["profit_factor"] or 0.0, -item["metrics"]["max_drawdown"], item["metrics"]["trades"]), reverse=True)
     selected = eligible[0] if eligible else {"parameters": asdict(baseline), "eligible": False, "metrics": base_metrics}
     return {"baseline": {"parameters": asdict(baseline), "metrics": base_metrics}, "selected": selected, "eligible_count": len(eligible)}, candidates
 
@@ -181,7 +198,8 @@ def main() -> int:
     with (args.output_dir / "candidates.jsonl").open("w", encoding="utf-8") as handle:
         for item in candidates:
             handle.write(json.dumps(item, sort_keys=True) + "\n")
-    manifest = {"schema": "orderbook-parameter-sweep/v1", "input": str(fixture_path), "rows": len(rows), "train_rows": len(rows) // 2, "test_rows": len(rows) - len(rows) // 2, "grid": grid, "summary": summary, "safety": {"offline_only": True, "live_defaults_changed": False, "negative_expectancy_candidates_rejected": True}}
+    split = max(1, int(len(rows) * 0.5))
+    manifest = {"schema": "orderbook-parameter-sweep/v1", "input": "fixture.csv" if not args.input else str(args.input.name), "rows": len(rows), "train_rows": split, "test_rows": len(rows) - split, "train_max_timestamp": max(row.timestamp for row in rows if row.timestamp < split), "evaluation_min_timestamp": min(row.timestamp for row in rows if row.timestamp >= split), "grid": grid, "summary": summary, "reproducibility": {"seed": None if args.input else args.seed, "ordering": "timestamp_then_input_order", "code_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}, "safety": {"offline_only": True, "live_defaults_changed": False, "negative_expectancy_candidates_rejected": True}}
     manifest["input_sha256"] = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
     (args.output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"output_dir": str(args.output_dir), "rows": len(rows), "candidates": len(candidates), "selected": summary["selected"]}, indent=2, sort_keys=True, allow_nan=False))

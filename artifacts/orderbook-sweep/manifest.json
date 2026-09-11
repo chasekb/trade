@@ -1,4 +1,5 @@
 {
+  "evaluation_min_timestamp": 120,
   "grid": {
     "imbalance_weight": [
       0.8,
@@ -35,8 +36,13 @@
       0.08
     ]
   },
-  "input": "/run/media/unordered_map/priority_queue/log(perplexity)/-sum/log/Pr(context_for_token)/chasecapitalmanagement/etl/trade/.worktrees/t_a910c474/artifacts/orderbook-sweep/fixture.csv",
+  "input": "fixture.csv",
   "input_sha256": "e9e620755f5911c334c7ad6bf03e74c73a1cac809e5f3cc4a448658ecccc7c1c",
+  "reproducibility": {
+    "code_sha256": "8488dc20db7cce51aa8f3c500c62b295f7567602d7f3109e7b3ff78ef8b00db5",
+    "ordering": "timestamp_then_input_order",
+    "seed": 20260907
+  },
   "rows": 240,
   "safety": {
     "live_defaults_changed": false,
@@ -47,15 +53,22 @@
   "summary": {
     "baseline": {
       "metrics": {
+        "accepted_intent_rate": 0.175,
         "average_loss": -0.0016741899099007842,
         "average_win": 0.0012339019114227451,
         "blocked_intent_rate": 0.325,
+        "directional_gate_violations": 0,
         "expectancy": 0.0004030185339017364,
         "losses": 6,
         "max_drawdown": 0.007251081856421522,
         "negative_expectancy": false,
         "profit_factor": 1.8425357603186556,
         "rejected_intent_rate": 0.5,
+        "rejection_reasons": {
+          "cost": 60,
+          "directional_gate": 0,
+          "threshold": 39
+        },
         "segments": {
           "BTC-USD::baseline": {
             "expectancy": 0.00182794,
@@ -106,15 +119,22 @@
     "selected": {
       "eligible": true,
       "metrics": {
+        "accepted_intent_rate": 0.09166666666666666,
         "average_loss": 0.0,
         "average_win": 0.003721214408396507,
         "blocked_intent_rate": 0.8,
+        "directional_gate_violations": 0,
         "expectancy": 0.003721214408396507,
         "losses": 0,
         "max_drawdown": 0.0,
         "negative_expectancy": false,
         "profit_factor": null,
         "rejected_intent_rate": 0.10833333333333334,
+        "rejection_reasons": {
+          "cost": 13,
+          "directional_gate": 0,
+          "threshold": 96
+        },
         "segments": {
           "BTC-USD::baseline": {
             "expectancy": 0.00445589,
@@ -163,5 +183,6 @@
     }
   },
   "test_rows": 120,
+  "train_max_timestamp": 119,
   "train_rows": 120
 }
