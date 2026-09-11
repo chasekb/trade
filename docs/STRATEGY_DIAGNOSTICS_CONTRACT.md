@@ -6,7 +6,9 @@ This document defines the contract for profitability, expected-return, confidenc
 
 ## 1. Scope and decision vocabulary
 
-The supported strategy identifiers are `sma`, `ema`, `rsi`, `bollinger`, `macd`, `stochastic`, `fibonacci`, `dca`, `buyandhold`, `orderbook`, and `ml_enhanced_orderbook`. The same contract applies to every producer, including the indicator signal evaluator, order-book fallback, ML prediction path, simulated trading service, live trading service, execution reconciliation, API serialization, and dashboard normalizers.
+The supported strategy identifiers in this repository are `sma`, `ema`, `rsi`, `bollinger`, `macd`, `stochastic`, `fibonacci`, `atr`, `dca`, `buyandhold`, `orderbook`, and `ml_enhanced_orderbook`. The same contract applies to every producer, including the Python strategy classes under `src/trade_bot/trading/strategies/`, `SimulatedTradingManager`, the live `TradingBot`/`LiveTradeExecutor` path, database trade and signal managers, API serialization, and dashboard normalizers. `ml_enhanced_orderbook` is instantiated by `SimulatedTradingManager`; the base strategy registry does not expose it as a normal indicator strategy.
+
+Repository reconciliation (verified against the current source): `TradeSignal` currently carries action/strength/price/reason, while `Trade` and `OrderBookSignal` carry legacy optional ML fields. There is no shared `ProfitabilityDiagnostic`, canonical status, directional-edge field, forecast horizon, or cost-basis record yet. This document is therefore a target contract, not a claim that those fields already exist. The live start handler currently accepts a strategy and schedules `TradingBot.start()` without a diagnostic gate; implementation must add the fail-closed check before retaining the “started” response or submitting an order. Unknown strategy handling in the simulator logs a warning and leaves `strategy_instance` unset; it must remain unavailable/blocking rather than being treated as a valid zero signal.
 
 A diagnostic has one or more explicit roles:
 
@@ -146,6 +148,7 @@ The classification below describes the current intended behavior and the require
 | `fibonacci` | Active: retracement/support/resistance | Required for live | Active sizing input | Same entry contract | Report-only unless explicit exit policy | Active attribution |
 | `dca` | Active: schedule emits buy | Required for live unless an explicit, audited DCA policy says otherwise; schedule is not profitability evidence | Active sizing input, capped by configured risk | Active by definition, but every purchase still passes cash, minimum, and live safety gates | Report-only | Active attribution; record scheduled reason |
 | `buyandhold` | Active: one initial buy | Required for live; no position is not evidence of profitability | Active sizing input | No re-entry after held position unless policy explicitly changes | Report-only; hold does not imply close | Active attribution |
+| `atr` | Active: volatility-derived signal/parameter producer | Required for live; missing profitability diagnostics block | Active sizing input may reduce configured ceiling | Same entry contract; ownership and risk limits still gate | Report-only unless a separate exit rule requests close | Active attribution |
 | `orderbook` | Active: imbalance/order-book signal | Active shared profitability gate; missing ML expected return remains unavailable and blocks | Active sizing input; spread/volatility reduce size but cannot override gate | Same shared gate and ownership checks | Report-only unless explicit close policy | Active blocker, fill, and expectancy attribution |
 | `ml_enhanced_orderbook` | Active: order-book signal followed by classifier/regressor/transformer enrichment | Active shared profitability gate, then active directional ML gate; missing required model output blocks unless the explicitly configured baseline fallback produces a valid diagnostic | Active sizing input from directional edge, confidence, and spread/volatility; never overrides either gate | Same fresh diagnostic, ML, ownership, and execution checks | Report-only unless explicit close policy | Active model-readiness, profitability, ML-blocker, fill, and expectancy attribution |
 
@@ -164,13 +167,14 @@ Legend: `Active (producer)` is factored into the named path when its producer is
 | `fibonacci` | Active (producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries; Sim may use explicit bypass for signal-only studies. |
 | `dca` | Active (schedule producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling) | Report-only | Active (schedule/block) | Live requires the shared gate unless an audited policy is explicitly approved; Sim bypass remains report-labeled. |
 | `buyandhold` | Active (initial-buy producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost) | Active (fail-closed) | Active (cost/ceiling) | Report-only | Active (report/block) | Live requires the shared gate; Sim bypass is explicit and cannot authorize re-entry or close. |
+| `atr` | Active (strategy producer) | Unavailable (no model producer) | Unavailable (no model producer) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (cost/config) | Active (fail-closed) | Active (cost/ceiling only) | Report-only | Active (report/block) | Live blocks entries until a valid profitability producer is attached; Sim bypass is explicit and report-labeled. |
 | `orderbook` | Active (producer) | Unavailable (plain orderbook has no probability) | Unavailable (plain orderbook has no model) | Unavailable (no forecast producer) | Unavailable (depends on forecast) | Active (producer/config) | Active (fail-closed) | Active (cost/ceiling) | Report-only | Active (report/block/fill) | Live and Sim use identical arithmetic; missing expected return blocks live and is report-labeled by an explicit Sim bypass only. |
 | `ml_enhanced_orderbook` | Active (orderbook producer) | Active (classifier producer) | Active (model producer) | Active (model/fallback producer) | Active (producer) | Active (producer/config) | Active (fail-closed) | Active (edge/confidence/cost) | Report-only | Active (model/block/fill) | Live and Sim require valid model output unless the configured labeled fallback supplies the same valid diagnostic. |
-| unknown strategy identifier | Unavailable (evaluator returns `hold`) | Unavailable (no strategy producer) | Unavailable (no strategy producer) | Unavailable (unsupported strategy) | Unavailable (depends on forecast) | Unavailable (no intent) | Active (fail-closed: unsupported_strategy) | Unavailable (no executable intent) | Report-only (no close authority) | Active (block/report) | Live always blocks; Sim records `hold` and unsupported-strategy status and cannot bypass into an order. |
+| unknown strategy identifier | Unavailable (strategy instance is not created) | Unavailable (no strategy producer) | Unavailable (no strategy producer) | Unavailable (unsupported strategy) | Unavailable (depends on forecast) | Unavailable (no intent) | Active (fail-closed: unsupported_strategy) | Unavailable (no executable intent) | Report-only (no close authority) | Active (block/report) | Live always blocks; Sim records no executable signal and unsupported-strategy status and cannot bypass into an order. |
 
 For every indicator, DCA, buy-and-hold, and plain-orderbook row, “Unavailable” is intentional current-state behavior: it does not mean zero, and it does not turn the corresponding gate into report-only. For live mode the active fail-closed gate blocks the generated buy/sell intent. For simulation/backtest mode, only an explicit caller policy may change that gate to `Report-only (explicit bypass)`; the bypass must be serialized with its reason and is rejected by live configuration. `ml_enhanced_orderbook` is the only listed strategy whose current contract has producers for all forecast/confidence diagnostics, subject to model readiness and bounds.
 
-The unknown identifier is the `evaluateStrategySignal` fallback: it returns `hold`, has no signal-strength or profitability producer, and receives `gate_reason=unsupported_strategy`; it is not equivalent to a valid zero-strength strategy. This row applies to live, simulation, and harness paths.
+The unknown identifier is the simulator/strategy-factory unsupported path: `SimulatedTradingManager.set_strategy_info` leaves `strategy_instance` unset and signal generation returns no signal. It has no signal-strength or profitability producer and receives `gate_reason=unsupported_strategy`; it is not equivalent to a valid zero-strength strategy. This row applies to live, simulation, and backtest paths.
 
 The indicator strategies currently generate signals without expected-return data. Until a valid model/forecast producer is wired to each strategy, their profitability diagnostic is `unavailable`, not fee-neutral. The live service must therefore block generated entries under the shared gate. Simulated/backtest callers may use an explicit opt-in policy to evaluate signal behavior without a profitability gate, but that bypass must be visible in the report and never leak into live configuration.
 
@@ -182,7 +186,7 @@ At raw order-book signal generation, ML `win_probability`, `expected_return`, an
 
 ### Signal generation
 
-`evaluateStrategySignal` owns indicator logic and returns only signal type, strength, and reason. It must not fabricate profitability. Each service must attach one diagnostic record after signal generation and before intent creation. Warm-up (`insufficient price history`) remains a data-sufficiency hold; it must not be mislabeled as a profitability blocker.
+The strategy classes under `src/trade_bot/trading/strategies/` own indicator logic and return `TradeSignal` action, strength, price, and reason. They must not fabricate profitability. Each service must attach one diagnostic record after signal generation and before intent creation. Warm-up (`insufficient price history`) remains a data-sufficiency hold; it must not be mislabeled as a profitability blocker.
 
 ### Profitability and ML gates
 
@@ -190,7 +194,7 @@ Apply signal-strength bounds, availability, direction normalization, and cost hu
 
 ### Position sizing
 
-`PositionSizingInputs::expected_return` must adopt the signed forecast convention, while sizing should consume `directional_expected_edge_fraction` or an explicitly named signed value after side normalization. Cost-adjusted edge must not be counted twice: either the sizing function receives gross expected return and subtracts required costs once, or it receives net edge and does not subtract them again. The configured dollar/percentage allocation is a hard upper bound; all confidence/performance multipliers can only reduce it.
+The simulator's `Trade`/`Position` models and any future sizing inputs must adopt the signed forecast convention, while sizing should consume `directional_expected_edge_fraction` or an explicitly named signed value after side normalization. Cost-adjusted edge must not be counted twice: either the sizing function receives gross expected return and subtracts required costs once, or it receives net edge and does not subtract them again. The configured dollar/percentage allocation is a hard upper bound; all confidence/performance multipliers can only reduce it.
 
 `MinimumTradeSizeInputs` must use the same canonical cost basis and must reject non-finite/negative cost inputs rather than clamping them into a plausible trade. `allow_unprofitable_trades` is not permitted for live mode and must be carried as an explicit simulation/backtest-only flag.
 
@@ -210,11 +214,11 @@ Every generated signal, executable intent, blocker, fill, and closing outcome mu
 
 ### Required before adopting this contract
 
-1. Add a shared typed diagnostic record/status and central direction-normalization/factoring function.
+1. Add a shared typed diagnostic record/status and central direction-normalization/factoring function, then thread it through `TradeSignal`, `Trade`, `OrderBookSignal`, `SimulatedTradingManager`, `TradingBot`, and `LiveTradeExecutor`.
 2. Replace implicit zero defaults for expected return, edge, and costs with nullable/status-aware representations at API boundaries.
 3. Validate finite values and bounds at service boundaries; fail closed for live gates.
 4. Unify live and simulated order-book gate arithmetic with the canonical fee/spread/slippage basis.
-5. Separate signed gross forecast from directional net edge in `StrategySignal`, `PositionSizingPolicy`, `StrategyExpectancyHarness`, `ExecutionReconciliation`, and JSON serialization.
+5. Separate signed gross forecast from directional net edge in the Python trading models, strategy signal dictionaries, simulated/live execution paths, reconciliation, and JSON serialization.
 6. Add explicit side, horizon, availability/status, and diagnostic factor to persisted signal/intent records and API payloads; provide a migration/backward-compatible reader for legacy rows.
 7. Ensure live exchange fees replace estimates exactly once and are propagated to persistence, accounting, reconciliation, and frontend output.
 8. Update frontend TypeScript types, normalizers, tables, and API tests for `null` unavailable fields, units, side semantics, and contract version.
@@ -223,7 +227,7 @@ Every generated signal, executable intent, blocker, fill, and closing outcome mu
 
 ### Optional improvements after the required migration
 
-- Add a strongly typed C++ enum for side/status/diagnostic role instead of strings.
+- Add strongly typed Python enums or validated literals for side/status/diagnostic role instead of unconstrained strings.
 - Add a forecast-provider interface with model version, calibration window, and horizon metadata.
 - Persist separate one-way and round-trip spread/slippage estimates when execution analysis needs both.
 - Add schema-level database constraints for finite/range checks where PostgreSQL types permit them.
@@ -246,7 +250,7 @@ The implementation is complete only when tests demonstrate:
 9. Actual exchange fees replace provisional fees without double counting; simulated assumptions remain labeled simulated.
 10. API JSON round-trips canonical `null` availability and frontend preserves zero values with nullish fallbacks.
 11. Reconciliation attributes blockers and outcomes by strategy and side, counts exact-flat closing legs, and exposes coverage/undefined profit-factor flags.
-12. CI exercises the C++ unit targets and frontend contract tests; no completion claim should rely on local build output when the repository's remote-only policy applies.
+12. CI exercises the Python strategy/trading tests and frontend contract tests; no completion claim should rely on local build output when the repository's remote-only policy applies.
 
 ## 10. Live safety invariant
 
