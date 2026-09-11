@@ -2344,7 +2344,7 @@ void LiveTradingService::generateTickLocked(const std::map<std::string, MarketQu
       closePositionLocked(symbol, opposite_signal ? "Closed on opposite signal" : "Closed after holding period");
       if (allow_reopen_after_close && signal_generated &&
           static_cast<int>(managedPositionCountLocked()) < max_positions_ &&
-          signalPassesMlGateLocked(signal)) {
+          entry_execution_analysis.get("executable_intent", Json::Value(false)).asBool()) {
         openPositionLocked(signal, "Re-opened after close");
       }
     }

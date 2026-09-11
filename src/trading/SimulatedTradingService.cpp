@@ -2344,7 +2344,8 @@ void SimulatedTradingService::generateTickLocked(
     if (opposite_signal || age_out) {
       closePositionLocked(symbol, opposite_signal ? "Closed on opposite signal" : "Closed after holding period");
       if (signal_generated && static_cast<int>(positions_.size()) < max_positions_ &&
-          signalPassesMlGateLocked(signal)) {
+          signal.payload.get("execution_analysis", Json::Value(Json::objectValue))
+              .get("executable_intent", Json::Value(false)).asBool()) {
         openPositionLocked(signal, "Re-opened after close");
       }
     }
