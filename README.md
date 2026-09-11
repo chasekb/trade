@@ -29,7 +29,7 @@ or Qdrant instructions as current setup instructions.
 
 - `cpp-backend`: Drogon HTTP server, container port 8080, host port 8081
 - `frontend`: Next.js dashboard on host port 3000
-- `db`: PostgreSQL 15, container port 5432, host port 15432 by default
+- `db`: PostgreSQL 15, container port 5432, host port 5433 by default
 - `redis`: Redis 7 on port 6379
 
 The frontend uses same-origin browser requests and Next.js rewrites them to the
