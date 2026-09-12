@@ -211,12 +211,14 @@ double ONNXModelManager::predict_pnl(const std::vector<double> &features) {
 double ONNXModelManager::predict_win_prob(const std::vector<double> &features) {
   if (!classifier_session_)
     return 0.5;
-  auto outputs = run_inference(*classifier_session_, features);
-  // For many classifiers, outputs[0] might be the class index (0 or 1)
-  // and outputs[1] might be probabilities.
-  // However, simple exports might just have probabilities as output 0.
-  // Let's assume it's the score/probability.
-  return outputs.empty() ? 0.5 : static_cast<double>(outputs[0]);
+  // Typical skl2onnx classifier exports have two outputs: output 0 is the
+  // predicted class label, output 1 is the probability tensor. A single-output
+  // export is assumed to emit the probability directly at output 0.
+  const size_t output_count = classifier_session_->GetOutputCount();
+  const size_t prob_output_index = output_count > 1 ? output_count - 1 : 0;
+  auto outputs =
+      run_inference(*classifier_session_, features, prob_output_index);
+  return outputs.empty() ? 0.5 : static_cast<double>(outputs.back());
 }
 
 bool ONNXModelManager::transformer_input_ready(
@@ -246,9 +248,11 @@ double ONNXModelManager::predict_transformer(
     size_t n_features = sequence.empty() ? 0 : sequence[0].size();
 
     if (!transformer_input_ready(sequence)) {
-      spdlog::warn("Transformer input mismatch: expected {}x{}, got {}x{}",
+      spdlog::warn("Transformer input mismatch: expected {}x{}, got {}x{}; "
+                   "skipping inference rather than predicting on zero-padded input",
                    transformer_lookback_, transformer_features_, seq_len,
                    n_features);
+      return 0.0;
     }
 
     std::vector<float> input_tensor_values;
@@ -315,7 +319,8 @@ double ONNXModelManager::predict_transformer(
 
 std::vector<float>
 ONNXModelManager::run_inference(Ort::Session &session,
-                                const std::vector<double> &features) {
+                                const std::vector<double> &features,
+                                size_t output_index) {
   try {
     // Convert double to float for ONNX
     std::vector<float> input_tensor_values(features.begin(), features.end());
@@ -342,7 +347,10 @@ ONNXModelManager::run_inference(Ort::Session &session,
     // Try to get actual names if they are different
     Ort::AllocatorWithDefaultOptions allocator;
     auto input_name_ptr = session.GetInputNameAllocated(0, allocator);
-    auto output_name_ptr = session.GetOutputNameAllocated(0, allocator);
+    const size_t clamped_output_index =
+        std::min(output_index, session.GetOutputCount() - 1);
+    auto output_name_ptr =
+        session.GetOutputNameAllocated(clamped_output_index, allocator);
 
     const char *actual_input_names[] = {input_name_ptr.get()};
     const char *actual_output_names[] = {output_name_ptr.get()};

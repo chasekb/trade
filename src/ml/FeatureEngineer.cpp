@@ -201,18 +201,13 @@ FeatureEngineer::extract_base_features(const OrderBookFeatures &f) {
 }
 
 std::vector<double> FeatureEngineer::impute(const std::vector<double> &base) {
+  // extract_base_features() cleans NaNs to 0.0 before this runs, so a 0.0
+  // here may be a genuinely-missing value. Match Python's SimpleImputer
+  // (mean strategy) by replacing it with the trained per-feature statistic.
   std::vector<double> result = base;
   for (size_t i = 0; i < result.size(); ++i) {
     if (result[i] == 0.0 && i < imputer_params.statistics.size()) {
-      // Check if it was originally NaN or INF (cleaned in previous step to 0.0
-      // or 1e9) Python's SimpleImputer with mean strategy replaces NaNs. In our
-      // C++ path, we assume 0.0 might need imputation if it was NaN. To be
-      // safe, we only impute if it's strictly 0.0 and we have stats. result[i]
-      // = imputer_params.statistics[i]; Wait, Python's transform only replaces
-      // NaNs. If the value is 0.0, it stays 0.0. Our extract_base_features
-      // already cleaned NaNs to 0.0. So we should actually keep it as is or
-      // handle it better. Let's assume for now that if extract_base_features
-      // made it 0.0 because of NaN, it's fine.
+      result[i] = imputer_params.statistics[i];
     }
   }
   return result;

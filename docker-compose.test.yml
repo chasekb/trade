@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   cpp-test:
-    image: ghcr.io/chasekb/trade/cpp-backend:latest
+    # Pin to the same overridable, CI-published tag convention as
+    # docker-compose.yml instead of a floating `:latest` so a given run is
+    # reproducible and tied to a known build (override via CPP_BACKEND_IMAGE).
+    image: ${CPP_BACKEND_IMAGE:-ghcr.io/chasekb/trade/cpp-backend:dev}
     volumes:
       - .:/app:z
       - ./data:/app/data:z
