@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { Button } from './Button';
-import { Card, CardContent, CardHeader, CardTitle } from './Card';
+import { Card, CardContent } from './Card';
 import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { DataTableProps } from '@/types/trading';
 import { cn } from '@/lib/utils';
 
-export function DataTable<T extends Record<string, any>>({
+export function DataTable<T extends object>({
   data,
   columns,
   loading = false,
@@ -25,8 +25,9 @@ export function DataTable<T extends Record<string, any>>({
     if (!currentSort || !data) return data || [];
 
     return [...data].sort((a, b) => {
-      const aVal = a[currentSort.key];
-      const bVal = b[currentSort.key];
+      const sortKey = currentSort.key as keyof T;
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
 
       let comparison = 0;
       if (aVal < bVal) comparison = -1;

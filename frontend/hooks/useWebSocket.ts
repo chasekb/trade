@@ -99,7 +99,7 @@ interface UseWebSocketReturn {
   lastMessage: WSMessage | null;
 }
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8081';
 
 /**
  * Modern WebSocket hook with Socket.IO client integration

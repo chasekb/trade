@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  cpp-test:
+    image: ghcr.io/chasekb/trade/cpp-backend:latest
+    volumes:
+      - .:/app:z
+      - ./data:/app/data:z
+    environment:
+      - ENV=test
+    command: >
+      bash -c "mkdir -p build && 
+               cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Debug && 
+               cmake --build build --target test_feature_engineer -j$(nproc) && 
+               ./build/test_feature_engineer"
+    networks:
+      - trading-network
+
+networks:
+  trading-network:
+    driver: bridge
