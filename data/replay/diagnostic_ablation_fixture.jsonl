@@ -1,0 +1,27 @@
+# Deterministic candidate decisions; diagnostic_score omitted means unavailable.
+{"timestamp":"2026-01-01T00:00:00Z","strategy":"orderbook","direction":"buy","entry_price":100,"exit_price":102,"diagnostic_score":0.82}
+{"timestamp":"2026-01-01T00:01:00Z","strategy":"orderbook","direction":"sell","entry_price":100,"exit_price":98}
+{"timestamp":"2026-01-02T00:00:00Z","strategy":"ml_enhanced_orderbook","direction":"buy","entry_price":101,"exit_price":103.02,"diagnostic_score":0.82}
+{"timestamp":"2026-01-02T00:01:00Z","strategy":"ml_enhanced_orderbook","direction":"sell","entry_price":101,"exit_price":99.99,"diagnostic_score":0.42}
+{"timestamp":"2026-01-03T00:00:00Z","strategy":"ml","direction":"buy","entry_price":102,"exit_price":104.04,"diagnostic_score":0.82}
+{"timestamp":"2026-01-03T00:01:00Z","strategy":"ml","direction":"sell","entry_price":102,"exit_price":100.98,"diagnostic_score":0.42}
+{"timestamp":"2026-01-04T00:00:00Z","strategy":"sma","direction":"buy","entry_price":103,"exit_price":105.06,"diagnostic_score":0.82}
+{"timestamp":"2026-01-04T00:01:00Z","strategy":"sma","direction":"sell","entry_price":103,"exit_price":101.97}
+{"timestamp":"2026-01-05T00:00:00Z","strategy":"ema","direction":"buy","entry_price":104,"exit_price":106.08,"diagnostic_score":0.82}
+{"timestamp":"2026-01-05T00:01:00Z","strategy":"ema","direction":"sell","entry_price":104,"exit_price":103.0,"diagnostic_score":0.42}
+{"timestamp":"2026-01-06T00:00:00Z","strategy":"rsi","direction":"buy","entry_price":105,"exit_price":107.1,"diagnostic_score":0.82}
+{"timestamp":"2026-01-06T00:01:00Z","strategy":"rsi","direction":"sell","entry_price":105,"exit_price":103.95,"diagnostic_score":0.42}
+{"timestamp":"2026-01-07T00:00:00Z","strategy":"bollinger","direction":"buy","entry_price":106,"exit_price":108.12,"diagnostic_score":0.82}
+{"timestamp":"2026-01-07T00:01:00Z","strategy":"bollinger","direction":"sell","entry_price":106,"exit_price":104.94,"diagnostic_score":0.42}
+{"timestamp":"2026-01-08T00:00:00Z","strategy":"macd","direction":"buy","entry_price":107,"exit_price":109.14,"diagnostic_score":0.82}
+{"timestamp":"2026-01-08T00:01:00Z","strategy":"macd","direction":"sell","entry_price":107,"exit_price":105.93,"diagnostic_score":0.42}
+{"timestamp":"2026-01-09T00:00:00Z","strategy":"stochastic","direction":"buy","entry_price":108,"exit_price":110.16,"diagnostic_score":0.82}
+{"timestamp":"2026-01-09T00:01:00Z","strategy":"stochastic","direction":"sell","entry_price":108,"exit_price":106.92}
+{"timestamp":"2026-01-10T00:00:00Z","strategy":"fibonacci","direction":"buy","entry_price":109,"exit_price":111.18,"diagnostic_score":0.82}
+{"timestamp":"2026-01-10T00:01:00Z","strategy":"fibonacci","direction":"sell","entry_price":109,"exit_price":107.91,"diagnostic_score":0.42}
+{"timestamp":"2026-01-11T00:00:00Z","strategy":"atr","direction":"buy","entry_price":110,"exit_price":112.2,"diagnostic_score":0.82}
+{"timestamp":"2026-01-11T00:01:00Z","strategy":"atr","direction":"sell","entry_price":110,"exit_price":108.9,"diagnostic_score":0.42}
+{"timestamp":"2026-01-12T00:00:00Z","strategy":"dca","direction":"buy","entry_price":111,"exit_price":113.22,"diagnostic_score":0.82}
+{"timestamp":"2026-01-12T00:01:00Z","strategy":"dca","direction":"sell","entry_price":111,"exit_price":109.89}
+{"timestamp":"2026-01-13T00:00:00Z","strategy":"buy_and_hold","direction":"buy","entry_price":112,"exit_price":114.24,"diagnostic_score":0.82}
+{"timestamp":"2026-01-13T00:01:00Z","strategy":"buy_and_hold","direction":"sell","entry_price":112,"exit_price":110.88,"diagnostic_score":0.42}

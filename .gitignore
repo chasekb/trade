@@ -73,11 +73,9 @@ htmlcov/
 
 # Outputs
 outputs/
-data/outputs/
 
-# ML artifacts
-data/models/
-data/transformers/
+# Agent/session git worktrees
+.worktrees/
 
 # Jupyter Notebook
 .ipynb_checkpoints
