@@ -118,6 +118,9 @@ struct SignalAttribution {
   std::string blocker_reason;
   std::string intended_side;
   std::string diagnostic_factor;
+  double strength = 0.0;
+  std::string strength_bucket;
+  std::string expected_return_bucket;
   double expected_return = 0.0;
   double fee_adjusted_expected_return = 0.0;
 };
