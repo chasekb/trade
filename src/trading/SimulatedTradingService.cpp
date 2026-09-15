@@ -47,11 +47,6 @@ constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
 constexpr std::size_t kTransformerLookback = 60;
 constexpr std::size_t kTransformerFeatureWidth = 353;
 constexpr std::size_t kMaxRecentTrades = 100;
-// Public Coinbase order books are one request per product. Keep each worker
-// iteration bounded and rotate the selected universe instead of blocking one
-// simulated tick on a full-universe sweep. Requests within a batch remain
-// sequential, so this does not increase provider request concurrency.
-constexpr std::size_t kLiveQuoteSymbolsPerTick = 8;
 
 constexpr double kDefaultInitialCapital = 10000.0;
 
@@ -2170,10 +2165,9 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
 }
 
 std::vector<std::string> SimulatedTradingService::selectLiveQuoteBatchLocked() {
-  const auto selection = selectQuoteBatch(symbols_, live_quote_cursor_, kLiveQuoteSymbolsPerTick);
-  live_quote_cursor_ = selection.next_cursor;
-  last_live_quote_batch_symbols_ = selection.symbols;
-  return selection.symbols;
+  // Fetch every selected symbol each tick; there is no per-tick cap.
+  last_live_quote_batch_symbols_ = symbols_;
+  return symbols_;
 }
 
 void SimulatedTradingService::generateTickLocked(
@@ -2547,10 +2541,7 @@ Json::Value SimulatedTradingService::buildDiagnosisJson() const {
   result["dominant_blocker"] = result["summary"]["dominant_blocker"];
   result["cadence"] = cadence_diagnostics_.toJson(result["as_of"].asString());
   result["quote_scheduler"]["enabled"] = active_ && usesLiveMarketData(mode_);
-  result["quote_scheduler"]["batch_size"] =
-      static_cast<Json::UInt64>(usesLiveMarketData(mode_)
-                                    ? kLiveQuoteSymbolsPerTick
-                                    : symbols_.size());
+  result["quote_scheduler"]["batch_size"] = static_cast<Json::UInt64>(symbols_.size());
   result["quote_scheduler"]["cursor"] = static_cast<Json::UInt64>(live_quote_cursor_);
   result["quote_scheduler"]["batch_symbols"] = Json::arrayValue;
   for (const auto &symbol : last_live_quote_batch_symbols_) {
@@ -3197,12 +3188,10 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
   }
   result["diagnostics"]["execution_blocker_counts"] = initial_blocker_counts;
   result["diagnostics"]["contract"] =
-      "Live-data simulated sessions fetch a bounded rotating quote batch per worker tick; the response is latest-by-symbol and pagination only controls display rows. Symbols not admitted in the current batch remain pending rather than being reported as provider failures.";
+      "Live-data simulated sessions fetch quotes for every selected symbol each worker tick; the response is latest-by-symbol and pagination only controls display rows.";
   result["diagnostics"]["quote_scheduler"]["enabled"] = active && usesLiveMarketData(current_mode);
   result["diagnostics"]["quote_scheduler"]["batch_size"] =
-      static_cast<Json::UInt64>(usesLiveMarketData(current_mode)
-                                    ? kLiveQuoteSymbolsPerTick
-                                    : session_symbols.size());
+      static_cast<Json::UInt64>(session_symbols.size());
   result["diagnostics"]["quote_scheduler"]["cursor"] =
       static_cast<Json::UInt64>(quote_cursor);
   result["diagnostics"]["quote_scheduler"]["batch_symbols"] = Json::arrayValue;
