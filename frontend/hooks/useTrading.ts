@@ -172,6 +172,15 @@ export function useLiveTrading(mode: TradingMode = 'simulated') {
       if (response.status === 'error') {
         throw new Error(response.error || 'Failed to start trading');
       }
+      // A previous session that hasn't finished flushing pending orders/writes
+      // returns HTTP 200 with status:'settling' rather than starting a new
+      // session. Treat it as a failure so the caller surfaces an error instead
+      // of silently reverting to "Start Trading" with no explanation.
+      if (response.status === 'settling') {
+        throw new Error(
+          response.error || 'The previous trading session is still settling; try again in a moment.'
+        );
+      }
 
       return response;
     },
