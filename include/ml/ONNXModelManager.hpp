@@ -37,7 +37,8 @@ public:
 
 private:
   std::vector<float> run_inference(Ort::Session &session,
-                                   const std::vector<double> &features);
+                                   const std::vector<double> &features,
+                                   size_t output_index = 0);
   void reset_sessions();
 
   Ort::Env env_;

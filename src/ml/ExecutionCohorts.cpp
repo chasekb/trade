@@ -122,9 +122,10 @@ ExecutionCohortMetrics ExecutionCohortAccumulator::finalize() const {
   metrics.sample_count = sample_count;
   metrics.winning_trades = winning_trades;
   metrics.losing_trades = losing_trades;
-  metrics.win_rate = sample_count > 0
+  const int completed_trades = winning_trades + losing_trades;
+  metrics.win_rate = completed_trades > 0
                          ? static_cast<double>(winning_trades) /
-                               static_cast<double>(sample_count) * 100.0
+                               static_cast<double>(completed_trades) * 100.0
                          : 0.0;
   metrics.avg_pnl = sample_count > 0 ? pnl_sum / static_cast<double>(sample_count) : 0.0;
   metrics.avg_spread_percent =
@@ -144,7 +145,9 @@ ExecutionCohortMetrics ExecutionCohortAccumulator::finalize() const {
     const double mean = pnl_sum / n;
     const double variance = std::max(0.0, (pnl_sum_sq / n) - (mean * mean));
     const double std_dev = std::sqrt(variance);
-    metrics.sharpe_ratio = std_dev > 0.0 ? (mean / std_dev) * std::sqrt(252.0) : 0.0;
+    // Per-trade Sharpe (mean/std of trade PnL) - no annualization, matching
+    // TradingStatsCalculator::calculateSharpeRatio's convention.
+    metrics.sharpe_ratio = std_dev > 0.0 ? mean / std_dev : 0.0;
   }
 
   return metrics;

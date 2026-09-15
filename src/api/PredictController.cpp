@@ -892,14 +892,38 @@ void PredictController::train(
               {"transformer", transformer_size},
               {"transformer_config", transformer_config_size}}}};
 
-        std::ofstream meta_file(package_dir / "metadata.json");
-        if (!meta_file.is_open()) {
-          throw std::runtime_error(
-              "Failed to write metadata for trained package: " +
-              package_dir.string());
+        // Write via temp file + atomic rename (matching the model-artifact
+        // write path below) so a crash mid-write can't leave a truncated,
+        // unparseable metadata.json behind.
+        const std::filesystem::path meta_path = package_dir / "metadata.json";
+        const std::filesystem::path meta_tmp_path =
+            unique_temp_artifact_path(meta_path);
+        {
+          std::ofstream meta_file(meta_tmp_path);
+          if (!meta_file.is_open()) {
+            throw std::runtime_error(
+                "Failed to write metadata for trained package: " +
+                package_dir.string());
+          }
+          meta_file << metadata.dump(2);
+          meta_file.flush();
+          if (!meta_file.good()) {
+            std::error_code rm_ec;
+            std::filesystem::remove(meta_tmp_path, rm_ec);
+            throw std::runtime_error(
+                "Failed to flush metadata for trained package: " +
+                package_dir.string());
+          }
         }
-        meta_file << metadata.dump(2);
-        meta_file.close();
+        std::error_code rename_ec;
+        std::filesystem::rename(meta_tmp_path, meta_path, rename_ec);
+        if (rename_ec) {
+          std::error_code rm_ec;
+          std::filesystem::remove(meta_tmp_path, rm_ec);
+          throw std::runtime_error(
+              "Failed to finalize metadata for trained package: " +
+              package_dir.string() + " (" + rename_ec.message() + ")");
+        }
 
         if (auto_set_active) {
           bool activated = false;
@@ -1021,9 +1045,17 @@ void PredictController::availableModels(
               write_time - fs::file_time_type::clock::now() +
               std::chrono::system_clock::now());
           std::time_t cftime = std::chrono::system_clock::to_time_t(sys_time);
-          std::string ts = std::ctime(&cftime);
-          ts.erase(std::remove(ts.begin(), ts.end(), '\n'), ts.end());
-          model["trained_at"] = ts;
+          std::tm utc_tm{};
+#ifdef _WIN32
+          gmtime_s(&utc_tm, &cftime);
+#else
+          gmtime_r(&cftime, &utc_tm);
+#endif
+          char ts_buf[32] = {0};
+          // std::ctime uses a shared static buffer and isn't safe to call from
+          // concurrently-handled requests; use the reentrant gmtime_r/strftime instead.
+          std::strftime(ts_buf, sizeof(ts_buf), "%a %b %d %H:%M:%S %Y", &utc_tm);
+          model["trained_at"] = std::string(ts_buf);
         } catch (const std::exception &) {
           model["trained_at"] = "unknown";
         }
