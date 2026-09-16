@@ -14,6 +14,7 @@
 #include "trading/DiagnosticsContract.hpp"
 #include "trading/StrategySignal.hpp"
 #include "trading/LegacyOrderBookSignal.hpp"
+#include "ml/ExecutionCohorts.hpp"
 #include "ml/Metrics.hpp"
 #include "cache/CacheManager.hpp"
 #include "utils/Logger.hpp"
@@ -439,7 +440,32 @@ double LiveTradingService::positionSizeUsdForSignal(const SignalRecord &signal) 
   inputs.live_net_pnl = live_stats.net_pnl;
 
   const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
-  if (!recent_metrics.cohort_metrics.empty()) {
+  // Prefer the cohort matching this signal's own regime (liquidity/spread/
+  // imbalance/volatility/session) over a blended average across every
+  // regime: a signal in a thin, volatile session should be sized off how
+  // that regime actually performed, not diluted by unrelated conditions.
+  // Falls back to the fleet-wide weighted average when this regime has no
+  // recorded history yet, or the signal predates regime tagging.
+  constexpr int kMinRegimeSampleCount = 5;
+  const std::string execution_regime =
+      signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
+          .get("execution_regime", Json::Value(""))
+          .asString();
+  const ::trade::ml::ExecutionCohortMetrics *matched_regime = nullptr;
+  if (!execution_regime.empty()) {
+    for (const auto &cohort : recent_metrics.cohort_metrics) {
+      if (cohort.regime == execution_regime && cohort.sample_count >= kMinRegimeSampleCount) {
+        matched_regime = &cohort;
+        break;
+      }
+    }
+  }
+  if (matched_regime != nullptr) {
+    inputs.cohort_sample_count = static_cast<std::size_t>(matched_regime->sample_count);
+    inputs.cohort_profit_factor = matched_regime->profit_factor;
+    inputs.cohort_sharpe_ratio = matched_regime->sharpe_ratio;
+    inputs.cohort_avg_drawdown = matched_regime->max_drawdown;
+  } else if (!recent_metrics.cohort_metrics.empty()) {
     double weighted_profit_factor = 0.0;
     double weighted_sharpe_ratio = 0.0;
     double weighted_drawdown = 0.0;
@@ -1684,6 +1710,19 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         features.price_momentum = state.last_return;
         features.volatility = std::abs(state.last_return);
 
+        // classify_execution_regime takes the training-side OrderBookFeatures
+        // type (trade::ml), distinct from the inference-side one above
+        // (::ml) — rebuild the handful of fields it actually buckets on
+        // (liquidity falls back to a symbol-name heuristic without a
+        // tracked volume_24h, same as ExecutionCohorts does everywhere else).
+        ::trade::ml::OrderBookFeatures cohort_features;
+        cohort_features.timestamp = features.timestamp;
+        cohort_features.symbol = features.symbol;
+        cohort_features.bid_ask_imbalance = features.bid_ask_imbalance;
+        cohort_features.spread_percent = features.spread_percent;
+        cohort_features.volatility = features.volatility;
+        const std::string execution_regime = ::trade::ml::classify_execution_regime(cohort_features);
+
         const auto pca_features = engineer->preprocess(features);
         const bool transformer_configured = models->has_transformer();
         // Match simulated trading's readiness contract instead of running
@@ -1739,6 +1778,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         ml_analysis["expected_return_calibrated"] =
             expected_return_output_available && models->has_expected_return_calibration();
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
+        ml_analysis["execution_regime"] = execution_regime;
         ml_analysis["confidence"] = (!transformer_configured || transformer_ready)
                                          ? std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0)
                                          : 0.0;
