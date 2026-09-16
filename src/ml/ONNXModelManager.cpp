@@ -18,6 +18,10 @@ void ONNXModelManager::reset_sessions() {
   transformer_lookback_ = 0;
   transformer_features_ = 0;
   transformer_channels_first_ = false;
+  // A reload without a calibration.json beside the new artifacts must not
+  // keep applying the previous model's calibration to a different model.
+  win_probability_calibration_ = trade::ml::CalibrationMap{};
+  expected_return_calibration_ = trade::ml::CalibrationMap{};
 }
 
 ONNXModelManager::ONNXModelManager()
@@ -190,6 +194,40 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     transformer_channels_first_ = new_transformer_channels_first;
     model_dir_ = model_dir;
 
+    // Optional post-hoc calibration fit against held-out outcomes (see
+    // fit_and_write_model_calibration). Always overwritten here, even when
+    // absent, so switching to a model without a calibration.json cannot
+    // leave the previous model's calibration silently applied.
+    win_probability_calibration_ = trade::ml::CalibrationMap{};
+    expected_return_calibration_ = trade::ml::CalibrationMap{};
+    const std::filesystem::path calibration_path = dir / "calibration.json";
+    if (std::filesystem::exists(calibration_path)) {
+      try {
+        std::ifstream calibration_stream(calibration_path);
+        const auto calibration_json =
+            nlohmann::json::parse(calibration_stream, nullptr, true, true);
+        if (calibration_json.contains("win_probability")) {
+          trade::ml::from_json(calibration_json.at("win_probability"),
+                               win_probability_calibration_);
+        }
+        if (calibration_json.contains("expected_return")) {
+          trade::ml::from_json(calibration_json.at("expected_return"),
+                               expected_return_calibration_);
+        }
+        spdlog::info(
+            "Loaded model calibration from {} (win_probability samples={}, expected_return samples={})",
+            calibration_path.string(), win_probability_calibration_.sample_count,
+            expected_return_calibration_.sample_count);
+      } catch (const std::exception &e) {
+        spdlog::warn(
+            "Ignoring calibration.json at {} because it could not be parsed: {}; "
+            "using raw (uncalibrated) model output",
+            calibration_path.string(), e.what());
+        win_probability_calibration_ = trade::ml::CalibrationMap{};
+        expected_return_calibration_ = trade::ml::CalibrationMap{};
+      }
+    }
+
     spdlog::info(
         "Loaded ONNX models from {}. Capabilities: regressor={}, classifier={}, transformer={}, expected input dimension: {}",
         model_dir, has_loaded_regressor, has_loaded_classifier,
@@ -219,6 +257,14 @@ double ONNXModelManager::predict_win_prob(const std::vector<double> &features) {
   auto outputs =
       run_inference(*classifier_session_, features, prob_output_index);
   return outputs.empty() ? 0.5 : static_cast<double>(outputs.back());
+}
+
+double ONNXModelManager::calibrate_win_probability(double raw_probability) const {
+  return trade::ml::apply_calibration(win_probability_calibration_, raw_probability);
+}
+
+double ONNXModelManager::calibrate_expected_return(double raw_expected_return) const {
+  return trade::ml::apply_calibration(expected_return_calibration_, raw_expected_return);
 }
 
 bool ONNXModelManager::transformer_input_ready(

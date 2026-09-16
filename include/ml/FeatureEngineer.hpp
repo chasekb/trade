@@ -21,8 +21,15 @@ public:
   // Core preprocessing: Raw -> Final PCA features
   std::vector<double> preprocess(const OrderBookFeatures &features);
 
-  // Get sequence of model-ready PCA features for transformer.
-  std::vector<std::vector<double>> get_transformer_sequence(const std::string &sequence_key = "");
+  // Get sequence of model-ready PCA features for transformer, most-recent
+  // rows last. `max_length` trims to the caller's active model contract
+  // (e.g. ONNXModelManager::transformer_lookback()); 0 returns everything
+  // currently retained. Retention itself is a generous fixed upper bound
+  // (see kMaxTransformerHistoryRetained), not tied to any one model's
+  // lookback, so a retrained model with a different lookback is never
+  // capped below what it needs.
+  std::vector<std::vector<double>> get_transformer_sequence(const std::string &sequence_key = "",
+                                                             std::size_t max_length = 0);
   size_t transformer_feature_dim() const { return transformer_feature_dim_; }
 
 private:
@@ -50,7 +57,11 @@ private:
   std::map<std::string, std::deque<std::vector<double>>> history_windows_;
   std::map<std::string, std::deque<std::vector<double>>> transformer_sequence_windows_;
   const std::vector<size_t> windows = {5, 10, 20, 50, 90, 200};
-  const size_t transformer_lookback = 60;
+  // Memory-bound retention cap only, not a model contract: must stay >= the
+  // largest lookback any active transformer could request. The exact
+  // per-model length is enforced by get_transformer_sequence's max_length
+  // argument and by ONNXModelManager::transformer_input_ready, not here.
+  static constexpr size_t kMaxTransformerHistoryRetained = 512;
   std::mutex history_mutex;
 
   // Parameters

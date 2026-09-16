@@ -1395,15 +1395,19 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         features.volatility = std::abs(state.last_return);
 
         const auto pca_features = engineer->preprocess(features);
-        const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
         const bool transformer_configured = models->has_transformer();
         // Read the active model's real contract instead of assuming a fixed
         // shape: a retrained transformer can change lookback/feature width,
         // and comparing against a stale hardcoded shape here previously left
         // a mismatched model permanently stuck reporting "warming up" no
-        // matter how long it ran.
+        // matter how long it ran. get_transformer_sequence is trimmed to
+        // this exact lookback so transformer_input_ready's length check can
+        // actually pass once enough history exists, rather than always
+        // seeing FeatureEngineer's own (much larger) retention buffer.
         const std::size_t expected_lookback = models->transformer_lookback();
         const std::size_t expected_features = models->transformer_features();
+        const auto transformer_sequence =
+            engineer->get_transformer_sequence(symbol, expected_lookback);
         // Width mismatch is a real contract problem at any sequence length;
         // a short sequence is expected during normal warmup and is not one.
         const bool transformer_width_compatible =
@@ -1423,24 +1427,46 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         // A sequence that is still warming up must not run any model
         // inference. In particular, avoid producing a fallback prediction that
         // would later be mistaken for a valid HOLD or executable signal.
-        const double win_prob =
-            (!models->has_transformer() || transformer_ready) && models->has_classifier()
-                ? models->predict_win_prob(pca_features)
-                : 0.5;
+        const bool classifier_output_available =
+            (!models->has_transformer() || transformer_ready) && models->has_classifier();
+        const double raw_win_prob =
+            classifier_output_available ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
         if (transformer_configured && transformer_ready) {
           transformer_pnl = models->predict_transformer(transformer_sequence);
         }
         // Transformer-only packs still surface a genuine expected return on
         // signal and trade rows instead of a constant zero.
-        const double expected_pnl =
-            (!transformer_configured || transformer_ready) && models->has_regressor()
-                ? models->predict_pnl(pca_features)
-                : transformer_pnl;
+        const bool regressor_output_available =
+            (!transformer_configured || transformer_ready) && models->has_regressor();
+        const bool transformer_output_available = transformer_configured && transformer_ready;
+        const double raw_expected_pnl =
+            regressor_output_available ? models->predict_pnl(pca_features) : transformer_pnl;
+        const bool expected_return_output_available =
+            regressor_output_available || transformer_output_available;
+
+        // Apply any post-hoc calibration fit against held-out realized
+        // outcomes (see fit_and_write_model_calibration) — never to the
+        // neutral 0.5/0.0 defaults above, which are "no prediction," not a
+        // biased prediction to correct. Both raw and calibrated values are
+        // recorded so calibration quality stays auditable rather than
+        // silently overwriting the model's output.
+        const double win_prob = classifier_output_available
+                                     ? models->calibrate_win_probability(raw_win_prob)
+                                     : raw_win_prob;
+        const double expected_pnl = expected_return_output_available
+                                         ? models->calibrate_expected_return(raw_expected_pnl)
+                                         : raw_expected_pnl;
 
         ml_analysis["ml_enabled"] = !transformer_configured || transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_raw"] = std::clamp(raw_win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_calibrated"] =
+            classifier_output_available && models->has_win_probability_calibration();
         ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
+        ml_analysis["expected_return_raw"] = transformer_ready ? raw_expected_pnl : 0.0;
+        ml_analysis["expected_return_calibrated"] =
+            expected_return_output_available && models->has_expected_return_calibration();
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
         ml_analysis["confidence"] = (!transformer_configured || transformer_ready)
                                          ? std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0)

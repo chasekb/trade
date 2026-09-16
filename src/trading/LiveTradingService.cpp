@@ -1655,22 +1655,25 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         features.volatility = std::abs(state.last_return);
 
         const auto pca_features = engineer->preprocess(features);
-        const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
         const bool transformer_configured = models->has_transformer();
         // Match simulated trading's readiness contract instead of running
         // inference the moment a model is configured: a short/incomplete
         // sequence must report "warming up," not a ready prediction, or the
         // live tab silently trades on early, unreliable transformer output
-        // during the first lookback ticks after every restart.
+        // during the first lookback ticks after every restart. The sequence
+        // is trimmed to the model's exact lookback so the readiness check
+        // below can pass once enough history exists.
         const std::size_t expected_lookback = models->transformer_lookback();
         const std::size_t expected_features = models->transformer_features();
+        const auto transformer_sequence =
+            engineer->get_transformer_sequence(symbol, expected_lookback);
         const bool transformer_ready =
             !transformer_configured || models->transformer_input_ready(transformer_sequence);
 
-        const double win_prob =
-            (!transformer_configured || transformer_ready) && models->has_classifier()
-                ? models->predict_win_prob(pca_features)
-                : 0.5;
+        const bool classifier_output_available =
+            (!transformer_configured || transformer_ready) && models->has_classifier();
+        const double raw_win_prob =
+            classifier_output_available ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
         if (transformer_configured && transformer_ready) {
           transformer_pnl = models->predict_transformer(transformer_sequence);
@@ -1678,14 +1681,33 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         // Transformer-only packs still provide a directional expected return
         // for the shared order-book profitability gate, matching simulated
         // trading's producer contract instead of silently gating live to HOLD.
-        const double expected_pnl =
-            (!transformer_configured || transformer_ready) && models->has_regressor()
-                ? models->predict_pnl(pca_features)
-                : transformer_pnl;
+        const bool regressor_output_available =
+            (!transformer_configured || transformer_ready) && models->has_regressor();
+        const bool transformer_output_available = transformer_configured && transformer_ready;
+        const double raw_expected_pnl =
+            regressor_output_available ? models->predict_pnl(pca_features) : transformer_pnl;
+        const bool expected_return_output_available =
+            regressor_output_available || transformer_output_available;
+
+        // Apply any post-hoc calibration fit against held-out realized
+        // outcomes, matching simulated trading's contract; never applied to
+        // the neutral 0.5/0.0 "no prediction" defaults above.
+        const double win_prob = classifier_output_available
+                                     ? models->calibrate_win_probability(raw_win_prob)
+                                     : raw_win_prob;
+        const double expected_pnl = expected_return_output_available
+                                         ? models->calibrate_expected_return(raw_expected_pnl)
+                                         : raw_expected_pnl;
 
         ml_analysis["ml_enabled"] = !transformer_configured || transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_raw"] = std::clamp(raw_win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_calibrated"] =
+            classifier_output_available && models->has_win_probability_calibration();
         ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
+        ml_analysis["expected_return_raw"] = transformer_ready ? raw_expected_pnl : 0.0;
+        ml_analysis["expected_return_calibrated"] =
+            expected_return_output_available && models->has_expected_return_calibration();
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
         ml_analysis["confidence"] = (!transformer_configured || transformer_ready)
                                          ? std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0)

@@ -1,5 +1,7 @@
 
 #pragma once
+#include "ml/Calibration.hpp"
+
 #include <memory>
 #include <onnxruntime/onnxruntime_cxx_api.h>
 #include <string>
@@ -41,6 +43,19 @@ public:
   std::size_t transformer_lookback() const { return transformer_lookback_; }
   std::size_t transformer_features() const { return transformer_features_; }
 
+  // Optional post-hoc calibration, loaded from calibration.json beside the
+  // model artifacts if present (see fit_and_write_model_calibration). Raw
+  // model output is passed through unchanged when no fit is available —
+  // absence of a calibration file is never treated as "already calibrated."
+  bool has_win_probability_calibration() const {
+    return !win_probability_calibration_.empty();
+  }
+  double calibrate_win_probability(double raw_probability) const;
+  bool has_expected_return_calibration() const {
+    return !expected_return_calibration_.empty();
+  }
+  double calibrate_expected_return(double raw_expected_return) const;
+
 private:
   std::vector<float> run_inference(Ort::Session &session,
                                    const std::vector<double> &features,
@@ -60,6 +75,9 @@ private:
   size_t transformer_features_ = 0;
   bool transformer_channels_first_ = false;
   std::string model_dir_;
+
+  trade::ml::CalibrationMap win_probability_calibration_;
+  trade::ml::CalibrationMap expected_return_calibration_;
 };
 
 } // namespace ml
