@@ -466,6 +466,32 @@ double LiveTradingService::positionSizeUsdForSignal(const SignalRecord &signal) 
   return calculate_position_size_usd(inputs);
 }
 
+bool LiveTradingService::modelDegradedLocked() const {
+  ModelHealthInputs health;
+  const auto live_stats =
+      TradingStatsService::getInstance().getTradingStats(TradingStatsFilter{"live", std::string()});
+  health.live_profit_factor = live_stats.profit_factor;
+  health.live_sample_count = live_stats.total_trades;
+
+  const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
+  double weighted_profit_factor = 0.0;
+  std::size_t total_samples = 0;
+  for (const auto &cohort : recent_metrics.cohort_metrics) {
+    if (cohort.sample_count <= 0) {
+      continue;
+    }
+    const double weight = static_cast<double>(cohort.sample_count);
+    total_samples += static_cast<std::size_t>(cohort.sample_count);
+    weighted_profit_factor += cohort.profit_factor * weight;
+  }
+  if (total_samples > 0) {
+    health.cohort_profit_factor = weighted_profit_factor / static_cast<double>(total_samples);
+    health.cohort_sample_count = static_cast<int>(total_samples);
+  }
+
+  return should_downgrade_to_heuristic(health);
+}
+
 std::size_t LiveTradingService::managedPositionCountLocked() const {
   return static_cast<std::size_t>(std::count_if(
       positions_.begin(), positions_.end(),
@@ -1636,7 +1662,11 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
   if (strategy_ == "ml_enhanced_orderbook") {
     auto *engineer = api::PredictController::featureEngineer();
     auto *models = api::PredictController::modelManager();
-    if (engineer != nullptr && models != nullptr && models->is_ready()) {
+    // Circuit breaker: once enough realized outcomes show the active model
+    // is hurting expectancy, fall back to the honestly-labeled heuristic
+    // path instead of continuing to gate/size live capital on it.
+    if (engineer != nullptr && models != nullptr && models->is_ready() &&
+        !modelDegradedLocked()) {
       try {
         ::ml::OrderBookFeatures features;
         features.timestamp = signal.timestamp;

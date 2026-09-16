@@ -48,5 +48,25 @@ double calculate_position_size_usd(const PositionSizingInputs &inputs);
 double expected_net_pnl_usd(double notional_usd, const MinimumTradeSizeInputs &inputs);
 MinimumTradeSizeDecision minimum_trade_size_decision(const MinimumTradeSizeInputs &inputs);
 
+struct ModelHealthInputs {
+  double live_profit_factor = 0.0;
+  int live_sample_count = 0;
+  double cohort_profit_factor = 0.0;
+  int cohort_sample_count = 0;
+};
+
+// A circuit breaker for a degraded ML model: once enough realized outcomes
+// exist to judge it (live trades preferred; the current regime's cohort
+// history only when live history is too thin), a profit factor below
+// `profit_factor_floor` means the model is actively hurting expectancy, not
+// merely quiet. Returns true when the caller should fall back to the
+// heuristic strategy (model_version="heuristic-fallback") instead of
+// continuing to gate/size on this model's output. Returns false — stay on
+// the model — whenever there isn't yet enough evidence either way; a small
+// sample must never be read as a verdict.
+bool should_downgrade_to_heuristic(const ModelHealthInputs &inputs,
+                                   double profit_factor_floor = 0.7,
+                                   int min_sample_count = 20);
+
 } // namespace trading
 } // namespace trade

@@ -482,6 +482,32 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
   return decision.should_trade ? decision.notional_usd : 0.0;
 }
 
+bool SimulatedTradingService::modelDegradedLocked() const {
+  ModelHealthInputs health;
+  const auto live_stats =
+      TradingStatsService::getInstance().getTradingStats(TradingStatsFilter{mode_, std::string()});
+  health.live_profit_factor = live_stats.profit_factor;
+  health.live_sample_count = live_stats.total_trades;
+
+  const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
+  double weighted_profit_factor = 0.0;
+  std::size_t total_samples = 0;
+  for (const auto &cohort : recent_metrics.cohort_metrics) {
+    if (cohort.sample_count <= 0) {
+      continue;
+    }
+    const double weight = static_cast<double>(cohort.sample_count);
+    total_samples += static_cast<std::size_t>(cohort.sample_count);
+    weighted_profit_factor += cohort.profit_factor * weight;
+  }
+  if (total_samples > 0) {
+    health.cohort_profit_factor = weighted_profit_factor / static_cast<double>(total_samples);
+    health.cohort_sample_count = static_cast<int>(total_samples);
+  }
+
+  return should_downgrade_to_heuristic(health);
+}
+
 Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) const {
   const auto serialization_started = std::chrono::steady_clock::now();
   Json::Value out;
@@ -1376,7 +1402,11 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   if (strategy_ == "ml_enhanced_orderbook") {
     auto *engineer = api::PredictController::featureEngineer();
     auto *models = api::PredictController::modelManager();
-    if (engineer != nullptr && models != nullptr && models->is_ready()) {
+    // Circuit breaker: once enough realized outcomes show the active model
+    // is hurting expectancy, fall back to the honestly-labeled heuristic
+    // path instead of continuing to gate/size on a degraded model.
+    if (engineer != nullptr && models != nullptr && models->is_ready() &&
+        !modelDegradedLocked()) {
       try {
         ::ml::OrderBookFeatures features;
         features.timestamp = signal.timestamp;

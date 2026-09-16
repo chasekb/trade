@@ -125,5 +125,59 @@ int main() {
     std::cerr << "Explicit override should allow unprofitable trades" << std::endl;
     return 1;
   }
+
+  // Circuit breaker: enough samples and a degraded profit factor downgrades.
+  {
+    trade::trading::ModelHealthInputs degraded_live{};
+    degraded_live.live_profit_factor = 0.5;
+    degraded_live.live_sample_count = 30;
+    if (!trade::trading::should_downgrade_to_heuristic(degraded_live)) {
+      std::cerr << "A degraded live profit factor with enough samples should downgrade"
+                << std::endl;
+      return 1;
+    }
+  }
+
+  // A thin sample must never be read as a verdict, even if it looks bad.
+  {
+    trade::trading::ModelHealthInputs thin_sample{};
+    thin_sample.live_profit_factor = 0.1;
+    thin_sample.live_sample_count = 3;
+    thin_sample.cohort_profit_factor = 0.1;
+    thin_sample.cohort_sample_count = 2;
+    if (trade::trading::should_downgrade_to_heuristic(thin_sample)) {
+      std::cerr << "A thin sample should not trigger the circuit breaker" << std::endl;
+      return 1;
+    }
+  }
+
+  // Healthy live performance never downgrades even if the cohort looks weak.
+  {
+    trade::trading::ModelHealthInputs healthy_live{};
+    healthy_live.live_profit_factor = 1.4;
+    healthy_live.live_sample_count = 25;
+    healthy_live.cohort_profit_factor = 0.2;
+    healthy_live.cohort_sample_count = 100;
+    if (trade::trading::should_downgrade_to_heuristic(healthy_live)) {
+      std::cerr << "Sufficient healthy live samples should take priority over cohort history"
+                << std::endl;
+      return 1;
+    }
+  }
+
+  // With too few live samples, fall back to cohort evidence.
+  {
+    trade::trading::ModelHealthInputs cohort_only{};
+    cohort_only.live_profit_factor = 1.4;
+    cohort_only.live_sample_count = 2;
+    cohort_only.cohort_profit_factor = 0.3;
+    cohort_only.cohort_sample_count = 40;
+    if (!trade::trading::should_downgrade_to_heuristic(cohort_only)) {
+      std::cerr << "Degraded cohort performance should downgrade when live history is too thin"
+                << std::endl;
+      return 1;
+    }
+  }
+
   return 0;
 }

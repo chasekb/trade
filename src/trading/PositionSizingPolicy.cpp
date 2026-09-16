@@ -133,5 +133,18 @@ MinimumTradeSizeDecision minimum_trade_size_decision(const MinimumTradeSizeInput
   return decision;
 }
 
+bool should_downgrade_to_heuristic(const ModelHealthInputs &inputs, double profit_factor_floor,
+                                   int min_sample_count) {
+  if (inputs.live_sample_count >= min_sample_count) {
+    return inputs.live_profit_factor < profit_factor_floor;
+  }
+  if (inputs.cohort_sample_count >= min_sample_count) {
+    return inputs.cohort_profit_factor < profit_factor_floor;
+  }
+  // Neither live nor cohort history is large enough to judge the model yet;
+  // a thin sample is not evidence of degradation.
+  return false;
+}
+
 } // namespace trading
 } // namespace trade
