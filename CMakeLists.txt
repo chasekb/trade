@@ -36,6 +36,7 @@ set(SOURCES
     src/ml/ExecutionCohorts.cpp
     src/ml/TrainingValidation.cpp
     src/ml/ModelTrainer.cpp
+    src/ml/ModelCalibrationFitter.cpp
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
     src/exchange/CoinbaseAuth.cpp
