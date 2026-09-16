@@ -182,6 +182,10 @@ private:
   SignalRecord buildSignalRecordLocked(const std::string &symbol, std::size_t symbol_index,
                                        const MarketQuote *quote);
   bool signalPassesMlGateLocked(const SignalRecord &signal) const;
+  // True once enough realized live (or, failing that, cohort) outcomes show
+  // the active model is hurting expectancy, so callers should fall back to
+  // the heuristic strategy instead of sizing/gating on its predictions.
+  bool modelDegradedLocked() const;
   Json::Value buildExecutionAnalysisLocked(const SignalRecord &signal) const;
   void queueSignalWriteLocked(const SignalRecord &signal);
   void queueTradeWriteLocked(const TradeRecord &trade);

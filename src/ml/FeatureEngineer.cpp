@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iterator>
 #include <numeric>
 #include <spdlog/spdlog.h>
 #include <xtensor/containers/xadapt.hpp>
@@ -111,7 +112,7 @@ FeatureEngineer::preprocess(const OrderBookFeatures &features) {
     std::lock_guard<std::mutex> lock(history_mutex);
     auto &sequence = transformer_sequence_windows_[sequence_key];
     sequence.push_back(final_pca);
-    if (sequence.size() > transformer_lookback) {
+    if (sequence.size() > kMaxTransformerHistoryRetained) {
       sequence.pop_front();
     }
   }
@@ -119,7 +120,8 @@ FeatureEngineer::preprocess(const OrderBookFeatures &features) {
   return final_pca;
 }
 
-std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence(const std::string &sequence_key) {
+std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence(
+    const std::string &sequence_key, std::size_t max_length) {
   std::lock_guard<std::mutex> lock(history_mutex);
   const std::string key = sequence_key.empty() ? "__default__" : sequence_key;
   std::vector<std::vector<double>> sequence;
@@ -127,9 +129,15 @@ std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence(const
   if (it == transformer_sequence_windows_.end()) {
     return sequence;
   }
-  sequence.reserve(it->second.size());
-  for (const auto &vec : it->second) {
-    sequence.push_back(vec);
+  const auto &window = it->second;
+  const std::size_t take =
+      (max_length > 0 && max_length < window.size()) ? max_length : window.size();
+  const std::size_t skip = window.size() - take;
+  sequence.reserve(take);
+  auto iter = window.begin();
+  std::advance(iter, static_cast<std::deque<std::vector<double>>::difference_type>(skip));
+  for (; iter != window.end(); ++iter) {
+    sequence.push_back(*iter);
   }
   return sequence;
 }

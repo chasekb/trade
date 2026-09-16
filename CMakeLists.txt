@@ -27,6 +27,7 @@ set(SOURCES
     src/utils/Logger.cpp
     src/db/DatabaseManager.cpp
     src/cache/CacheManager.cpp
+    src/ml/Calibration.cpp
     src/ml/FeatureEngineer.cpp
     src/ml/Metrics.cpp
     src/ml/ONNXModelManager.cpp
@@ -35,6 +36,7 @@ set(SOURCES
     src/ml/ExecutionCohorts.cpp
     src/ml/TrainingValidation.cpp
     src/ml/ModelTrainer.cpp
+    src/ml/ModelCalibrationFitter.cpp
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
     src/exchange/CoinbaseAuth.cpp
@@ -148,6 +150,16 @@ add_executable(test_position_sizing_policy
 )
 target_include_directories(test_position_sizing_policy PRIVATE include)
 add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
+
+add_executable(test_calibration
+    src/tests/test_calibration.cpp
+    src/ml/Calibration.cpp
+)
+target_include_directories(test_calibration PRIVATE include)
+target_link_libraries(test_calibration PRIVATE
+    nlohmann_json::nlohmann_json
+)
+add_test(NAME calibration COMMAND test_calibration)
 
 add_executable(test_execution_preflight
     src/tests/test_execution_preflight.cpp
