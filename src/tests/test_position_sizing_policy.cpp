@@ -4,6 +4,52 @@
 #include <iostream>
 
 int main() {
+  // kelly_fraction: a sub-50% edge sizes to zero (never negative — this
+  // scales a long-only deployment down, not into a short); a genuine edge
+  // scales up toward, but never past, full Kelly.
+  if (trade::trading::kelly_fraction(0.5, 1.0) != 0.0) {
+    std::cerr << "A coin-flip edge should carry zero Kelly fraction at even-money payoff"
+              << std::endl;
+    return 1;
+  }
+  if (trade::trading::kelly_fraction(0.3, 1.0) != 0.0) {
+    std::cerr << "A sub-50% edge must clamp to zero, not go negative" << std::endl;
+    return 1;
+  }
+  if (std::fabs(trade::trading::kelly_fraction(0.7, 1.0) - 0.4) > 1e-9) {
+    std::cerr << "Kelly fraction at p=0.7, b=1 should be exactly 2p-1=0.4" << std::endl;
+    return 1;
+  }
+  if (trade::trading::kelly_fraction(1.0, 1.0) != 1.0) {
+    std::cerr << "A certain win should saturate Kelly fraction at 1.0" << std::endl;
+    return 1;
+  }
+
+  // A higher calibrated win_probability must size strictly larger than a
+  // weaker one when every other input is identical. The Kelly term above
+  // reinforces this alongside the pre-existing confidence blend.
+  {
+    trade::trading::PositionSizingInputs base{};
+    base.base_usd = 1000.0;
+    base.signal_strength = 0.5;
+    base.model_confidence = 0.5;
+    base.expected_return = 0.01;
+    base.live_profit_factor = 1.0;
+
+    trade::trading::PositionSizingInputs low_prob = base;
+    low_prob.win_probability = 0.42;
+    trade::trading::PositionSizingInputs high_prob = base;
+    high_prob.win_probability = 0.72;
+
+    const double low_multiplier = trade::trading::derive_position_size_multiplier(low_prob);
+    const double high_multiplier = trade::trading::derive_position_size_multiplier(high_prob);
+    if (!(high_multiplier > low_multiplier)) {
+      std::cerr << "A higher calibrated win probability should size strictly larger, all else equal"
+                << std::endl;
+      return 1;
+    }
+  }
+
   trade::trading::PositionSizingInputs weak{};
   weak.base_usd = 1000.0;
   weak.signal_strength = 0.1;

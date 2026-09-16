@@ -43,6 +43,12 @@ struct MinimumTradeSizeDecision {
   double required_edge_fraction = 0.0;
 };
 
+// Textbook Kelly fraction for a binary win/loss bet: f* = p - (1-p)/b, where
+// b is the win/loss payoff ratio (average win / average loss). Clamped to
+// [0, 1] — a non-positive edge sizes to zero, never negative (this function
+// only ever scales a long-only deployment down, not into a short position).
+double kelly_fraction(double win_probability, double payoff_ratio);
+
 double derive_position_size_multiplier(const PositionSizingInputs &inputs);
 double calculate_position_size_usd(const PositionSizingInputs &inputs);
 double expected_net_pnl_usd(double notional_usd, const MinimumTradeSizeInputs &inputs);
