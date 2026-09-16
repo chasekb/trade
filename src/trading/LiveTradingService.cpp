@@ -1655,26 +1655,52 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         features.volatility = std::abs(state.last_return);
 
         const auto pca_features = engineer->preprocess(features);
+        const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
+        const bool transformer_configured = models->has_transformer();
+        // Match simulated trading's readiness contract instead of running
+        // inference the moment a model is configured: a short/incomplete
+        // sequence must report "warming up," not a ready prediction, or the
+        // live tab silently trades on early, unreliable transformer output
+        // during the first lookback ticks after every restart.
+        const std::size_t expected_lookback = models->transformer_lookback();
+        const std::size_t expected_features = models->transformer_features();
+        const bool transformer_ready =
+            !transformer_configured || models->transformer_input_ready(transformer_sequence);
+
         const double win_prob =
-            models->has_classifier() ? models->predict_win_prob(pca_features) : 0.5;
+            (!transformer_configured || transformer_ready) && models->has_classifier()
+                ? models->predict_win_prob(pca_features)
+                : 0.5;
         double transformer_pnl = 0.0;
-        if (models->has_transformer()) {
-          transformer_pnl = models->predict_transformer(engineer->get_transformer_sequence(symbol));
+        if (transformer_configured && transformer_ready) {
+          transformer_pnl = models->predict_transformer(transformer_sequence);
         }
         // Transformer-only packs still provide a directional expected return
         // for the shared order-book profitability gate, matching simulated
         // trading's producer contract instead of silently gating live to HOLD.
-        const double expected_pnl = models->has_regressor()
-                                        ? models->predict_pnl(pca_features)
-                                        : transformer_pnl;
+        const double expected_pnl =
+            (!transformer_configured || transformer_ready) && models->has_regressor()
+                ? models->predict_pnl(pca_features)
+                : transformer_pnl;
 
-        ml_analysis["ml_enabled"] = true;
+        ml_analysis["ml_enabled"] = !transformer_configured || transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
-        ml_analysis["expected_return"] = expected_pnl;
+        ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
-        ml_analysis["confidence"] = std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0);
-        ml_analysis["model_version"] =
-            CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack");
+        ml_analysis["confidence"] = (!transformer_configured || transformer_ready)
+                                         ? std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0)
+                                         : 0.0;
+        ml_analysis["model_version"] = !transformer_configured || transformer_ready
+                                            ? CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack")
+                                            : "transformer-warming-up";
+        ml_analysis["transformer_configured"] = transformer_configured;
+        ml_analysis["inference_status"] = !transformer_configured
+                                               ? "not_configured"
+                                               : (transformer_ready ? "ready" : "warming_up");
+        ml_analysis["transformer_expected_lookback"] = static_cast<Json::UInt64>(expected_lookback);
+        ml_analysis["transformer_expected_feature_width"] = static_cast<Json::UInt64>(expected_features);
+        ml_analysis["transformer_sequence_length"] =
+            transformer_configured ? static_cast<Json::UInt64>(transformer_sequence.size()) : 0;
         used_model = true;
       } catch (const std::exception &e) {
         TR_LOG_WARN("ML inference failed for {}; using heuristic fallback: {}", symbol, e.what());

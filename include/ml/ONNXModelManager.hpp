@@ -35,6 +35,12 @@ public:
   bool has_transformer() const { return transformer_session_ != nullptr; }
   bool transformer_input_ready(const std::vector<std::vector<double>> &sequence) const;
 
+  // The active transformer's real input contract, read from its config/ONNX
+  // shape at load time. Callers must use these instead of assuming a fixed
+  // lookback/feature-width, since a retrained model can change either.
+  std::size_t transformer_lookback() const { return transformer_lookback_; }
+  std::size_t transformer_features() const { return transformer_features_; }
+
 private:
   std::vector<float> run_inference(Ort::Session &session,
                                    const std::vector<double> &features,

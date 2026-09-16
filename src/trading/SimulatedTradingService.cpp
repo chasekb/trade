@@ -44,8 +44,6 @@ constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // fixture-equivalent strong imbalances can clear the shared fee/spread/slippage
 // profitability gate while weak signals remain HOLD.
 constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
-constexpr std::size_t kTransformerLookback = 60;
-constexpr std::size_t kTransformerFeatureWidth = 353;
 constexpr std::size_t kMaxRecentTrades = 100;
 
 constexpr double kDefaultInitialCapital = 10000.0;
@@ -1399,13 +1397,23 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         const auto pca_features = engineer->preprocess(features);
         const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
         const bool transformer_configured = models->has_transformer();
-        const bool transformer_contract_shape =
-            transformer_sequence.size() == kTransformerLookback &&
+        // Read the active model's real contract instead of assuming a fixed
+        // shape: a retrained transformer can change lookback/feature width,
+        // and comparing against a stale hardcoded shape here previously left
+        // a mismatched model permanently stuck reporting "warming up" no
+        // matter how long it ran.
+        const std::size_t expected_lookback = models->transformer_lookback();
+        const std::size_t expected_features = models->transformer_features();
+        // Width mismatch is a real contract problem at any sequence length;
+        // a short sequence is expected during normal warmup and is not one.
+        const bool transformer_width_compatible =
+            transformer_sequence.empty() ||
             std::all_of(transformer_sequence.begin(), transformer_sequence.end(),
-                        [](const auto &row) { return row.size() == kTransformerFeatureWidth; });
+                        [expected_features](const auto &row) {
+                          return row.size() == expected_features;
+                        });
         const bool transformer_ready =
-            !transformer_configured ||
-            (transformer_contract_shape && models->transformer_input_ready(transformer_sequence));
+            !transformer_configured || models->transformer_input_ready(transformer_sequence);
         if (transformer_configured && !transformer_ready) {
           ++transformer_warming_symbols_;
           ++transformer_warmup_events_;
@@ -1444,7 +1452,8 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         ml_analysis["inference_status"] = !transformer_configured
                                                ? "not_configured"
                                                : (transformer_ready ? "ready" : "warming_up");
-        ml_analysis["transformer_expected_lookback"] = kTransformerLookback;
+        ml_analysis["transformer_expected_lookback"] = static_cast<Json::UInt64>(expected_lookback);
+        ml_analysis["transformer_expected_feature_width"] = static_cast<Json::UInt64>(expected_features);
         ml_analysis["transformer_sequence_length"] = transformer_configured
                                                            ? static_cast<Json::UInt64>(transformer_sequence.size())
                                                            : 0;
@@ -1454,7 +1463,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
                                                                : static_cast<Json::UInt64>(transformer_sequence.front().size()))
                                                         : 0;
         ml_analysis["transformer_contract_compatible"] =
-            !transformer_configured || transformer_contract_shape;
+            !transformer_configured || transformer_width_compatible;
         used_model = true;
       } catch (const std::exception &e) {
         ++transformer_rejected_inputs_;
@@ -1724,12 +1733,20 @@ void SimulatedTradingService::updateDiagnosisFromSignalLocked(const SignalRecord
     } else {
       const int actual_lookback = ml.get("transformer_sequence_length", Json::Value(0)).asInt();
       const int actual_width = ml.get("transformer_feature_width", Json::Value(0)).asInt();
-      const bool lookback_compatible = actual_lookback == static_cast<int>(kTransformerLookback);
-      const bool width_compatible = actual_width == static_cast<int>(kTransformerFeatureWidth);
+      // Read the active model's real contract (recorded on this same signal
+      // by buildSignalRecordLocked) rather than a hardcoded shape, so a
+      // retrained model with a different lookback/feature width is judged
+      // against what it actually expects.
+      const int expected_lookback =
+          ml.get("transformer_expected_lookback", Json::Value(0)).asInt();
+      const int expected_width =
+          ml.get("transformer_expected_feature_width", Json::Value(0)).asInt();
+      const bool lookback_compatible = actual_lookback == expected_lookback;
+      const bool width_compatible = actual_width == expected_width;
       // A short sequence is expected while history warms up. It is not a
       // shape mismatch until the sequence exceeds the fixed contract; a
       // feature-width mismatch is actionable as soon as a row exists.
-      const bool lookback_mismatch = actual_lookback > static_cast<int>(kTransformerLookback);
+      const bool lookback_mismatch = actual_lookback > expected_lookback;
       const bool width_mismatch = actual_width > 0 && !width_compatible;
       diagnosis["transformer"]["lookback"]["actual"] = actual_lookback;
       diagnosis["transformer"]["lookback"]["compatible"] = lookback_compatible;
