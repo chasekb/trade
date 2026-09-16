@@ -164,5 +164,46 @@ bool should_downgrade_to_heuristic(const ModelHealthInputs &inputs, double profi
   return false;
 }
 
+CohortSizingSelection resolve_cohort_sizing_inputs(
+    const std::string &execution_regime, const std::vector<RegimeCohortSample> &cohort_samples,
+    int min_regime_sample_count) {
+  if (!execution_regime.empty()) {
+    for (const auto &cohort : cohort_samples) {
+      if (cohort.regime == execution_regime && cohort.sample_count >= min_regime_sample_count) {
+        CohortSizingSelection selection;
+        selection.profit_factor = cohort.profit_factor;
+        selection.sharpe_ratio = cohort.sharpe_ratio;
+        selection.avg_drawdown = cohort.max_drawdown;
+        selection.sample_count = static_cast<std::size_t>(cohort.sample_count);
+        return selection;
+      }
+    }
+  }
+
+  CohortSizingSelection blended;
+  double weighted_profit_factor = 0.0;
+  double weighted_sharpe_ratio = 0.0;
+  double weighted_drawdown = 0.0;
+  std::size_t total_samples = 0;
+  for (const auto &cohort : cohort_samples) {
+    if (cohort.sample_count <= 0) {
+      continue;
+    }
+    const double weight = static_cast<double>(cohort.sample_count);
+    total_samples += static_cast<std::size_t>(cohort.sample_count);
+    weighted_profit_factor += cohort.profit_factor * weight;
+    weighted_sharpe_ratio += cohort.sharpe_ratio * weight;
+    weighted_drawdown += cohort.max_drawdown * weight;
+  }
+  if (total_samples > 0) {
+    const double denominator = static_cast<double>(total_samples);
+    blended.sample_count = total_samples;
+    blended.profit_factor = weighted_profit_factor / denominator;
+    blended.sharpe_ratio = weighted_sharpe_ratio / denominator;
+    blended.avg_drawdown = weighted_drawdown / denominator;
+  }
+  return blended;
+}
+
 } // namespace trading
 } // namespace trade

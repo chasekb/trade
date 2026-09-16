@@ -225,5 +225,68 @@ int main() {
     }
   }
 
+  // resolve_cohort_sizing_inputs: this is the service-level regime-matched
+  // sizing decision (previously inline and duplicated in both
+  // SimulatedTradingService and LiveTradingService) extracted into a pure,
+  // directly testable function.
+  {
+    const std::vector<trade::trading::RegimeCohortSample> samples = {
+        {"liquidity=high|spread=low|imbalance=bullish|volatility=low|session=us", 1.6, 1.1, 15.0,
+         30},
+        {"liquidity=low|spread=high|imbalance=bearish|volatility=high|session=overnight", 0.4,
+         -0.6, 200.0, 50},
+    };
+
+    // A regime with enough samples wins outright over the blend.
+    const auto matched = trade::trading::resolve_cohort_sizing_inputs(
+        "liquidity=high|spread=low|imbalance=bullish|volatility=low|session=us", samples);
+    if (matched.sample_count != 30 || std::fabs(matched.profit_factor - 1.6) > 1e-9) {
+      std::cerr << "A regime with enough samples should be used directly, not blended"
+                << std::endl;
+      return 1;
+    }
+
+    // An unrecognized regime falls back to the sample-weighted blend across
+    // every recorded cohort.
+    const auto unmatched = trade::trading::resolve_cohort_sizing_inputs("no_such_regime", samples);
+    const double expected_blended_pf = (1.6 * 30.0 + 0.4 * 50.0) / 80.0;
+    if (unmatched.sample_count != 80 ||
+        std::fabs(unmatched.profit_factor - expected_blended_pf) > 1e-9) {
+      std::cerr << "An unmatched regime should fall back to the sample-weighted blend"
+                << std::endl;
+      return 1;
+    }
+
+    // An empty execution_regime (signal predates regime tagging) also falls
+    // back to the blend rather than matching nothing.
+    const auto untagged = trade::trading::resolve_cohort_sizing_inputs("", samples);
+    if (untagged.sample_count != 80) {
+      std::cerr << "An empty execution_regime should fall back to the blend, not zero"
+                << std::endl;
+      return 1;
+    }
+
+    // A regime match that exists but is too thin to trust falls back to the
+    // blend rather than sizing off a handful of noisy samples.
+    const std::vector<trade::trading::RegimeCohortSample> thin_match = {
+        {"target_regime", 5.0, 3.0, 1.0, 2},
+        {"other_regime", 1.0, 0.5, 20.0, 40},
+    };
+    const auto thin = trade::trading::resolve_cohort_sizing_inputs("target_regime", thin_match);
+    if (std::fabs(thin.profit_factor - 5.0) < 1e-9) {
+      std::cerr << "A regime match below the minimum sample count must not be used directly"
+                << std::endl;
+      return 1;
+    }
+
+    // No cohort data at all: a zero-valued, zero-sample selection, not a
+    // crash or a fabricated value.
+    const auto empty = trade::trading::resolve_cohort_sizing_inputs("any_regime", {});
+    if (empty.sample_count != 0 || empty.profit_factor != 0.0) {
+      std::cerr << "No cohort data should resolve to a zero-valued selection" << std::endl;
+      return 1;
+    }
+  }
+
   return 0;
 }

@@ -439,55 +439,29 @@ double LiveTradingService::positionSizeUsdForSignal(const SignalRecord &signal) 
   inputs.live_total_fees = live_stats.total_fees;
   inputs.live_net_pnl = live_stats.net_pnl;
 
-  const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
   // Prefer the cohort matching this signal's own regime (liquidity/spread/
   // imbalance/volatility/session) over a blended average across every
-  // regime: a signal in a thin, volatile session should be sized off how
-  // that regime actually performed, not diluted by unrelated conditions.
-  // Falls back to the fleet-wide weighted average when this regime has no
-  // recorded history yet, or the signal predates regime tagging.
-  constexpr int kMinRegimeSampleCount = 5;
+  // regime — see resolve_cohort_sizing_inputs for the selection contract
+  // (falls back to the fleet-wide weighted average when this regime has no
+  // recorded history yet, or the signal predates regime tagging).
+  const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
   const std::string execution_regime =
       signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
           .get("execution_regime", Json::Value(""))
           .asString();
-  const ::trade::ml::ExecutionCohortMetrics *matched_regime = nullptr;
-  if (!execution_regime.empty()) {
-    for (const auto &cohort : recent_metrics.cohort_metrics) {
-      if (cohort.regime == execution_regime && cohort.sample_count >= kMinRegimeSampleCount) {
-        matched_regime = &cohort;
-        break;
-      }
-    }
+  std::vector<RegimeCohortSample> cohort_samples;
+  cohort_samples.reserve(recent_metrics.cohort_metrics.size());
+  for (const auto &cohort : recent_metrics.cohort_metrics) {
+    cohort_samples.push_back(RegimeCohortSample{cohort.regime, cohort.profit_factor,
+                                                 cohort.sharpe_ratio, cohort.max_drawdown,
+                                                 cohort.sample_count});
   }
-  if (matched_regime != nullptr) {
-    inputs.cohort_sample_count = static_cast<std::size_t>(matched_regime->sample_count);
-    inputs.cohort_profit_factor = matched_regime->profit_factor;
-    inputs.cohort_sharpe_ratio = matched_regime->sharpe_ratio;
-    inputs.cohort_avg_drawdown = matched_regime->max_drawdown;
-  } else if (!recent_metrics.cohort_metrics.empty()) {
-    double weighted_profit_factor = 0.0;
-    double weighted_sharpe_ratio = 0.0;
-    double weighted_drawdown = 0.0;
-    std::size_t total_samples = 0;
-    for (const auto &cohort : recent_metrics.cohort_metrics) {
-      if (cohort.sample_count <= 0) {
-        continue;
-      }
-      const double weight = static_cast<double>(cohort.sample_count);
-      total_samples += static_cast<std::size_t>(cohort.sample_count);
-      weighted_profit_factor += cohort.profit_factor * weight;
-      weighted_sharpe_ratio += cohort.sharpe_ratio * weight;
-      weighted_drawdown += cohort.max_drawdown * weight;
-    }
-    if (total_samples > 0) {
-      const double denominator = static_cast<double>(total_samples);
-      inputs.cohort_sample_count = total_samples;
-      inputs.cohort_profit_factor = weighted_profit_factor / denominator;
-      inputs.cohort_sharpe_ratio = weighted_sharpe_ratio / denominator;
-      inputs.cohort_avg_drawdown = weighted_drawdown / denominator;
-    }
-  }
+  const CohortSizingSelection cohort_selection =
+      resolve_cohort_sizing_inputs(execution_regime, cohort_samples);
+  inputs.cohort_sample_count = cohort_selection.sample_count;
+  inputs.cohort_profit_factor = cohort_selection.profit_factor;
+  inputs.cohort_sharpe_ratio = cohort_selection.sharpe_ratio;
+  inputs.cohort_avg_drawdown = cohort_selection.avg_drawdown;
 
   return calculate_position_size_usd(inputs);
 }

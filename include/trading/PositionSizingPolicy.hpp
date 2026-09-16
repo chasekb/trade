@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
+#include <vector>
 
 namespace trade {
 namespace trading {
@@ -73,6 +75,39 @@ struct ModelHealthInputs {
 bool should_downgrade_to_heuristic(const ModelHealthInputs &inputs,
                                    double profit_factor_floor = 0.7,
                                    int min_sample_count = 20);
+
+// A single regime's recorded cohort performance, as consumed by cohort-aware
+// sizing below. Mirrors the subset of ml::ExecutionCohortMetrics actually
+// used here; kept independent of that type so this module has no dependency
+// on the ml/ExecutionCohorts module (callers map their own cohort records
+// into this struct).
+struct RegimeCohortSample {
+  std::string regime;
+  double profit_factor = 0.0;
+  double sharpe_ratio = 0.0;
+  double max_drawdown = 0.0;
+  int sample_count = 0;
+};
+
+struct CohortSizingSelection {
+  double profit_factor = 0.0;
+  double sharpe_ratio = 0.0;
+  double avg_drawdown = 0.0;
+  std::size_t sample_count = 0;
+};
+
+// Resolves which recorded cohort performance should inform sizing for a
+// signal in the given regime: that regime's own history once it has at
+// least `min_regime_sample_count` samples to trust (a signal in a thin,
+// volatile session should be sized off how that regime actually performed,
+// not diluted by unrelated conditions), otherwise a sample-weighted average
+// across every recorded regime. Falls back to the blended average — never
+// to zero — when `execution_regime` is empty (no regime tagging on this
+// signal) or no matching regime has enough history yet; returns a
+// zero-valued, zero-sample selection when there is no cohort data at all.
+CohortSizingSelection resolve_cohort_sizing_inputs(
+    const std::string &execution_regime, const std::vector<RegimeCohortSample> &cohort_samples,
+    int min_regime_sample_count = 5);
 
 } // namespace trading
 } // namespace trade
