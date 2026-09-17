@@ -11,13 +11,29 @@ find_package(libpqxx CONFIG REQUIRED)
 find_package(hiredis CONFIG REQUIRED)
 find_package(redis++ CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
-find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 find_package(Python3 COMPONENTS Development REQUIRED)
 find_package(Torch REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
+# onnxruntime is no longer installed via vcpkg (see vcpkg.json): building it
+# from source there was the single largest contributor to CI wall time.
+# ONNXRUNTIME_ROOT points at an extracted official prebuilt release (see
+# Dockerfile.cpp), and this constructs an imported target under the same
+# onnxruntime::onnxruntime name vcpkg's own CONFIG package used to provide,
+# so no downstream code needs to know which path built it. Falls back to
+# vcpkg's package for any build that still installs it there.
+if(DEFINED ONNXRUNTIME_ROOT)
+    add_library(onnxruntime::onnxruntime SHARED IMPORTED)
+    set_target_properties(onnxruntime::onnxruntime PROPERTIES
+        IMPORTED_LOCATION "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_ROOT}/include"
+    )
+else()
+    find_package(onnxruntime CONFIG REQUIRED)
+endif()
 
 # mlpack is header-only – no find_package needed, headers already in include_directories above
 # Collect all source files
@@ -27,6 +43,7 @@ set(SOURCES
     src/utils/Logger.cpp
     src/db/DatabaseManager.cpp
     src/cache/CacheManager.cpp
+    src/ml/Calibration.cpp
     src/ml/FeatureEngineer.cpp
     src/ml/Metrics.cpp
     src/ml/ONNXModelManager.cpp
@@ -35,6 +52,7 @@ set(SOURCES
     src/ml/ExecutionCohorts.cpp
     src/ml/TrainingValidation.cpp
     src/ml/ModelTrainer.cpp
+    src/ml/ModelCalibrationFitter.cpp
     src/ml/TransformerOnnxExport.cpp
     src/ml/TransformerModel.cpp
     src/exchange/CoinbaseAuth.cpp
@@ -148,6 +166,16 @@ add_executable(test_position_sizing_policy
 )
 target_include_directories(test_position_sizing_policy PRIVATE include)
 add_test(NAME position_sizing_policy COMMAND test_position_sizing_policy)
+
+add_executable(test_calibration
+    src/tests/test_calibration.cpp
+    src/ml/Calibration.cpp
+)
+target_include_directories(test_calibration PRIVATE include)
+target_link_libraries(test_calibration PRIVATE
+    nlohmann_json::nlohmann_json
+)
+add_test(NAME calibration COMMAND test_calibration)
 
 add_executable(test_execution_preflight
     src/tests/test_execution_preflight.cpp

@@ -329,7 +329,10 @@ export interface PriceDataPoint {
 // API Response Types
 
 export interface ApiResponse<T> {
-  status: 'success' | 'error';
+  // 'settling' is returned when a previous trading session hasn't finished
+  // flushing pending orders/writes yet; it is not a success and must be
+  // handled explicitly rather than falling through to the success path.
+  status: 'success' | 'error' | 'settling';
   data?: T;
   error?: string;
   timestamp: string;

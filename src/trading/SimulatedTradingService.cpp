@@ -14,6 +14,7 @@
 #include "trading/DiagnosticsContract.hpp"
 #include "trading/StrategySignal.hpp"
 #include "trading/LegacyOrderBookSignal.hpp"
+#include "ml/ExecutionCohorts.hpp"
 #include "ml/Metrics.hpp"
 #include "cache/CacheManager.hpp"
 #include "utils/Logger.hpp"
@@ -44,14 +45,7 @@ constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // fixture-equivalent strong imbalances can clear the shared fee/spread/slippage
 // profitability gate while weak signals remain HOLD.
 constexpr double kDefaultOrderBookHeuristicEdgeScaleFraction = 0.024;
-constexpr std::size_t kTransformerLookback = 60;
-constexpr std::size_t kTransformerFeatureWidth = 353;
 constexpr std::size_t kMaxRecentTrades = 100;
-// Public Coinbase order books are one request per product. Keep each worker
-// iteration bounded and rotate the selected universe instead of blocking one
-// simulated tick on a full-universe sweep. Requests within a batch remain
-// sequential, so this does not increase provider request concurrency.
-constexpr std::size_t kLiveQuoteSymbolsPerTick = 8;
 
 constexpr double kDefaultInitialCapital = 10000.0;
 
@@ -445,30 +439,29 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
   inputs.live_total_fees = live_stats.total_fees;
   inputs.live_net_pnl = live_stats.net_pnl;
 
+  // Prefer the cohort matching this signal's own regime (liquidity/spread/
+  // imbalance/volatility/session) over a blended average across every
+  // regime — see resolve_cohort_sizing_inputs for the selection contract
+  // (falls back to the fleet-wide weighted average when this regime has no
+  // recorded history yet, or the signal predates regime tagging).
   const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
-  if (!recent_metrics.cohort_metrics.empty()) {
-    double weighted_profit_factor = 0.0;
-    double weighted_sharpe_ratio = 0.0;
-    double weighted_drawdown = 0.0;
-    std::size_t total_samples = 0;
-    for (const auto &cohort : recent_metrics.cohort_metrics) {
-      if (cohort.sample_count <= 0) {
-        continue;
-      }
-      const double weight = static_cast<double>(cohort.sample_count);
-      total_samples += static_cast<std::size_t>(cohort.sample_count);
-      weighted_profit_factor += cohort.profit_factor * weight;
-      weighted_sharpe_ratio += cohort.sharpe_ratio * weight;
-      weighted_drawdown += cohort.max_drawdown * weight;
-    }
-    if (total_samples > 0) {
-      const double denominator = static_cast<double>(total_samples);
-      inputs.cohort_sample_count = total_samples;
-      inputs.cohort_profit_factor = weighted_profit_factor / denominator;
-      inputs.cohort_sharpe_ratio = weighted_sharpe_ratio / denominator;
-      inputs.cohort_avg_drawdown = weighted_drawdown / denominator;
-    }
+  const std::string execution_regime =
+      signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
+          .get("execution_regime", Json::Value(""))
+          .asString();
+  std::vector<RegimeCohortSample> cohort_samples;
+  cohort_samples.reserve(recent_metrics.cohort_metrics.size());
+  for (const auto &cohort : recent_metrics.cohort_metrics) {
+    cohort_samples.push_back(RegimeCohortSample{cohort.regime, cohort.profit_factor,
+                                                 cohort.sharpe_ratio, cohort.max_drawdown,
+                                                 cohort.sample_count});
   }
+  const CohortSizingSelection cohort_selection =
+      resolve_cohort_sizing_inputs(execution_regime, cohort_samples);
+  inputs.cohort_sample_count = cohort_selection.sample_count;
+  inputs.cohort_profit_factor = cohort_selection.profit_factor;
+  inputs.cohort_sharpe_ratio = cohort_selection.sharpe_ratio;
+  inputs.cohort_avg_drawdown = cohort_selection.avg_drawdown;
 
   const double capped_notional = calculate_position_size_usd(inputs);
   MinimumTradeSizeInputs minimum_inputs;
@@ -487,6 +480,32 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
 
   const auto decision = minimum_trade_size_decision(minimum_inputs);
   return decision.should_trade ? decision.notional_usd : 0.0;
+}
+
+bool SimulatedTradingService::modelDegradedLocked() const {
+  ModelHealthInputs health;
+  const auto live_stats =
+      TradingStatsService::getInstance().getTradingStats(TradingStatsFilter{mode_, std::string()});
+  health.live_profit_factor = live_stats.profit_factor;
+  health.live_sample_count = live_stats.total_trades;
+
+  const auto recent_metrics = CacheManager::getInstance().get_last_metrics();
+  double weighted_profit_factor = 0.0;
+  std::size_t total_samples = 0;
+  for (const auto &cohort : recent_metrics.cohort_metrics) {
+    if (cohort.sample_count <= 0) {
+      continue;
+    }
+    const double weight = static_cast<double>(cohort.sample_count);
+    total_samples += static_cast<std::size_t>(cohort.sample_count);
+    weighted_profit_factor += cohort.profit_factor * weight;
+  }
+  if (total_samples > 0) {
+    health.cohort_profit_factor = weighted_profit_factor / static_cast<double>(total_samples);
+    health.cohort_sample_count = static_cast<int>(total_samples);
+  }
+
+  return should_downgrade_to_heuristic(health);
 }
 
 Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) const {
@@ -1383,7 +1402,11 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   if (strategy_ == "ml_enhanced_orderbook") {
     auto *engineer = api::PredictController::featureEngineer();
     auto *models = api::PredictController::modelManager();
-    if (engineer != nullptr && models != nullptr && models->is_ready()) {
+    // Circuit breaker: once enough realized outcomes show the active model
+    // is hurting expectancy, fall back to the honestly-labeled heuristic
+    // path instead of continuing to gate/size on a degraded model.
+    if (engineer != nullptr && models != nullptr && models->is_ready() &&
+        !modelDegradedLocked()) {
       try {
         ::ml::OrderBookFeatures features;
         features.timestamp = signal.timestamp;
@@ -1401,16 +1424,43 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         features.price_momentum = state.last_return;
         features.volatility = std::abs(state.last_return);
 
+        // classify_execution_regime takes the training-side OrderBookFeatures
+        // type (trade::ml), distinct from the inference-side one above
+        // (::ml) — rebuild the handful of fields it actually buckets on
+        // (liquidity falls back to a symbol-name heuristic without a
+        // tracked volume_24h, same as ExecutionCohorts does everywhere else).
+        ::trade::ml::OrderBookFeatures cohort_features;
+        cohort_features.timestamp = features.timestamp;
+        cohort_features.symbol = features.symbol;
+        cohort_features.bid_ask_imbalance = features.bid_ask_imbalance;
+        cohort_features.spread_percent = features.spread_percent;
+        cohort_features.volatility = features.volatility;
+        const std::string execution_regime = ::trade::ml::classify_execution_regime(cohort_features);
+
         const auto pca_features = engineer->preprocess(features);
-        const auto transformer_sequence = engineer->get_transformer_sequence(symbol);
         const bool transformer_configured = models->has_transformer();
-        const bool transformer_contract_shape =
-            transformer_sequence.size() == kTransformerLookback &&
+        // Read the active model's real contract instead of assuming a fixed
+        // shape: a retrained transformer can change lookback/feature width,
+        // and comparing against a stale hardcoded shape here previously left
+        // a mismatched model permanently stuck reporting "warming up" no
+        // matter how long it ran. get_transformer_sequence is trimmed to
+        // this exact lookback so transformer_input_ready's length check can
+        // actually pass once enough history exists, rather than always
+        // seeing FeatureEngineer's own (much larger) retention buffer.
+        const std::size_t expected_lookback = models->transformer_lookback();
+        const std::size_t expected_features = models->transformer_features();
+        const auto transformer_sequence =
+            engineer->get_transformer_sequence(symbol, expected_lookback);
+        // Width mismatch is a real contract problem at any sequence length;
+        // a short sequence is expected during normal warmup and is not one.
+        const bool transformer_width_compatible =
+            transformer_sequence.empty() ||
             std::all_of(transformer_sequence.begin(), transformer_sequence.end(),
-                        [](const auto &row) { return row.size() == kTransformerFeatureWidth; });
+                        [expected_features](const auto &row) {
+                          return row.size() == expected_features;
+                        });
         const bool transformer_ready =
-            !transformer_configured ||
-            (transformer_contract_shape && models->transformer_input_ready(transformer_sequence));
+            !transformer_configured || models->transformer_input_ready(transformer_sequence);
         if (transformer_configured && !transformer_ready) {
           ++transformer_warming_symbols_;
           ++transformer_warmup_events_;
@@ -1420,25 +1470,48 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         // A sequence that is still warming up must not run any model
         // inference. In particular, avoid producing a fallback prediction that
         // would later be mistaken for a valid HOLD or executable signal.
-        const double win_prob =
-            (!models->has_transformer() || transformer_ready) && models->has_classifier()
-                ? models->predict_win_prob(pca_features)
-                : 0.5;
+        const bool classifier_output_available =
+            (!models->has_transformer() || transformer_ready) && models->has_classifier();
+        const double raw_win_prob =
+            classifier_output_available ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
         if (transformer_configured && transformer_ready) {
           transformer_pnl = models->predict_transformer(transformer_sequence);
         }
         // Transformer-only packs still surface a genuine expected return on
         // signal and trade rows instead of a constant zero.
-        const double expected_pnl =
-            (!transformer_configured || transformer_ready) && models->has_regressor()
-                ? models->predict_pnl(pca_features)
-                : transformer_pnl;
+        const bool regressor_output_available =
+            (!transformer_configured || transformer_ready) && models->has_regressor();
+        const bool transformer_output_available = transformer_configured && transformer_ready;
+        const double raw_expected_pnl =
+            regressor_output_available ? models->predict_pnl(pca_features) : transformer_pnl;
+        const bool expected_return_output_available =
+            regressor_output_available || transformer_output_available;
+
+        // Apply any post-hoc calibration fit against held-out realized
+        // outcomes (see fit_and_write_model_calibration) — never to the
+        // neutral 0.5/0.0 defaults above, which are "no prediction," not a
+        // biased prediction to correct. Both raw and calibrated values are
+        // recorded so calibration quality stays auditable rather than
+        // silently overwriting the model's output.
+        const double win_prob = classifier_output_available
+                                     ? models->calibrate_win_probability(raw_win_prob)
+                                     : raw_win_prob;
+        const double expected_pnl = expected_return_output_available
+                                         ? models->calibrate_expected_return(raw_expected_pnl)
+                                         : raw_expected_pnl;
 
         ml_analysis["ml_enabled"] = !transformer_configured || transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_raw"] = std::clamp(raw_win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_calibrated"] =
+            classifier_output_available && models->has_win_probability_calibration();
         ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
+        ml_analysis["expected_return_raw"] = transformer_ready ? raw_expected_pnl : 0.0;
+        ml_analysis["expected_return_calibrated"] =
+            expected_return_output_available && models->has_expected_return_calibration();
         ml_analysis["transformer_expected_pnl"] = transformer_pnl;
+        ml_analysis["execution_regime"] = execution_regime;
         ml_analysis["confidence"] = (!transformer_configured || transformer_ready)
                                          ? std::clamp(std::abs(win_prob - 0.5) * 2.0, 0.0, 1.0)
                                          : 0.0;
@@ -1449,7 +1522,8 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         ml_analysis["inference_status"] = !transformer_configured
                                                ? "not_configured"
                                                : (transformer_ready ? "ready" : "warming_up");
-        ml_analysis["transformer_expected_lookback"] = kTransformerLookback;
+        ml_analysis["transformer_expected_lookback"] = static_cast<Json::UInt64>(expected_lookback);
+        ml_analysis["transformer_expected_feature_width"] = static_cast<Json::UInt64>(expected_features);
         ml_analysis["transformer_sequence_length"] = transformer_configured
                                                            ? static_cast<Json::UInt64>(transformer_sequence.size())
                                                            : 0;
@@ -1459,7 +1533,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
                                                                : static_cast<Json::UInt64>(transformer_sequence.front().size()))
                                                         : 0;
         ml_analysis["transformer_contract_compatible"] =
-            !transformer_configured || transformer_contract_shape;
+            !transformer_configured || transformer_width_compatible;
         used_model = true;
       } catch (const std::exception &e) {
         ++transformer_rejected_inputs_;
@@ -1729,12 +1803,20 @@ void SimulatedTradingService::updateDiagnosisFromSignalLocked(const SignalRecord
     } else {
       const int actual_lookback = ml.get("transformer_sequence_length", Json::Value(0)).asInt();
       const int actual_width = ml.get("transformer_feature_width", Json::Value(0)).asInt();
-      const bool lookback_compatible = actual_lookback == static_cast<int>(kTransformerLookback);
-      const bool width_compatible = actual_width == static_cast<int>(kTransformerFeatureWidth);
+      // Read the active model's real contract (recorded on this same signal
+      // by buildSignalRecordLocked) rather than a hardcoded shape, so a
+      // retrained model with a different lookback/feature width is judged
+      // against what it actually expects.
+      const int expected_lookback =
+          ml.get("transformer_expected_lookback", Json::Value(0)).asInt();
+      const int expected_width =
+          ml.get("transformer_expected_feature_width", Json::Value(0)).asInt();
+      const bool lookback_compatible = actual_lookback == expected_lookback;
+      const bool width_compatible = actual_width == expected_width;
       // A short sequence is expected while history warms up. It is not a
       // shape mismatch until the sequence exceeds the fixed contract; a
       // feature-width mismatch is actionable as soon as a row exists.
-      const bool lookback_mismatch = actual_lookback > static_cast<int>(kTransformerLookback);
+      const bool lookback_mismatch = actual_lookback > expected_lookback;
       const bool width_mismatch = actual_width > 0 && !width_compatible;
       diagnosis["transformer"]["lookback"]["actual"] = actual_lookback;
       diagnosis["transformer"]["lookback"]["compatible"] = lookback_compatible;
@@ -2170,10 +2252,9 @@ Json::Value SimulatedTradingService::closePositionLocked(const std::string &symb
 }
 
 std::vector<std::string> SimulatedTradingService::selectLiveQuoteBatchLocked() {
-  const auto selection = selectQuoteBatch(symbols_, live_quote_cursor_, kLiveQuoteSymbolsPerTick);
-  live_quote_cursor_ = selection.next_cursor;
-  last_live_quote_batch_symbols_ = selection.symbols;
-  return selection.symbols;
+  // Fetch every selected symbol each tick; there is no per-tick cap.
+  last_live_quote_batch_symbols_ = symbols_;
+  return symbols_;
 }
 
 void SimulatedTradingService::generateTickLocked(
@@ -2547,10 +2628,7 @@ Json::Value SimulatedTradingService::buildDiagnosisJson() const {
   result["dominant_blocker"] = result["summary"]["dominant_blocker"];
   result["cadence"] = cadence_diagnostics_.toJson(result["as_of"].asString());
   result["quote_scheduler"]["enabled"] = active_ && usesLiveMarketData(mode_);
-  result["quote_scheduler"]["batch_size"] =
-      static_cast<Json::UInt64>(usesLiveMarketData(mode_)
-                                    ? kLiveQuoteSymbolsPerTick
-                                    : symbols_.size());
+  result["quote_scheduler"]["batch_size"] = static_cast<Json::UInt64>(symbols_.size());
   result["quote_scheduler"]["cursor"] = static_cast<Json::UInt64>(live_quote_cursor_);
   result["quote_scheduler"]["batch_symbols"] = Json::arrayValue;
   for (const auto &symbol : last_live_quote_batch_symbols_) {
@@ -3197,12 +3275,10 @@ Json::Value SimulatedTradingService::getOrderBookSignals(
   }
   result["diagnostics"]["execution_blocker_counts"] = initial_blocker_counts;
   result["diagnostics"]["contract"] =
-      "Live-data simulated sessions fetch a bounded rotating quote batch per worker tick; the response is latest-by-symbol and pagination only controls display rows. Symbols not admitted in the current batch remain pending rather than being reported as provider failures.";
+      "Live-data simulated sessions fetch quotes for every selected symbol each worker tick; the response is latest-by-symbol and pagination only controls display rows.";
   result["diagnostics"]["quote_scheduler"]["enabled"] = active && usesLiveMarketData(current_mode);
   result["diagnostics"]["quote_scheduler"]["batch_size"] =
-      static_cast<Json::UInt64>(usesLiveMarketData(current_mode)
-                                    ? kLiveQuoteSymbolsPerTick
-                                    : session_symbols.size());
+      static_cast<Json::UInt64>(session_symbols.size());
   result["diagnostics"]["quote_scheduler"]["cursor"] =
       static_cast<Json::UInt64>(quote_cursor);
   result["diagnostics"]["quote_scheduler"]["batch_symbols"] = Json::arrayValue;

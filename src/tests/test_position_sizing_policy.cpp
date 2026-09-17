@@ -4,6 +4,52 @@
 #include <iostream>
 
 int main() {
+  // kelly_fraction: a sub-50% edge sizes to zero (never negative — this
+  // scales a long-only deployment down, not into a short); a genuine edge
+  // scales up toward, but never past, full Kelly.
+  if (trade::trading::kelly_fraction(0.5, 1.0) != 0.0) {
+    std::cerr << "A coin-flip edge should carry zero Kelly fraction at even-money payoff"
+              << std::endl;
+    return 1;
+  }
+  if (trade::trading::kelly_fraction(0.3, 1.0) != 0.0) {
+    std::cerr << "A sub-50% edge must clamp to zero, not go negative" << std::endl;
+    return 1;
+  }
+  if (std::fabs(trade::trading::kelly_fraction(0.7, 1.0) - 0.4) > 1e-9) {
+    std::cerr << "Kelly fraction at p=0.7, b=1 should be exactly 2p-1=0.4" << std::endl;
+    return 1;
+  }
+  if (trade::trading::kelly_fraction(1.0, 1.0) != 1.0) {
+    std::cerr << "A certain win should saturate Kelly fraction at 1.0" << std::endl;
+    return 1;
+  }
+
+  // A higher calibrated win_probability must size strictly larger than a
+  // weaker one when every other input is identical. The Kelly term above
+  // reinforces this alongside the pre-existing confidence blend.
+  {
+    trade::trading::PositionSizingInputs base{};
+    base.base_usd = 1000.0;
+    base.signal_strength = 0.5;
+    base.model_confidence = 0.5;
+    base.expected_return = 0.01;
+    base.live_profit_factor = 1.0;
+
+    trade::trading::PositionSizingInputs low_prob = base;
+    low_prob.win_probability = 0.42;
+    trade::trading::PositionSizingInputs high_prob = base;
+    high_prob.win_probability = 0.72;
+
+    const double low_multiplier = trade::trading::derive_position_size_multiplier(low_prob);
+    const double high_multiplier = trade::trading::derive_position_size_multiplier(high_prob);
+    if (!(high_multiplier > low_multiplier)) {
+      std::cerr << "A higher calibrated win probability should size strictly larger, all else equal"
+                << std::endl;
+      return 1;
+    }
+  }
+
   trade::trading::PositionSizingInputs weak{};
   weak.base_usd = 1000.0;
   weak.signal_strength = 0.1;
@@ -125,5 +171,122 @@ int main() {
     std::cerr << "Explicit override should allow unprofitable trades" << std::endl;
     return 1;
   }
+
+  // Circuit breaker: enough samples and a degraded profit factor downgrades.
+  {
+    trade::trading::ModelHealthInputs degraded_live{};
+    degraded_live.live_profit_factor = 0.5;
+    degraded_live.live_sample_count = 30;
+    if (!trade::trading::should_downgrade_to_heuristic(degraded_live)) {
+      std::cerr << "A degraded live profit factor with enough samples should downgrade"
+                << std::endl;
+      return 1;
+    }
+  }
+
+  // A thin sample must never be read as a verdict, even if it looks bad.
+  {
+    trade::trading::ModelHealthInputs thin_sample{};
+    thin_sample.live_profit_factor = 0.1;
+    thin_sample.live_sample_count = 3;
+    thin_sample.cohort_profit_factor = 0.1;
+    thin_sample.cohort_sample_count = 2;
+    if (trade::trading::should_downgrade_to_heuristic(thin_sample)) {
+      std::cerr << "A thin sample should not trigger the circuit breaker" << std::endl;
+      return 1;
+    }
+  }
+
+  // Healthy live performance never downgrades even if the cohort looks weak.
+  {
+    trade::trading::ModelHealthInputs healthy_live{};
+    healthy_live.live_profit_factor = 1.4;
+    healthy_live.live_sample_count = 25;
+    healthy_live.cohort_profit_factor = 0.2;
+    healthy_live.cohort_sample_count = 100;
+    if (trade::trading::should_downgrade_to_heuristic(healthy_live)) {
+      std::cerr << "Sufficient healthy live samples should take priority over cohort history"
+                << std::endl;
+      return 1;
+    }
+  }
+
+  // With too few live samples, fall back to cohort evidence.
+  {
+    trade::trading::ModelHealthInputs cohort_only{};
+    cohort_only.live_profit_factor = 1.4;
+    cohort_only.live_sample_count = 2;
+    cohort_only.cohort_profit_factor = 0.3;
+    cohort_only.cohort_sample_count = 40;
+    if (!trade::trading::should_downgrade_to_heuristic(cohort_only)) {
+      std::cerr << "Degraded cohort performance should downgrade when live history is too thin"
+                << std::endl;
+      return 1;
+    }
+  }
+
+  // resolve_cohort_sizing_inputs: this is the service-level regime-matched
+  // sizing decision (previously inline and duplicated in both
+  // SimulatedTradingService and LiveTradingService) extracted into a pure,
+  // directly testable function.
+  {
+    const std::vector<trade::trading::RegimeCohortSample> samples = {
+        {"liquidity=high|spread=low|imbalance=bullish|volatility=low|session=us", 1.6, 1.1, 15.0,
+         30},
+        {"liquidity=low|spread=high|imbalance=bearish|volatility=high|session=overnight", 0.4,
+         -0.6, 200.0, 50},
+    };
+
+    // A regime with enough samples wins outright over the blend.
+    const auto matched = trade::trading::resolve_cohort_sizing_inputs(
+        "liquidity=high|spread=low|imbalance=bullish|volatility=low|session=us", samples);
+    if (matched.sample_count != 30 || std::fabs(matched.profit_factor - 1.6) > 1e-9) {
+      std::cerr << "A regime with enough samples should be used directly, not blended"
+                << std::endl;
+      return 1;
+    }
+
+    // An unrecognized regime falls back to the sample-weighted blend across
+    // every recorded cohort.
+    const auto unmatched = trade::trading::resolve_cohort_sizing_inputs("no_such_regime", samples);
+    const double expected_blended_pf = (1.6 * 30.0 + 0.4 * 50.0) / 80.0;
+    if (unmatched.sample_count != 80 ||
+        std::fabs(unmatched.profit_factor - expected_blended_pf) > 1e-9) {
+      std::cerr << "An unmatched regime should fall back to the sample-weighted blend"
+                << std::endl;
+      return 1;
+    }
+
+    // An empty execution_regime (signal predates regime tagging) also falls
+    // back to the blend rather than matching nothing.
+    const auto untagged = trade::trading::resolve_cohort_sizing_inputs("", samples);
+    if (untagged.sample_count != 80) {
+      std::cerr << "An empty execution_regime should fall back to the blend, not zero"
+                << std::endl;
+      return 1;
+    }
+
+    // A regime match that exists but is too thin to trust falls back to the
+    // blend rather than sizing off a handful of noisy samples.
+    const std::vector<trade::trading::RegimeCohortSample> thin_match = {
+        {"target_regime", 5.0, 3.0, 1.0, 2},
+        {"other_regime", 1.0, 0.5, 20.0, 40},
+    };
+    const auto thin = trade::trading::resolve_cohort_sizing_inputs("target_regime", thin_match);
+    if (std::fabs(thin.profit_factor - 5.0) < 1e-9) {
+      std::cerr << "A regime match below the minimum sample count must not be used directly"
+                << std::endl;
+      return 1;
+    }
+
+    // No cohort data at all: a zero-valued, zero-sample selection, not a
+    // crash or a fabricated value.
+    const auto empty = trade::trading::resolve_cohort_sizing_inputs("any_regime", {});
+    if (empty.sample_count != 0 || empty.profit_factor != 0.0) {
+      std::cerr << "No cohort data should resolve to a zero-valued selection" << std::endl;
+      return 1;
+    }
+  }
+
   return 0;
 }

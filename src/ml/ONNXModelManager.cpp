@@ -18,6 +18,10 @@ void ONNXModelManager::reset_sessions() {
   transformer_lookback_ = 0;
   transformer_features_ = 0;
   transformer_channels_first_ = false;
+  // A reload without a calibration.json beside the new artifacts must not
+  // keep applying the previous model's calibration to a different model.
+  win_probability_calibration_ = trade::ml::CalibrationMap{};
+  expected_return_calibration_ = trade::ml::CalibrationMap{};
 }
 
 ONNXModelManager::ONNXModelManager()
@@ -190,6 +194,40 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     transformer_channels_first_ = new_transformer_channels_first;
     model_dir_ = model_dir;
 
+    // Optional post-hoc calibration fit against held-out outcomes (see
+    // fit_and_write_model_calibration). Always overwritten here, even when
+    // absent, so switching to a model without a calibration.json cannot
+    // leave the previous model's calibration silently applied.
+    win_probability_calibration_ = trade::ml::CalibrationMap{};
+    expected_return_calibration_ = trade::ml::CalibrationMap{};
+    const std::filesystem::path calibration_path = dir / "calibration.json";
+    if (std::filesystem::exists(calibration_path)) {
+      try {
+        std::ifstream calibration_stream(calibration_path);
+        const auto calibration_json =
+            nlohmann::json::parse(calibration_stream, nullptr, true, true);
+        if (calibration_json.contains("win_probability")) {
+          trade::ml::from_json(calibration_json.at("win_probability"),
+                               win_probability_calibration_);
+        }
+        if (calibration_json.contains("expected_return")) {
+          trade::ml::from_json(calibration_json.at("expected_return"),
+                               expected_return_calibration_);
+        }
+        spdlog::info(
+            "Loaded model calibration from {} (win_probability samples={}, expected_return samples={})",
+            calibration_path.string(), win_probability_calibration_.sample_count,
+            expected_return_calibration_.sample_count);
+      } catch (const std::exception &e) {
+        spdlog::warn(
+            "Ignoring calibration.json at {} because it could not be parsed: {}; "
+            "using raw (uncalibrated) model output",
+            calibration_path.string(), e.what());
+        win_probability_calibration_ = trade::ml::CalibrationMap{};
+        expected_return_calibration_ = trade::ml::CalibrationMap{};
+      }
+    }
+
     spdlog::info(
         "Loaded ONNX models from {}. Capabilities: regressor={}, classifier={}, transformer={}, expected input dimension: {}",
         model_dir, has_loaded_regressor, has_loaded_classifier,
@@ -211,12 +249,22 @@ double ONNXModelManager::predict_pnl(const std::vector<double> &features) {
 double ONNXModelManager::predict_win_prob(const std::vector<double> &features) {
   if (!classifier_session_)
     return 0.5;
-  auto outputs = run_inference(*classifier_session_, features);
-  // For many classifiers, outputs[0] might be the class index (0 or 1)
-  // and outputs[1] might be probabilities.
-  // However, simple exports might just have probabilities as output 0.
-  // Let's assume it's the score/probability.
-  return outputs.empty() ? 0.5 : static_cast<double>(outputs[0]);
+  // Typical skl2onnx classifier exports have two outputs: output 0 is the
+  // predicted class label, output 1 is the probability tensor. A single-output
+  // export is assumed to emit the probability directly at output 0.
+  const size_t output_count = classifier_session_->GetOutputCount();
+  const size_t prob_output_index = output_count > 1 ? output_count - 1 : 0;
+  auto outputs =
+      run_inference(*classifier_session_, features, prob_output_index);
+  return outputs.empty() ? 0.5 : static_cast<double>(outputs.back());
+}
+
+double ONNXModelManager::calibrate_win_probability(double raw_probability) const {
+  return trade::ml::apply_calibration(win_probability_calibration_, raw_probability);
+}
+
+double ONNXModelManager::calibrate_expected_return(double raw_expected_return) const {
+  return trade::ml::apply_calibration(expected_return_calibration_, raw_expected_return);
 }
 
 bool ONNXModelManager::transformer_input_ready(
@@ -246,9 +294,11 @@ double ONNXModelManager::predict_transformer(
     size_t n_features = sequence.empty() ? 0 : sequence[0].size();
 
     if (!transformer_input_ready(sequence)) {
-      spdlog::warn("Transformer input mismatch: expected {}x{}, got {}x{}",
+      spdlog::warn("Transformer input mismatch: expected {}x{}, got {}x{}; "
+                   "skipping inference rather than predicting on zero-padded input",
                    transformer_lookback_, transformer_features_, seq_len,
                    n_features);
+      return 0.0;
     }
 
     std::vector<float> input_tensor_values;
@@ -315,7 +365,8 @@ double ONNXModelManager::predict_transformer(
 
 std::vector<float>
 ONNXModelManager::run_inference(Ort::Session &session,
-                                const std::vector<double> &features) {
+                                const std::vector<double> &features,
+                                size_t output_index) {
   try {
     // Convert double to float for ONNX
     std::vector<float> input_tensor_values(features.begin(), features.end());
@@ -342,7 +393,10 @@ ONNXModelManager::run_inference(Ort::Session &session,
     // Try to get actual names if they are different
     Ort::AllocatorWithDefaultOptions allocator;
     auto input_name_ptr = session.GetInputNameAllocated(0, allocator);
-    auto output_name_ptr = session.GetOutputNameAllocated(0, allocator);
+    const size_t clamped_output_index =
+        std::min(output_index, session.GetOutputCount() - 1);
+    auto output_name_ptr =
+        session.GetOutputNameAllocated(clamped_output_index, allocator);
 
     const char *actual_input_names[] = {input_name_ptr.get()};
     const char *actual_output_names[] = {output_name_ptr.get()};

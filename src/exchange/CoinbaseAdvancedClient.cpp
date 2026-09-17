@@ -14,9 +14,11 @@
 #include <cstdio>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 
 namespace trade {
 namespace exchange {
@@ -151,6 +153,24 @@ Json::Value parseJson(const std::string &text, std::string *error) {
 CoinbaseAdvancedClient::CoinbaseAdvancedClient(CoinbaseCredentials credentials)
     : credentials_(std::move(credentials)) {}
 
+CoinbaseAdvancedClient::~CoinbaseAdvancedClient() = default;
+
+std::shared_ptr<drogon::HttpClient> CoinbaseAdvancedClient::getHttpClient(
+    const std::string &host) {
+  std::lock_guard<std::mutex> lock(http_clients_mutex_);
+  auto &client = http_clients_[host];
+  if (!client) {
+    // Reused across every subsequent request to this host so the underlying
+    // connection (and its TLS session) survives between calls instead of
+    // paying a fresh TCP+TLS handshake per quote/order request. This was
+    // previously the dominant cost of sequential per-symbol market-data
+    // polling, capping observed throughput well below what the network
+    // itself allows.
+    client = drogon::HttpClient::newHttpClient("https://" + host);
+  }
+  return client;
+}
+
 Json::Value CoinbaseAdvancedClient::request(const std::string &method, const std::string &host,
                                             const std::string &path, const std::string &body,
                                             bool authenticated, std::string *error) {
@@ -200,7 +220,7 @@ Json::Value CoinbaseAdvancedClient::request(const std::string &method, const std
     }
   }
 
-  auto client = drogon::HttpClient::newHttpClient("https://" + host);
+  auto client = getHttpClient(host);
 
   auto promise = std::make_shared<std::promise<std::pair<drogon::ReqResult, std::string>>>();
   auto future = promise->get_future();

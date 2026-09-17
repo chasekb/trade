@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iterator>
 #include <numeric>
 #include <spdlog/spdlog.h>
 #include <xtensor/containers/xadapt.hpp>
@@ -111,7 +112,7 @@ FeatureEngineer::preprocess(const OrderBookFeatures &features) {
     std::lock_guard<std::mutex> lock(history_mutex);
     auto &sequence = transformer_sequence_windows_[sequence_key];
     sequence.push_back(final_pca);
-    if (sequence.size() > transformer_lookback) {
+    if (sequence.size() > kMaxTransformerHistoryRetained) {
       sequence.pop_front();
     }
   }
@@ -119,7 +120,8 @@ FeatureEngineer::preprocess(const OrderBookFeatures &features) {
   return final_pca;
 }
 
-std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence(const std::string &sequence_key) {
+std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence(
+    const std::string &sequence_key, std::size_t max_length) {
   std::lock_guard<std::mutex> lock(history_mutex);
   const std::string key = sequence_key.empty() ? "__default__" : sequence_key;
   std::vector<std::vector<double>> sequence;
@@ -127,9 +129,15 @@ std::vector<std::vector<double>> FeatureEngineer::get_transformer_sequence(const
   if (it == transformer_sequence_windows_.end()) {
     return sequence;
   }
-  sequence.reserve(it->second.size());
-  for (const auto &vec : it->second) {
-    sequence.push_back(vec);
+  const auto &window = it->second;
+  const std::size_t take =
+      (max_length > 0 && max_length < window.size()) ? max_length : window.size();
+  const std::size_t skip = window.size() - take;
+  sequence.reserve(take);
+  auto iter = window.begin();
+  std::advance(iter, static_cast<std::deque<std::vector<double>>::difference_type>(skip));
+  for (; iter != window.end(); ++iter) {
+    sequence.push_back(*iter);
   }
   return sequence;
 }
@@ -201,18 +209,13 @@ FeatureEngineer::extract_base_features(const OrderBookFeatures &f) {
 }
 
 std::vector<double> FeatureEngineer::impute(const std::vector<double> &base) {
+  // extract_base_features() cleans NaNs to 0.0 before this runs, so a 0.0
+  // here may be a genuinely-missing value. Match Python's SimpleImputer
+  // (mean strategy) by replacing it with the trained per-feature statistic.
   std::vector<double> result = base;
   for (size_t i = 0; i < result.size(); ++i) {
     if (result[i] == 0.0 && i < imputer_params.statistics.size()) {
-      // Check if it was originally NaN or INF (cleaned in previous step to 0.0
-      // or 1e9) Python's SimpleImputer with mean strategy replaces NaNs. In our
-      // C++ path, we assume 0.0 might need imputation if it was NaN. To be
-      // safe, we only impute if it's strictly 0.0 and we have stats. result[i]
-      // = imputer_params.statistics[i]; Wait, Python's transform only replaces
-      // NaNs. If the value is 0.0, it stays 0.0. Our extract_base_features
-      // already cleaned NaNs to 0.0. So we should actually keep it as is or
-      // handle it better. Let's assume for now that if extract_base_features
-      // made it 0.0 because of NaN, it's fine.
+      result[i] = imputer_params.statistics[i];
     }
   }
   return result;

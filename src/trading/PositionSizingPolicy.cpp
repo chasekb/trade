@@ -33,6 +33,12 @@ double average_non_negative(const std::vector<double> &values) {
 
 } // namespace
 
+double kelly_fraction(double win_probability, double payoff_ratio) {
+  const double p = clamp_double(win_probability, 0.0, 1.0);
+  const double b = std::max(0.01, payoff_ratio);
+  return clamp_double(p - (1.0 - p) / b, 0.0, 1.0);
+}
+
 double derive_position_size_multiplier(const PositionSizingInputs &inputs) {
   const double confidence_score = average_non_negative(
       {normalize_score(inputs.signal_strength, 0.0, 1.0),
@@ -44,6 +50,18 @@ double derive_position_size_multiplier(const PositionSizingInputs &inputs) {
 
   // High-confidence setups get a modest increase, while weak setups are cut.
   multiplier *= clamp_double(0.55 + confidence_score * 0.9, 0.55, 1.35);
+
+  // A conservative fractional-Kelly term layered on top of the confidence
+  // blend above. It only ever trims size further down for a sub-50% edge —
+  // never up beyond what the confidence blend already granted — so a
+  // miscalibrated or not-yet-calibrated win_probability cannot inflate
+  // size, while a genuinely strong calibrated edge keeps its full weight.
+  // Assumes an even-money payoff ratio (b=1) since a reliable per-signal
+  // win/loss payoff ratio isn't available yet; quarter-Kelly keeps this
+  // conservative even when the edge estimate itself is noisy.
+  constexpr double kKellyFractionScale = 0.25;
+  const double kelly = kelly_fraction(inputs.win_probability, 1.0);
+  multiplier *= clamp_double(1.0 - kKellyFractionScale + kelly * kKellyFractionScale, 0.75, 1.0);
 
   // Wider spreads directly reduce deployment size.
   multiplier *= clamp_double(1.0 - (std::max(0.0, inputs.spread_percent) * 40.0), 0.5, 1.0);
@@ -131,6 +149,60 @@ MinimumTradeSizeDecision minimum_trade_size_decision(const MinimumTradeSizeInput
   decision.expected_net_pnl_usd = expected_net_pnl_usd(decision.notional_usd, inputs);
   decision.should_trade = decision.expected_net_pnl_usd >= std::max(0.0, inputs.minimum_net_pnl_usd);
   return decision;
+}
+
+bool should_downgrade_to_heuristic(const ModelHealthInputs &inputs, double profit_factor_floor,
+                                   int min_sample_count) {
+  if (inputs.live_sample_count >= min_sample_count) {
+    return inputs.live_profit_factor < profit_factor_floor;
+  }
+  if (inputs.cohort_sample_count >= min_sample_count) {
+    return inputs.cohort_profit_factor < profit_factor_floor;
+  }
+  // Neither live nor cohort history is large enough to judge the model yet;
+  // a thin sample is not evidence of degradation.
+  return false;
+}
+
+CohortSizingSelection resolve_cohort_sizing_inputs(
+    const std::string &execution_regime, const std::vector<RegimeCohortSample> &cohort_samples,
+    int min_regime_sample_count) {
+  if (!execution_regime.empty()) {
+    for (const auto &cohort : cohort_samples) {
+      if (cohort.regime == execution_regime && cohort.sample_count >= min_regime_sample_count) {
+        CohortSizingSelection selection;
+        selection.profit_factor = cohort.profit_factor;
+        selection.sharpe_ratio = cohort.sharpe_ratio;
+        selection.avg_drawdown = cohort.max_drawdown;
+        selection.sample_count = static_cast<std::size_t>(cohort.sample_count);
+        return selection;
+      }
+    }
+  }
+
+  CohortSizingSelection blended;
+  double weighted_profit_factor = 0.0;
+  double weighted_sharpe_ratio = 0.0;
+  double weighted_drawdown = 0.0;
+  std::size_t total_samples = 0;
+  for (const auto &cohort : cohort_samples) {
+    if (cohort.sample_count <= 0) {
+      continue;
+    }
+    const double weight = static_cast<double>(cohort.sample_count);
+    total_samples += static_cast<std::size_t>(cohort.sample_count);
+    weighted_profit_factor += cohort.profit_factor * weight;
+    weighted_sharpe_ratio += cohort.sharpe_ratio * weight;
+    weighted_drawdown += cohort.max_drawdown * weight;
+  }
+  if (total_samples > 0) {
+    const double denominator = static_cast<double>(total_samples);
+    blended.sample_count = total_samples;
+    blended.profit_factor = weighted_profit_factor / denominator;
+    blended.sharpe_ratio = weighted_sharpe_ratio / denominator;
+    blended.avg_drawdown = weighted_drawdown / denominator;
+  }
+  return blended;
 }
 
 } // namespace trading

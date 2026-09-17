@@ -6,8 +6,18 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
+// Forward-declared only: avoids pulling the full Drogon HTTP client API into
+// this header. CoinbaseAdvancedClient.cpp includes <drogon/HttpClient.h> and
+// implements the client-pool accessor that uses this type.
+namespace drogon {
+class HttpClient;
+} // namespace drogon
 
 namespace trade {
 namespace exchange {
@@ -67,6 +77,7 @@ enum class ClientOrderLookupStatus {
 class CoinbaseAdvancedClient {
 public:
   explicit CoinbaseAdvancedClient(CoinbaseCredentials credentials);
+  ~CoinbaseAdvancedClient();
 
   bool configured() const { return credentials_.configured(); }
 
@@ -101,7 +112,14 @@ private:
                       const std::string &path, const std::string &body, bool authenticated,
                       std::string *error);
 
+  // One persistent, keep-alive-capable HTTP client per host, reused across
+  // every request instead of paying a fresh TCP+TLS handshake per call.
+  // Implemented in the .cpp, which includes <drogon/HttpClient.h>.
+  std::shared_ptr<drogon::HttpClient> getHttpClient(const std::string &host);
+
   CoinbaseCredentials credentials_;
+  std::mutex http_clients_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<drogon::HttpClient>> http_clients_;
 };
 
 } // namespace exchange
