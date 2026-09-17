@@ -225,7 +225,7 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then ORT_ARCH="x64"; \
     elif [ "$ARCH" = "aarch64" ]; then ORT_ARCH="aarch64"; \
     else ORT_ARCH="x64"; fi && \
-    mkdir -p /opt/onnxruntime /opt/libtorch && \
+    mkdir -p /opt/onnxruntime /opt/libtorch/lib && \
     curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
       "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ONNXRUNTIME_VERSION}.tgz" \
       -o /tmp/onnxruntime.tgz && \
@@ -256,6 +256,19 @@ COPY vcpkg-triplets ./vcpkg-triplets
 # building it from source; amd64 uses the prebuilt release above), so keep
 # the per-attempt ceiling generous enough for a clean build instead of
 # timing out mid-install.
+#
+# --x-install-root pins this to the exact directory the later cmake
+# configure step also targets via -DVCPKG_INSTALLED_DIR (see below). vcpkg
+# manifest installs default to <manifest-dir>/vcpkg_installed (here
+# /build/vcpkg_installed), while CMake's own vcpkg toolchain integration
+# defaults to <CMAKE_BINARY_DIR>/vcpkg_installed (/build/build/vcpkg_installed)
+# — two different paths. Without aligning them, the cmake step's own
+# implicit manifest-install check finds this step's output invisible and
+# silently rebuilds the entire dependency graph from scratch a second time,
+# in a fresh RUN-step shell that also does not inherit VCPKG_BINARY_SOURCES
+# (export does not persist across Dockerfile RUN instructions), so that
+# second rebuild gets no benefit from either this step's local build or the
+# NuGet cache it just populated below.
 #
 # The remaining vcpkg ports (drogon, libpqxx, spdlog, xtensor/xtl/xsimd,
 # hiredis, redis-plus-plus, and libtorch-from-source on arm64) are cached
@@ -311,8 +324,9 @@ RUN --mount=type=secret,id=github_token,required=false \
     if [ "$ARCH" = "x86_64" ]; then export VCPKG_MAX_CONCURRENCY=$(nproc); \
     else export VCPKG_MAX_CONCURRENCY=2; fi && \
     SUCCESS=0 && \
+    mkdir -p /build/build/vcpkg_installed && \
     for i in 1 2 3; do \
-    timeout 360m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET && SUCCESS=1 && break || \
+    timeout 360m /opt/vcpkg/vcpkg install --overlay-triplets=/build/vcpkg-triplets --triplet $TRIPLET --x-install-root=/build/build/vcpkg_installed && SUCCESS=1 && break || \
     (echo "vcpkg install attempt $i failed, retrying in 10s..." && sleep 10); \
     done && \
     if [ $SUCCESS -eq 0 ]; then echo "vcpkg install failed" && exit 1; fi && \
@@ -330,6 +344,7 @@ RUN ARCH=$(uname -m) && \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_OVERLAY_TRIPLETS=/build/vcpkg-triplets \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
+    -DVCPKG_INSTALLED_DIR=/build/build/vcpkg_installed \
     -DCMAKE_BUILD_TYPE=Release \
     -DONNXRUNTIME_ROOT=/opt/onnxruntime \
     -DCMAKE_PREFIX_PATH=/opt/libtorch && \
