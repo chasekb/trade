@@ -1,6 +1,10 @@
 # --- STAGE 1: Build ---
 FROM ubuntu:22.04 AS builder
 
+# mono-complete (added for NuGet-based vcpkg binary caching below) pulls in
+# packages that can otherwise prompt for debconf input during apt-get.
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install build dependencies with retry logic for transient mirror/network failures
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
@@ -8,7 +12,7 @@ RUN set -eux; \
       apt-get install -y --no-install-recommends --fix-missing \
         ca-certificates curl cmake g++ make git libc-ares-dev uuid-dev bison flex libssl-dev \
         autoconf automake libtool libltdl-dev linux-libc-dev gfortran pkg-config gperf autoconf-archive python3-venv python3-dev \
-        unzip zip \
+        unzip zip mono-complete \
         libx11-dev libxext-dev libxrender-dev libxcb1-dev libxau-dev libxdmcp-dev libxft-dev \
         libdbus-1-dev libglib2.0-dev libxi-dev libxtst-dev \
         libxrandr-dev libxinerama-dev libxcursor-dev libxdamage-dev libxcomposite-dev \
@@ -252,16 +256,51 @@ COPY vcpkg-triplets ./vcpkg-triplets
 # building it from source; amd64 uses the prebuilt release above), so keep
 # the per-attempt ceiling generous enough for a clean build instead of
 # timing out mid-install.
-RUN ARCH=$(uname -m) && \
+#
+# The remaining vcpkg ports (drogon, libpqxx, spdlog, xtensor/xtl/xsimd,
+# hiredis, redis-plus-plus, and libtorch-from-source on arm64) are cached
+# via a NuGet-backed binary cache on GitHub Packages when a GITHUB_TOKEN is
+# supplied as a BuildKit secret, so an unchanged port is fetched prebuilt
+# instead of recompiled on every run — this is on top of, not instead of,
+# the Docker/GHA layer cache: it still helps whenever that layer cache
+# misses (a vcpkg.json change, a fresh cache scope) but most ports are
+# otherwise unchanged. GITHUB_REPOSITORY_OWNER/GITHUB_REPOSITORY are plain
+# build args since neither is sensitive; the token is only ever read from
+# the secret mount, never a build arg or ENV, so it cannot leak into a
+# layer. A build without the secret (a local `docker build`, a fork PR)
+# silently falls back to no binary caching rather than failing.
+ARG GITHUB_REPOSITORY_OWNER=""
+ARG GITHUB_REPOSITORY=""
+ARG VCPKG_NUGET_READWRITE="false"
+RUN --mount=type=secret,id=github_token,required=false \
+    ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux-onnxstaticoff"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux-onnxstaticoff"; \
     else TRIPLET="x64-linux-onnxstaticoff"; fi && \
     export VCPKG_DISABLE_METRICS=1 && \
-    export VCPKG_BINARY_SOURCES=clear && \
     export VCPKG_DEFAULT_HOST_TRIPLET=$TRIPLET && \
     # We only ship a Release backend image, so avoid building vcpkg debug
     # packages as well; this cuts protobuf/libtorch build time and storage.
     export VCPKG_BUILD_TYPE=release && \
+    if [ -s /run/secrets/github_token ] && [ -n "$GITHUB_REPOSITORY_OWNER" ]; then \
+      GH_TOKEN=$(cat /run/secrets/github_token); \
+      NUGET_SOURCE="https://nuget.pkg.github.com/${GITHUB_REPOSITORY_OWNER}/index.json"; \
+      NUGET_EXE=$(/opt/vcpkg/vcpkg fetch nuget | tail -n 1); \
+      if mono "$NUGET_EXE" sources add -Name "GitHubPackages" -Source "$NUGET_SOURCE" -UserName "$GITHUB_REPOSITORY_OWNER" -Password "$GH_TOKEN" -StorePasswordInClearText \
+         && mono "$NUGET_EXE" setapikey "$GH_TOKEN" -Source "$NUGET_SOURCE"; then \
+        export VCPKG_NUGET_REPOSITORY="https://github.com/${GITHUB_REPOSITORY}"; \
+        if [ "$VCPKG_NUGET_READWRITE" = "true" ]; then \
+          export VCPKG_BINARY_SOURCES="clear;nuget,GitHubPackages,readwrite"; \
+        else \
+          export VCPKG_BINARY_SOURCES="clear;nuget,GitHubPackages,read"; \
+        fi; \
+      else \
+        echo "NuGet binary-cache credential setup failed; continuing without vcpkg binary caching" >&2; \
+        export VCPKG_BINARY_SOURCES=clear; \
+      fi; \
+    else \
+      export VCPKG_BINARY_SOURCES=clear; \
+    fi && \
     # GitHub-hosted standard runners (this workflow's target, not the local
     # rootless-Podman path this cap was originally tuned for) give public
     # repos 4 vCPUs/16GB. amd64 no longer builds onnxruntime or libtorch at

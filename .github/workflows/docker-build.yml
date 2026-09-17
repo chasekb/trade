@@ -59,6 +59,19 @@ jobs:
           file: ./Dockerfile.cpp
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/cpp-backend,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          # NuGet-backed vcpkg binary cache on GitHub Packages for the
+          # remaining vcpkg ports (see Dockerfile.cpp). The token is passed
+          # as a BuildKit secret, never a build arg, so it can't leak into
+          # an image layer; readwrite is restricted to push events (a
+          # forked PR's GITHUB_TOKEN has no package-write permission
+          # regardless), matching the same restriction already used for
+          # image push above.
+          build-args: |
+            GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
+            GITHUB_REPOSITORY=${{ github.repository }}
+            VCPKG_NUGET_READWRITE=${{ github.event_name != 'pull_request' }}
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
           # gha cache export used to fail after a successful build/push with
           # BuildKit `not_found` missing-blob errors, incorrectly failing an
           # otherwise-successful run — no-cache:true worked around that by
