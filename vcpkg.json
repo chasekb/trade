@@ -9,12 +9,9 @@
         "redis-plus-plus",
         "spdlog",
         {
-            "name": "onnxruntime",
-            "default-features": false
-        },
-        {
             "name": "libtorch",
-            "default-features": false
+            "default-features": false,
+            "platform": "arm64"
         },
         "xtl",
         "xsimd",

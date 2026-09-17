@@ -11,13 +11,29 @@ find_package(libpqxx CONFIG REQUIRED)
 find_package(hiredis CONFIG REQUIRED)
 find_package(redis++ CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
-find_package(onnxruntime CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
 find_package(Python3 COMPONENTS Development REQUIRED)
 find_package(Torch REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
+# onnxruntime is no longer installed via vcpkg (see vcpkg.json): building it
+# from source there was the single largest contributor to CI wall time.
+# ONNXRUNTIME_ROOT points at an extracted official prebuilt release (see
+# Dockerfile.cpp), and this constructs an imported target under the same
+# onnxruntime::onnxruntime name vcpkg's own CONFIG package used to provide,
+# so no downstream code needs to know which path built it. Falls back to
+# vcpkg's package for any build that still installs it there.
+if(DEFINED ONNXRUNTIME_ROOT)
+    add_library(onnxruntime::onnxruntime SHARED IMPORTED)
+    set_target_properties(onnxruntime::onnxruntime PROPERTIES
+        IMPORTED_LOCATION "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_ROOT}/include"
+    )
+else()
+    find_package(onnxruntime CONFIG REQUIRED)
+endif()
 
 # mlpack is header-only – no find_package needed, headers already in include_directories above
 # Collect all source files
