@@ -271,13 +271,22 @@ COPY vcpkg-triplets ./vcpkg-triplets
 # NuGet cache it just populated below.
 #
 # Directory alignment alone was not sufficient, though: this step also sets
-# VCPKG_BUILD_TYPE=release (skip debug variants) via `export`, which does
-# not persist to the cmake step's shell either. That changes the computed
-# package ABI hash, so the cmake step still failed to recognize this step's
-# (or the NuGet cache's) release-only packages as already satisfying the
-# manifest and rebuilt them anyway. The cmake step below now passes the
-# equivalent -DVCPKG_BUILD_TYPE=release so both steps compute the same ABI
-# hash and the second pass can actually reuse the first.
+# VCPKG_DEFAULT_HOST_TRIPLET=$TRIPLET via `export`, which does not persist
+# to the cmake step's shell either. Confirmed directly in a real run's
+# logs: with the directory aligned, the cmake step recognized only two
+# leaf packages (no host-tool build dependency) as already installed and
+# rebuilt everything else — including tearing down and rebuilding the
+# vcpkg-cmake/vcpkg-cmake-config/etc. host-tool packages this step had
+# already built under the custom overlay triplet, this time under the
+# plain default host triplet instead, since the cmake step never saw
+# VCPKG_DEFAULT_HOST_TRIPLET and fell back to vcpkg's own default host
+# triplet detection. Since virtually every real port's build depends on
+# those host tools, that one mismatch cascades into a full rebuild of the
+# whole graph. (A `VCPKG_BUILD_TYPE=release` cmake variable was tried
+# first and confirmed ineffective here — the overlay triplet file already
+# hardcodes `VCPKG_BUILD_TYPE release`, so it was never the actual
+# mismatch.) The cmake step below now passes -DVCPKG_HOST_TRIPLET=$TRIPLET
+# to match.
 #
 # The remaining vcpkg ports (drogon, libpqxx, spdlog, xtensor/xtl/xsimd,
 # hiredis, redis-plus-plus, and libtorch-from-source on arm64) are cached
@@ -353,8 +362,8 @@ RUN ARCH=$(uname -m) && \
     -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_OVERLAY_TRIPLETS=/build/vcpkg-triplets \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
+    -DVCPKG_HOST_TRIPLET=$TRIPLET \
     -DVCPKG_INSTALLED_DIR=/build/build/vcpkg_installed \
-    -DVCPKG_BUILD_TYPE=release \
     -DCMAKE_BUILD_TYPE=Release \
     -DONNXRUNTIME_ROOT=/opt/onnxruntime \
     -DCMAKE_PREFIX_PATH=/opt/libtorch && \
