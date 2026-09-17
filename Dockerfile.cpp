@@ -270,6 +270,15 @@ COPY vcpkg-triplets ./vcpkg-triplets
 # second rebuild gets no benefit from either this step's local build or the
 # NuGet cache it just populated below.
 #
+# Directory alignment alone was not sufficient, though: this step also sets
+# VCPKG_BUILD_TYPE=release (skip debug variants) via `export`, which does
+# not persist to the cmake step's shell either. That changes the computed
+# package ABI hash, so the cmake step still failed to recognize this step's
+# (or the NuGet cache's) release-only packages as already satisfying the
+# manifest and rebuilt them anyway. The cmake step below now passes the
+# equivalent -DVCPKG_BUILD_TYPE=release so both steps compute the same ABI
+# hash and the second pass can actually reuse the first.
+#
 # The remaining vcpkg ports (drogon, libpqxx, spdlog, xtensor/xtl/xsimd,
 # hiredis, redis-plus-plus, and libtorch-from-source on arm64) are cached
 # via a NuGet-backed binary cache on GitHub Packages when a GITHUB_TOKEN is
@@ -345,6 +354,7 @@ RUN ARCH=$(uname -m) && \
     -DVCPKG_OVERLAY_TRIPLETS=/build/vcpkg-triplets \
     -DVCPKG_TARGET_TRIPLET=$TRIPLET \
     -DVCPKG_INSTALLED_DIR=/build/build/vcpkg_installed \
+    -DVCPKG_BUILD_TYPE=release \
     -DCMAKE_BUILD_TYPE=Release \
     -DONNXRUNTIME_ROOT=/opt/onnxruntime \
     -DCMAKE_PREFIX_PATH=/opt/libtorch && \
