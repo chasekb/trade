@@ -1552,6 +1552,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         ml_analysis["ml_enabled"] = !transformer_configured || transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
         ml_analysis["win_probability_raw"] = std::clamp(raw_win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_available"] = classifier_output_available;
         ml_analysis["win_probability_calibrated"] =
             classifier_output_available && models->has_win_probability_calibration();
         ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
@@ -1759,6 +1760,27 @@ bool SimulatedTradingService::signalPassesMlGateLocked(const SignalRecord &signa
     // Models unavailable: honor the fallback_to_baseline strategy parameter.
     const Json::Value fallback = parameters_.get("fallback_to_baseline", Json::Value(true));
     return fallback.isString() ? fallback.asString() != "false" : fallback.asBool();
+  }
+
+  const bool win_probability_available =
+      ml_analysis.get("win_probability_available", Json::Value(true)).asBool();
+  if (!win_probability_available) {
+    // Transformer-only model pack: no classifier exists to produce a
+    // win-probability, so win_probability is a neutral 0.5 placeholder that
+    // would fail the threshold check below on every signal regardless of
+    // prediction quality. Gate on the transformer's own calibrated expected
+    // return instead.
+    const double min_expected_return =
+        std::max(0.0, paramNumber(parameters_, "transformer_min_expected_return_percent", 0.05)) /
+        100.0;
+    const double expected_return = ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
+    if (candidate_signal_type == "buy") {
+      return expected_return >= min_expected_return;
+    }
+    if (candidate_signal_type == "sell") {
+      return expected_return <= -min_expected_return;
+    }
+    return false;
   }
 
   const double threshold = std::clamp(
