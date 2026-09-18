@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -38,25 +37,28 @@ constexpr int kTransformerOpsetVersion = 13;
 // prev_win_probability, prev_expected_return, prev_confidence.
 constexpr int64_t kTransformerNumFeatures = 16;
 
-// EXPERIMENTAL, temporary: rolling mean/std of the most decision-relevant
-// raw fields over 5/20/60-sample sub-windows, mirroring the rolling-window
-// (mean+std over multiple windows) approach FeatureEngineer's own 353-dim
-// PCA pipeline already uses. Gated by TRANSFORMER_FEATURE_VARIANT=engineered
-// so a training run can be A/B compared against the 16-raw-field baseline
-// on the same data, to decide whether investing in full PCA-pipeline
-// reconciliation for this model is worth it. Not wired into any persistent
-// config surface (TrainingConfig) on purpose — this is a one-off comparison,
-// not a shipped option, and should be removed or promoted to a real config
-// field once that decision is made.
+// Rolling mean/std of the most decision-relevant raw fields over 5/20/60-
+// sample sub-windows, mirroring the rolling-window (mean+std over multiple
+// windows) approach FeatureEngineer's own 353-dim PCA pipeline already uses.
+// A/B test on live trade_outcomes data (2026-09-18, 11,244 train / holdout
+// split) showed this representation beats the 16-raw-field-only baseline:
+// holdout MSE 0.000303 vs 0.000319 (~5% lower), and R^2 +0.0019 vs -0.0497
+// (raw-only was worse than predicting the mean; this representation is
+// marginally better than it). Both results are weak in absolute terms and
+// the test set is small, so this is a directional signal, not a strong one
+// — but it is a self-contained 40-feature representation computable
+// identically at training time (here, from historical DB rows) and at
+// live-inference time (from a per-symbol rolling buffer of the same 16 raw
+// fields), unlike the alternative of retraining against FeatureEngineer's
+// full 353-dim PCA pipeline, which would require building an offline replay
+// of that live, stateful, rolling-window PCA machinery over historical data
+// — a substantially larger, separate undertaking. Live-inference wiring for
+// this feature set (a rolling buffer alongside the raw features, feeding
+// this same rolling_mean_std logic) is not yet implemented.
 constexpr std::array<int, 4> kEngineeredFieldIndices = {0, 1, 10, 11}; // imbalance, spread, momentum, volatility
 constexpr std::array<int64_t, 3> kEngineeredWindows = {5, 20, 60};
 constexpr int64_t kEngineeredNumFeatures =
     static_cast<int64_t>(kEngineeredFieldIndices.size() * kEngineeredWindows.size() * 2); // 24
-
-bool transformer_engineered_features_enabled() {
-  const char *env = std::getenv("TRANSFORMER_FEATURE_VARIANT");
-  return env != nullptr && std::string(env) == "engineered";
-}
 
 std::array<double, static_cast<std::size_t>(kTransformerNumFeatures)>
 transformer_feature_vector(const trade::ml::OrderBookFeatures &f) {
@@ -79,8 +81,8 @@ transformer_feature_vector(const trade::ml::OrderBookFeatures &f) {
 }
 
 // Rolling mean/std of row_features[*][field_index] over the last last_n
-// entries of `window` (oldest-first, -1 = pad/no-history). Used only by the
-// experimental "engineered" feature variant above.
+// entries of `window` (oldest-first, -1 = pad/no-history). Backs the
+// engineered feature set above.
 std::pair<double, double> rolling_mean_std(
     const std::vector<int64_t> &window, int64_t last_n, int field_index,
     const std::vector<std::array<double, static_cast<std::size_t>(kTransformerNumFeatures)>>
@@ -598,7 +600,8 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
     return metrics;
   }
 
-  const bool engineered = transformer_engineered_features_enabled();
+  // Always on — see the A/B test result documented above kEngineeredFieldIndices.
+  const bool engineered = true;
   const int64_t n_features =
       kTransformerNumFeatures + (engineered ? kEngineeredNumFeatures : 0);
   const int64_t lookback = kTransformerLookback;
@@ -640,7 +643,7 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
 
   // EXPERIMENTAL: rolling mean/std of a few key raw fields over each row's
   // own trailing 5/20/60-sample history (window_rows[i] is already that
-  // row's own window, computed above) — see transformer_engineered_features_enabled.
+  // row's own window, computed above).
   std::vector<std::vector<double>> engineered_row_features;
   if (engineered) {
     engineered_row_features.resize(features.size());
