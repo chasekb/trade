@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -14,6 +15,7 @@
 #include <random>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <tuple>
@@ -36,6 +38,26 @@ constexpr int kTransformerOpsetVersion = 13;
 // prev_win_probability, prev_expected_return, prev_confidence.
 constexpr int64_t kTransformerNumFeatures = 16;
 
+// EXPERIMENTAL, temporary: rolling mean/std of the most decision-relevant
+// raw fields over 5/20/60-sample sub-windows, mirroring the rolling-window
+// (mean+std over multiple windows) approach FeatureEngineer's own 353-dim
+// PCA pipeline already uses. Gated by TRANSFORMER_FEATURE_VARIANT=engineered
+// so a training run can be A/B compared against the 16-raw-field baseline
+// on the same data, to decide whether investing in full PCA-pipeline
+// reconciliation for this model is worth it. Not wired into any persistent
+// config surface (TrainingConfig) on purpose — this is a one-off comparison,
+// not a shipped option, and should be removed or promoted to a real config
+// field once that decision is made.
+constexpr std::array<int, 4> kEngineeredFieldIndices = {0, 1, 10, 11}; // imbalance, spread, momentum, volatility
+constexpr std::array<int64_t, 3> kEngineeredWindows = {5, 20, 60};
+constexpr int64_t kEngineeredNumFeatures =
+    static_cast<int64_t>(kEngineeredFieldIndices.size() * kEngineeredWindows.size() * 2); // 24
+
+bool transformer_engineered_features_enabled() {
+  const char *env = std::getenv("TRANSFORMER_FEATURE_VARIANT");
+  return env != nullptr && std::string(env) == "engineered";
+}
+
 std::array<double, static_cast<std::size_t>(kTransformerNumFeatures)>
 transformer_feature_vector(const trade::ml::OrderBookFeatures &f) {
   return {f.bid_ask_imbalance,
@@ -54,6 +76,36 @@ transformer_feature_vector(const trade::ml::OrderBookFeatures &f) {
           f.prev_win_probability,
           f.prev_expected_return,
           f.prev_confidence};
+}
+
+// Rolling mean/std of row_features[*][field_index] over the last last_n
+// entries of `window` (oldest-first, -1 = pad/no-history). Used only by the
+// experimental "engineered" feature variant above.
+std::pair<double, double> rolling_mean_std(
+    const std::vector<int64_t> &window, int64_t last_n, int field_index,
+    const std::vector<std::array<double, static_cast<std::size_t>(kTransformerNumFeatures)>>
+        &row_features) {
+  const int64_t start = std::max<int64_t>(
+      0, static_cast<int64_t>(window.size()) - last_n);
+  double sum = 0.0, sum_sq = 0.0;
+  int count = 0;
+  for (int64_t t = start; t < static_cast<int64_t>(window.size()); ++t) {
+    const int64_t row = window[static_cast<std::size_t>(t)];
+    if (row < 0) {
+      continue;
+    }
+    const double v =
+        row_features[static_cast<std::size_t>(row)][static_cast<std::size_t>(field_index)];
+    sum += v;
+    sum_sq += v * v;
+    ++count;
+  }
+  if (count == 0) {
+    return {0.0, 0.0};
+  }
+  const double mean = sum / static_cast<double>(count);
+  const double variance = std::max(0.0, sum_sq / static_cast<double>(count) - mean * mean);
+  return {mean, std::sqrt(variance)};
 }
 
 void write_transformer_config(const std::filesystem::path &config_path,
@@ -546,7 +598,9 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
     return metrics;
   }
 
-  const int64_t n_features = kTransformerNumFeatures;
+  const bool engineered = transformer_engineered_features_enabled();
+  const int64_t n_features =
+      kTransformerNumFeatures + (engineered ? kEngineeredNumFeatures : 0);
   const int64_t lookback = kTransformerLookback;
 
   // Group sample indices by symbol, preserving the caller's chronological
@@ -584,10 +638,31 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
     row_features[i] = transformer_feature_vector(features[i]);
   }
 
+  // EXPERIMENTAL: rolling mean/std of a few key raw fields over each row's
+  // own trailing 5/20/60-sample history (window_rows[i] is already that
+  // row's own window, computed above) — see transformer_engineered_features_enabled.
+  std::vector<std::vector<double>> engineered_row_features;
+  if (engineered) {
+    engineered_row_features.resize(features.size());
+    for (std::size_t i = 0; i < features.size(); ++i) {
+      std::vector<double> engineered_vec;
+      engineered_vec.reserve(static_cast<std::size_t>(kEngineeredNumFeatures));
+      for (int field_index : kEngineeredFieldIndices) {
+        for (int64_t w : kEngineeredWindows) {
+          const auto [mean, stddev] =
+              rolling_mean_std(window_rows[i], w, field_index, row_features);
+          engineered_vec.push_back(mean);
+          engineered_vec.push_back(stddev);
+        }
+      }
+      engineered_row_features[i] = std::move(engineered_vec);
+    }
+  }
+
   spdlog::info(
       "Training Transformer (patch-attention) model on {} samples, "
-      "n_features={}, lookback={}, epochs={}, batch_size={}, lr={}",
-      features.size(), n_features, lookback, config.epochs, config.batch_size,
+      "n_features={} (engineered={}), lookback={}, epochs={}, batch_size={}, lr={}",
+      features.size(), n_features, engineered, lookback, config.epochs, config.batch_size,
       config.learning_rate);
 
   auto build_batch_tensor = [&](const std::vector<std::size_t> &sample_idxs) {
@@ -602,8 +677,15 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
           continue; // leave zero-padded
         }
         const auto &feat_row = row_features[static_cast<std::size_t>(row)];
-        for (int64_t f = 0; f < n_features; ++f) {
+        for (int64_t f = 0; f < kTransformerNumFeatures; ++f) {
           accessor[bi][t][f] = static_cast<float>(feat_row[static_cast<std::size_t>(f)]);
+        }
+        if (engineered) {
+          const auto &eng_row = engineered_row_features[static_cast<std::size_t>(row)];
+          for (int64_t f = 0; f < kEngineeredNumFeatures; ++f) {
+            accessor[bi][t][kTransformerNumFeatures + f] =
+                static_cast<float>(eng_row[static_cast<std::size_t>(f)]);
+          }
         }
       }
     }
