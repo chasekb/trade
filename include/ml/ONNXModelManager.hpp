@@ -34,8 +34,17 @@ public:
 
   bool has_regressor() const { return regressor_session_ != nullptr; }
   bool has_classifier() const { return classifier_session_ != nullptr; }
+  // True only when a prediction from this transformer would be real, not
+  // the ONNX graph's shape-correct-but-weight-free Identity placeholder
+  // (see transformer_config.json's onnx_has_weights, written by
+  // ModelTrainer.cpp's write_transformer_config — always false today, since
+  // no real ONNX exporter exists). A transformer_weights.pt that failed to
+  // load, or an older package that never had one, both correctly report no
+  // transformer capability here rather than silently falling back to a
+  // meaningless prediction.
   bool has_transformer() const {
-    return transformer_session_ != nullptr || has_torch_transformer_;
+    return has_torch_transformer_ ||
+           (transformer_session_ != nullptr && onnx_has_weights_);
   }
   bool transformer_input_ready(const std::vector<std::vector<double>> &sequence) const;
 
@@ -93,6 +102,7 @@ private:
   // trained_transformer_ member for the same reason.
   std::shared_ptr<void> torch_transformer_;
   bool has_torch_transformer_ = false;
+  bool onnx_has_weights_ = false;
 
   // Feature dimensions expected by the model
   size_t input_dim_ = 0;

@@ -18,6 +18,7 @@ void ONNXModelManager::reset_sessions() {
   transformer_session_.reset();
   torch_transformer_.reset();
   has_torch_transformer_ = false;
+  onnx_has_weights_ = false;
   input_dim_ = 0;
   transformer_lookback_ = 0;
   transformer_features_ = 0;
@@ -64,6 +65,11 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     double new_transformer_dropout = 0.1;
     std::shared_ptr<void> new_torch_transformer;
     bool new_has_torch_transformer = false;
+    // Defaults to false (fail closed): an older package's
+    // transformer_config.json predates this field entirely, and the only
+    // exporter that exists today (export_transformer_to_onnx) never writes
+    // real weights into the ONNX graph regardless.
+    bool new_onnx_has_weights = false;
 
     if (std::filesystem::exists(transformer_config_path)) {
       try {
@@ -99,6 +105,7 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
           new_transformer_heads = config.value("n_heads", new_transformer_heads);
           new_transformer_layers = config.value("n_layers", new_transformer_layers);
           new_transformer_dropout = config.value("dropout", new_transformer_dropout);
+          new_onnx_has_weights = config.value("onnx_has_weights", false);
         }
       } catch (const std::exception &e) {
         spdlog::warn("Ignoring transformer config at {} because it could not be parsed: {}",
@@ -230,6 +237,10 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
 
     const bool has_loaded_regressor = new_regressor_session != nullptr;
     const bool has_loaded_classifier = new_classifier_session != nullptr;
+    // A loaded-but-weight-free ONNX session still counts toward "found
+    // something to load" (has_loaded_transformer, used only for the "no
+    // usable models at all" bail-out below) — it's has_transformer() that
+    // must stay false for it, not this.
     const bool has_loaded_transformer =
         new_transformer_session != nullptr || new_has_torch_transformer;
 
@@ -258,6 +269,7 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     transformer_session_ = std::move(new_transformer_session);
     torch_transformer_ = std::move(new_torch_transformer);
     has_torch_transformer_ = new_has_torch_transformer;
+    onnx_has_weights_ = new_onnx_has_weights;
     input_dim_ = new_input_dim;
     transformer_lookback_ = new_transformer_lookback;
     transformer_features_ = new_transformer_features;
@@ -340,7 +352,8 @@ double ONNXModelManager::calibrate_expected_return(double raw_expected_return) c
 
 bool ONNXModelManager::transformer_input_ready(
     const std::vector<std::vector<double>> &sequence) const {
-  if ((!transformer_session_ && !has_torch_transformer_) ||
+  const bool onnx_usable = transformer_session_ != nullptr && onnx_has_weights_;
+  if ((!onnx_usable && !has_torch_transformer_) ||
       transformer_lookback_ == 0 || transformer_features_ == 0 ||
       sequence.size() != transformer_lookback_) {
     return false;
@@ -392,6 +405,18 @@ double ONNXModelManager::predict_transformer(
 
   if (!transformer_session_)
     return 0.0;
+  if (!onnx_has_weights_) {
+    // The ONNX graph is a shape-correct, weight-free Identity placeholder
+    // (see write_transformer_config's onnx_has_weights comment) — running it
+    // would return a meaningless number, not a real prediction. Fail closed
+    // instead of silently serving it; has_torch_transformer_ was already
+    // false or this branch would not have been reached at all.
+    spdlog::warn(
+        "Transformer ONNX graph has no real weights (onnx_has_weights=false) "
+        "and no LibTorch weights loaded; skipping inference rather than "
+        "predicting from the placeholder Identity graph");
+    return 0.0;
+  }
   if (transformer_lookback_ == 0 || transformer_features_ == 0) {
     spdlog::error(
         "Transformer model is loaded but input dimensions are unavailable");

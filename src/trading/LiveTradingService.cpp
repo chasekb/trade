@@ -1822,6 +1822,14 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
                                             ? CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack")
                                             : "transformer-warming-up";
         ml_analysis["transformer_configured"] = transformer_configured;
+        // True only when transformer_expected_pnl came from real
+        // gradient-trained LibTorch weights, not the shape-correct-but-
+        // weight-free ONNX placeholder (see ONNXModelManager::has_transformer
+        // — false for a placeholder-only package, so transformer_configured
+        // would itself already be false in that case; this field
+        // distinguishes "no transformer at all" from "real transformer, not
+        // yet warmed up" from "real transformer, serving predictions now").
+        ml_analysis["torch_transformer_active"] = models->has_torch_transformer();
         ml_analysis["inference_status"] = !transformer_configured
                                                ? "not_configured"
                                                : (transformer_ready ? "ready" : "warming_up");
