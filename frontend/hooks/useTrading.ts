@@ -1327,6 +1327,18 @@ export function useStrategyParameters() {
         { name: 'allow_unprofitable_trades', label: 'Allow Unprofitable Sim Trades', type: 'select' as const, default: 'false', options: ['true', 'false'] },
         { name: 'max_positions_per_session', label: 'Max Positions Per Session', type: 'number' as const, default: 100, min: 1, max: 1000 }
       ],
+      'ml_orderbook_opportunity': [
+        { name: 'ml_server_url', label: 'ML Server URL', type: 'text' as const, default: 'http://localhost:8002' },
+        { name: 'confidence_threshold', label: 'Confidence Threshold', type: 'number' as const, default: 0.6, min: 0, max: 1, step: 0.1 },
+        { name: 'fallback_to_baseline', label: 'Fallback to Baseline', type: 'select' as const, default: 'true', options: ['true', 'false'] },
+        { name: 'order_book_level', label: 'Order Book Level', type: 'number' as const, default: 2, min: 1, max: 3 },
+        { name: 'trade_history_limit', label: 'Trade History Limit', type: 'number' as const, default: 1000, min: 10, max: 1000 },
+        { name: 'round_trip_fee_percent', label: 'Round-Trip Fee Hurdle (%)', type: 'number' as const, default: 1.5, min: 0, max: 5, step: 0.1 },
+        { name: 'slippage_buffer_percent', label: 'Slippage Buffer (%)', type: 'number' as const, default: 0.2, min: 0, max: 5, step: 0.1 },
+        { name: 'min_orderbook_opportunity_signal_strength', label: 'Minimum Candidate Strength (noise floor only — admission is decided by the fee-adjusted gate)', type: 'number' as const, default: 0.05, min: 0, max: 1, step: 0.01 },
+        { name: 'orderbook_expected_return_scale_percent', label: 'Heuristic Fallback Edge Scale (%)', type: 'number' as const, default: 2.4, min: 0, max: 5, step: 0.1 },
+        { name: 'max_positions_per_session', label: 'Max Positions Per Session', type: 'number' as const, default: 100, min: 1, max: 1000 }
+      ],
       'orderbook': [
         { name: 'order_book_level', label: 'Order Book Level', type: 'number' as const, default: 2, min: 1, max: 3 },
         { name: 'trade_history_limit', label: 'Trade History Limit', type: 'number' as const, default: 1000, min: 10, max: 1000 },

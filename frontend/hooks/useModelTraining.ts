@@ -68,6 +68,8 @@ export function useModelTraining() {
         autoSetActive?: boolean;
         modelType?: 'random_forest' | 'gradient_boosting' | 'transformer';
         modelName?: string;
+        trainingSource?: 'trade_outcomes' | 'opportunity_labels' | undefined;
+        opportunityHorizonSeconds?: number;
       }
     ): Promise<MLTrainingResponse> => {
       const options = typeof input === 'boolean'

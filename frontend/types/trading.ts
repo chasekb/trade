@@ -455,6 +455,7 @@ export type TradingStrategy =
   | 'fibonacci'
   | 'orderbook'
   | 'ml_enhanced_orderbook'
+  | 'ml_orderbook_opportunity'
   | 'dca'
   | 'buyandhold';
 

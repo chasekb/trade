@@ -34,6 +34,17 @@ struct TrainingConfig {
   // 0 means unlimited.
   int max_training_rows = 0;
   std::string model_name = "default_model";
+  // "trade_outcomes" (default): train on ml_training_inputs, labeled from
+  // realized PnL on signals that crossed a strategy's threshold and were
+  // matched to an executed trade.
+  // "opportunity_labels": train on ml_opportunity_labels, self-labeled from
+  // every logged order-book state's own forward-looking, fee-adjusted
+  // return, independent of signal generation or execution. Intended for the
+  // ml_orderbook_opportunity strategy.
+  std::string training_source = "trade_outcomes";
+  // Forward-return horizon used only when training_source is
+  // "opportunity_labels"; ignored otherwise.
+  int opportunity_horizon_seconds = 60;
 };
 
 struct ModelMetrics {
@@ -49,6 +60,9 @@ struct ModelMetrics {
   nlohmann::json walk_forward_folds = nlohmann::json::array();
   nlohmann::json feature_importance = nlohmann::json::array();
   std::vector<ExecutionCohortMetrics> cohort_metrics;
+  // Echoes TrainingConfig.training_source so training/report consumers can
+  // tell a trade-outcome model apart from an opportunity-labeled one.
+  std::string training_source = "trade_outcomes";
 };
 
 // JSON Serialization

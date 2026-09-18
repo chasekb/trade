@@ -41,6 +41,12 @@ constexpr double kFeeRate = 0.0005;
 constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
 constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
 constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
+// ml_orderbook_opportunity relies on the fee-adjusted profitability gate,
+// not a raw-imbalance strength floor, to admit signals — see
+// isOpportunityOrderBookStrategy. The floor stays configurable (and
+// non-zero by default) purely as a noise guard against near-zero-imbalance
+// ticks, not as the strategy's real admission gate.
+constexpr double kDefaultOrderBookOpportunityMinSignalStrength = 0.05;
 // Keep the simulated order-book heuristic fallback aligned with live trading so
 // fixture-equivalent strong imbalances can clear the shared fee/spread/slippage
 // profitability gate while weak signals remain HOLD.
@@ -135,7 +141,18 @@ std::string makeSessionId() {
 constexpr std::size_t kMaxPriceHistory = 512;
 
 bool isOrderBookStrategy(const std::string &strategy) {
-  return strategy == "orderbook" || strategy == "ml_enhanced_orderbook";
+  return strategy == "orderbook" || strategy == "ml_enhanced_orderbook" ||
+         strategy == "ml_orderbook_opportunity";
+}
+
+// ml_orderbook_opportunity trains its model on every logged order-book state
+// (see DataCollector::sync_opportunity_labels), not only the ones that
+// crossed the legacy raw-imbalance strength floor below. Admission for that
+// strategy is decided by the fee-adjusted profitability gate on the model's
+// output, not a strength floor, so it does not discard opportunities the
+// model learned from states ml_enhanced_orderbook never signals on.
+bool isOpportunityOrderBookStrategy(const std::string &strategy) {
+  return strategy == "ml_orderbook_opportunity";
 }
 
 bool usesLiveMarketData(const std::string &mode) {
@@ -163,6 +180,19 @@ double paramNumber(const Json::Value &params, const char *key, double fallback) 
     }
   }
   return fallback;
+}
+
+// The opportunity strategy is tuned by a separate parameter/default pair so
+// operators can lower or raise its noise floor independently of
+// min_orderbook_signal_strength, which governs ml_enhanced_orderbook/orderbook.
+double orderBookMinSignalStrength(const std::string &strategy,
+                                  const Json::Value &params) {
+  if (isOpportunityOrderBookStrategy(strategy)) {
+    return paramNumber(params, "min_orderbook_opportunity_signal_strength",
+                       kDefaultOrderBookOpportunityMinSignalStrength);
+  }
+  return paramNumber(params, "min_orderbook_signal_strength",
+                     kDefaultOrderBookMinSignalStrength);
 }
 
 bool paramBool(const Json::Value &params, const char *key, bool fallback) {
@@ -569,8 +599,7 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   diagnostic_input.signal_strength = signal.strength;
   diagnostic_input.min_signal_strength =
       isOrderBookStrategy(strategy_)
-          ? paramNumber(parameters_, "min_orderbook_signal_strength",
-                        kDefaultOrderBookMinSignalStrength)
+          ? orderBookMinSignalStrength(strategy_, parameters_)
           : 0.0;
   diagnostic_input.expected_return_available =
       ml_analysis.get("expected_return_available", Json::Value(false)).asBool();
@@ -1308,8 +1337,20 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   std::string strategy_reason;
   if (isOrderBookStrategy(strategy_)) {
     strength = std::min(1.0, std::abs(imbalance) * 1.15);
-    generated = strength >= 0.22;
-    signal_type = !generated ? "hold" : (imbalance >= 0.0 ? "buy" : "sell");
+    if (isOpportunityOrderBookStrategy(strategy_)) {
+      // Every order-book tick is a candidate here, not only ones whose raw
+      // imbalance clears the legacy 0.22 strength floor: the model behind
+      // this strategy was trained on ALL logged states (see
+      // DataCollector::sync_opportunity_labels), so states with a weak
+      // imbalance but a favorable combination of spread/volume/momentum can
+      // still be genuine opportunities. The unchanged fee-adjusted
+      // profitability gate below is what actually decides admission.
+      generated = true;
+      signal_type = imbalance >= 0.0 ? "buy" : "sell";
+    } else {
+      generated = strength >= 0.22;
+      signal_type = !generated ? "hold" : (imbalance >= 0.0 ? "buy" : "sell");
+    }
   } else {
     const bool has_position = positions_.find(symbol) != positions_.end();
     const long long ticks_since_entry =
@@ -1397,9 +1438,16 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
 
   // Real model inference drives ml_analysis whenever the ONNX pack is loaded;
   // the heuristic path only remains as an honestly-labeled fallback.
+  // ml_orderbook_opportunity shares the same active ONNX pack as
+  // ml_enhanced_orderbook (one model manager, hot-swapped via the existing
+  // /api/ml/train + activation flow) — an operator gets opportunity-label
+  // behavior by training with training_source=opportunity_labels and
+  // activating that package before running this strategy, not from a
+  // separate always-on model slot.
   Json::Value ml_analysis(Json::objectValue);
   bool used_model = false;
-  if (strategy_ == "ml_enhanced_orderbook") {
+  if (strategy_ == "ml_enhanced_orderbook" ||
+      strategy_ == "ml_orderbook_opportunity") {
     auto *engineer = api::PredictController::featureEngineer();
     auto *models = api::PredictController::modelManager();
     // Circuit breaker: once enough realized outcomes show the active model
@@ -1504,6 +1552,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         ml_analysis["ml_enabled"] = !transformer_configured || transformer_ready;
         ml_analysis["win_probability"] = std::clamp(win_prob, 0.0, 1.0);
         ml_analysis["win_probability_raw"] = std::clamp(raw_win_prob, 0.0, 1.0);
+        ml_analysis["win_probability_available"] = classifier_output_available;
         ml_analysis["win_probability_calibrated"] =
             classifier_output_available && models->has_win_probability_calibration();
         ml_analysis["expected_return"] = transformer_ready ? expected_pnl : 0.0;
@@ -1604,7 +1653,8 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
   if (isOrderBookStrategy(strategy_)) {
     ml_analysis["expected_return_available"] = generated;
   }
-  if (strategy_ == "ml_enhanced_orderbook" &&
+  if ((strategy_ == "ml_enhanced_orderbook" ||
+       strategy_ == "ml_orderbook_opportunity") &&
       ml_analysis.get("inference_status", Json::Value("")).asString() == "warming_up") {
     generated = false;
     signal_type = "hold";
@@ -1629,8 +1679,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
     diagnostic_input.signal_strength = strength;
     diagnostic_input.min_signal_strength =
         isOrderBookStrategy(strategy_)
-            ? paramNumber(parameters_, "min_orderbook_signal_strength",
-                          kDefaultOrderBookMinSignalStrength)
+            ? orderBookMinSignalStrength(strategy_, parameters_)
             : 0.0;
     diagnostic_input.expected_return_available =
         ml_analysis.get("expected_return_available", Json::Value(false)).asBool();
@@ -1711,6 +1760,27 @@ bool SimulatedTradingService::signalPassesMlGateLocked(const SignalRecord &signa
     // Models unavailable: honor the fallback_to_baseline strategy parameter.
     const Json::Value fallback = parameters_.get("fallback_to_baseline", Json::Value(true));
     return fallback.isString() ? fallback.asString() != "false" : fallback.asBool();
+  }
+
+  const bool win_probability_available =
+      ml_analysis.get("win_probability_available", Json::Value(true)).asBool();
+  if (!win_probability_available) {
+    // Transformer-only model pack: no classifier exists to produce a
+    // win-probability, so win_probability is a neutral 0.5 placeholder that
+    // would fail the threshold check below on every signal regardless of
+    // prediction quality. Gate on the transformer's own calibrated expected
+    // return instead.
+    const double min_expected_return =
+        std::max(0.0, paramNumber(parameters_, "transformer_min_expected_return_percent", 0.05)) /
+        100.0;
+    const double expected_return = ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
+    if (candidate_signal_type == "buy") {
+      return expected_return >= min_expected_return;
+    }
+    if (candidate_signal_type == "sell") {
+      return expected_return <= -min_expected_return;
+    }
+    return false;
   }
 
   const double threshold = std::clamp(

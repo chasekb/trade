@@ -138,13 +138,21 @@ function basePriceForSymbol(symbol: string): number {
 }
 
 function syntheticSignalReason(strategy: string): string {
-  return strategy === 'ml_enhanced_orderbook'
-    ? 'Synthetic ML-enhanced order book pattern detected'
-    : 'Synthetic order book imbalance detected';
+  if (strategy === 'ml_enhanced_orderbook') {
+    return 'Synthetic ML-enhanced order book pattern detected';
+  }
+  if (strategy === 'ml_orderbook_opportunity') {
+    return 'Synthetic order book opportunity pattern detected';
+  }
+  return 'Synthetic order book imbalance detected';
 }
 
 function isLocalOrderBookStrategy(strategy: string): boolean {
-  return strategy === 'orderbook' || strategy === 'ml_enhanced_orderbook';
+  return (
+    strategy === 'orderbook' ||
+    strategy === 'ml_enhanced_orderbook' ||
+    strategy === 'ml_orderbook_opportunity'
+  );
 }
 
 function localSignalWinProbability(signal: OrderBookSignal): number {
@@ -528,9 +536,11 @@ function buildSyntheticOrderBookSignals(session: LocalSimTradingSession, page = 
         confidence: expectedReturnAvailable ? Number((0.55 + signalStrength / 3).toFixed(3)) : 0,
         model_version: session.strategy === 'ml_enhanced_orderbook'
           ? 'local-dev-fallback'
-          : orderBookStrategy
-            ? 'local-orderbook-fallback'
-            : 'local-strategy-diagnostic-unavailable',
+          : session.strategy === 'ml_orderbook_opportunity'
+            ? 'local-opportunity-fallback'
+            : orderBookStrategy
+              ? 'local-orderbook-fallback'
+              : 'local-strategy-diagnostic-unavailable',
         features_used: ['order_book_imbalance', 'spread', 'volume'],
         prediction_timestamp: new Date().toISOString(),
         analytics: {
@@ -1211,6 +1221,13 @@ class ApiClient {
     autoSetActive?: boolean;
     modelType?: 'random_forest' | 'gradient_boosting' | 'transformer';
     modelName?: string;
+    // "trade_outcomes" (default): train on realized trade PnL matched to
+    // signals that crossed a strategy's threshold. "opportunity_labels":
+    // train on every logged order-book state's own forward-looking,
+    // fee-adjusted return, independent of signal generation or execution.
+    // Used by the ml_orderbook_opportunity strategy.
+    trainingSource?: 'trade_outcomes' | 'opportunity_labels' | undefined;
+    opportunityHorizonSeconds?: number;
   }): Promise<ApiResponse<import('@/types/trading').MLTrainingResponse>> {
     const queryParams = new URLSearchParams();
     if (options?.batchTraining !== undefined) {
@@ -1229,6 +1246,10 @@ class ApiClient {
       body: JSON.stringify({
         ...(options?.modelType ? { model_type: options.modelType } : {}),
         ...(options?.modelName ? { model_name: options.modelName } : {}),
+        ...(options?.trainingSource ? { training_source: options.trainingSource } : {}),
+        ...(options?.opportunityHorizonSeconds
+          ? { opportunity_horizon_seconds: options.opportunityHorizonSeconds }
+          : {}),
       }),
     }).then(async (response) => {
       if (!response.ok) {

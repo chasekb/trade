@@ -10,6 +10,7 @@ interface StrategySelectorProps {
 export function StrategySelector({ value, onChange, className = '' }: StrategySelectorProps) {
     const strategies: { value: TradingStrategy; label: string }[] = [
         { value: 'ml_enhanced_orderbook', label: 'ML-Enhanced Order Book' },
+        { value: 'ml_orderbook_opportunity', label: 'ML Order Book (All Opportunities)' },
         { value: 'orderbook', label: 'Order Book Signals' },
         { value: 'sma', label: 'Simple Moving Average' },
         { value: 'ema', label: 'Exponential Moving Average' },

@@ -92,7 +92,8 @@ DiagnosticsMode resolveDiagnosticsMode(const std::string &strategy,
   if (signal_type == "hold") {
     return DiagnosticsMode::Report;
   }
-  if (strategy == "orderbook" || strategy == "ml_enhanced_orderbook") {
+  if (strategy == "orderbook" || strategy == "ml_enhanced_orderbook" ||
+      strategy == "ml_orderbook_opportunity") {
     return DiagnosticsMode::Gate;
   }
   if (strategy == "sma" || strategy == "ema" || strategy == "rsi" ||
@@ -127,7 +128,8 @@ NormalizedDiagnostics normalizeDiagnostics(const DiagnosticsInput &input) {
   }
   const bool known_strategy =
       input.strategy == "orderbook" ||
-      input.strategy == "ml_enhanced_orderbook" || input.strategy == "sma" ||
+      input.strategy == "ml_enhanced_orderbook" ||
+      input.strategy == "ml_orderbook_opportunity" || input.strategy == "sma" ||
       input.strategy == "ema" || input.strategy == "rsi" ||
       input.strategy == "bollinger" || input.strategy == "macd" ||
       input.strategy == "stochastic" || input.strategy == "fibonacci" ||

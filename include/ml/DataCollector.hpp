@@ -48,6 +48,25 @@ struct TradeOutcome {
   bool is_win;
 };
 
+struct OpportunityLabelResult {
+  std::string best_direction = "hold"; // "buy" | "sell" | "hold"
+  double net_return_fraction = 0.0;
+  bool is_profitable_after_costs = false;
+};
+
+// Pure, DB-free self-supervised labeling function used by
+// DataCollector::sync_opportunity_labels: given an order-book state's mid
+// price, its own spread, and a later observed mid price (the forward
+// observation), decides which side (if either) would have cleared the
+// fee/spread/slippage hurdle. Deliberately takes no signal_type or strength
+// input — every order-book state gets a label from this function, not only
+// ones a strategy would have signaled on.
+OpportunityLabelResult
+compute_opportunity_label(double mid_price, double forward_price,
+                          double spread_fraction,
+                          double round_trip_fee_fraction = 0.015,
+                          double slippage_buffer_fraction = 0.002);
+
 class DataCollector {
 public:
   explicit DataCollector(const std::string &db_url);
@@ -74,6 +93,42 @@ public:
   // Uses LIMIT/OFFSET to keep memory bounded for batch training.
   std::vector<std::pair<OrderBookFeatures, TradeOutcome>>
   extract_training_pairs_batch(int days_back, int limit, int offset);
+
+  // --- Opportunity-label path -----------------------------------------
+  // The trade-matched path above only labels order-book states that (a)
+  // crossed a strategy's signal-strength threshold and (b) led to an
+  // executed trade within the match window. Most logged order_book_signals
+  // rows never reach ml_training_inputs, so a model trained on it never sees
+  // the majority of order-book states, including profitable ones that never
+  // produced a signal or a trade.
+  //
+  // This path self-labels every order_book_signals row using its own
+  // forward-looking, fee/spread/slippage-adjusted mid-price return, with no
+  // dependency on signal_type, a strength threshold, or an executed trade.
+
+  // Ensure the ml_opportunity_labels table/indexes exist.
+  bool ensure_opportunity_labels_table();
+
+  // Labels every order_book_signals row that has a same-symbol row at least
+  // horizon_seconds ahead (used as the forward-looking price observation),
+  // regardless of whether it crossed a strategy's signal threshold or led to
+  // a trade. Idempotent/incremental like sync_training_inputs. Returns the
+  // number of newly labeled rows.
+  std::size_t sync_opportunity_labels(int days_back, int horizon_seconds = 60,
+                                      int batch_size = 5000);
+
+  // Count persisted opportunity-label rows available for training.
+  std::size_t count_opportunity_labels(int days_back = 0);
+
+  // Batch-oriented extraction of opportunity-labeled rows, shaped as
+  // (OrderBookFeatures, TradeOutcome) pairs so ModelTrainer's existing
+  // training code can consume either source interchangeably. The returned
+  // TradeOutcome is synthetic: pnl/fees are scaled to a fixed notional (not
+  // real capital), side is the cost-adjusted best_direction ("buy"/"sell"/
+  // "hold"), and is_win reflects profitability after fees/spread/slippage,
+  // not an executed fill.
+  std::vector<std::pair<OrderBookFeatures, TradeOutcome>>
+  extract_opportunity_pairs_batch(int days_back, int limit, int offset);
 
 private:
   std::string db_url_;
