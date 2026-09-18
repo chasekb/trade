@@ -169,7 +169,8 @@ void to_json(nlohmann::json &j, const ml::ModelMetrics &m) {
                      {"feature_set_version", m.feature_set_version},
                      {"walk_forward_folds", m.walk_forward_folds},
                      {"feature_importance", m.feature_importance},
-                     {"cohort_metrics", m.cohort_metrics}};
+                     {"cohort_metrics", m.cohort_metrics},
+                     {"training_source", m.training_source}};
 }
 
 void from_json(const nlohmann::json &j, ml::ModelMetrics &m) {
@@ -189,6 +190,7 @@ void from_json(const nlohmann::json &j, ml::ModelMetrics &m) {
   } else {
     m.cohort_metrics.clear();
   }
+  m.training_source = j.value("training_source", std::string{"trade_outcomes"});
 }
 
 } // namespace ml

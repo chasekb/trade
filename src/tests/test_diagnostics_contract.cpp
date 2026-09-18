@@ -37,6 +37,8 @@ int main() {
          "orderbook resolves to gate mode");
   expect(resolveDiagnosticsMode("ml_enhanced_orderbook", "sell") == DiagnosticsMode::Gate,
          "ml orderbook resolves to gate mode");
+  expect(resolveDiagnosticsMode("ml_orderbook_opportunity", "buy") == DiagnosticsMode::Gate,
+         "ml orderbook opportunity resolves to gate mode");
   for (const char *strategy : {"sma", "ema", "rsi", "bollinger", "macd",
                                "stochastic", "fibonacci", "dca", "buyandhold"}) {
     expect(resolveDiagnosticsMode(strategy, "buy") == DiagnosticsMode::Unavailable,
@@ -65,6 +67,21 @@ int main() {
     expect(result.actionable, "negative sell return is favorable");
     expect(std::abs(result.directional_expected_return_fraction - 0.03) < 1e-12,
            "sell negates expected return directionally");
+  }
+  {
+    // The opportunity strategy relies on the same fee-adjusted gate as
+    // orderbook/ml_enhanced_orderbook: a valid buy with a weaker raw
+    // strength than the legacy 0.22 floor still clears the gate here,
+    // because admission is the fee-adjusted edge, not the strength floor.
+    auto input = validBuy();
+    input.strategy = "ml_orderbook_opportunity";
+    input.signal_strength = 0.08;
+    input.min_signal_strength = 0.05;
+    const auto result = normalizeDiagnostics(input);
+    expect(result.actionable,
+           "ml_orderbook_opportunity admits a weak-strength, fee-clearing buy");
+    expect(result.availability == DiagnosticsAvailability::Valid,
+           "ml_orderbook_opportunity produces valid diagnostics");
   }
   {
     auto input = validBuy();

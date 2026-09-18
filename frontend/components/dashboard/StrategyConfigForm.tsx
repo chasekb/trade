@@ -59,11 +59,17 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
         const batchTraining = config.use_batch_training !== false; // Default to true
         const modelType = (config.training_model_type as 'random_forest' | 'gradient_boosting' | 'transformer' | undefined) || 'random_forest';
         const modelName = typeof config.training_model_name === 'string' ? config.training_model_name : 'default_model';
+        // ml_orderbook_opportunity is only meaningfully different from
+        // ml_enhanced_orderbook when its model was trained on every logged
+        // order-book state instead of only trade-matched signals, so this
+        // strategy always requests the opportunity-labeled data source.
+        const trainingSource = strategy === 'ml_orderbook_opportunity' ? 'opportunity_labels' : undefined;
         trainModel({
             batchTraining,
             autoSetActive: true,
             modelType,
             modelName,
+            trainingSource,
         }, {
             onSuccess: (data: { message?: string }) => {
                 setTrainingFeedback({ type: 'success', message: data.message || 'Model training started successfully' });
@@ -118,9 +124,14 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
 
     return (
         <div className={`space-y-4 ${className}`}>
-            {strategy === 'ml_enhanced_orderbook' && (
+            {(strategy === 'ml_enhanced_orderbook' || strategy === 'ml_orderbook_opportunity') && (
                 <div className="p-4 bg-gray-50 rounded-lg space-y-4">
                     <h4 className="text-md font-semibold text-gray-700">ML Configuration</h4>
+                    {strategy === 'ml_orderbook_opportunity' && (
+                        <p className="text-xs text-gray-500">
+                            Training this strategy always uses opportunity-labeled data (every logged order-book state, not only ones that crossed a signal threshold or led to a trade). Activate the resulting model below before running this strategy live or simulated.
+                        </p>
+                    )}
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">Available Models</label>
                         <div className="flex items-center space-x-2">
@@ -387,7 +398,7 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                         />
                     </div>
                 </div>
-                {strategy === 'ml_enhanced_orderbook' && (
+                {(strategy === 'ml_enhanced_orderbook' || strategy === 'ml_orderbook_opportunity') && (
                     <p className="text-xs text-gray-500">
                         ML-enhanced order-book sessions use expected return after round-trip fees, slippage, and spread to skip simulated trades below the configured minimum net P&L, unless explicitly allowed.
                     </p>

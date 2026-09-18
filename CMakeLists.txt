@@ -204,6 +204,22 @@ add_executable(test_diagnostics_contract
 target_include_directories(test_diagnostics_contract PRIVATE include)
 add_test(NAME diagnostics_contract COMMAND test_diagnostics_contract)
 
+add_executable(test_opportunity_label
+    src/tests/test_opportunity_label.cpp
+    src/ml/DataCollector.cpp
+)
+target_include_directories(test_opportunity_label PRIVATE include)
+target_link_libraries(test_opportunity_label PRIVATE
+    nlohmann_json::nlohmann_json
+    libpqxx::pqxx
+    spdlog::spdlog
+    xtensor
+)
+if(xtensor_INCLUDE_DIRS)
+    target_include_directories(test_opportunity_label PRIVATE ${xtensor_INCLUDE_DIRS})
+endif()
+add_test(NAME opportunity_label COMMAND test_opportunity_label)
+
 add_executable(test_strategy_expectancy_harness
     src/tests/test_strategy_expectancy_harness.cpp
     src/trading/StrategyExpectancyHarness.cpp

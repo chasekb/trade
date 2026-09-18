@@ -714,6 +714,30 @@ void PredictController::train(
     return;
   }
 
+  // "trade_outcomes" (default) trains on realized trade PnL matched to
+  // signals that crossed a strategy's threshold. "opportunity_labels" trains
+  // on every logged order-book state's own forward-looking, fee-adjusted
+  // return instead, independent of signal generation or execution — see
+  // DataCollector::sync_opportunity_labels. Intended for models backing the
+  // ml_orderbook_opportunity strategy.
+  config.training_source =
+      payload.value("training_source", config.training_source);
+  if (config.training_source != "trade_outcomes" &&
+      config.training_source != "opportunity_labels") {
+    Json::Value err;
+    err["error"] =
+        "Unsupported training_source. Use trade_outcomes or opportunity_labels.";
+    auto resp = HttpResponse::newHttpJsonResponse(err);
+    resp->setStatusCode(k400BadRequest);
+    callback(resp);
+    return;
+  }
+  config.opportunity_horizon_seconds = payload.value(
+      "opportunity_horizon_seconds", config.opportunity_horizon_seconds);
+  if (config.opportunity_horizon_seconds <= 0) {
+    config.opportunity_horizon_seconds = 60;
+  }
+
   std::string model_type = payload.value("model_type", "random_forest");
   std::transform(model_type.begin(), model_type.end(), model_type.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -759,10 +783,10 @@ void PredictController::train(
   // Trigger real training in a background thread
   std::thread training_thread([config, db_url, auto_set_active]() {
     auto &cache = CacheManager::getInstance();
-    TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, batch_training={}, max_training_rows={}, test_split={}, days_back={}",
+    TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, batch_training={}, max_training_rows={}, test_split={}, days_back={}, training_source={}",
                 config.model_name, config.epochs, config.batch_size,
                 config.batch_training, config.max_training_rows,
-                config.test_split, config.days_back);
+                config.test_split, config.days_back, config.training_source);
 
     cache.set_training_status("training", 10); // Started
     TR_LOG_INFO("ML training progress: 10% (initialization)");

@@ -63,26 +63,51 @@ ModelTrainer::ModelTrainer(std::shared_ptr<DataCollector> collector)
 
 ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   ModelMetrics metrics;
+  metrics.training_source = config.training_source;
 
   if (!collector_) {
     spdlog::error("ModelTrainer: data collector is not configured");
     return metrics;
   }
 
+  // "opportunity_labels" trains on ml_opportunity_labels, which self-labels
+  // every logged order-book state's own forward-looking return regardless of
+  // whether it crossed a strategy's signal threshold or led to a trade — see
+  // DataCollector::sync_opportunity_labels. Every other value keeps the
+  // existing trade-matched path unchanged.
+  const bool use_opportunity_source =
+      config.training_source == "opportunity_labels";
+
   const int sync_batch_size = std::max(1000, config.batch_size);
   const std::size_t synced =
-      collector_->sync_training_inputs(config.days_back, sync_batch_size);
-  const std::size_t available = collector_->count_training_inputs(config.days_back);
+      use_opportunity_source
+          ? collector_->sync_opportunity_labels(
+                config.days_back, config.opportunity_horizon_seconds,
+                sync_batch_size)
+          : collector_->sync_training_inputs(config.days_back, sync_batch_size);
+  const std::size_t available =
+      use_opportunity_source
+          ? collector_->count_opportunity_labels(config.days_back)
+          : collector_->count_training_inputs(config.days_back);
 
   spdlog::info(
-      "ModelTrainer: training-input sync inserted={} available={} days_back={}"
-      " batch_size={}",
-      synced, available, config.days_back, sync_batch_size);
+      "ModelTrainer: training-input sync source={} inserted={} available={}"
+      " days_back={} batch_size={}",
+      config.training_source, synced, available, config.days_back,
+      sync_batch_size);
 
   if (available == 0) {
     spdlog::warn("ModelTrainer: no persisted training inputs available");
     return metrics;
   }
+
+  auto extract_batch = [&](int limit, int offset) {
+    return use_opportunity_source
+               ? collector_->extract_opportunity_pairs_batch(config.days_back,
+                                                             limit, offset)
+               : collector_->extract_training_pairs_batch(config.days_back,
+                                                          limit, offset);
+  };
 
   bool use_batch = config.batch_training;
   if (use_batch && available <= 20000) {
@@ -146,9 +171,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       int batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
-        auto batch =
-            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
-                                                     offset);
+        auto batch = extract_batch(batch_rows, offset);
         if (batch.empty()) {
           break;
         }
@@ -204,9 +227,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       int batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
-        auto batch =
-            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
-                                                     offset);
+        auto batch = extract_batch(batch_rows, offset);
         if (batch.empty()) {
           break;
         }
@@ -268,9 +289,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       int pass1_batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
-        auto batch =
-            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
-                                                     offset);
+        auto batch = extract_batch(batch_rows, offset);
         if (batch.empty()) {
           break;
         }
@@ -315,9 +334,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       int pass2_batch_index = 0;
 
       for (int offset = 0;; offset += batch_rows) {
-        auto batch =
-            collector_->extract_training_pairs_batch(config.days_back, batch_rows,
-                                                     offset);
+        auto batch = extract_batch(batch_rows, offset);
         if (batch.empty()) {
           break;
         }
@@ -363,8 +380,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   }
 
   // 1. Fetch already persisted/matched training inputs from cache table
-  auto paired_data =
-      collector_->extract_training_pairs_batch(config.days_back, extraction_limit, 0);
+  auto paired_data = extract_batch(extraction_limit, 0);
 
   spdlog::info("ModelTrainer: loaded {} persisted training pairs",
                paired_data.size());
@@ -433,6 +449,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
   metrics.walk_forward_folds = walk_forward_folds;
   metrics.feature_importance = compute_feature_importance(paired_data);
   metrics.cohort_metrics = summarize_execution_cohorts(std::move(validation_samples));
+  metrics.training_source = config.training_source;
   return metrics;
 }
 
