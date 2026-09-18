@@ -2,6 +2,7 @@
 
 #include "ml/DataCollector.hpp"
 #include "ml/ExecutionCohorts.hpp"
+#include "ml/TransformerModel.hpp"
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -88,9 +89,20 @@ private:
                              const std::vector<TradeOutcome> &outcomes);
 
   ModelMetrics train_transformer(const std::vector<OrderBookFeatures> &features,
-                                 const std::vector<TradeOutcome> &outcomes);
+                                 const std::vector<TradeOutcome> &outcomes,
+                                 const TrainingConfig &config);
 
   std::shared_ptr<DataCollector> collector_;
+
+  // Set by train_transformer on a successful run; consumed by
+  // export_transformer_artifact to persist the actual gradient-trained
+  // weights (transformer_weights.pt) alongside the packaged ONNX artifact.
+  // Not populated when the model type isn't TRANSFORMER or training failed,
+  // in which case export_transformer_artifact falls back to a shape-correct,
+  // weight-free ONNX placeholder as before.
+  StockTransformer trained_transformer_{nullptr};
+  bool has_trained_transformer_ = false;
+  int64_t trained_transformer_n_features_ = 0;
 };
 
 } // namespace ml
