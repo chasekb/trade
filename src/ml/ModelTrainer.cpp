@@ -707,7 +707,7 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
   metrics.sharpe_ratio = Metrics::calculate_sharpe_ratio(pnl);
   metrics.profit_factor = Metrics::calculate_profit_factor(pnl);
 
-  trained_transformer_ = model;
+  trained_transformer_ = std::make_shared<StockTransformer>(model);
   has_trained_transformer_ = true;
   trained_transformer_n_features_ = n_features;
 
@@ -762,7 +762,9 @@ void ModelTrainer::export_transformer_artifact(
   if (has_trained_transformer_) {
     const auto weights_path = onnx_path.parent_path() / "transformer_weights.pt";
     try {
-      torch::save(trained_transformer_, weights_path.string());
+      const auto model_ptr =
+          std::static_pointer_cast<StockTransformer>(trained_transformer_);
+      torch::save(*model_ptr, weights_path.string());
       spdlog::info("Wrote gradient-trained transformer weights to {}",
                    weights_path.string());
     } catch (const std::exception &e) {
