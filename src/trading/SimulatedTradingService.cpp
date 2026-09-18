@@ -1497,8 +1497,20 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         // seeing FeatureEngineer's own (much larger) retention buffer.
         const std::size_t expected_lookback = models->transformer_lookback();
         const std::size_t expected_features = models->transformer_features();
+        // A LibTorch-backed transformer (real gradient-trained weights, see
+        // ONNXModelManager::has_torch_transformer) was trained on
+        // ModelTrainer.cpp's raw+engineered feature space (16 raw DB fields
+        // + rolling stats, 40 total — see include/ml/TransformerFeatures.hpp),
+        // not FeatureEngineer's PCA-reduced pipeline; the ONNX placeholder
+        // path (weight-free, see ModelTrainer.cpp's export_transformer_artifact
+        // comment) is the only consumer of the PCA sequence. Always record
+        // this tick's raw features so the buffer is warm regardless of which
+        // path is active.
+        engineer->record_raw_transformer_features(symbol, features);
         const auto transformer_sequence =
-            engineer->get_transformer_sequence(symbol, expected_lookback);
+            models->has_torch_transformer()
+                ? engineer->get_raw_transformer_sequence(symbol)
+                : engineer->get_transformer_sequence(symbol, expected_lookback);
         // Width mismatch is a real contract problem at any sequence length;
         // a short sequence is expected during normal warmup and is not one.
         const bool transformer_width_compatible =
