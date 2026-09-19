@@ -554,7 +554,8 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
   const activeSymbols = status.isActive && status.symbols && status.symbols.length > 0
     ? status.symbols
     : ((symbols && symbols.length > 0) ? symbols : (status.symbols || []));
-  // Fetch the active page of signals; the backend now deduplicates by symbol and sorts by strength/win probability.
+  // Fetch the active page of signals; ranking remains an explicit backend
+  // diagnostic mapping, not a frontend-calibrated or combined score.
   const {
     data: orderBookData,
     isLoading: isSignalsLoading,
