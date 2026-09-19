@@ -235,7 +235,7 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">Order Prioritization</label>
+                        <label className="block text-sm font-medium text-gray-700">Order Prioritization (uncalibrated diagnostic)</label>
                         <select
                             value={config.order_prioritization || 'signal_strength'}
                             onChange={(e) => handleParameterChange('order_prioritization', e.target.value)}
@@ -247,6 +247,10 @@ export function StrategyConfigForm({ strategy, config, onChange, className = '',
                             <option value="none">No Prioritization (Immediate Execution)</option>
                         </select>
                     </div>
+                    <p className="text-xs text-amber-700">
+                        Keep strength, win probability, and expected return as separate diagnostics. Calibration evidence is
+                        unavailable, so no combined ranking or newly tuned default is enabled.
+                    </p>
                     <div className="flex items-center space-x-2">
                         <input
                             type="checkbox"
