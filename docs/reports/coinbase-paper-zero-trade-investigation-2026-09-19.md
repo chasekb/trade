@@ -121,7 +121,8 @@ Not proven:
 
 ## Verification and safety record
 
-- Parent exact-SHA remote CI evidence: commit `a88988c80067fa1bb5155b6d26e20a2d69817596`, Docker Build Validation run `32618486554`; required amd64 backend/frontend image jobs passed and focused CTest reported `10/10` passing, including `strategy_signal` and `execution_reconciliation`. This report itself is documentation-only and must receive its own exact-SHA CI result if the branch workflow triggers one.
+- Parent exact-SHA remote CI evidence: commit `a88988c80067fa1bb5155b6d26e20a2d69817596`, Docker Build Validation run `32618486554`; required amd64 backend/frontend image jobs passed and focused CTest reported `10/10` passing, including `strategy_signal` and `execution_reconciliation`.
+- This report commit `347a4b38f832dd2c78437d93f0ff8e563d6c57bd` was verified by Docker Build Validation run `35456826191` (`workflow_dispatch`); all six jobs passed: C++ backend amd64/arm64, frontend amd64/arm64, and both published manifest jobs. The run head SHA exactly matches the report commit.
 - Browser artifact verification: commit `3795276cb975fefc89508c1615d37b848629d168` is present on `origin/wt/t_ca8e5b29-browser-evidence`; no CI run was triggered for that evidence branch.
 - No local build or test command was run for this report task, consistent with the remote-only project policy.
 - Both paper sessions were stopped cleanly. No live Coinbase order endpoint was called, no live order was enabled, and no credentials or secrets are included here.
