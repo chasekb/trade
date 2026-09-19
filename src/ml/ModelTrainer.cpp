@@ -531,6 +531,22 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
                          kTransformerEmbeddingDim, kTransformerHeads,
                          kTransformerLayers, kTransformerDropout);
 
+  // GPU when the build/host actually provides one (amd64 CI publishes a
+  // CUDA-enabled LibTorch; arm64 stays CPU-only — no Linux ARM CUDA or MLX
+  // target exists for this Docker build), CPU otherwise — including every
+  // CI run itself, which has no GPU, so this always safely resolves to CPU
+  // there. torch::cuda::is_available() itself is safe to call even when
+  // linked against a CPU-only LibTorch build (it just returns false) and
+  // even on a host with no NVIDIA driver installed at all (CUDA's runtime
+  // probes for the driver lazily and reports unavailable rather than
+  // failing); actually exercising a GPU also requires the deploy host to
+  // have nvidia-container-toolkit/GPU passthrough configured, which is a
+  // separate, host-specific deployment step this code cannot provide.
+  const torch::Device device =
+      torch::cuda::is_available() ? torch::Device(torch::kCUDA) : torch::Device(torch::kCPU);
+  spdlog::info("Transformer training device: {}", device.is_cuda() ? "cuda" : "cpu");
+  model->to(device);
+
   const double learning_rate = config.learning_rate > 0.0 ? config.learning_rate : 0.001;
   const int epochs = config.epochs > 0 ? config.epochs : 10;
   const int64_t batch_size = config.batch_size > 0 ? config.batch_size : 32;
@@ -556,7 +572,10 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
         continue;
       }
 
-      torch::Tensor x = build_batch_tensor(batch_idxs);
+      // build_batch_tensor/the y accessor below require a CPU tensor to
+      // populate element-by-element; move to the training device only after
+      // that's done.
+      torch::Tensor x = build_batch_tensor(batch_idxs).to(device);
       torch::Tensor y = torch::zeros({static_cast<int64_t>(batch_idxs.size()), 1}, torch::kFloat32);
       {
         auto y_acc = y.accessor<float, 2>();
@@ -565,6 +584,7 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
               static_cast<float>(outcomes[batch_idxs[bi]].pnl);
         }
       }
+      y = y.to(device);
 
       optimizer.zero_grad();
       torch::Tensor pred = model->forward(x);
@@ -606,8 +626,8 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
         // original chronological order (see valid_indices above).
         batch_idxs[i - offset] = all_indices[i];
       }
-      torch::Tensor x = build_batch_tensor(batch_idxs);
-      torch::Tensor pred = model->forward(x).squeeze(-1);
+      torch::Tensor x = build_batch_tensor(batch_idxs).to(device);
+      torch::Tensor pred = model->forward(x).squeeze(-1).to(torch::kCPU);
       auto pred_acc = pred.accessor<float, 1>();
       for (std::size_t bi = 0; bi < batch_idxs.size(); ++bi) {
         y_true.push_back(outcomes[batch_idxs[bi]].pnl);

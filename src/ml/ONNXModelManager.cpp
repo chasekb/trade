@@ -214,6 +214,15 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
               new_transformer_patch_size, new_transformer_embedding_dim,
               new_transformer_heads, new_transformer_layers,
               new_transformer_dropout);
+          // Explicit, not just "construction defaults to CPU": torch::load
+          // restores values into whatever device the target module's
+          // parameters already live on (the standard LibTorch map_location
+          // equivalent), not the device recorded at save time. A model
+          // trained on GPU (see ModelTrainer.cpp) must still load safely
+          // here on a serving host with no GPU/CUDA passthrough configured —
+          // forcing CPU before load, rather than relying on the implicit
+          // default, makes that guarantee unambiguous.
+          (*model)->to(torch::kCPU);
           torch::load(*model, weights_path.string());
           // torch::nn::Module::eval() disables dropout for inference; not
           // related to code-evaluating eval() in other languages.

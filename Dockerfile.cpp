@@ -221,6 +221,18 @@ PY
 # below never fails on arm64, where it stays an empty placeholder.
 ARG ONNXRUNTIME_VERSION=1.23.2
 ARG LIBTORCH_VERSION=2.7.1
+# amd64 uses the CUDA-enabled LibTorch build so ModelTrainer's transformer
+# training (see src/ml/ModelTrainer.cpp) runs on GPU when the deploy host has
+# an NVIDIA GPU + nvidia-container-toolkit configured (a host-side, per-
+# deployment concern this Dockerfile cannot provide) — and transparently
+# falls back to CPU otherwise via torch::cuda::is_available(), including in
+# this CI build itself, which has no GPU. cu126 is a broadly-compatible
+# modern CUDA runtime; the "shared-with-deps" zip bundles its own
+# cudart/cublas/cudnn runtime libraries, so no CUDA toolkit is needed in
+# this build stage — only linking against the provided headers/.so files.
+# arm64 has no official prebuilt (built from source via vcpkg below) and
+# stays CPU-only; there is no Linux ARM CUDA or MLX target for this build.
+ARG LIBTORCH_CUDA_VARIANT=cu126
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then ORT_ARCH="x64"; \
     elif [ "$ARCH" = "aarch64" ]; then ORT_ARCH="aarch64"; \
@@ -236,8 +248,8 @@ RUN ARCH=$(uname -m) && \
     rmdir /opt/onnxruntime/include && \
     mv /opt/onnxruntime/include-nested /opt/onnxruntime/include && \
     if [ "$ARCH" = "x86_64" ]; then \
-      curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 \
-        "https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-${LIBTORCH_VERSION}%2Bcpu.zip" \
+      curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 1800 \
+        "https://download.pytorch.org/libtorch/${LIBTORCH_CUDA_VARIANT}/libtorch-cxx11-abi-shared-with-deps-${LIBTORCH_VERSION}%2B${LIBTORCH_CUDA_VARIANT}.zip" \
         -o /tmp/libtorch.zip && \
       unzip -q /tmp/libtorch.zip -d /tmp/libtorch-extracted && \
       mv /tmp/libtorch-extracted/libtorch/* /opt/libtorch/ && \
