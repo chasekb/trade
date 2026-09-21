@@ -117,6 +117,12 @@ int main() {
                "fee-neutral buy", false);
   expectParity({"buy", 0.90, 0.012, 0.001, 0.010, 0.002},
                "fee-negative buy", false);
+  expectParity({"buy", 0.90, 0.020, 0.001, 0.020, 0.0},
+               "fees erase edge", false);
+  expectParity({"buy", 0.90, 0.020, 0.020, 0.0, 0.0},
+               "spread erases edge", false);
+  expectParity({"buy", 0.90, 0.020, 0.0, 0.0, 0.020},
+               "slippage erases edge", false);
 
   // Both services pass the same signal-derived sizing inputs to the shared
   // sizing contract. Stronger inputs scale larger, while the configured base
