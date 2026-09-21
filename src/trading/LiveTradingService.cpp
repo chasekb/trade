@@ -1715,6 +1715,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
     // is hurting expectancy, fall back to the honestly-labeled heuristic
     // path instead of continuing to gate/size live capital on it.
     if (engineer != nullptr && models != nullptr && models->is_ready() &&
+        (engineer->parameters_loaded_ok() || models->has_torch_transformer()) &&
         !modelDegradedLocked()) {
       try {
         ::ml::OrderBookFeatures features;
@@ -1746,8 +1747,17 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         cohort_features.volatility = features.volatility;
         const std::string execution_regime = ::trade::ml::classify_execution_regime(cohort_features);
 
-        const auto pca_features = engineer->preprocess(features);
-        const bool transformer_configured = models->has_transformer();
+        const bool pca_parameters_ready = engineer->parameters_loaded_ok();
+        std::vector<double> pca_features;
+        if (pca_parameters_ready) {
+          pca_features = engineer->preprocess(features);
+        } else if (!models->has_torch_transformer()) {
+          TR_LOG_WARN("ML inference blocked for {}; feature-engineering parameters are unavailable",
+                      symbol);
+        }
+        const bool transformer_configured =
+            models->has_transformer() &&
+            (models->has_torch_transformer() || pca_parameters_ready);
         // Match simulated trading's readiness contract instead of running
         // inference the moment a model is configured: a short/incomplete
         // sequence must report "warming up," not a ready prediction, or the
@@ -1775,7 +1785,8 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
             !transformer_configured || models->transformer_input_ready(transformer_sequence);
 
         const bool classifier_output_available =
-            (!transformer_configured || transformer_ready) && models->has_classifier();
+            pca_parameters_ready && (!transformer_configured || transformer_ready) &&
+            models->has_classifier();
         const double raw_win_prob =
             classifier_output_available ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
@@ -1786,7 +1797,8 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         // for the shared order-book profitability gate, matching simulated
         // trading's producer contract instead of silently gating live to HOLD.
         const bool regressor_output_available =
-            (!transformer_configured || transformer_ready) && models->has_regressor();
+            pca_parameters_ready && (!transformer_configured || transformer_ready) &&
+            models->has_regressor();
         const bool transformer_output_available = transformer_configured && transformer_ready;
         const double raw_expected_pnl =
             regressor_output_available ? models->predict_pnl(pca_features) : transformer_pnl;
