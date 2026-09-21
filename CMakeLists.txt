@@ -197,6 +197,15 @@ add_executable(test_strategy_signal
 target_include_directories(test_strategy_signal PRIVATE include)
 add_test(NAME strategy_signal COMMAND test_strategy_signal)
 
+add_executable(test_gate_path_parity
+    src/tests/test_gate_path_parity.cpp
+    src/trading/DiagnosticsContract.cpp
+    src/trading/PositionSizingPolicy.cpp
+    src/trading/StrategySignal.cpp
+)
+target_include_directories(test_gate_path_parity PRIVATE include)
+add_test(NAME gate_path_parity COMMAND test_gate_path_parity)
+
 add_executable(test_diagnostics_contract
     src/tests/test_diagnostics_contract.cpp
     src/trading/DiagnosticsContract.cpp
