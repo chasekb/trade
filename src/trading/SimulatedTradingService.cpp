@@ -2417,6 +2417,8 @@ void SimulatedTradingService::generateTickLocked(
                                   "Market-data provider request failed.");
       }
       cadence_diagnostics_.recordSignal("dropped", 0.0);
+      // This is a market-data blocker, not a synthetic HOLD signal.
+      ++execution_blocker_counts_["market_data_unavailable"];
       continue;
     }
     ++diagnosis_evaluations_;
@@ -3009,6 +3011,13 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
                                                   const std::string &mode) {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
   std::unique_lock<std::mutex> lock(mutex_);
+  if (mode != "simulated" && mode != "live_parity") {
+    Json::Value response;
+    response["status"] = "error";
+    response["error"] = "mode must be simulated or live_parity";
+    response["mode"] = mode;
+    return response;
+  }
   ensureSchema();
 
   if (active_) {
