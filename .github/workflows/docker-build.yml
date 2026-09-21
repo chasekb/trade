@@ -140,8 +140,10 @@ jobs:
       - name: Update branch tag to latest branch HEAD
         if: steps.freshness.outputs.publish_branch_tag == 'true'
         run: |
+          set -euo pipefail
+          safe_ref="${GITHUB_REF_NAME//\//-}"
           docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/cpp-backend:${{ github.ref_name }} \
+            -t ${{ env.REGISTRY }}/cpp-backend:${safe_ref} \
             ${{ env.REGISTRY }}/cpp-backend:sha-${{ github.sha }}
 
   build-frontend:
@@ -271,6 +273,8 @@ jobs:
       - name: Update branch tag to latest branch HEAD
         if: steps.freshness.outputs.publish_branch_tag == 'true'
         run: |
+          set -euo pipefail
+          safe_ref="${GITHUB_REF_NAME//\//-}"
           docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/frontend:${{ github.ref_name }} \
+            -t ${{ env.REGISTRY }}/frontend:${safe_ref} \
             ${{ env.REGISTRY }}/frontend:sha-${{ github.sha }}
