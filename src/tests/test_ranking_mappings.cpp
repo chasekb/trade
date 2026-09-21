@@ -73,9 +73,11 @@ int main() {
   expect(strong.actionable, "strong candidate passes the strength gate");
   expect(!weak.actionable && weak.factor == "weak_strength",
          "weak candidate is explicitly rejected by the strength gate");
-  expect(strong.fee_adjusted_expected_return_fraction ==
+  expect(strong.fee_adjusted_expected_return_fraction >
              weak.fee_adjusted_expected_return_fraction,
-         "strength and expected-return diagnostics remain separate mappings");
+         "ranking score is available only after the strength gate passes");
+  expect(weak.diagnostics_available == false,
+         "weak strength rejection does not promote expected-return diagnostics");
 
   // Held and unavailable mappings must remain unchanged and fail closed.
   StrategyProfitabilityInput held_input;
