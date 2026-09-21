@@ -1,7 +1,7 @@
 # Diagnostic ablation replay
 
 Input: `data/replay/diagnostic_ablation_fixture.jsonl`
-Input SHA-256: `0e29a01a12321e3e3952703b7c62a1b7091f386ad0b53d3d2a10f0de68fec9b8`
+Input SHA-256: `230182fa2de0ae956d76003b925aa814f03fb01b56fd12be7c5df37ece90786b`
 Configuration hash: `c1de513b0d2ffaeb02033f1247bada48194f65047f5ca93c236a9a5c2419557a`
 Modes: disabled, report-only, factored
 
