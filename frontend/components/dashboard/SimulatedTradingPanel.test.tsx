@@ -26,7 +26,11 @@ jest.mock('@/hooks/useExecutionReconciliation', () => ({
 jest.mock('./OpenPositionsSection', () => ({ OpenPositionsSection: () => null }));
 jest.mock('./RecentTradesTable', () => ({ RecentTradesTable: () => null }));
 jest.mock('./StrategySelector', () => ({ StrategySelector: () => null }));
-jest.mock('./TradingControls', () => ({ TradingControls: () => null }));
+jest.mock('./TradingControls', () => ({
+  TradingControls: ({ onStart }: { onStart: () => void }) => (
+    <button type="button" onClick={onStart}>Test start trading</button>
+  ),
+}));
 jest.mock('./StrategyConfigForm', () => ({ StrategyConfigForm: () => null }));
 jest.mock('./ExecutionReconciliationTable', () => ({ ExecutionReconciliationTable: () => null }));
 
@@ -122,6 +126,47 @@ describe('SimulatedTradingPanel widget states', () => {
     expect(screen.getByText(/No simulated trades have been recorded yet/)).toBeInTheDocument();
     expect(within(screen.getByRole('table', { name: /Order-book signals grouped by Outcome/ })).getByText('Pending evaluation')).toBeInTheDocument();
     expect(screen.queryByText('Unable to refresh all order-book signals')).not.toBeInTheDocument();
+  });
+
+  it('renders paper outcome counts and blocker reasons without labeling them as live activity', () => {
+    mockUseSimulatedTradingStats.mockReturnValue({
+      data: {
+        portfolio: {
+          ...emptyStats.portfolio,
+          execution_summary: {
+            mode: 'live_parity',
+            signals_generated: 5,
+            executable_intents: 2,
+            paper_fill_count: 1,
+            blocked_intents: 3,
+            blocker_reasons: { max_positions: 2, insufficient_cash: 1 },
+            coinbase_order_submission_enabled: false,
+            live_account_mutation: false,
+          },
+        },
+      },
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+    mockUseOrderBookSignals.mockReturnValue({
+      data: { signals: [], pagination: { total_pages: 0, total: 0, has_next: false, has_prev: false } },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+
+    renderPanel();
+
+    const summary = screen.getByRole('region', { name: 'Paper execution summary' });
+    expect(summary).toHaveTextContent('live_parity');
+    expect(summary).toHaveTextContent('Generated5');
+    expect(summary).toHaveTextContent('Paper fills1');
+    expect(summary).toHaveTextContent('Blocked intents3');
+    expect(summary).toHaveTextContent('max_positions (2), insufficient_cash (1)');
+    expect(summary).toHaveTextContent('not live execution or live-accounting activity');
+    expect(summary).toHaveTextContent('Coinbase order submission is disabled');
   });
 
   it('keeps per-symbol diagnosis visible when the latest signal page is empty', () => {
@@ -306,5 +351,27 @@ describe('SimulatedTradingPanel widget states', () => {
       </QueryClientProvider>,
     );
     expectCards('$10299.35', '$10049.35', '$-250.00');
+  });
+
+  it('transmits the selected live-parity paper mode when starting a session', () => {
+    const startTrading = jest.fn().mockResolvedValue(undefined);
+    mockUseLiveTrading.mockReturnValue({
+      status: { ...activeStatus, isActive: false },
+      startTrading,
+      stopTrading: jest.fn(),
+      loading: false,
+      updateStrategyParameters: jest.fn(),
+    });
+    mockUseSimulatedTradingStats.mockReturnValue({ data: undefined, isLoading: false, error: null, refetch: jest.fn() });
+    mockUseOrderBookSignals.mockReturnValue({ data: undefined, isLoading: false, isFetching: false, error: null, refetch: jest.fn() });
+
+    renderPanel();
+    fireEvent.change(screen.getByLabelText('Market-data and execution mode'), { target: { value: 'live_parity' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Test start trading' }));
+
+    expect(startTrading).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'simulated',
+      parameters: expect.objectContaining({ execution_mode: 'live_parity', diagnostics_enabled: true }),
+    }));
   });
 });

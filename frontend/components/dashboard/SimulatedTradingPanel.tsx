@@ -354,6 +354,7 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
     realizedPnl,
     totalFees,
     netPnl,
+    executionSummary,
     stats: statsView,
     recentTrades: mergedRecentTrades,
   } = snapshot;
@@ -386,6 +387,27 @@ function SimulatedTradingStatistics({ isTradingActive }: { isTradingActive: bool
             No simulated trades have been recorded yet. Statistics will update as the active session receives signals.
           </div>
         )}
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3" role="region" aria-label="Paper execution summary">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h4 className="font-semibold text-amber-950">Paper execution summary</h4>
+            <span className="text-xs font-medium text-amber-800">{executionSummary.mode}</span>
+          </div>
+          <p className="mt-1 text-xs text-amber-900">
+            Paper fills are session-local and are not live execution or live-accounting activity.
+            Coinbase order submission is disabled.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div><p className="text-xs text-amber-800">Generated</p><p className="font-semibold text-amber-950">{executionSummary.signalsGenerated}</p></div>
+            <div><p className="text-xs text-amber-800">Executable intents</p><p className="font-semibold text-amber-950">{executionSummary.executableIntents}</p></div>
+            <div><p className="text-xs text-amber-800">Paper fills</p><p className="font-semibold text-amber-950">{executionSummary.paperFills}</p></div>
+            <div><p className="text-xs text-amber-800">Blocked intents</p><p className="font-semibold text-amber-950">{executionSummary.blockedIntents}</p></div>
+          </div>
+          {executionSummary.blockerReasons.length > 0 && (
+            <p className="mt-2 text-xs text-amber-900">
+              Blockers: {executionSummary.blockerReasons.map(({ reason, count }) => `${reason} (${count})`).join(', ')}
+            </p>
+          )}
+        </div>
         {/* Main Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-lg">
