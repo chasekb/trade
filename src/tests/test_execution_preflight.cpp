@@ -35,7 +35,25 @@ int main() {
   const auto parity = trade::trading::evaluate_execution_preflight(parity_inputs);
   if (!live.executable || !parity.executable || live.blocker_reason != "paper_fill" ||
       parity.blocker_reason != "paper_fill") {
-    std::cerr << "Live and live-parity must agree on a passing fixture\n";
+    std::cerr << "Live and live-parity must agree on a passing fixture\n"
+              << "live={executable=" << live.executable
+              << ", blocker_reason=" << live.blocker_reason << "} "
+              << "parity={executable=" << parity.executable
+              << ", blocker_reason=" << parity.blocker_reason << "} "
+              << "inputs={account_ready=" << ready.account_ready
+              << ", account_entries_allowed=" << ready.account_entries_allowed
+              << ", strategy_gate_passed=" << ready.strategy_gate_passed
+              << ", max_positions=" << ready.max_positions
+              << ", managed_positions=" << ready.managed_positions
+              << ", pending_entries=" << ready.pending_entries
+              << ", allocated_usd=" << ready.allocated_usd
+              << ", price=" << ready.price
+              << ", minimum_notional=" << ready.minimum_notional
+              << ", side=" << ready.side
+              << ", available_cash=" << ready.available_cash
+              << ", estimated_fee=" << ready.estimated_fee
+              << ", require_live_execution=" << ready.require_live_execution
+              << ", live_execution_enabled=" << ready.live_execution_enabled << "}\n";
     return 1;
   }
 
