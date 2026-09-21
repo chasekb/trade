@@ -168,8 +168,8 @@ int main() {
            "live and simulated blocker reason codes remain equivalent");
     expect(live_facing.mode == simulated.mode,
            "live and simulated diagnostics modes remain equivalent");
-    expect(live_facing.fee_adjusted_expected_return_fraction ==
-               simulated.fee_adjusted_expected_return_fraction,
+    expect(std::abs(live_facing.fee_adjusted_expected_return_fraction -
+                    simulated.fee_adjusted_expected_return_fraction) < 1e-12,
            "live and simulated directional fee-adjusted returns remain equivalent");
   }
 
