@@ -380,7 +380,7 @@ RUN ARCH=$(uname -m) && \
     -DCMAKE_PREFIX_PATH=/opt/libtorch && \
     cmake --build build -j$(nproc) && \
     ctest --test-dir build --output-on-failure \
-      -E "execution_preflight|gate_path_parity|feature_engineer"
+      -E "feature_engineer"
 
 # --- STAGE 2: Runtime ---
 # Use a plain Ubuntu runtime image so CI does not depend on MCR availability.
