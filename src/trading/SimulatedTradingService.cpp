@@ -37,8 +37,11 @@ namespace trade {
 namespace trading {
 
 namespace {
-constexpr double kFeeRate = 0.0005;
-constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
+// Kept in sync with LiveTradingService's verified Coinbase Advanced Trade
+// taker fee (see comment there) so simulated economics reflect what live
+// execution would actually cost, not an arbitrary placeholder.
+constexpr double kFeeRate = 0.009;
+constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.018;
 constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
 constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // ml_orderbook_opportunity relies on the fee-adjusted profitability gate,
@@ -497,8 +500,13 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
   MinimumTradeSizeInputs minimum_inputs;
   minimum_inputs.price = signal.price;
   minimum_inputs.expected_return_fraction = inputs.expected_return;
+  // Was defaulting to a stray 0.16% here while every other gate in this file
+  // used kDefaultOrderBookRoundTripFeeFraction (1.5%, now 1.8%) — the minimum
+  // trade sizing check was silently applying a ~10x-too-low fee hurdle.
   minimum_inputs.round_trip_fee_fraction =
-      paramNumber(parameters_, "round_trip_fee_percent", 0.16) / 100.0;
+      paramNumber(parameters_, "round_trip_fee_percent",
+                  kDefaultOrderBookRoundTripFeeFraction * 100.0) /
+      100.0;
   minimum_inputs.slippage_buffer_fraction =
       paramNumber(parameters_, "slippage_buffer_percent", 0.0) / 100.0;
   minimum_inputs.spread_fraction = signal.mid_price > 0.0 ? signal.spread / signal.mid_price : 0.0;

@@ -41,8 +41,15 @@ namespace trade {
 namespace trading {
 
 namespace {
-constexpr double kFeeRate = 0.0005;
-constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
+// Coinbase Advanced Trade fee schedule, verified 2026-09-19 against the live
+// account's actual (zero) 30-day trailing volume: the account sits at the
+// lowest US tier, and live order-book orders are submitted as
+// market_market_ioc, which Coinbase always prices as taker. Entry-tier US
+// taker fee is 0.90% per fill (Coinbase lowered volume-tier thresholds on
+// 2026-09-16 but did not change entry-tier pricing). Update this if the
+// account's 30-day volume advances it to a lower-fee tier.
+constexpr double kFeeRate = 0.009;
+constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.018;
 constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
 constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // ml_orderbook_opportunity relies on the fee-adjusted profitability gate,
