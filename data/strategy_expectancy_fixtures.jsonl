@@ -1,0 +1,11 @@
+{"fixture_name":"sma-uptrend-positive-edge","strategy":"sma","realized_pnl":18.0,"net_pnl":18.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"ema-uptrend-positive-edge","strategy":"ema","realized_pnl":16.0,"net_pnl":16.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"rsi-oversold-positive-edge","strategy":"rsi","realized_pnl":14.0,"net_pnl":14.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"bollinger-drop-positive-edge","strategy":"bollinger","realized_pnl":12.0,"net_pnl":12.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"macd-uptrend-positive-edge","strategy":"macd","realized_pnl":15.0,"net_pnl":15.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"stochastic-low-positive-edge","strategy":"stochastic","realized_pnl":10.0,"net_pnl":10.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"fibonacci-support-positive-edge","strategy":"fibonacci","realized_pnl":8.0,"net_pnl":8.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"dca-positive-edge","strategy":"dca","realized_pnl":6.0,"net_pnl":6.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"buyandhold-positive-edge","strategy":"buyandhold","realized_pnl":20.0,"net_pnl":20.0,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null}
+{"fixture_name":"sma-uptrend-fee-negative-edge","strategy":"sma","realized_pnl":null,"net_pnl":null,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null,"blocked":true}
+{"fixture_name":"ema-uptrend-fee-negative-edge","strategy":"ema","realized_pnl":null,"net_pnl":null,"signal_strength":null,"symbol":null,"market_regime":null,"holding_period":null,"fee_scenario":null,"blocked":true}
