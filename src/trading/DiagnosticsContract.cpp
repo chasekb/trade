@@ -202,13 +202,13 @@ NormalizedDiagnostics normalizeDiagnostics(const DiagnosticsInput &input) {
   result.directional_expected_return_fraction =
       input.signal_type == "buy" ? input.expected_return_fraction
                                   : -input.expected_return_fraction;
+  result.fee_adjusted_expected_return_fraction =
+      result.directional_expected_return_fraction - result.required_edge_fraction;
   if (result.directional_expected_return_fraction <= 0.0) {
     result.reason_code = DiagnosticsReasonCode::DirectionMismatch;
     result.reason = "expected return is not favorable for signal direction";
     return result;
   }
-  result.fee_adjusted_expected_return_fraction =
-      result.directional_expected_return_fraction - result.required_edge_fraction;
   if (result.fee_adjusted_expected_return_fraction <= 0.0) {
     result.reason_code = DiagnosticsReasonCode::NonPositiveFeeAdjustedEdge;
     std::ostringstream message;

@@ -354,11 +354,7 @@ RUN --mount=type=secret,id=github_token,required=false \
 COPY . .
 
 # Build the application
-# Excluded pending investigation, newly discovered when this suite stopped
-# running a hand-maintained whitelist that never included them:
-# - execution_preflight, gate_path_parity: fail with a genuine live vs.
-#   simulated order-book profitability gate disagreement on at least one
-#   fixture, not a CI/environment issue.
+# One test remains excluded pending a real, domain-reviewed fixture:
 # - feature_engineer: its golden_features.json/feature_params.json fixtures
 #   were never committed to this repo (data/cpp_assets/ is empty), so it has
 #   never been able to run. Needs a real, domain-reviewed golden dataset

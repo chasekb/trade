@@ -22,20 +22,7 @@ trade::trading::ExecutionPreflightInputs baseline() {
 bool expects(const trade::trading::ExecutionPreflightInputs &inputs,
              const std::string &reason) {
   const auto result = trade::trading::evaluate_execution_preflight(inputs);
-  if (result.executable || result.blocker_reason != reason) {
-    std::cerr << "expected blocker " << reason << ", got executable="
-              << result.executable << ", blocker_reason=" << result.blocker_reason
-              << " for inputs={side=" << inputs.side
-              << ", allocated_usd=" << inputs.allocated_usd
-              << ", price=" << inputs.price
-              << ", minimum_notional=" << inputs.minimum_notional
-              << ", available_cash=" << inputs.available_cash
-              << ", estimated_fee=" << inputs.estimated_fee
-              << ", available_holdings=" << inputs.available_holdings
-              << ", required_holdings=" << inputs.required_holdings << "}\n";
-    return false;
-  }
-  return true;
+  return !result.executable && result.blocker_reason == reason;
 }
 
 } // namespace
@@ -48,25 +35,7 @@ int main() {
   const auto parity = trade::trading::evaluate_execution_preflight(parity_inputs);
   if (!live.executable || !parity.executable || live.blocker_reason != "paper_fill" ||
       parity.blocker_reason != "paper_fill") {
-    std::cerr << "Live and live-parity must agree on a passing fixture\n"
-              << "live={executable=" << live.executable
-              << ", blocker_reason=" << live.blocker_reason << "} "
-              << "parity={executable=" << parity.executable
-              << ", blocker_reason=" << parity.blocker_reason << "} "
-              << "inputs={account_ready=" << ready.account_ready
-              << ", account_entries_allowed=" << ready.account_entries_allowed
-              << ", strategy_gate_passed=" << ready.strategy_gate_passed
-              << ", max_positions=" << ready.max_positions
-              << ", managed_positions=" << ready.managed_positions
-              << ", pending_entries=" << ready.pending_entries
-              << ", allocated_usd=" << ready.allocated_usd
-              << ", price=" << ready.price
-              << ", minimum_notional=" << ready.minimum_notional
-              << ", side=" << ready.side
-              << ", available_cash=" << ready.available_cash
-              << ", estimated_fee=" << ready.estimated_fee
-              << ", require_live_execution=" << ready.require_live_execution
-              << ", live_execution_enabled=" << ready.live_execution_enabled << "}\n";
+    std::cerr << "Live and live-parity must agree on a passing fixture\n";
     return 1;
   }
 
@@ -96,6 +65,7 @@ int main() {
   if (!expects(input, "below_minimum_notional")) return 1;
   input = ready;
   input.side = "sell";
+  input.required_holdings = 2.0;
   if (!expects(input, "insufficient_holdings")) return 1;
   input.available_holdings = 1.0;
   input.required_holdings = 2.0;
