@@ -22,7 +22,20 @@ trade::trading::ExecutionPreflightInputs baseline() {
 bool expects(const trade::trading::ExecutionPreflightInputs &inputs,
              const std::string &reason) {
   const auto result = trade::trading::evaluate_execution_preflight(inputs);
-  return !result.executable && result.blocker_reason == reason;
+  if (result.executable || result.blocker_reason != reason) {
+    std::cerr << "expected blocker " << reason << ", got executable="
+              << result.executable << ", blocker_reason=" << result.blocker_reason
+              << " for inputs={side=" << inputs.side
+              << ", allocated_usd=" << inputs.allocated_usd
+              << ", price=" << inputs.price
+              << ", minimum_notional=" << inputs.minimum_notional
+              << ", available_cash=" << inputs.available_cash
+              << ", estimated_fee=" << inputs.estimated_fee
+              << ", available_holdings=" << inputs.available_holdings
+              << ", required_holdings=" << inputs.required_holdings << "}\n";
+    return false;
+  }
+  return true;
 }
 
 } // namespace
