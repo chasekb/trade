@@ -267,10 +267,14 @@ Json::Value makeDiagnosisSummary(const DiagnosisSummaryInput &input) {
       complete_reconciliation = false;
       continue;
     }
-    const std::string status = symbol.get("status", Json::Value(Json::objectValue))
-                                   .get("primary", Json::Value("pending")).asString();
+    const Json::Value status_record =
+        symbol.get("status", Json::Value(Json::objectValue));
+    const std::string status =
+        status_record.get("primary", Json::Value("pending")).asString();
     ++counts[status];
-    if (symbol.get("status", Json::Value(Json::objectValue)).get("terminal", false).asBool()) ++terminal_count;
+    if (status_record.get("terminal", Json::Value(false)).asBool()) {
+      ++terminal_count;
+    }
     if (!isTradeStatus(status)) has_non_trade = true;
     addReasonCounts(symbol, reasons);
   }

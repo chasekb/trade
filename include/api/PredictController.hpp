@@ -3,7 +3,9 @@
 #include "ml/ONNXModelManager.hpp"
 #include <drogon/HttpController.h>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 
 using namespace drogon;
 
@@ -123,6 +125,8 @@ public:
                                std::function<void(const HttpResponsePtr &)> &&callback);
 
   static void init(const std::string &param_path, const std::string &model_dir);
+  // Join an in-flight training job before process-wide services are torn down.
+  static void waitForTraining();
 
   // Shared inference surfaces for non-HTTP callers (e.g. the trading loop).
   // May return nullptr before init() runs.
@@ -134,6 +138,8 @@ private:
   static std::unique_ptr<ml::ONNXModelManager> model_manager_;
   static std::string model_dir_;
   static std::string trained_models_dir_;
+  static std::mutex training_mutex_;
+  static std::thread training_thread_;
 };
 
 } // namespace api
