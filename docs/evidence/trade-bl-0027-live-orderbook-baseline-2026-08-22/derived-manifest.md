@@ -1,4 +1,4 @@
-# TRADE-BL-0027 derived baseline manifest
+# TRADE-BL-0027 derived baseline manifest (derived-metrics phase)
 
 Evidence ID: `trade-bl-0027-live-orderbook-baseline-2026-08-22`
 Frozen source capture: 2026-08-23T03:37:51Z
