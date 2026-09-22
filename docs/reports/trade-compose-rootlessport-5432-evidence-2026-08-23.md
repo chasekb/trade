@@ -58,12 +58,50 @@ It returned:
 session=0 window=7 pane=0 pane_id=%22 current_command=bash current_path=/run/media/unordered_map/priority_queue/log(perplexity)/-sum/log/Pr(context_for_token)/chasecapitalmanagement/etl/trade
 ```
 
+## Current host-port ownership verification
+
+Read-only verification was repeated on `2026-09-22T21:11:57Z` and
+`2026-09-22T21:12:15Z` (UTC). Commands and relevant output were:
+
+```text
+ss -ltnp '( sport = :5432 )'
+LISTEN 0 4096 *:5432 *:* users:(("rootlessport",pid=7647,fd=11))
+
+podman ps --format 'table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}'
+a9575972dd27 db-postgres Up 39 hours (healthy) 0.0.0.0:5432->5432/tcp
+62eb886595ff trade_db_1 Up 22 hours (healthy) 0.0.0.0:15432->5432/tcp
+
+ps -o pid,ppid,user,comm,args -p 7647
+7647 7533 kahlil rootlessport rootlessport
+
+podman inspect --format '...' db-postgres
+id=a9575972dd27... name=db-postgres status=running health=healthy
+ports={"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"5432"}]}
+
+podman inspect --format '...' trade_db_1
+id=62eb886595ff... name=trade_db_1 status=running health=healthy
+ports={"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"15432"}]}
+networks={"trade_trading-network":{...,"IPAddress":"10.89.1.3",...,"Aliases":["db",...]}}
+```
+
+This identifies the active collision owner as `db-postgres` via its
+`rootlessport` process (PID `7647`) on host `0.0.0.0:5432`. The trade stack's
+PostgreSQL container is separate and publishes host port `15432` while its
+container-network alias is `db`. The checked-in Compose contract confirms that
+containers continue to use `db:5432`; changing the host binding does not change
+that internal endpoint.
+
 ## Separate stale-container observation
 
 The historical collision report separately observed that the failed Compose
 attempt left containers in `Created` state. That is cleanup/state residue, not
 part of the rootlessport collision finding. The same report records that after
 the host-port mapping repair, no trade containers remained in `Created` state.
+
+The current `podman ps -a` inspection on `2026-09-22T21:11:57Z` did not show
+the previously observed `trade-port-collision-evidence-20260822` container.
+Whether it was removed or otherwise pruned is not established by this
+read-only check; no cleanup command was run in this task.
 
 ## Safety and limitation
 
