@@ -233,8 +233,8 @@ SignalOutcomeAttribution makeAttribution(
   outcome.objective.expected_return = outcome.expected_return;
   outcome.objective.fee_adjusted_expected_return =
       std::isfinite(fee_adjusted_expected_return) ? fee_adjusted_expected_return : 0.0;
-  outcome.strength_bucket = strengthBucket(outcome.strength);
-  outcome.expected_return_bucket = expectedReturnBucket(outcome.expected_return);
+  outcome.strength_bucket = ::trade::trading::strengthBucket(outcome.strength);
+  outcome.expected_return_bucket = ::trade::trading::expectedReturnBucket(outcome.expected_return);
   outcome.timestamp_epoch_seconds = timestamp;
   outcome.runtime_window = std::to_string(timestamp / 300);
   outcome.safe_metadata.emplace("blocker_reason", blocker.substr(0, 256));
@@ -296,7 +296,7 @@ std::string sanitizeSide(const std::string &side) {
   return "buy";
 }
 
-std::string strengthBucket(double strength) {
+std::string legacyStrengthBucket(double strength) {
   if (strength >= 0.75) {
     return "strong";
   }
@@ -309,7 +309,7 @@ std::string strengthBucket(double strength) {
   return "none";
 }
 
-std::string expectedReturnBucket(double expected_return) {
+std::string legacyExpectedReturnBucket(double expected_return) {
   if (expected_return > 0.01) {
     return "positive_high";
   }
@@ -2148,8 +2148,8 @@ Json::Value LiveTradingService::buildEntryExecutionAnalysisLocked(
   analysis["signal_generated"] = signal_generated;
   analysis["intended_action"] = signal_generated ? "open" : "none";
   analysis["intended_side"] = signal_generated ? side : "none";
-  analysis["strength_bucket"] = strengthBucket(signal.strength);
-  analysis["expected_return_bucket"] = expectedReturnBucket(expected_return);
+  analysis["strength_bucket"] = legacyStrengthBucket(signal.strength);
+  analysis["expected_return_bucket"] = legacyExpectedReturnBucket(expected_return);
   analysis["expected_return"] = expected_return;
   analysis["fee_adjusted_expected_return"] = fee_adjusted_expected_return;
   DiagnosticsInput diagnostic_input;

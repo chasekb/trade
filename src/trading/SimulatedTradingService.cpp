@@ -242,8 +242,8 @@ SignalOutcomeAttribution makeAttribution(
   outcome.objective.expected_return = outcome.expected_return;
   outcome.objective.fee_adjusted_expected_return =
       std::isfinite(fee_adjusted_expected_return) ? fee_adjusted_expected_return : 0.0;
-  outcome.strength_bucket = strengthBucket(outcome.strength);
-  outcome.expected_return_bucket = expectedReturnBucket(outcome.expected_return);
+  outcome.strength_bucket = ::trade::trading::strengthBucket(outcome.strength);
+  outcome.expected_return_bucket = ::trade::trading::expectedReturnBucket(outcome.expected_return);
   outcome.timestamp_epoch_seconds = timestamp;
   outcome.runtime_window = std::to_string(timestamp / 300);
   outcome.safe_metadata.emplace("blocker_reason", blocker.substr(0, 256));
