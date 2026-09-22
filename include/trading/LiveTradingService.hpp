@@ -3,6 +3,7 @@
 #include "exchange/CoinbaseAdvancedClient.hpp"
 #include "trading/CoinbasePortfolio.hpp"
 #include "trading/TradingStatsCalculator.hpp"
+#include "trading/ExecutionReconciliation.hpp"
 
 #include <drogon/drogon.h>
 
@@ -130,6 +131,7 @@ private:
   struct PendingWrites {
     std::vector<SignalRecord> signals;
     std::vector<TradeRecord> trades;
+    std::vector<SignalOutcomeAttribution> outcomes;
   };
 
   // Real market snapshot fetched from Coinbase public endpoints (live mode)
@@ -282,6 +284,7 @@ private:
 
   std::vector<SignalRecord> pending_signal_writes_;
   std::vector<TradeRecord> pending_trade_writes_;
+  std::vector<SignalOutcomeAttribution> pending_outcome_writes_;
   std::vector<OrderIntent> pending_orders_;
   std::vector<PendingLiveOrder> pending_live_orders_;
   std::set<std::string> pending_order_symbols_;

@@ -11,6 +11,7 @@
 #include "trading/PortfolioAccounting.hpp"
 #include "trading/PositionSizingPolicy.hpp"
 #include "trading/ExecutionPreflight.hpp"
+#include "trading/ExecutionReconciliation.hpp"
 #include "trading/DiagnosticsContract.hpp"
 #include "trading/StrategySignal.hpp"
 #include "trading/LegacyOrderBookSignal.hpp"
@@ -193,6 +194,61 @@ double orderBookMinSignalStrength(const std::string &strategy,
   }
   return paramNumber(params, "min_orderbook_signal_strength",
                      kDefaultOrderBookMinSignalStrength);
+}
+
+BlockerCategory attributionBlocker(const std::string &reason) {
+  if (reason == "max_positions") return BlockerCategory::max_positions;
+  if (reason == "pending_order") return BlockerCategory::pending_order;
+  if (reason == "spot_cannot_open_short" || reason == "spot_cannot_short") return BlockerCategory::spot_cannot_short;
+  if (reason == "minimum_notional") return BlockerCategory::minimum_notional;
+  if (reason == "insufficient_cash") return BlockerCategory::insufficient_cash;
+  if (reason == "live_execution_disabled") return BlockerCategory::live_execution_disabled;
+  if (reason == "existing_holding") return BlockerCategory::existing_holding;
+  if (reason == "ml_confidence_gate" || reason == "ml_or_profitability_gate" || reason == "profitability_or_position_size") return BlockerCategory::ml_or_profitability_gate;
+  if (reason == "stale_or_missing_data" || reason == "no_signal") return BlockerCategory::stale_or_missing_data;
+  return reason.empty() || reason == "would_submit_order" ? BlockerCategory::none : BlockerCategory::unknown;
+}
+
+DiagnosticFactor attributionDiagnostic(const std::string &factor) {
+  if (factor == "missing_expected_return") return DiagnosticFactor::missing_expected_return;
+  if (factor == "negative_fee_adjusted_edge") return DiagnosticFactor::negative_fee_adjusted_edge;
+  if (factor == "below_required_edge") return DiagnosticFactor::below_required_edge;
+  if (factor == "weak_strength") return DiagnosticFactor::weak_strength;
+  if (factor == "account_or_exchange_blocker") return DiagnosticFactor::account_or_exchange_blocker;
+  if (factor == "exit_risk_rule") return DiagnosticFactor::exit_risk_rule;
+  return DiagnosticFactor::unknown;
+}
+
+SignalOutcomeAttribution makeAttribution(
+    const std::string &signal_id, const std::string &session_id,
+    const std::string &strategy, const std::string &symbol,
+    const std::string &signal_type, double strength, double expected_return,
+    double fee_adjusted_expected_return, const Json::Value &analysis,
+    const std::string &mode, long long timestamp) {
+  const RuntimeMode runtime_mode = mode == "live_parity" ? RuntimeMode::live_parity : RuntimeMode::simulated;
+  SignalOutcomeAttribution outcome = legacySkippedOutcome(
+      signal_id, session_id, strategy, symbol, runtime_mode);
+  const bool generated = analysis.get("signal_generated", Json::Value(signal_type != "hold")).asBool();
+  const bool executable = analysis.get("executable_intent", Json::Value(false)).asBool();
+  const std::string side = analysis.get("intended_side", Json::Value(signal_type)).asString();
+  const std::string blocker = analysis.get("blocker_reason", Json::Value("unknown")).asString();
+  const std::string diagnostic = analysis.get("diagnostic_factor", Json::Value("unknown")).asString();
+  outcome.status = executable ? AttributionStatus::executed : (generated ? AttributionStatus::blocked : AttributionStatus::skipped);
+  outcome.blocker = executable ? BlockerCategory::none : attributionBlocker(blocker);
+  outcome.diagnostic = attributionDiagnostic(diagnostic);
+  outcome.side = generated ? (side == "buy" ? AttributionSide::buy : side == "sell" ? AttributionSide::sell : AttributionSide::none) : AttributionSide::none;
+  outcome.strength = std::clamp(std::isfinite(strength) ? strength : 0.0, 0.0, 1.0);
+  outcome.expected_return = std::isfinite(expected_return) ? expected_return : 0.0;
+  outcome.objective.expected_return = outcome.expected_return;
+  outcome.objective.fee_adjusted_expected_return =
+      std::isfinite(fee_adjusted_expected_return) ? fee_adjusted_expected_return : 0.0;
+  outcome.strength_bucket = strengthBucket(outcome.strength);
+  outcome.expected_return_bucket = expectedReturnBucket(outcome.expected_return);
+  outcome.timestamp_epoch_seconds = timestamp;
+  outcome.runtime_window = std::to_string(timestamp / 300);
+  outcome.safe_metadata.emplace("blocker_reason", blocker.substr(0, 256));
+  outcome.safe_metadata.emplace("diagnostic_factor", diagnostic.substr(0, 256));
+  return outcome;
 }
 
 bool paramBool(const Json::Value &params, const char *key, bool fallback) {
@@ -390,6 +446,20 @@ void SimulatedTradingService::ensureSchema() {
         "ALTER TABLE individual_trades ALTER COLUMN is_closing_leg DROP NOT NULL");
     DatabaseManager::getInstance().query(
         "UPDATE individual_trades SET is_closing_leg = NULL WHERE is_closing_leg = FALSE AND pnl <> 0");
+    DatabaseManager::getInstance().query(R"SQL(
+      CREATE TABLE IF NOT EXISTS signal_outcome_attributions (
+        signal_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, strategy TEXT NOT NULL,
+        symbol TEXT NOT NULL, status TEXT NOT NULL, blocker TEXT NOT NULL,
+        diagnostic TEXT NOT NULL, side TEXT NOT NULL, strength DOUBLE PRECISION NOT NULL,
+        expected_return DOUBLE PRECISION NOT NULL, strength_bucket TEXT NOT NULL,
+        expected_return_bucket TEXT NOT NULL, runtime_mode TEXT NOT NULL,
+        timestamp BIGINT NOT NULL, runtime_window TEXT NOT NULL,
+        objective_expected_return DOUBLE PRECISION NOT NULL,
+        objective_fee_adjusted_expected_return DOUBLE PRECISION NOT NULL,
+        objective_realized_pnl DOUBLE PRECISION NOT NULL, objective_fees DOUBLE PRECISION NOT NULL,
+        objective_net_impact DOUBLE PRECISION NOT NULL, safe_metadata TEXT NOT NULL
+      )
+    )SQL");
   } catch (const std::exception &e) {
     TR_LOG_WARN("Failed to ensure simulated trading schema: {}", e.what());
   }
@@ -731,6 +801,7 @@ SimulatedTradingService::PendingWrites SimulatedTradingService::takePendingWrite
   PendingWrites writes;
   writes.signals.swap(pending_signal_writes_);
   writes.trades.swap(pending_trade_writes_);
+  writes.outcomes.swap(pending_outcome_writes_);
   return writes;
 }
 
@@ -1255,6 +1326,29 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
       persisted_trades_ += unique_trades.size();
     }
   }
+  if (!writes.outcomes.empty()) {
+    std::map<std::string, const SignalOutcomeAttribution *> unique_outcomes;
+    for (const auto &outcome : writes.outcomes) unique_outcomes[outcome.signal_id] = &outcome;
+    for (const auto &[signal_id, outcome] : unique_outcomes) {
+      if (validateSignalOutcome(*outcome).has_value()) continue;
+      Json::Value metadata(Json::objectValue);
+      for (const auto &[key, value] : outcome->safe_metadata) metadata[key] = value;
+      std::ostringstream sql;
+      sql << "INSERT INTO signal_outcome_attributions (signal_id, session_id, strategy, symbol, status, blocker, diagnostic, side, strength, expected_return, strength_bucket, expected_return_bucket, runtime_mode, timestamp, runtime_window, objective_expected_return, objective_fee_adjusted_expected_return, objective_realized_pnl, objective_fees, objective_net_impact, safe_metadata) VALUES ('"
+          << escapeSql(outcome->signal_id) << "','" << escapeSql(outcome->session_id) << "','"
+          << escapeSql(outcome->strategy) << "','" << escapeSql(outcome->symbol) << "','"
+          << escapeSql(toString(outcome->status)) << "','" << escapeSql(toString(outcome->blocker))
+          << "','" << escapeSql(toString(outcome->diagnostic)) << "','" << escapeSql(toString(outcome->side))
+          << "'," << outcome->strength << "," << outcome->expected_return << ",'"
+          << escapeSql(outcome->strength_bucket) << "','" << escapeSql(outcome->expected_return_bucket)
+          << "','" << escapeSql(toString(outcome->mode)) << "'," << outcome->timestamp_epoch_seconds
+          << ",'" << escapeSql(outcome->runtime_window) << "'," << outcome->objective.expected_return
+          << "," << outcome->objective.fee_adjusted_expected_return << "," << outcome->objective.realized_pnl
+          << "," << outcome->objective.fees << "," << outcome->objective.net_objective_impact << ",'"
+          << escapeSql(jsonToString(metadata)) << "') ON CONFLICT (signal_id) DO UPDATE SET status = EXCLUDED.status, blocker = EXCLUDED.blocker, diagnostic = EXCLUDED.diagnostic, side = EXCLUDED.side, safe_metadata = EXCLUDED.safe_metadata";
+      DatabaseManager::getInstance().query(sql.str());
+    }
+  }
   } catch (const std::exception &e) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!writes.trades.empty()) ++persistence_failures_;
@@ -1262,6 +1356,8 @@ void SimulatedTradingService::flushWrites(PendingWrites &&writes) {
                                   writes.signals.end());
     pending_trade_writes_.insert(pending_trade_writes_.end(), writes.trades.begin(),
                                  writes.trades.end());
+    pending_outcome_writes_.insert(pending_outcome_writes_.end(), writes.outcomes.begin(),
+                                   writes.outcomes.end());
     TR_LOG_WARN("Failed to persist trading writes; queued for retry: {}", e.what());
   }
 }
@@ -2392,6 +2488,14 @@ void SimulatedTradingService::generateTickLocked(
     auto signal = buildSignalRecordLocked(symbol, index, quote);
     prices[symbol] = signal.price;
     signal.payload["execution_analysis"] = buildExecutionAnalysisLocked(signal);
+    const Json::Value initial_analysis = signal.payload["execution_analysis"];
+    pending_outcome_writes_.push_back(makeAttribution(
+        signal.signal_id, signal.session_id, strategy_, signal.symbol, signal.signal_type,
+        signal.strength,
+        signal.payload.get("ml_analysis", Json::Value(Json::objectValue))
+            .get("expected_return", Json::Value(0.0)).asDouble(),
+        initial_analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble(),
+        initial_analysis, mode_, signal.timestamp));
     const std::string signal_completed_at = nowIsoUtc();
     const double signal_elapsed_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - signal_started_mono).count();
