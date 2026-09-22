@@ -19,6 +19,10 @@ public:
   // Load parameters from JSON (exported from Python)
   bool load_parameters(const std::string &filepath);
 
+  // True only when a complete, validated PCA parameter set is loaded. The
+  // raw+engineered LibTorch transformer path does not require this state.
+  bool parameters_loaded_ok() const { return parameters_loaded; }
+
   // Core preprocessing: Raw -> Final PCA features
   std::vector<double> preprocess(const OrderBookFeatures &features);
 
@@ -63,7 +67,7 @@ public:
   }
 
 private:
-  void initialize_default_parameters();
+  void clear_parameters();
 
   // Internal steps
   std::vector<double> extract_base_features(const OrderBookFeatures &f);

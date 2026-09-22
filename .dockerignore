@@ -1,7 +1,8 @@
 build/
 vcpkg_installed/
 config/
-data/
+data/*
+!data/cpp_assets/
 docs/
 frontend/
 legacy_python/
