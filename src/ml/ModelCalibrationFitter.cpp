@@ -91,10 +91,8 @@ CalibrationFitResult fit_and_write_model_calibration(
   }
   ::ml::FeatureEngineer engineer;
   if (!engineer.load_parameters(feature_params_path)) {
-    spdlog::warn(
-        "Feature engineer parameters from {} unavailable while fitting calibration; "
-        "continuing with built-in fallback parameters",
-        feature_params_path);
+    result.error = "failed to load feature-engineering parameters at " + feature_params_path;
+    return result;
   }
 
   std::vector<std::pair<double, double>> win_probability_samples;

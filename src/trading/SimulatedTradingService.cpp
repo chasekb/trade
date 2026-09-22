@@ -37,8 +37,11 @@ namespace trade {
 namespace trading {
 
 namespace {
-constexpr double kFeeRate = 0.0005;
-constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
+// Kept in sync with LiveTradingService's verified Coinbase Advanced Trade
+// taker fee (see comment there) so simulated economics reflect what live
+// execution would actually cost, not an arbitrary placeholder.
+constexpr double kFeeRate = 0.009;
+constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.018;
 constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
 constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // ml_orderbook_opportunity relies on the fee-adjusted profitability gate,
@@ -497,8 +500,13 @@ double SimulatedTradingService::positionSizeUsdForSignal(const SignalRecord &sig
   MinimumTradeSizeInputs minimum_inputs;
   minimum_inputs.price = signal.price;
   minimum_inputs.expected_return_fraction = inputs.expected_return;
+  // Was defaulting to a stray 0.16% here while every other gate in this file
+  // used kDefaultOrderBookRoundTripFeeFraction (1.5%, now 1.8%) — the minimum
+  // trade sizing check was silently applying a ~10x-too-low fee hurdle.
   minimum_inputs.round_trip_fee_fraction =
-      paramNumber(parameters_, "round_trip_fee_percent", 0.16) / 100.0;
+      paramNumber(parameters_, "round_trip_fee_percent",
+                  kDefaultOrderBookRoundTripFeeFraction * 100.0) /
+      100.0;
   minimum_inputs.slippage_buffer_fraction =
       paramNumber(parameters_, "slippage_buffer_percent", 0.0) / 100.0;
   minimum_inputs.spread_fraction = signal.mid_price > 0.0 ? signal.spread / signal.mid_price : 0.0;
@@ -570,6 +578,17 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   }
   cadence_diagnostics_.recordSerialization(std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - serialization_started).count());
+  // Keep the execution outcome available at the API row boundary as well as
+  // inside the persisted signal payload. This makes generated, filled, and
+  // blocked rows consumable without requiring clients to know the storage
+  // representation.
+  const Json::Value execution_analysis = out["execution_analysis"];
+  const bool signal_generated = out["signal_generated"].asBool();
+  out["executable_intent"] = execution_analysis.get("executable_intent", Json::Value(false));
+  out["blocked"] = signal_generated && execution_analysis.get("blocked", Json::Value(false)).asBool();
+  out["blocker_reason"] = signal_generated
+                              ? execution_analysis.get("blocker_reason", Json::Value(""))
+                              : Json::Value("");
   return out;
 }
 
@@ -699,6 +718,8 @@ Json::Value SimulatedTradingService::tradeToJson(const TradeRecord &trade) const
   out["expected_return"] = trade.expected_return;
   out["model_confidence"] = trade.model_confidence;
   out["trade_type"] = trade.trade_type;
+  out["is_closing_leg"] = trade.is_closing_leg;
+  out["execution_is_paper"] = trade.trade_type != "live";
   return out;
 }
 
@@ -892,6 +913,20 @@ SimulatedTradingService::dispatchOrders(std::vector<OrderIntent> &&orders) {
   OrderDispatchResult dispatch_result;
   if (orders.empty() || !exchange_client_) {
     return dispatch_result;
+  }
+  // This is the service boundary for the paper/live split. Even if a caller
+  // accidentally queues an intent while running live-parity, do not allow it
+  // to reach Coinbase and release its local reservation instead.
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (mode_ != "live") {
+      for (const auto &intent : orders) {
+        pending_order_symbols_.erase(intent.product_id);
+        pending_reserved_cash_ =
+            std::max(0.0, pending_reserved_cash_ - intent.reserved_cash);
+      }
+      return dispatch_result;
+    }
   }
   const auto cancel_requested = [this]() {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -1454,6 +1489,7 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
     // is hurting expectancy, fall back to the honestly-labeled heuristic
     // path instead of continuing to gate/size on a degraded model.
     if (engineer != nullptr && models != nullptr && models->is_ready() &&
+        (engineer->parameters_loaded_ok() || models->has_torch_transformer()) &&
         !modelDegradedLocked()) {
       try {
         ::ml::OrderBookFeatures features;
@@ -1485,8 +1521,17 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         cohort_features.volatility = features.volatility;
         const std::string execution_regime = ::trade::ml::classify_execution_regime(cohort_features);
 
-        const auto pca_features = engineer->preprocess(features);
-        const bool transformer_configured = models->has_transformer();
+        const bool pca_parameters_ready = engineer->parameters_loaded_ok();
+        std::vector<double> pca_features;
+        if (pca_parameters_ready) {
+          pca_features = engineer->preprocess(features);
+        } else if (!models->has_torch_transformer()) {
+          TR_LOG_WARN("ML inference blocked for {}; feature-engineering parameters are unavailable",
+                      symbol);
+        }
+        const bool transformer_configured =
+            models->has_transformer() &&
+            (models->has_torch_transformer() || pca_parameters_ready);
         // Read the active model's real contract instead of assuming a fixed
         // shape: a retrained transformer can change lookback/feature width,
         // and comparing against a stale hardcoded shape here previously left
@@ -1531,7 +1576,8 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         // inference. In particular, avoid producing a fallback prediction that
         // would later be mistaken for a valid HOLD or executable signal.
         const bool classifier_output_available =
-            (!models->has_transformer() || transformer_ready) && models->has_classifier();
+            pca_parameters_ready && (!transformer_configured || transformer_ready) &&
+            models->has_classifier();
         const double raw_win_prob =
             classifier_output_available ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
@@ -1541,7 +1587,8 @@ SimulatedTradingService::buildSignalRecordLocked(const std::string &symbol,
         // Transformer-only packs still surface a genuine expected return on
         // signal and trade rows instead of a constant zero.
         const bool regressor_output_available =
-            (!transformer_configured || transformer_ready) && models->has_regressor();
+            pca_parameters_ready && (!transformer_configured || transformer_ready) &&
+            models->has_regressor();
         const bool transformer_output_available = transformer_configured && transformer_ready;
         const double raw_expected_pnl =
             regressor_output_available ? models->predict_pnl(pca_features) : transformer_pnl;
@@ -2382,6 +2429,8 @@ void SimulatedTradingService::generateTickLocked(
                                   "Market-data provider request failed.");
       }
       cadence_diagnostics_.recordSignal("dropped", 0.0);
+      // This is a market-data blocker, not a synthetic HOLD signal.
+      ++execution_blocker_counts_["market_data_unavailable"];
       continue;
     }
     ++diagnosis_evaluations_;
@@ -2515,7 +2564,22 @@ void SimulatedTradingService::generateTickLocked(
       closePositionLocked(symbol, opposite_signal ? "Closed on opposite signal" : "Closed after holding period");
       if (signal_generated && static_cast<int>(positions_.size()) < max_positions_ &&
           signalPassesMlGateLocked(signal)) {
-        openPositionLocked(signal, "Re-opened after close");
+        // Re-entry is a new live-equivalent entry decision. In paper-live
+        // mode, evaluate the shared execution gates after the old position is
+        // closed instead of treating the pre-close position as permission to
+        // bypass them.
+        if (mode_ == "live_parity") {
+          const Json::Value reentry_analysis = buildExecutionAnalysisLocked(signal);
+          if (reentry_analysis.get("executable_intent", Json::Value(false)).asBool()) {
+            ++executable_order_intents_;
+            openPositionLocked(signal, "Re-opened after close");
+          } else {
+            ++execution_blocker_counts_[reentry_analysis.get(
+                "blocker_reason", Json::Value("unknown")).asString()];
+          }
+        } else {
+          openPositionLocked(signal, "Re-opened after close");
+        }
       }
     }
   }
@@ -2740,10 +2804,28 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
   portfolio["execution_is_paper"] = !liveOrderExecutionEnabledLocked();
   portfolio["market_data_source"] = usesLiveMarketData(mode_) ? "coinbase_public" : "synthetic";
   Json::Value blocker_counts(Json::objectValue);
+  std::size_t blocked_intents = 0;
   for (const auto &[reason, count] : execution_blocker_counts_) {
     blocker_counts[reason] = count;
+    blocked_intents += static_cast<std::size_t>(std::max(0, count));
   }
   portfolio["execution_blocker_counts"] = blocker_counts;
+  // This is the stable accounting boundary for simulated and live-parity
+  // paper execution. It deliberately uses session-local counters and trades;
+  // it never reads or aggregates the live account service.
+  Json::Value execution_summary(Json::objectValue);
+  execution_summary["mode"] = mode_;
+  execution_summary["signals_generated"] = static_cast<Json::UInt64>(signals_generated_);
+  execution_summary["executable_intents"] = static_cast<Json::UInt64>(executable_order_intents_);
+  execution_summary["blocked_intents"] = static_cast<Json::UInt64>(blocked_intents);
+  execution_summary["paper_fills"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  execution_summary["paper_fill_count"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  execution_summary["blocker_reasons"] = blocker_counts;
+  execution_summary["coinbase_order_submission_enabled"] = false;
+  execution_summary["live_account_mutation"] = false;
+  portfolio["execution_summary"] = execution_summary;
+  portfolio["paper_fill_count"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  portfolio["blocked_intent_count"] = static_cast<Json::UInt64>(blocked_intents);
   portfolio["strategy_type"] = strategy_;
   portfolio["started_at"] = started_at_;
   portfolio["updated_at"] = updated_at_;
@@ -2815,6 +2897,10 @@ Json::Value SimulatedTradingService::buildPortfolioJson() const {
     signal_blocker_counts[reason] = count;
   }
   signal_diagnostics["execution_blocker_counts"] = signal_blocker_counts;
+  signal_diagnostics["blocked_intent_count"] = static_cast<Json::UInt64>(blocked_intents);
+  signal_diagnostics["paper_fill_count"] = static_cast<Json::UInt64>(session_trade_inputs_.size());
+  signal_diagnostics["coinbase_order_submission_enabled"] = false;
+  signal_diagnostics["live_account_mutation"] = false;
   Json::Value market_data(Json::objectValue);
   Json::Value market_data_failures(Json::arrayValue);
   std::size_t refreshed_count = 0;
@@ -2937,6 +3023,13 @@ Json::Value SimulatedTradingService::startSession(const Json::Value &payload,
                                                   const std::string &mode) {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
   std::unique_lock<std::mutex> lock(mutex_);
+  if (mode != "simulated" && mode != "live_parity") {
+    Json::Value response;
+    response["status"] = "error";
+    response["error"] = "mode must be simulated or live_parity";
+    response["mode"] = mode;
+    return response;
+  }
   ensureSchema();
 
   if (active_) {

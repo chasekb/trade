@@ -498,6 +498,15 @@ std::unique_ptr<ml::ONNXModelManager> PredictController::model_manager_ =
     nullptr;
 std::string PredictController::model_dir_;
 std::string PredictController::trained_models_dir_;
+std::mutex PredictController::training_mutex_;
+std::thread PredictController::training_thread_;
+
+void PredictController::waitForTraining() {
+  std::lock_guard<std::mutex> lock(training_mutex_);
+  if (training_thread_.joinable()) {
+    training_thread_.join();
+  }
+}
 
 void PredictController::init(const std::string &param_path,
                              const std::string &model_dir) {
@@ -529,8 +538,8 @@ void PredictController::init(const std::string &param_path,
 
   feature_engineer_ = std::make_unique<ml::FeatureEngineer>();
   if (!feature_engineer_->load_parameters(param_path)) {
-    TR_LOG_WARN("Feature engineer parameters from {} unavailable; continuing with built-in fallback parameters",
-                param_path);
+    TR_LOG_ERROR("Feature engineer parameters from {} unavailable; PCA inference is disabled",
+                 param_path);
   }
 
   model_manager_ = std::make_unique<ml::ONNXModelManager>();
@@ -565,6 +574,15 @@ void PredictController::predict(
     if (!feature_engineer_) {
       Json::Value err;
       err["error"] = "ML feature engineering is not initialized";
+      auto resp = HttpResponse::newHttpJsonResponse(err);
+      resp->setStatusCode(k503ServiceUnavailable);
+      callback(resp);
+      return;
+    }
+
+    if (!feature_engineer_->parameters_loaded_ok()) {
+      Json::Value err;
+      err["error"] = "ML feature-engineering parameters are unavailable";
       auto resp = HttpResponse::newHttpJsonResponse(err);
       resp->setStatusCode(k503ServiceUnavailable);
       callback(resp);
@@ -781,7 +799,7 @@ void PredictController::train(
   }
 
   // Trigger real training in a background thread
-  std::thread training_thread([config, db_url, auto_set_active]() {
+  std::thread next_training_thread([config, db_url, auto_set_active]() {
     auto &cache = CacheManager::getInstance();
     TR_LOG_INFO("ML training started: model='{}', epochs={}, batch_size={}, batch_training={}, max_training_rows={}, test_split={}, days_back={}, training_source={}",
                 config.model_name, config.epochs, config.batch_size,
@@ -988,7 +1006,15 @@ void PredictController::train(
       TR_LOG_ERROR("ML training progress: failed");
     }
   });
-  training_thread.detach();
+  {
+    std::lock_guard<std::mutex> lock(training_mutex_);
+    // A completed worker remains joinable until reclaimed. Reap it before
+    // replacing it so shutdown can always join the active worker safely.
+    if (training_thread_.joinable()) {
+      training_thread_.join();
+    }
+    training_thread_ = std::move(next_training_thread);
+  }
 
   Json::Value resp;
   resp["status"] = "training_started";
@@ -1651,6 +1677,9 @@ void PredictController::predictionComparison(
     if (!feature_engineer_) {
       throw std::runtime_error("feature engineering is not initialized");
     }
+    if (!feature_engineer_->parameters_loaded_ok()) {
+      throw std::runtime_error("feature-engineering parameters are unavailable");
+    }
     pca_features = feature_engineer_->preprocess(features);
     sequence = feature_engineer_->get_transformer_sequence(features.symbol);
   } catch (const std::exception &e) {
@@ -1880,6 +1909,12 @@ void PredictController::executionReconciliation(
   const auto report = trade::trading::reconcileExecution(signals, outcomes);
   for (const auto &[strategy, metrics] : report.by_strategy) {
     resp["by_strategy"].append(reconciliation_to_json(metrics));
+  }
+  resp["by_symbol"] = Json::arrayValue;
+  for (const auto &[symbol, metrics] : report.by_symbol) {
+    Json::Value row = reconciliation_to_json(metrics);
+    row["symbol"] = symbol;
+    resp["by_symbol"].append(row);
   }
   resp["overall"] = reconciliation_to_json(report.overall);
 

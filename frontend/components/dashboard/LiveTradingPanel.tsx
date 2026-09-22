@@ -19,6 +19,8 @@ import { StrategyConfigForm } from './StrategyConfigForm';
 import { OrderBookSignalsTable } from './OrderBookSignalsTable';
 import { ManualTradeSection } from './ManualTradeSection';
 import { BotActivityLog } from './BotActivityLog';
+import { ExecutionReconciliationTable } from './ExecutionReconciliationTable';
+import { useExecutionReconciliation } from '@/hooks/useExecutionReconciliation';
 
 type TradingConfigState = {
   position_size_mode: 'percent' | 'dollar' | string;
@@ -581,6 +583,11 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     pageSize,
     strategy
   );
+  const {
+    reconciliation,
+    isLoading: isReconciliationLoading,
+    error: reconciliationError,
+  } = useExecutionReconciliation({ hours: 24, tradeType: 'live' });
   const [configHidden, setConfigHidden] = useState(false);
 
   // useOrderBookSignals fetches/merges all request chunks when the selected
@@ -781,6 +788,20 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
 
       {/* Live Trading Statistics */}
       <LiveTradingStatistics />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Live execution outcomes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ExecutionReconciliationTable
+            reconciliation={reconciliation}
+            isLoading={isReconciliationLoading}
+            error={reconciliationError}
+            modeLabel="Live orders"
+          />
+        </CardContent>
+      </Card>
 
       {/* Order Book Signals */}
       {status.isActive && (

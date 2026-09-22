@@ -354,6 +354,17 @@ RUN --mount=type=secret,id=github_token,required=false \
 COPY . .
 
 # Build the application
+# Excluded pending investigation, newly discovered when this suite stopped
+# running a hand-maintained whitelist that never included them:
+# - execution_preflight, gate_path_parity: fail with a genuine live vs.
+#   simulated order-book profitability gate disagreement on at least one
+#   fixture, not a CI/environment issue.
+# - feature_engineer: its golden_features.json/feature_params.json fixtures
+#   were never committed to this repo (data/cpp_assets/ is empty), so it has
+#   never been able to run. Needs a real, domain-reviewed golden dataset
+#   regenerated, not a fabricated one -- do not add placeholder fixtures.
+# Re-include each once fixed -- do not widen this exclusion list for other
+# tests without the same scrutiny.
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then TRIPLET="x64-linux-onnxstaticoff"; \
     elif [ "$ARCH" = "aarch64" ]; then TRIPLET="arm64-linux-onnxstaticoff"; \
@@ -369,7 +380,7 @@ RUN ARCH=$(uname -m) && \
     -DCMAKE_PREFIX_PATH=/opt/libtorch && \
     cmake --build build -j$(nproc) && \
     ctest --test-dir build --output-on-failure \
-      -R "transformer_onnx_export|portfolio_accounting|simulated_trading_contract|simulated_trading_diagnosis|zero_trade_orderbook_fixture|trading_stats_calculator|position_sizing_policy|strategy_signal|strategy_expectancy_harness|execution_reconciliation|coinbase_auth|coinbase_order|coinbase_portfolio|calibration"
+      -E "execution_preflight|gate_path_parity|feature_engineer"
 
 # --- STAGE 2: Runtime ---
 # Use a plain Ubuntu runtime image so CI does not depend on MCR availability.

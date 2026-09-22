@@ -341,11 +341,14 @@ function processLocalSignal(session: LocalSimTradingSession, signal: OrderBookSi
   const expectedReturn = signal.ml_analysis?.expected_return ?? fallbackExpectedReturn;
   const directionalExpectedReturn = signalSide === 'sell' ? -expectedReturn : expectedReturn;
   const modelConfidence = signal.ml_analysis?.confidence ?? signal.signal_strength;
-  const feeRate = 0.0008;
+  // Verified 2026-09-19 against the live Coinbase account: entry-tier US
+  // taker fee is 0.90% per fill (live order-book orders are IOC market
+  // orders, always taker). Mirrors kFeeRate in SimulatedTradingService.cpp.
+  const feeRate = 0.009;
   const profitability = minimumTradeSizeDecision({
     price: signal.price,
     expectedReturnFraction: directionalExpectedReturn,
-    roundTripFeeFraction: Number(session.parameters.round_trip_fee_percent ?? 0.16) / 100,
+    roundTripFeeFraction: Number(session.parameters.round_trip_fee_percent ?? 1.8) / 100,
     slippageBufferFraction: Number(session.parameters.slippage_buffer_percent ?? 0) / 100,
     spreadFraction: Number(signal.spread ?? 0) / 100,
     minimumNetPnlUsd: Number(session.parameters.minimum_net_pnl_usd ?? 0),

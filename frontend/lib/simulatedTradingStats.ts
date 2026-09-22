@@ -33,6 +33,9 @@ type RawSimulatedTradingSnapshot = {
   active_positions?: unknown;
   open_positions?: unknown;
   net_pnl?: unknown;
+  execution_summary?: unknown;
+  paper_fill_count?: unknown;
+  blocked_intent_count?: unknown;
   total_trades?: unknown;
   winning_trades?: unknown;
   losing_trades?: unknown;
@@ -50,6 +53,17 @@ type RawSimulatedTradingSnapshot = {
   [key: string]: unknown;
 };
 
+export interface SimulatedExecutionSummary {
+  mode: string;
+  signalsGenerated: number;
+  executableIntents: number;
+  blockedIntents: number;
+  paperFills: number;
+  blockerReasons: Array<{ reason: string; count: number }>;
+  coinbaseOrderSubmissionEnabled: boolean;
+  liveAccountMutation: boolean;
+}
+
 export interface NormalizedSimulatedTradingSnapshot {
   portfolio: Record<string, unknown>;
   stats: TradingStats;
@@ -65,6 +79,7 @@ export interface NormalizedSimulatedTradingSnapshot {
   realizedPnl: number;
   totalFees: number;
   netPnl: number;
+  executionSummary: SimulatedExecutionSummary;
 }
 
 function toArray(value: unknown): unknown[] {
@@ -82,6 +97,31 @@ function toArray(value: unknown): unknown[] {
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeExecutionSummary(
+  raw: unknown,
+  portfolio: Record<string, unknown>,
+  root: RawSimulatedTradingSnapshot,
+): SimulatedExecutionSummary {
+  const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const rawReasons = source.blocker_reasons;
+  const blockerReasons = rawReasons && typeof rawReasons === 'object'
+    ? Object.entries(rawReasons as Record<string, unknown>)
+      .map(([reason, count]) => ({ reason, count: Math.trunc(toNumber(count)) }))
+      .filter(({ count }) => count > 0)
+      .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason))
+    : [];
+  return {
+    mode: typeof source.mode === 'string' ? source.mode : 'simulated',
+    signalsGenerated: Math.trunc(toNumber(source.signals_generated)),
+    executableIntents: Math.trunc(toNumber(source.executable_intents)),
+    blockedIntents: Math.trunc(toNumber(source.blocked_intents ?? portfolio.blocked_intent_count ?? root.blocked_intent_count)),
+    paperFills: Math.trunc(toNumber(source.paper_fill_count ?? source.paper_fills ?? portfolio.paper_fill_count ?? root.paper_fill_count)),
+    blockerReasons,
+    coinbaseOrderSubmissionEnabled: source.coinbase_order_submission_enabled === true,
+    liveAccountMutation: source.live_account_mutation === true,
+  };
 }
 
 function tradeKey(trade: TradeLike): string {
@@ -304,6 +344,11 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
   const derivedStats = deriveStats(trades, rawTotalFees !== undefined ? totalFees : undefined);
   const statsSource = rawStats.stats ?? (rawStats.total_trades !== undefined ? (rawStats as Partial<TradingStats>) : undefined);
   const stats = mergeStats(statsSource, derivedStats);
+  const executionSummary = normalizeExecutionSummary(
+    portfolio.execution_summary ?? rawStats.execution_summary,
+    portfolio,
+    rawStats,
+  );
 
   return {
     portfolio,
@@ -320,5 +365,6 @@ export function normalizeSimulatedTradingSnapshot(rawStats: RawSimulatedTradingS
     realizedPnl,
     totalFees,
     netPnl,
+    executionSummary,
   };
 }

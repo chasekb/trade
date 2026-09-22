@@ -127,6 +127,10 @@ if(xtensor_INCLUDE_DIRS)
 endif()
 
 enable_testing()
+add_test(NAME feature_engineer COMMAND test_feature_engineer)
+# Loads data/cpp_assets/*.json by a path relative to the repo root; CTest's
+# default working directory is the CMake binary dir, not the source dir.
+set_tests_properties(feature_engineer PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(test_execution_cohorts
     src/tests/test_execution_cohorts.cpp
@@ -236,6 +240,14 @@ add_executable(test_strategy_expectancy_harness
 )
 target_include_directories(test_strategy_expectancy_harness PRIVATE include)
 add_test(NAME strategy_expectancy_harness COMMAND test_strategy_expectancy_harness)
+
+add_executable(test_ranking_mappings
+    src/tests/test_ranking_mappings.cpp
+    src/trading/StrategyExpectancyHarness.cpp
+    src/trading/StrategySignal.cpp
+)
+target_include_directories(test_ranking_mappings PRIVATE include)
+add_test(NAME ranking_mappings COMMAND test_ranking_mappings)
 
 add_executable(test_execution_reconciliation
     src/tests/test_execution_reconciliation.cpp
