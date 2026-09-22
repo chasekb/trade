@@ -538,8 +538,8 @@ void PredictController::init(const std::string &param_path,
 
   feature_engineer_ = std::make_unique<ml::FeatureEngineer>();
   if (!feature_engineer_->load_parameters(param_path)) {
-    TR_LOG_WARN("Feature engineer parameters from {} unavailable; continuing with built-in fallback parameters",
-                param_path);
+    TR_LOG_ERROR("Feature engineer parameters from {} unavailable; PCA inference is disabled",
+                 param_path);
   }
 
   model_manager_ = std::make_unique<ml::ONNXModelManager>();
@@ -574,6 +574,15 @@ void PredictController::predict(
     if (!feature_engineer_) {
       Json::Value err;
       err["error"] = "ML feature engineering is not initialized";
+      auto resp = HttpResponse::newHttpJsonResponse(err);
+      resp->setStatusCode(k503ServiceUnavailable);
+      callback(resp);
+      return;
+    }
+
+    if (!feature_engineer_->parameters_loaded_ok()) {
+      Json::Value err;
+      err["error"] = "ML feature-engineering parameters are unavailable";
       auto resp = HttpResponse::newHttpJsonResponse(err);
       resp->setStatusCode(k503ServiceUnavailable);
       callback(resp);
@@ -1667,6 +1676,9 @@ void PredictController::predictionComparison(
     ml::from_json(features_json, features);
     if (!feature_engineer_) {
       throw std::runtime_error("feature engineering is not initialized");
+    }
+    if (!feature_engineer_->parameters_loaded_ok()) {
+      throw std::runtime_error("feature-engineering parameters are unavailable");
     }
     pca_features = feature_engineer_->preprocess(features);
     sequence = feature_engineer_->get_transformer_sequence(features.symbol);

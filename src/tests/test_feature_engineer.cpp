@@ -1,6 +1,7 @@
 
 #include "ml/FeatureEngineer.hpp"
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -34,6 +35,39 @@ bool compare_vectors(const std::vector<double> &a, const std::vector<double> &b,
 }
 
 int main() {
+  bool all_passed = true;
+
+  // Missing and malformed parameter files must fail closed rather than
+  // silently installing an identity-PCA fallback.
+  {
+    ml::FeatureEngineer missing;
+    if (missing.load_parameters("data/cpp_assets/does-not-exist.json") ||
+        missing.parameters_loaded_ok() || !missing.preprocess(ml::OrderBookFeatures{}).empty()) {
+      std::cerr << "FAIL: missing feature parameters did not fail closed" << std::endl;
+      all_passed = false;
+    } else {
+      std::cout << "PASS: missing feature parameters fail closed" << std::endl;
+    }
+
+    const auto malformed_path =
+        std::filesystem::temp_directory_path() / "trade-malformed-feature-params.json";
+    {
+      std::ofstream malformed_file(malformed_path);
+      malformed_file << "{\"pca\": {\"components\": []}}";
+    }
+    ml::FeatureEngineer malformed;
+    if (malformed.load_parameters(malformed_path.string()) ||
+        malformed.parameters_loaded_ok() ||
+        !malformed.preprocess(ml::OrderBookFeatures{}).empty()) {
+      std::cerr << "FAIL: malformed feature parameters did not fail closed" << std::endl;
+      all_passed = false;
+    } else {
+      std::cout << "PASS: malformed feature parameters fail closed" << std::endl;
+    }
+    std::error_code remove_error;
+    std::filesystem::remove(malformed_path, remove_error);
+  }
+
   ml::FeatureEngineer fe;
   if (!fe.load_parameters("data/cpp_assets/feature_params.json")) {
     std::cerr << "Failed to load parameters!" << std::endl;
@@ -48,7 +82,6 @@ int main() {
   json golden_data;
   golden_file >> golden_data;
 
-  bool all_passed = true;
   for (size_t i = 0; i < golden_data.size(); ++i) {
     std::cout << "\n--- Testing Sample " << i << " ---" << std::endl;
     auto raw = golden_data[i]["raw"];
