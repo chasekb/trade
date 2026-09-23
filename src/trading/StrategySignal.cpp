@@ -302,6 +302,203 @@ StrategySignalOutcome evaluateStrategySignal(const std::string &strategy,
   return outcome;
 }
 
+namespace {
+
+bool finite(double value) { return std::isfinite(value); }
+
+bool inClosedInterval(double value, double minimum, double maximum) {
+  return value >= minimum && value <= maximum;
+}
+
+bool validCalibrationRule(const StrengthCalibrationRule &rule) {
+  if (rule.strategy.empty() || rule.strategy == "dca" ||
+      rule.strategy == "buyandhold" || rule.regime.empty() ||
+      !finite(rule.holding_period_min) || !finite(rule.holding_period_max) ||
+      !finite(rule.fee_fraction_min) || !finite(rule.fee_fraction_max) ||
+      rule.holding_period_min > rule.holding_period_max ||
+      rule.fee_fraction_min > rule.fee_fraction_max || rule.bins.empty() ||
+      !rule.validated_out_of_sample) {
+    return false;
+  }
+
+  double previous_min = 0.0;
+  double previous_max = 0.0;
+  double previous_calibrated = 0.0;
+  for (std::size_t i = 0; i < rule.bins.size(); ++i) {
+    const auto &bin = rule.bins[i];
+    if (!finite(bin.raw_strength_min) || !finite(bin.raw_strength_max) ||
+        !finite(bin.calibrated_strength) || bin.raw_strength_min < 0.0 ||
+        bin.raw_strength_max > 1.0 || bin.raw_strength_min >= bin.raw_strength_max ||
+        bin.calibrated_strength < 0.0 || bin.calibrated_strength > 1.0 ||
+        bin.evidence_count < rule.minimum_evidence ||
+        (i > 0 && bin.raw_strength_min < previous_min) ||
+        (i > 0 && bin.raw_strength_min < previous_max) ||
+        (i > 0 && bin.calibrated_strength < previous_calibrated)) {
+      return false;
+    }
+    previous_min = bin.raw_strength_min;
+    previous_max = bin.raw_strength_max;
+    previous_calibrated = bin.calibrated_strength;
+  }
+  return true;
+}
+
+struct RuleSpecificity {
+  bool exact_regime = false;
+  double holding_period_width = 0.0;
+  double fee_fraction_width = 0.0;
+};
+
+RuleSpecificity ruleSpecificity(const StrengthCalibrationRule &rule,
+                               const StrengthCalibrationContext &context) {
+  return {rule.regime == context.regime,
+          rule.holding_period_max - rule.holding_period_min,
+          rule.fee_fraction_max - rule.fee_fraction_min};
+}
+
+bool moreSpecific(const RuleSpecificity &candidate,
+                  const RuleSpecificity &selected) {
+  if (candidate.exact_regime != selected.exact_regime) {
+    return candidate.exact_regime;
+  }
+  if (candidate.holding_period_width != selected.holding_period_width) {
+    return candidate.holding_period_width < selected.holding_period_width;
+  }
+  return candidate.fee_fraction_width < selected.fee_fraction_width;
+}
+
+bool equallySpecific(const RuleSpecificity &left, const RuleSpecificity &right) {
+  return left.exact_regime == right.exact_regime &&
+         left.holding_period_width == right.holding_period_width &&
+         left.fee_fraction_width == right.fee_fraction_width;
+}
+
+} // namespace
+
+StrategySignalOutcome applyStrategyStrengthCalibration(
+    const std::string &strategy,
+    const StrategySignalOutcome &signal,
+    const StrategyStrengthCalibration &calibration,
+    const StrengthCalibrationContext &context, std::string *status) {
+  auto setStatus = [&](const char *value) {
+    if (status != nullptr) {
+      *status = value;
+    }
+  };
+  StrategySignalOutcome effective = signal;
+  if (!finite(effective.strength)) {
+    effective.strength = 0.0;
+    setStatus("invalid_context");
+    return effective;
+  }
+  effective.strength = clamp01(effective.strength);
+  if (signal.signal_type == "hold") {
+    effective.strength = 0.0;
+    setStatus("hold");
+    return effective;
+  }
+  if (!calibration.enabled) {
+    setStatus("disabled");
+    return effective;
+  }
+  if (!finite(context.expected_holding_period) ||
+      !finite(context.round_trip_fee_fraction) ||
+      context.expected_holding_period < 0.0 ||
+      context.round_trip_fee_fraction < 0.0) {
+    setStatus("invalid_context");
+    return effective;
+  }
+
+  std::vector<const StrengthCalibrationRule *> matches;
+  for (const auto &rule : calibration.rules) {
+    if (rule.strategy != strategy ||
+        rule.regime != context.regime ||
+        !inClosedInterval(context.expected_holding_period,
+                          rule.holding_period_min, rule.holding_period_max) ||
+        !inClosedInterval(context.round_trip_fee_fraction,
+                          rule.fee_fraction_min, rule.fee_fraction_max)) {
+      continue;
+    }
+    matches.push_back(&rule);
+  }
+  if (matches.empty()) {
+    setStatus("no_match");
+    return effective;
+  }
+  const auto *selected = matches.front();
+  for (const auto *candidate : matches) {
+    if (moreSpecific(ruleSpecificity(*candidate, context),
+                     ruleSpecificity(*selected, context))) {
+      selected = candidate;
+    }
+  }
+  const auto final_specificity = ruleSpecificity(*selected, context);
+  for (const auto *candidate : matches) {
+    if (candidate != selected &&
+        equallySpecific(ruleSpecificity(*candidate, context), final_specificity)) {
+      setStatus("ambiguous");
+      return effective;
+    }
+  }
+  if (!selected->validated_out_of_sample) {
+    setStatus("not_validated");
+    return effective;
+  }
+  for (const auto &bin : selected->bins) {
+    if (bin.evidence_count < selected->minimum_evidence) {
+      setStatus("insufficient_evidence");
+      return effective;
+    }
+  }
+  if (!validCalibrationRule(*selected)) {
+    setStatus("invalid_rule");
+    return effective;
+  }
+  for (std::size_t i = 0; i < selected->bins.size(); ++i) {
+    const auto &bin = selected->bins[i];
+    const bool in_bin = effective.strength >= bin.raw_strength_min &&
+                        (effective.strength < bin.raw_strength_max ||
+                         (i + 1 == selected->bins.size() &&
+                          effective.strength <= bin.raw_strength_max));
+    if (in_bin) {
+      effective.strength = clamp01(bin.calibrated_strength);
+      effective.reason += " [calibration: applied]";
+      setStatus("applied");
+      return effective;
+    }
+  }
+  setStatus("no_bin");
+  return effective;
+}
+
+StrategySignalEvaluation evaluateStrategySignalWithDiagnostics(
+    const std::string &strategy, const std::deque<double> &prices,
+    const StrategyParams &params, const StrategyStrengthCalibration &calibration,
+    const StrengthCalibrationContext &context,
+    const StrategyProfitabilityInput &profitability_input, bool has_position,
+    long long ticks_since_last_entry) {
+  StrategySignalEvaluation evaluation;
+  evaluation.raw_signal = evaluateStrategySignal(strategy, prices, params,
+                                                  has_position, ticks_since_last_entry);
+  // The pure mapping receives a strategy-scoped rule set so its public API
+  // remains useful without changing the legacy evaluator signature.
+  StrategyStrengthCalibration scoped = calibration;
+  scoped.rules.erase(std::remove_if(scoped.rules.begin(), scoped.rules.end(),
+                                    [&](const auto &rule) {
+                                      return rule.strategy != strategy;
+                                    }),
+                     scoped.rules.end());
+  evaluation.effective_signal = applyStrategyStrengthCalibration(
+      strategy, evaluation.raw_signal, scoped, context,
+      &evaluation.calibration_status);
+  StrategyProfitabilityInput input = profitability_input;
+  input.signal_type = evaluation.effective_signal.signal_type;
+  input.signal_strength = evaluation.effective_signal.strength;
+  evaluation.profitability = evaluateStrategyProfitabilityDiagnostic(input);
+  evaluation.calibration_applied = evaluation.calibration_status == "applied";
+  return evaluation;
+}
+
 OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
     const OrderBookProfitabilityInput &input) {
   OrderBookProfitabilityGate gate;
