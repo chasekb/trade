@@ -235,6 +235,10 @@ int main() {
     const auto negative_buy = evaluateOrderBookProfitabilityGate(gate_input);
     expect(!negative_buy.passes, "order-book gate blocks negative expected return buys");
 
+    gate_input.signal_type = "sell";
+    const auto favorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
+    expect(favorable_sell.passes, "order-book gate treats negative expected return as favorable for sells");
+
     for (const double unavailable_return : {std::numeric_limits<double>::quiet_NaN(),
                                             std::numeric_limits<double>::infinity(),
                                             -std::numeric_limits<double>::infinity()}) {
@@ -255,10 +259,6 @@ int main() {
     expect(std::isfinite(nonfinite_hurdle.required_edge_fraction),
            "order-book gate keeps serialized hurdle finite");
     gate_input.round_trip_fee_fraction = 0.010;
-
-    gate_input.signal_type = "sell";
-    const auto favorable_sell = evaluateOrderBookProfitabilityGate(gate_input);
-    expect(favorable_sell.passes, "order-book gate treats negative expected return as favorable for sells");
 
     // Regression coverage for the live order-book heuristic fallback: the old
     // 1.2% maximum edge could never clear the default 1.7%+ fee/spread/slippage
