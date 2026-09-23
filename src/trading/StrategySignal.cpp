@@ -308,6 +308,18 @@ OrderBookProfitabilityGate evaluateOrderBookProfitabilityGate(
   gate.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
                                 std::max(0.0, input.spread_fraction) +
                                 std::max(0.0, input.slippage_buffer_fraction);
+  if (!std::isfinite(input.signal_strength) ||
+      !std::isfinite(input.expected_return_fraction) ||
+      !std::isfinite(input.spread_fraction) ||
+      !std::isfinite(input.round_trip_fee_fraction) ||
+      !std::isfinite(input.slippage_buffer_fraction) ||
+      !std::isfinite(input.min_signal_strength) ||
+      !std::isfinite(gate.required_edge_fraction)) {
+    gate.reason = "Expected-return diagnostic is unavailable";
+    gate.required_edge_fraction = 0.0;
+    gate.net_expected_return_fraction = 0.0;
+    return gate;
+  }
   double expected_edge = 0.0;
   if (input.signal_type == "buy") {
     expected_edge = input.expected_return_fraction;
@@ -347,6 +359,18 @@ StrategyProfitabilityDiagnostic evaluateStrategyProfitabilityDiagnostic(
   diagnostic.required_edge_fraction = std::max(0.0, input.round_trip_fee_fraction) +
                                       std::max(0.0, input.spread_fraction) +
                                       std::max(0.0, input.slippage_buffer_fraction);
+
+  if (!std::isfinite(input.signal_strength) ||
+      !std::isfinite(input.spread_fraction) ||
+      !std::isfinite(input.round_trip_fee_fraction) ||
+      !std::isfinite(input.slippage_buffer_fraction) ||
+      !std::isfinite(input.min_signal_strength) ||
+      !std::isfinite(diagnostic.required_edge_fraction)) {
+    diagnostic.factor = "expected_return_unavailable";
+    diagnostic.reason = "Expected-return diagnostic is unavailable";
+    diagnostic.required_edge_fraction = 0.0;
+    return diagnostic;
+  }
 
   if (input.signal_type == "hold") {
     diagnostic.factor = "hold";
