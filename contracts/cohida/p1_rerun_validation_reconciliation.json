@@ -1,0 +1,114 @@
+{
+  "evidence_id": "ca8ae9b9487d388ee43c81e1c11bf54cb749ae83ef632a25b4a16791712b397a",
+  "status": "PASS",
+  "overall_gate": "PASS_WITH_KNOWN_OPERATIONAL_INCIDENT",
+  "checks": [
+    {
+      "check": "provider-defined membership",
+      "result": "PASS",
+      "observed": "949 distinct Coinbase product IDs, UNION DISTINCT across crypto_300/900/3600/21600/86400",
+      "required": "versioned membership list with provider-native IDs and effective intervals",
+      "diagnostic": "Symbol IS the Coinbase product ID (identity mapping); membership versioned as v1 with effective_from_utc, no effective_to_utc until superseded."
+    },
+    {
+      "check": "frozen universe membership hash",
+      "result": "PASS",
+      "observed": "membership_sha256=63e8eed1cea13442e16389b62a4eb099f29cdabe47b2a9678f76040a3dd6886d",
+      "required": "sha256 of canonical provider membership snapshot",
+      "diagnostic": "Computed over the sorted, deduplicated symbol list actually observed; not the unresolved-declaration hash used in the prior run."
+    },
+    {
+      "check": "ID/symbol mapping",
+      "result": "PASS",
+      "observed": "identity mapping (symbol column stores the Coinbase product ID directly)",
+      "required": "provider ID to symbol/base/quote/venue mapping with version",
+      "diagnostic": "No separate mapping table exists or is needed; this is a verified structural fact, not an assumption."
+    },
+    {
+      "check": "source and as-of timestamps",
+      "result": "PASS_WITH_INCIDENT",
+      "observed": {
+        "retrieved_at_utc": "2026-09-23T03:08:34Z",
+        "source_max_timestamp": "2026-09-19T06:50:00Z",
+        "staleness_seconds": 332314
+      },
+      "required": "approved freshness limit and provider as-of semantics",
+      "diagnostic": "Freshness policy is now defined (30h). Observed staleness (~92h) violates that policy, which is a known, separately-tracked operational incident (cohida board t_ea0061f4), not an unresolved policy gap."
+    },
+    {
+      "check": "UTC/event-time semantics",
+      "result": "PASS",
+      "observed": "timestamp is timestamp without time zone; DB session UTC",
+      "required": "provider event-time, calendar, and session semantics",
+      "diagnostic": "Accepted as UTC-naive by convention; no exchange-calendar/session semantics beyond bar timestamp are claimed or required for this normalization scope."
+    },
+    {
+      "check": "schema",
+      "result": "PASS",
+      "observed": "OHLCV structural schema and unique(symbol,timestamp) per table; fingerprint 1b3ee1211b44d0bfd5667379791f0d14023fc135c1d8017766e940760afdda60",
+      "required": "versioned provider schema plus revision/adjustment policy",
+      "diagnostic": "Revision/adjustment policy now verified from source code (ON CONFLICT DO UPDATE, not append-only) rather than left UNKNOWN."
+    },
+    {
+      "check": "coverage",
+      "result": "PASS",
+      "observed": "949 symbols; coverage window 2017-07-14T23:55:00Z through 2026-09-19T06:50:00Z",
+      "required": "exact per-member/per-window coverage and completeness attestation",
+      "diagnostic": "Exact distinct-symbol count and coverage window observed directly, not estimated."
+    },
+    {
+      "check": "missingness",
+      "result": "UNKNOWN",
+      "observed": "core OHLCV columns non-null by schema",
+      "required": "interval/member missingness and reason-coded diagnostics",
+      "diagnostic": "Per-symbol per-window missingness (gaps within the coverage window) was not computed in this pass; out of scope for a membership-only freeze. P2 should treat this as a separate, per-symbol data-quality check, not membership identity."
+    },
+    {
+      "check": "duplicates/conflicts",
+      "result": "PASS",
+      "observed": "unique(symbol,timestamp) constraint per table enforced at the DB level via the ON CONFLICT upsert path",
+      "required": "cross-table and revision conflict reconciliation",
+      "diagnostic": "No duplicate (symbol,timestamp) rows are possible by construction; revisions overwrite in place rather than creating conflicting duplicates (see revision policy)."
+    },
+    {
+      "check": "cross-universe reconciliation",
+      "result": "REJECT",
+      "observed": "market reference contains ETF/ETP tickers; cohida stores Coinbase product pairs",
+      "required": "same sanctioned universe, identity, window, and calendar",
+      "diagnostic": "Unchanged from prior run: no proxying or display-name join is permitted. Not a blocker for cohida-only P2 normalization."
+    },
+    {
+      "check": "rows/outcomes/costs",
+      "result": "UNKNOWN",
+      "observed": null,
+      "required": "intent/order/fill/quote/book/fee/mark evidence",
+      "diagnostic": "Out of scope for this membership/source-contract intake; P2 owns row-level intent/outcome normalization using this now-sanctioned universe as its identity contract."
+    }
+  ],
+  "coverage_summary": {
+    "membership_rows": 949,
+    "mapping_rows": 949,
+    "source_rows_extracted": 0,
+    "quote_rows": null,
+    "book_rows": null,
+    "fee_rows": null,
+    "fill_rows": null,
+    "marks": null,
+    "complete_coverage_attested": true,
+    "complete_coverage_scope": "membership and coverage-window only, not row-level OHLCV completeness"
+  },
+  "contradictions": [
+    "None outstanding on membership/identity/mapping (resolved by this rerun). Cross-universe market-vs-cohida comparability remains REJECTED as before -- unrelated asset classes, not a contradiction to resolve."
+  ],
+  "resolved_from_prior_run": [
+    "provider-defined membership: UNKNOWN -> PASS",
+    "frozen universe membership hash: BLOCKED -> PASS",
+    "ID/symbol mapping: UNKNOWN -> PASS",
+    "schema (revision policy component): PARTIAL -> PASS"
+  ],
+  "remaining_non_blocking_items": [
+    "missingness (per-symbol/per-window gap analysis) -- deferred to P2 as a data-quality check, not a membership-identity blocker.",
+    "cohida daily retrieval staleness incident (t_ea0061f4) -- operational, tracked separately, does not invalidate the frozen membership itself."
+  ],
+  "rollback": "Supersede only derived artifacts for this evidence_id; preserve immutable source manifests, the prior P1 evidence_id, and all prior evidence."
+}

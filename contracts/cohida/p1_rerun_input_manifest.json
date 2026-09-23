@@ -1,0 +1,144 @@
+{
+  "evidence_id": "ca8ae9b9487d388ee43c81e1c11bf54cb749ae83ef632a25b4a16791712b397a",
+  "idempotency_key": "cohida-provider-universe-membership-and-source-contract-intake|cohida-provider-universe:v1|63e8eed1cea13442e16389b62a4eb099f29cdabe47b2a9678f76040a3dd6886d|simulated|2026-09-23T03:08:34Z|rerun-against-sanctioned-manifest",
+  "supersedes_evidence_id": "3097916558cfb08075849712a371cd25c9d197bccc5553f68a740549382b3027",
+  "status": "PASS",
+  "claim_label": "Sanctioned",
+  "mode": "simulated",
+  "question": "Can a provider-defined cohida universe, identity mapping, immutable snapshot, and source/as-of contract be verified for read-only research intake?",
+  "decision_boundary": "No downstream normalization, replay, shadow, promotion, or live activity may start unless membership and mapping pass the source contract.",
+  "generated_at_utc": "2026-09-23T03:44:29Z",
+  "utc_window": {
+    "start": "2026-09-23T00:00:00Z",
+    "end": "2026-09-24T00:00:00Z",
+    "end_exclusive": true,
+    "basis": "rerun declaration; snapshot itself taken at 2026-09-23T03:08:34Z"
+  },
+  "session": {
+    "session_id": "intake-20260923-cohida-p1-rerun",
+    "session_start_utc": "2026-09-23T03:44:29Z",
+    "session_end_utc": "2026-09-23T03:44:29Z"
+  },
+  "source": {
+    "source_system": "cohida-db-prod (unordered_map.priority_queue), direct read-only observation",
+    "source_endpoint_or_file": "contracts/cohida/universe_snapshot_v1.json (chasekb/trade, PR #108)",
+    "source_manifest_sha256": "099fa5c129d15bf3898bce69bb37d09bc35db3f5d6eb6459fc10fcd59984b0a3",
+    "retrieved_at_utc": "2026-09-23T03:08:34Z",
+    "observed_at_utc": "2026-09-23T03:08:34Z",
+    "provider_timezone": "UTC (database session; timestamp without time zone)",
+    "freshness_limit_seconds": 108000,
+    "source_status": "ACTUAL_SOURCE_READABLE_ROW_LEVEL_MEMBERSHIP_OBSERVED"
+  },
+  "selected_universe": {
+    "selected_universe_id": "cohida-provider-universe:v1",
+    "provider": "coinbase",
+    "universe_version": "v1",
+    "membership_status": "SANCTIONED",
+    "membership_sha256": "63e8eed1cea13442e16389b62a4eb099f29cdabe47b2a9678f76040a3dd6886d",
+    "frozen_declaration_sha256": "784fe98e07eb17b41b5bf474d2df2be69e1b41eb84477b2ddabf6ac38e40416d",
+    "symbols_count": 949,
+    "venue_market_type": "coinbase spot",
+    "quote_base_conventions": "Coinbase product ID format BASE-QUOTE (e.g. BTC-USD); multi-quote pairs present (USD, USDC, USDT, EUR, GBP, BTC, ETH, INR, AUD, BRL, CAD, SGD)",
+    "selection_timestamp_utc": "2026-09-23T03:08:34Z",
+    "mapping_status": "IDENTITY",
+    "mapping_sha256": null,
+    "note": "The stored `symbol` column IS the Coinbase product ID directly; there is no separate provider-native-ID-to-symbol mapping table to hash. membership_sha256 is the canonical hash of the sorted, deduplicated symbol list actually observed in cohida-db-prod across all five granularity tables."
+  },
+  "schema": {
+    "schema_version": "cohida-production-evidence-v2 structural manifest",
+    "schema_fingerprint_sha256": "1b3ee1211b44d0bfd5667379791f0d14023fc135c1d8017766e940760afdda60",
+    "tables_observed": [
+      "crypto",
+      "crypto_300",
+      "crypto_900",
+      "crypto_3600",
+      "crypto_21600",
+      "crypto_86400"
+    ],
+    "columns_observed": [
+      "id",
+      "symbol",
+      "timestamp",
+      "open_price",
+      "high_price",
+      "low_price",
+      "close_price",
+      "volume",
+      "created_at",
+      "updated_at"
+    ],
+    "schema_scope": "structural schema plus row-level DISTINCT symbol aggregate (no raw OHLCV row extract)"
+  },
+  "freshness_and_asof_policy": {
+    "policy": "Fresh if the latest bar (any granularity) is within 30h of now (24h daily-retrieval cycle + 6h buffer). Beyond 30h, treat as a failed/missed run and fail-closed rather than compute against stale candles. All five granularities are refreshed together in one daily 00:00 UTC pass (scripts/retrieve-production.sh), so this is a single threshold, not per-granularity SLAs.",
+    "observed_at_intake": {
+      "latest_bar_utc": "2026-09-19T06:50:00Z",
+      "staleness_at_observation_seconds": 332314,
+      "staleness_verdict": "STALE -- exceeds 30h policy by ~3.6x"
+    },
+    "known_incident": "Filed on the cohida board as t_ea0061f4 (~92h staleness, ~4 missed daily cycles) for operational investigation; not resolved by this manifest."
+  },
+  "revision_and_correction_policy": {
+    "policy": "NOT append-only. Verified in cpp-cohida/src/database/DatabaseManager.cpp: INSERT ... ON CONFLICT (symbol, timestamp) DO UPDATE overwrites open_price/high_price/low_price/close_price/volume/updated_at in place on every re-retrieval. No history of the prior value is retained.",
+    "revision_signal": "updated_at > created_at indicates at least one revision since first ingestion; created_at is a DB default set once and never touched by the UPDATE SET clause.",
+    "consequence_for_downstream": "(symbol, timestamp) is not a stable read key across time. P2 and any reproducible computation must snapshot the exact row values used at computation time rather than re-derive by (symbol, timestamp) lookup later."
+  },
+  "authoritative_inputs": [
+    {
+      "path": "trade repo (chasekb/trade) contracts/cohida/provider_universe_manifest.md @ PR #108 / commit d1bc1b37f95523582153b01b39185734b2378704",
+      "sha256": "4c01d44cdb8e024d3987ba32d7563c98f9a93d349e6f1216e6abe88f8e8b5f2f"
+    },
+    {
+      "path": "trade repo (chasekb/trade) contracts/cohida/universe_snapshot_v1.json @ same commit",
+      "sha256": "099fa5c129d15bf3898bce69bb37d09bc35db3f5d6eb6459fc10fcd59984b0a3"
+    },
+    {
+      "path": "trade repo (chasekb/trade) scripts/cohida/freeze_universe_snapshot.sh @ same commit",
+      "sha256": "3c6ce4a04d4f93904b9120779916aeb5445ccce9668d73b4e025dd888758f361"
+    },
+    {
+      "path": "/home/kahlil/.hermes/kanban/boards/cohida/attachments/t_00d03112/crypto_evidence_contract.md",
+      "sha256": "639b0048748b3218640a7bde7457f990ec824106d09f19922f312754133ef31e"
+    },
+    {
+      "path": "/home/kahlil/.hermes/kanban/boards/cohida/attachments/t_05adba18/quantitative-trading-handoff.md",
+      "sha256": "f6df0dd9c47ec3fb4ba448932478caca07463a708eaa4b1c4a7b968c8507162b"
+    },
+    {
+      "path": "/home/kahlil/.hermes/kanban/boards/cohida/attachments/t_7fcaa280/crypto-collaboration-protocol.md",
+      "sha256": "0e46b22816321610f03db957f3d14ceed4d61d6074558b025bb5ca3894f46965"
+    },
+    {
+      "path": "/home/kahlil/.hermes/kanban/boards/quant-research/attachments/t_25f3911e/market_cohida_synthesized_evidence_report.md",
+      "sha256": "3fe235d2dfd96407489df6a9de655fcde66fefb646060d3d6947c0c47186f5cb"
+    },
+    {
+      "path": "prior P1 evidence: t_25ac3ce2 evidence_id 3097916558cfb08075849712a371cd25c9d197bccc5553f68a740549382b3027 (superseded by this rerun)",
+      "sha256": "3097916558cfb08075849712a371cd25c9d197bccc5553f68a740549382b3027"
+    }
+  ],
+  "transformations": [
+    "Started cohida-db-prod against its existing production data volume (no schema/data writes) per explicit user authorization.",
+    "Ran read-only SELECT DISTINCT symbol UNION across crypto_300, crypto_900, crypto_3600, crypto_21600, crypto_86400 (the bare crypto table is unused/empty).",
+    "Ran read-only min/max(timestamp) against crypto_300 to establish observed coverage window and staleness.",
+    "Canonicalized the sorted, deduplicated symbol list and computed its sha256 as membership_sha256.",
+    "Read cpp-cohida/src/database/DatabaseManager.cpp directly to verify (not assume) the revision/correction policy.",
+    "No row-level OHLCV extraction, no joins, no proxy symbols, no zero filling, no outcome calculations."
+  ],
+  "rerun_template": "./scripts/cohida/freeze_universe_snapshot.sh --host <cohida-db-host> --port <port> --db unordered_map --user <readonly-user> --schema priority_queue > contracts/cohida/universe_snapshot_v2.json; diff against v1 to detect membership drift; recompute this evidence_id from the recorded idempotency_key.",
+  "limitations": [
+    "Universe membership reflects what has been ingested as of 2026-09-23T03:08:34Z; per the revision policy above, individual bar values (not membership) may still change in place on future re-retrieval.",
+    "No raw OHLCV row extract, quote/book, fee, fill, or mark data were extracted -- membership and coverage-window aggregates only.",
+    "The known ~92h staleness incident (t_ea0061f4) means the most recent ~4 daily cycles' worth of new listings or delistings, if any, are not reflected in this snapshot.",
+    "Cross-universe reconciliation against the market-reference dataset (SPY/QQQ/etc.) remains REJECTED as in the prior P1 run -- different provider, different asset class, no proxying is permitted."
+  ],
+  "external_side_effects": false,
+  "prohibited_actions_not_performed": [
+    "orders",
+    "account mutation",
+    "credential handling",
+    "deployment",
+    "parameter promotion",
+    "source/database schema or row writes"
+  ]
+}
