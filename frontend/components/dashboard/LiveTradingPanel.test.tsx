@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import LiveTradingPanel from './LiveTradingPanel';
 
@@ -8,12 +9,16 @@ const mockUseLiveTrading = jest.fn();
 const mockUseOrderBookSignals = jest.fn();
 const mockUseProducts = jest.fn();
 const mockUseLiveTabProducer = jest.fn();
+const mockUseExecutionReconciliation = jest.fn();
 
 jest.mock('@/hooks/useTrading', () => ({
   useLiveTrading: (...args: unknown[]) => mockUseLiveTrading(...args),
   useOrderBookSignals: (...args: unknown[]) => mockUseOrderBookSignals(...args),
   useProducts: (...args: unknown[]) => mockUseProducts(...args),
   useLiveTabProducer: (...args: unknown[]) => mockUseLiveTabProducer(...args),
+}));
+jest.mock('@/hooks/useExecutionReconciliation', () => ({
+  useExecutionReconciliation: (...args: unknown[]) => mockUseExecutionReconciliation(...args),
 }));
 
 jest.mock('./OpenPositionsSection', () => ({ OpenPositionsSection: () => null }));
@@ -24,6 +29,7 @@ jest.mock('./StrategyConfigForm', () => ({ StrategyConfigForm: () => null }));
 jest.mock('./OrderBookSignalsTable', () => ({ OrderBookSignalsTable: () => null }));
 jest.mock('./ManualTradeSection', () => ({ ManualTradeSection: () => null }));
 jest.mock('./BotActivityLog', () => ({ BotActivityLog: () => null }));
+jest.mock('./ExecutionReconciliationTable', () => ({ ExecutionReconciliationTable: () => null }));
 
 const inactiveStatus = {
   isActive: false,
@@ -46,6 +52,14 @@ function positionsPortfolio(positions: Record<string, unknown>[]) {
   };
 }
 
+function renderPanel(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <LiveTradingPanel />
+    </QueryClientProvider>,
+  );
+}
+
 describe('LiveTradingPanel active positions stat', () => {
   beforeEach(() => {
     mockUseLiveTrading.mockReturnValue({
@@ -59,6 +73,7 @@ describe('LiveTradingPanel active positions stat', () => {
     });
     mockUseOrderBookSignals.mockReturnValue({ data: undefined });
     mockUseProducts.mockReturnValue({ data: {} });
+    mockUseExecutionReconciliation.mockReturnValue({ reconciliation: null, isLoading: false, error: null });
   });
 
   it('excludes unverified positions from the Active Positions count', () => {
@@ -73,7 +88,7 @@ describe('LiveTradingPanel active positions stat', () => {
       error: null,
     });
 
-    render(<LiveTradingPanel />);
+    renderPanel();
 
     const activePositionsLabel = screen.getByText('Active Positions');
     const tile = activePositionsLabel.parentElement;
@@ -91,7 +106,7 @@ describe('LiveTradingPanel active positions stat', () => {
       error: null,
     });
 
-    render(<LiveTradingPanel />);
+    renderPanel();
 
     const activePositionsLabel = screen.getByText('Active Positions');
     const tile = activePositionsLabel.parentElement;
