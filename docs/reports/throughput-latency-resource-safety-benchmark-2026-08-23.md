@@ -84,3 +84,26 @@ The current checked-in JSONL and summary record the final repeat, while the earl
 5. Compare against a versioned baseline using identical universe, duration, parameters, backend image, database state, and host resource limits.
 
 No local Docker/CMake build or compiled test was run. The benchmark used the already-running backend container and made no live orders or destructive account changes.
+
+## Fresh bounded non-production run (2026-09-23)
+
+This rerun used an isolated Podman Compose project named `trade-bench`, synthetic PostgreSQL/Redis state under the runtime scratch directory, the already-published image `ghcr.io/chasekb/trade/cpp-backend:dev` (image digest `sha256:094c2ccd9e322b8a8b12b7f4f0d225ab4ac2eed6b920d1864fc6ced83638c99f`), and no repository `.env` mount. The backend logged that no usable ONNX models were present and used neutral fallbacks. No exchange credentials were supplied, no live endpoint was called, and the benchmark reported `execution_is_paper=true` for every sample.
+
+Machine-constraint preflight before startup: 4.3 TB free on the worktree filesystem, 91 GiB host memory available, 32 CPUs with load average 8.21/7.11/5.96, and Podman 6.1.2 reachable with 10 pre-existing unrelated containers and no prior `trade-bench` containers. The bounded workload therefore ran without reducing the declared 3-symbol/64-symbol scope.
+
+Reproducible commands:
+
+```bash
+podman-compose -p trade-bench -f /home/kahlil/.hermes/profiles/runtime-ops/cache/scratch/trade-bench/compose.yml up -d
+python3 tools/benchmark_throughput.py --base-url http://127.0.0.1:18081 --duration 5 --interval 1 --output docs/benchmarks/throughput-samples.jsonl
+python3 /home/kahlil/.hermes/profiles/runtime-ops/cache/scratch/trade-bench/run_with_resources.py
+podman-compose -p trade-bench -f /home/kahlil/.hermes/profiles/runtime-ops/cache/scratch/trade-bench/compose.yml down
+```
+
+The first command produced 13 valid JSONL samples. Normal load produced 7 samples, 6 active ticks, tick 0→5, 3 selected symbols, request latency p50 14.530 ms / p95 198.302 ms / max 275.941 ms, zero pending orders, and 5 maximum cumulative blocked intents. The overload produced 6 samples, 5 active ticks, tick 0→4, 64 selected symbols, request latency p50 410.979 ms / p95 501.182 ms / max 518.175 ms, zero pending orders, and 176 maximum cumulative blocked intents. Both scenarios were HTTP 2xx and paper-only.
+
+The resource-sampled 8-second rerun produced 19 valid benchmark JSONL samples plus 26 host/container resource samples. Its normal scenario reached tick 8 with p95 52.705 ms and max 61.562 ms. Its overload scenario reached tick 6 with an estimated 0.857 ticks per active second and p95 494.277 ms / max 520.844 ms. Container CPU maxima were 3.70% for the C++ backend, 5.92% for PostgreSQL, and 0.36% for Redis; backend RSS ranged from 84.99–91.19 MB. Host load peaked at 6.01 and minimum available memory was 97,363,624 KiB. No resource exhaustion or restart occurred.
+
+This run provides a versioned same-image synthetic comparison against the earlier checked-in repeat: normal p95 improved from 11,653.771 ms to 52.705 ms, while overload p95 was 494.277 ms versus the earlier active-status observation of approximately 27–31 ms. These are not a strict regression claim because the runs used different lifecycle timing and host state; the earlier 27–31 ms value was not captured in the checked-in dataset.
+
+The run still does not establish queue lag/depth, stale age, flush/mutex timings, Coinbase 429 behavior, account snapshot latency, adaptive exchange concurrency budgets, or live blocked-intent behavior. Those remain `BLOCKED`/`UNKNOWN`; synthetic pending-order zero and bounded 64-symbol fan-out must not be interpreted as live exchange-budget compliance.
