@@ -52,6 +52,7 @@ public:
   ADD_METHOD_TO(PredictController::predictionComparison, "/api/ml/prediction-comparison", Post);
   ADD_METHOD_TO(PredictController::resetMlDatabases, "/api/ml/databases", Delete);
   ADD_METHOD_TO(PredictController::executionReconciliation, "/api/trading/execution-reconciliation", Get);
+  ADD_METHOD_TO(PredictController::executionAttribution, "/api/trading/execution-attribution", Get);
   METHOD_LIST_END
 
   void predict(const HttpRequestPtr &req,
@@ -123,6 +124,8 @@ public:
                         std::function<void(const HttpResponsePtr &)> &&callback);
   void executionReconciliation(const HttpRequestPtr &req,
                                std::function<void(const HttpResponsePtr &)> &&callback);
+  void executionAttribution(const HttpRequestPtr &req,
+                            std::function<void(const HttpResponsePtr &)> &&callback);
 
   static void init(const std::string &param_path, const std::string &model_dir);
   // Join an in-flight training job before process-wide services are torn down.
