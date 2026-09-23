@@ -293,6 +293,15 @@ SimulatedTradingService &SimulatedTradingService::getInstance() {
   return instance;
 }
 
+SimulatedTradingService::SimulatedTradingService() {
+  // See LiveTradingService::LiveTradingService() for why this must run
+  // eagerly at construction rather than only inside startSession(): a fresh
+  // or reset database with no session ever started could still be missing
+  // schema (e.g. individual_trades.is_closing_leg) that read-only endpoints
+  // query unconditionally. ensureSchema() is idempotent and safe to call here.
+  ensureSchema();
+}
+
 SimulatedTradingService::~SimulatedTradingService() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
