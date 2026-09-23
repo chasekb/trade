@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { isUnverifiedReconciliationStatus, reconciliationStatusLabel } from '@/lib/livePositionReconciliation';
 
 type OpenPositionRow = {
     symbol?: string;
@@ -13,9 +14,12 @@ type OpenPositionRow = {
     inherited_quantity?: number | string;
     management_state?: string;
     eligible_for_strategy_management?: boolean;
+    reconciliation_status?: string;
 };
 
 const managementLabel = (position: OpenPositionRow) => {
+    const reconciliationLabel = reconciliationStatusLabel(position.reconciliation_status);
+    if (reconciliationLabel) return reconciliationLabel;
     if (position.management_state === 'account_managed') return 'Account-managed';
     if (position.management_state === 'eligible_account_holding') return 'Eligible account holding';
     if (position.management_state === 'session_managed' || position.session_managed !== false) return 'Session-managed';
@@ -128,8 +132,9 @@ export function OpenPositionsSection({
                     <tbody className="bg-white divide-y divide-gray-200">
                         {pageData.map((pos: OpenPositionRow, index: number) => {
                             const symbol = pos.symbol ?? '';
-                            const canClose = (!onClose || pos.session_managed !== false) && symbol.length > 0;
-                            const canLiquidate = pos.session_managed === false && Boolean(onLiquidateHolding) && symbol.length > 0;
+                            const unverified = isUnverifiedReconciliationStatus(pos.reconciliation_status);
+                            const canClose = (!onClose || pos.session_managed !== false) && symbol.length > 0 && !unverified;
+                            const canLiquidate = pos.session_managed === false && Boolean(onLiquidateHolding) && symbol.length > 0 && !unverified;
 
                             return (
                             <tr key={`${symbol}-${pos.entry_time}-${index}`}>
@@ -175,6 +180,10 @@ export function OpenPositionsSection({
                                         >
                                             {liquidatingPosition === symbol ? 'Liquidating...' : 'Liquidate holding'}
                                         </Button>
+                                    ) : unverified ? (
+                                        <span className="text-xs text-gray-500" title="Coinbase has not confirmed this position; actions are disabled until it is verified.">
+                                            Unverified
+                                        </span>
                                     ) : (
                                         <span className="text-xs text-gray-500">Coinbase holding</span>
                                     )}

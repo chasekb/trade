@@ -67,6 +67,51 @@ describe('trade dashboard tables', () => {
     await waitFor(() => expect(liquidateAll).toHaveBeenCalled());
   });
 
+  it('labels unverified positions and disables close/liquidate actions', () => {
+    const onClose = jest.fn();
+    const onLiquidateHolding = jest.fn();
+    render(
+      <OpenPositionsSection
+        positions={[
+          { symbol: 'DOGE-USD', side: 'long', quantity: 100, entry_price: 0.1, current_price: 0.11, unrealized_pnl: 1, entry_time: '2026-07-06T12:00:00Z', session_managed: true, reconciliation_status: 'unverified_missing_from_snapshot' },
+          { symbol: 'XRP-USD', side: 'long', quantity: 10, entry_price: 0.5, current_price: 0.52, unrealized_pnl: 0.2, entry_time: '2026-07-06T12:00:00Z', session_managed: false, reconciliation_status: 'unverified_no_snapshot' },
+        ]}
+        onClose={onClose}
+        onLiquidateHolding={onLiquidateHolding}
+      />
+    );
+
+    const dogeRow = screen.getByRole('row', { name: /DOGE-USD/ });
+    expect(within(dogeRow).getByText('Reconciliation pending')).toBeInTheDocument();
+    expect(within(dogeRow).queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+    expect(within(dogeRow).getByText('Unverified')).toBeInTheDocument();
+
+    const xrpRow = screen.getByRole('row', { name: /XRP-USD/ });
+    expect(within(xrpRow).getByText('Reconciliation pending')).toBeInTheDocument();
+    expect(within(xrpRow).queryByRole('button', { name: 'Liquidate holding' })).not.toBeInTheDocument();
+    expect(within(xrpRow).getByText('Unverified')).toBeInTheDocument();
+  });
+
+  it('labels pending-settlement and awaiting-snapshot positions without disabling actions', () => {
+    render(
+      <OpenPositionsSection
+        positions={[
+          { symbol: 'LTC-USD', side: 'long', quantity: 1, entry_price: 60, current_price: 61, unrealized_pnl: 1, entry_time: '2026-07-06T12:00:00Z', reconciliation_status: 'pending_settlement' },
+          { symbol: 'BCH-USD', side: 'long', quantity: 1, entry_price: 200, current_price: 205, unrealized_pnl: 5, entry_time: '2026-07-06T12:00:00Z', reconciliation_status: 'awaiting_snapshot_reconciliation' },
+        ]}
+        onClose={jest.fn()}
+      />
+    );
+
+    const ltcRow = screen.getByRole('row', { name: /LTC-USD/ });
+    expect(within(ltcRow).getByText('Pending settlement')).toBeInTheDocument();
+    expect(within(ltcRow).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+
+    const bchRow = screen.getByRole('row', { name: /BCH-USD/ });
+    expect(within(bchRow).getByText('Awaiting Coinbase snapshot')).toBeInTheDocument();
+    expect(within(bchRow).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+  });
+
   it('renders recent trades values and optional fees column', () => {
     render(<RecentTradesTable includeFees trades={[{ timestamp: '2026-07-06T12:30:00Z', symbol: 'ETH-USD', side: 'buy', quantity: 2, price: 2500, fees: 3.25, pnl: 125.5 }]} />);
     expect(screen.getByText('Recent Trades')).toBeInTheDocument();
