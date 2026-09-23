@@ -67,23 +67,60 @@ See `contracts/cohida/universe_snapshot_v1.json` for the full committed snapshot
 array), `effective_from_utc`, `effective_to_utc` (null until superseded),
 `id_mapping`, `venue`, `quote_base_convention`, `granularities_seconds`, `revision_policy`.
 
-## Two policy choices that still need an explicit decision from you
+## Freshness policy
 
-The snapshot above answers "what is the universe, right now, as observed" honestly. It does
-**not** resolve two remaining P1 checks that are genuine product decisions, not facts to
-discover:
+Cohida's retrieval (`scripts/retrieve-production.sh`) runs once daily at 00:00 UTC and pulls
+**all five granularities in the same pass** (`cohida symbols --list | xargs ... retrieve-all
+-g <granularity>` per granularity, one run). This is not a case of independently-cadenced
+granularities needing independently-tuned thresholds — it collapses to one question: did
+today's 00:00 UTC run actually succeed?
 
-1. **Freshness/staleness threshold.** This snapshot observed ~3.9 days of staleness on the
-   finest (5-minute) granularity at the moment it was taken. Recommendation: a consumer of
-   daily bars (86400s) tolerating up to ~48h staleness, and a consumer of finer granularities
-   requiring a much tighter bound (e.g. minutes, enforced at read time, not at snapshot time)
-   is a reasonable default — but the actual number is your call, not inferable from the schema.
-2. **Revision/correction policy.** Nothing in the schema (`created_at`/`updated_at` only)
-   establishes whether Coinbase candles are ever revised after ingestion, or whether cohida's
-   retrieval ever overwrites a row in place. This manifest assumes append-only (documented in
-   `revision_policy` above) but that assumption has not been verified against cohida's actual
-   retrieval/upsert logic — worth a one-line confirmation from whoever maintains that code.
+**Policy: data is fresh if the latest bar (any granularity) is within 30h of now** (24h
+refresh cycle + 6h buffer for run duration/retry). Beyond 30h, the run is presumed to have
+failed or not fired, and any consumer (P2 normalization, a strategy signal) must fail-closed
+on that table rather than compute against stale candles.
 
-Once these two policy lines are confirmed (or accepted as stated above), P1 (`t_25ac3ce2`)
-should be rerun against this manifest; a PASS there unblocks P2 (`t_27acce22`) to proceed on
-real, non-fabricated universe identity.
+This snapshot observed **~92 hours of staleness** (latest bar 2026-09-19T06:50Z, snapshot
+taken 2026-09-23T03:06Z) — roughly four missed daily cycles. That is a live operational
+failure of the daily retrieval job, not a manifest question, and is being tracked as an
+incident on the `cohida` Kanban board rather than resolved here; see that board for the
+current investigation.
+
+## Revision/correction policy
+
+Verified against the actual ingestion code (`cpp-cohida/src/database/DatabaseManager.cpp`),
+not assumed. Cohida's retrieval is **not append-only**:
+
+```sql
+INSERT INTO ... (symbol, timestamp, open_price, high_price, low_price, close_price, volume, updated_at)
+VALUES (...)
+ON CONFLICT (symbol, timestamp) DO UPDATE SET
+    open_price = EXCLUDED.open_price, high_price = EXCLUDED.high_price,
+    low_price = EXCLUDED.low_price, close_price = EXCLUDED.close_price,
+    volume = EXCLUDED.volume, updated_at = EXCLUDED.updated_at
+```
+
+Every write is an upsert keyed on `(symbol, timestamp)`. If the same bar is retrieved twice
+— a retry, a backfill re-run, or Coinbase correcting a historical candle — its OHLCV values
+are silently overwritten in place. No history of the prior value is retained anywhere.
+`created_at` (schema default `CURRENT_TIMESTAMP`, set once, never in the `UPDATE SET` clause)
+marks first ingestion; `updated_at` is rewritten on every insert **and** every conflict-update,
+so `updated_at > created_at` is the only available signal that a bar has been revised at
+least once since first ingestion — there is no record of what the prior value was.
+
+**Consequence for P2 and downstream consumers:** a row read today is not guaranteed to read
+the same on a later re-query. Anything that must be reproducible (a backtest, a signal
+computed from a specific bar) must either (a) treat a row where `updated_at` has since
+advanced past the computation time as invalidated and re-validate, or (b) snapshot the exact
+row values used at computation time rather than re-deriving by `(symbol, timestamp)` lookup
+later. This is a hard requirement for P2's design, not an optional nicety — silently trusting
+`(symbol, timestamp)` as a stable key would violate the crypto evidence contract's
+`correction_revision_semantics` provenance requirement.
+
+## What's left
+
+Both policy questions above are now answered with evidence, not assumption. P1 (`t_25ac3ce2`)
+should be rerun against this manifest to attempt PASS; a PASS unblocks P2 (`t_27acce22`) to
+proceed with real, non-fabricated universe identity and a documented, code-verified revision
+model. The only remaining open item is operational, not evidentiary: cohida's daily retrieval
+job needs to actually be fixed and start succeeding again.

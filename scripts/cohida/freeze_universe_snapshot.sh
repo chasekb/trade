@@ -97,7 +97,8 @@ snapshot = {
     "venue": "coinbase",
     "quote_base_convention": "Coinbase product ID format BASE-QUOTE (e.g. BTC-USD)",
     "granularities_seconds": [300, 900, 3600, 21600, 86400],
-    "revision_policy": "append-only assumed; created_at/updated_at columns exist but no observed evidence of in-place candle revision was checked in this snapshot",
+    "revision_policy": "NOT append-only -- verified via DatabaseManager.cpp: INSERT ... ON CONFLICT (symbol, timestamp) DO UPDATE overwrites open/high/low/close/volume and updated_at in place on every re-retrieval, with no history of the prior value retained. created_at is set once (DB default, never in the UPDATE SET clause); updated_at > created_at is the only available signal that a bar has been revised since first ingestion.",
+    "freshness_policy": "Fresh if latest bar (any granularity) is within 30h of now (24h daily-retrieval cycle + 6h buffer). Beyond 30h, treat as a failed/missed run and fail-closed rather than compute against stale candles.",
 }
 print(json.dumps(snapshot, indent=2))
 PY
