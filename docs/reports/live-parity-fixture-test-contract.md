@@ -21,8 +21,15 @@ perform idempotent `ensureSchema()` DDL/backfill at startup.
   values (`mid`, spread, best bid/ask, imbalance, volume, depth).
 - Decision seam: `buildExecutionAnalysisLocked()` is the parity preflight
   boundary. It records `blocked`, `blocker_reason`, `executable_intent`,
-  allocation, expected-return fields, and (for parity) minimum-notional,
-  available-cash, and estimated-fee inputs.
+  `signal_generated`, `intended_side`, allocation, expected-return fields,
+  and (for parity) minimum-notional, available-cash, and estimated-fee
+  inputs. `signal_generated`/`intended_side` (and the matching field in
+  `signalToJson()`) are resolved via `trade::trading::resolvePreGateSignalState`
+  (`include/trading/PreGateSignalAttribution.hpp`) from the pre-gate
+  `generated_before_gate`/`candidate_signal_type` recorded on the signal,
+  not re-derived from the signal's (possibly gate-rewritten) display type
+  — see `docs/EXECUTION_ATTRIBUTION_CONTRACT.md` §2 for the canonical
+  `blocked_intent` contract this satisfies.
 - Paper fill seam: `openPositionLocked`, `addToPositionLocked`, and
   `closePositionLocked` settle locally. `live_parity` enters this path from
   `generateTickLocked()` and must not enter `dispatchOrders()`.
