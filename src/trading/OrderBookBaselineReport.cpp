@@ -22,7 +22,7 @@ int populationRank(OrderBookRowPopulation population) {
   return 3;
 }
 
-bool finiteOrZero(double value) { return std::isfinite(value) ? value : 0.0; }
+double finiteOrZero(double value) { return std::isfinite(value) ? value : 0.0; }
 
 std::string normalizedStatus(const std::string &decision) {
   if (decision == "accepted" || decision == "rejected" || decision == "blocked") {
