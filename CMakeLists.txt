@@ -59,6 +59,7 @@ set(SOURCES
     src/exchange/CoinbaseAdvancedClient.cpp
     src/exchange/CoinbaseOrder.cpp
     src/trading/PositionSizingPolicy.cpp
+    src/trading/OrderBookBaselineReport.cpp
     src/trading/ExecutionPreflight.cpp
     src/trading/DiagnosticsContract.cpp
     src/trading/CadenceDiagnostics.cpp
