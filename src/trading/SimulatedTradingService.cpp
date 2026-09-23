@@ -11,6 +11,7 @@
 #include "trading/PortfolioAccounting.hpp"
 #include "trading/PositionSizingPolicy.hpp"
 #include "trading/ExecutionPreflight.hpp"
+#include "trading/PreGateSignalAttribution.hpp"
 #include "trading/DiagnosticsContract.hpp"
 #include "trading/StrategySignal.hpp"
 #include "trading/LegacyOrderBookSignal.hpp"
@@ -546,7 +547,16 @@ Json::Value SimulatedTradingService::signalToJson(const SignalRecord &signal) co
   out["symbol"] = signal.symbol;
   out["signal_type"] = signal.signal_type;
   out["signal"] = signal.signal_type;
-  out["signal_generated"] = signal.signal_type != "hold";
+  // A downstream gate may rewrite signal_type to "hold" above without the
+  // candidate having ever been un-generated; read the pre-gate intent that
+  // buildSignalRecordLocked recorded instead of re-deriving it from the
+  // (possibly rewritten) signal_type.
+  out["signal_generated"] =
+      resolvePreGateSignalState(
+          PreGateSignalInputs{
+              signal.payload.get("generated_before_gate", Json::Value(signal.signal_type != "hold")).asBool(),
+              signal.payload.get("candidate_signal_type", Json::Value(signal.signal_type)).asString()})
+          .signal_generated;
   out["strength"] = signal.strength;
   out["signal_strength"] = signal.strength;
   out["price"] = signal.price;
@@ -578,8 +588,19 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   Json::Value analysis(Json::objectValue);
   const Json::Value ml_analysis =
       signal.payload.get("ml_analysis", Json::Value(Json::objectValue));
-  const bool signal_generated = signal.signal_type != "hold";
-  const std::string side = sanitizeSide(signal.signal_type);
+  // A downstream gate may rewrite signal.signal_type to "hold" without the
+  // candidate having ever been un-generated. Read the pre-gate generated
+  // flag and original candidate side that buildSignalRecordLocked recorded
+  // instead of re-deriving them from the (possibly rewritten) signal_type,
+  // so a genuinely-generated-then-blocked signal stays distinguishable from
+  // one where no signal was ever generated.
+  const std::string candidate_signal_type =
+      signal.payload.get("candidate_signal_type", Json::Value(signal.signal_type)).asString();
+  const PreGateSignalState pre_gate_state = resolvePreGateSignalState(PreGateSignalInputs{
+      signal.payload.get("generated_before_gate", Json::Value(signal.signal_type != "hold")).asBool(),
+      candidate_signal_type});
+  const bool signal_generated = pre_gate_state.signal_generated;
+  const std::string side = pre_gate_state.intended_side;
   const double expected_return =
       ml_analysis.get("expected_return", Json::Value(0.0)).asDouble();
   const double fee_adjusted_expected_return =
@@ -589,13 +610,13 @@ Json::Value SimulatedTradingService::buildExecutionAnalysisLocked(
   analysis["symbol"] = signal.symbol;
   analysis["signal_generated"] = signal_generated;
   analysis["intended_action"] = signal_generated ? "open" : "none";
-  analysis["intended_side"] = signal_generated ? side : "none";
+  analysis["intended_side"] = side;
   analysis["expected_return"] = expected_return;
   analysis["fee_adjusted_expected_return"] = fee_adjusted_expected_return;
   analysis["required_edge"] = ml_analysis.get("required_edge", Json::Value(0.0)).asDouble();
   DiagnosticsInput diagnostic_input;
   diagnostic_input.strategy = strategy_;
-  diagnostic_input.signal_type = signal.signal_type;
+  diagnostic_input.signal_type = candidate_signal_type;
   diagnostic_input.signal_strength = signal.strength;
   diagnostic_input.min_signal_strength =
       isOrderBookStrategy(strategy_)

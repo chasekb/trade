@@ -60,6 +60,7 @@ set(SOURCES
     src/exchange/CoinbaseOrder.cpp
     src/trading/PositionSizingPolicy.cpp
     src/trading/ExecutionPreflight.cpp
+    src/trading/PreGateSignalAttribution.cpp
     src/trading/DiagnosticsContract.cpp
     src/trading/CadenceDiagnostics.cpp
     src/trading/QuoteBatchScheduler.cpp
@@ -183,6 +184,13 @@ add_executable(test_execution_preflight
 )
 target_include_directories(test_execution_preflight PRIVATE include)
 add_test(NAME execution_preflight COMMAND test_execution_preflight)
+
+add_executable(test_pre_gate_signal_attribution
+    src/tests/test_pre_gate_signal_attribution.cpp
+    src/trading/PreGateSignalAttribution.cpp
+)
+target_include_directories(test_pre_gate_signal_attribution PRIVATE include)
+add_test(NAME pre_gate_signal_attribution COMMAND test_pre_gate_signal_attribution)
 
 add_executable(test_portfolio_accounting
     src/tests/test_portfolio_accounting.cpp
