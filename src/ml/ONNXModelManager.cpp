@@ -1,7 +1,9 @@
 
 #include "ml/ONNXModelManager.hpp"
+#include "ml/TransformerModel.hpp"
 #include <array>
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <numeric>
@@ -14,6 +16,9 @@ void ONNXModelManager::reset_sessions() {
   regressor_session_.reset();
   classifier_session_.reset();
   transformer_session_.reset();
+  torch_transformer_.reset();
+  has_torch_transformer_ = false;
+  onnx_has_weights_ = false;
   input_dim_ = 0;
   transformer_lookback_ = 0;
   transformer_features_ = 0;
@@ -47,6 +52,24 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     std::size_t new_transformer_lookback = 0;
     std::size_t new_transformer_features = 0;
     bool new_transformer_channels_first = false;
+    // Architecture hyperparameters needed to reconstruct a matching
+    // trade::ml::StockTransformer before torch::load can restore a saved
+    // state dict into it; defaults mirror ModelTrainer.cpp's
+    // kTransformerPatchSize/kTransformerEmbeddingDim/kTransformerHeads/
+    // kTransformerLayers/kTransformerDropout, used only if the config is
+    // somehow missing these (write_transformer_config always writes them).
+    std::int64_t new_transformer_patch_size = 5;
+    std::int64_t new_transformer_embedding_dim = 64;
+    std::int64_t new_transformer_heads = 4;
+    std::int64_t new_transformer_layers = 3;
+    double new_transformer_dropout = 0.1;
+    std::shared_ptr<void> new_torch_transformer;
+    bool new_has_torch_transformer = false;
+    // Defaults to false (fail closed): an older package's
+    // transformer_config.json predates this field entirely, and the only
+    // exporter that exists today (export_transformer_to_onnx) never writes
+    // real weights into the ONNX graph regardless.
+    bool new_onnx_has_weights = false;
 
     if (std::filesystem::exists(transformer_config_path)) {
       try {
@@ -75,6 +98,14 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
           if (configured_features > 0) {
             new_transformer_features = configured_features;
           }
+          new_transformer_patch_size =
+              config.value("patch_size", new_transformer_patch_size);
+          new_transformer_embedding_dim =
+              config.value("embedding_dim", new_transformer_embedding_dim);
+          new_transformer_heads = config.value("n_heads", new_transformer_heads);
+          new_transformer_layers = config.value("n_layers", new_transformer_layers);
+          new_transformer_dropout = config.value("dropout", new_transformer_dropout);
+          new_onnx_has_weights = config.value("onnx_has_weights", false);
         }
       } catch (const std::exception &e) {
         spdlog::warn("Ignoring transformer config at {} because it could not be parsed: {}",
@@ -161,9 +192,57 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
       }
     }
 
+    // transformer.onnx above is a shape-correct, weight-free placeholder —
+    // LibTorch's C++ API has no ONNX exporter (see ModelTrainer.cpp's
+    // export_transformer_artifact comment). The real gradient-trained
+    // weights, when present, live in transformer_weights.pt beside it. Load
+    // them via LibTorch directly into a matching trade::ml::StockTransformer
+    // and prefer this path in predict_transformer() over the ONNX session.
+    const std::filesystem::path weights_path = dir / "transformer_weights.pt";
+    if (std::filesystem::exists(weights_path)) {
+      if (new_transformer_lookback == 0 || new_transformer_features == 0) {
+        spdlog::warn(
+            "Found {} but transformer lookback/feature dimensions are "
+            "unavailable (missing or unreadable transformer_config.json); "
+            "skipping LibTorch weight load",
+            weights_path.string());
+      } else {
+        try {
+          auto model = std::make_shared<trade::ml::StockTransformer>(
+              static_cast<std::int64_t>(new_transformer_features),
+              static_cast<std::int64_t>(new_transformer_lookback),
+              new_transformer_patch_size, new_transformer_embedding_dim,
+              new_transformer_heads, new_transformer_layers,
+              new_transformer_dropout);
+          torch::load(*model, weights_path.string());
+          // torch::nn::Module::eval() disables dropout for inference; not
+          // related to code-evaluating eval() in other languages.
+          (*model)->eval();
+          new_torch_transformer = std::move(model);
+          new_has_torch_transformer = true;
+          spdlog::info(
+              "Loaded gradient-trained transformer weights from {} "
+              "(lookback={}, features={})",
+              weights_path.string(), new_transformer_lookback,
+              new_transformer_features);
+        } catch (const std::exception &e) {
+          spdlog::warn(
+              "Skipping transformer weights at {} because they could not be "
+              "loaded (likely an architecture/shape mismatch against the "
+              "current patch_size/embedding_dim/n_heads/n_layers): {}",
+              weights_path.string(), e.what());
+        }
+      }
+    }
+
     const bool has_loaded_regressor = new_regressor_session != nullptr;
     const bool has_loaded_classifier = new_classifier_session != nullptr;
-    const bool has_loaded_transformer = new_transformer_session != nullptr;
+    // A loaded-but-weight-free ONNX session still counts toward "found
+    // something to load" (has_loaded_transformer, used only for the "no
+    // usable models at all" bail-out below) — it's has_transformer() that
+    // must stay false for it, not this.
+    const bool has_loaded_transformer =
+        new_transformer_session != nullptr || new_has_torch_transformer;
 
     if (!has_loaded_regressor && !has_loaded_classifier && !has_loaded_transformer) {
       spdlog::warn("No usable ONNX models found in {}; using neutral fallbacks",
@@ -188,6 +267,9 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     regressor_session_ = std::move(new_regressor_session);
     classifier_session_ = std::move(new_classifier_session);
     transformer_session_ = std::move(new_transformer_session);
+    torch_transformer_ = std::move(new_torch_transformer);
+    has_torch_transformer_ = new_has_torch_transformer;
+    onnx_has_weights_ = new_onnx_has_weights;
     input_dim_ = new_input_dim;
     transformer_lookback_ = new_transformer_lookback;
     transformer_features_ = new_transformer_features;
@@ -229,9 +311,10 @@ bool ONNXModelManager::load_models(const std::string &model_dir) {
     }
 
     spdlog::info(
-        "Loaded ONNX models from {}. Capabilities: regressor={}, classifier={}, transformer={}, expected input dimension: {}",
+        "Loaded ONNX models from {}. Capabilities: regressor={}, classifier={}, "
+        "transformer={} (torch_weights={}), expected input dimension: {}",
         model_dir, has_loaded_regressor, has_loaded_classifier,
-        has_loaded_transformer, input_dim_);
+        has_loaded_transformer, new_has_torch_transformer, input_dim_);
     return true;
   } catch (const std::exception &e) {
     spdlog::error("Failed to load ONNX models: {}", e.what());
@@ -269,8 +352,10 @@ double ONNXModelManager::calibrate_expected_return(double raw_expected_return) c
 
 bool ONNXModelManager::transformer_input_ready(
     const std::vector<std::vector<double>> &sequence) const {
-  if (!transformer_session_ || transformer_lookback_ == 0 ||
-      transformer_features_ == 0 || sequence.size() != transformer_lookback_) {
+  const bool onnx_usable = transformer_session_ != nullptr && onnx_has_weights_;
+  if ((!onnx_usable && !has_torch_transformer_) ||
+      transformer_lookback_ == 0 || transformer_features_ == 0 ||
+      sequence.size() != transformer_lookback_) {
     return false;
   }
   return std::all_of(sequence.begin(), sequence.end(),
@@ -281,8 +366,57 @@ bool ONNXModelManager::transformer_input_ready(
 
 double ONNXModelManager::predict_transformer(
     const std::vector<std::vector<double>> &sequence) {
+  if (has_torch_transformer_) {
+    if (transformer_lookback_ == 0 || transformer_features_ == 0) {
+      spdlog::error(
+          "Torch transformer is loaded but input dimensions are unavailable");
+      return 0.0;
+    }
+    if (!transformer_input_ready(sequence)) {
+      spdlog::warn(
+          "Torch transformer input mismatch: expected {}x{}, got {}x{}; "
+          "skipping inference rather than predicting on zero-padded input",
+          transformer_lookback_, transformer_features_, sequence.size(),
+          sequence.empty() ? 0 : sequence[0].size());
+      return 0.0;
+    }
+    try {
+      const auto model =
+          std::static_pointer_cast<trade::ml::StockTransformer>(torch_transformer_);
+      torch::NoGradGuard no_grad;
+      torch::Tensor x = torch::zeros(
+          {1, static_cast<std::int64_t>(transformer_lookback_),
+           static_cast<std::int64_t>(transformer_features_)},
+          torch::kFloat32);
+      auto accessor = x.accessor<float, 3>();
+      for (std::size_t t = 0; t < sequence.size(); ++t) {
+        for (std::size_t f = 0; f < sequence[t].size(); ++f) {
+          accessor[0][static_cast<std::int64_t>(t)][static_cast<std::int64_t>(f)] =
+              static_cast<float>(sequence[t][f]);
+        }
+      }
+      torch::Tensor pred = (*model)->forward(x);
+      return static_cast<double>(pred.item<float>());
+    } catch (const std::exception &e) {
+      spdlog::error("Torch transformer inference failed: {}", e.what());
+      return 0.0;
+    }
+  }
+
   if (!transformer_session_)
     return 0.0;
+  if (!onnx_has_weights_) {
+    // The ONNX graph is a shape-correct, weight-free Identity placeholder
+    // (see write_transformer_config's onnx_has_weights comment) — running it
+    // would return a meaningless number, not a real prediction. Fail closed
+    // instead of silently serving it; has_torch_transformer_ was already
+    // false or this branch would not have been reached at all.
+    spdlog::warn(
+        "Transformer ONNX graph has no real weights (onnx_has_weights=false) "
+        "and no LibTorch weights loaded; skipping inference rather than "
+        "predicting from the placeholder Identity graph");
+    return 0.0;
+  }
   if (transformer_lookback_ == 0 || transformer_features_ == 0) {
     spdlog::error(
         "Transformer model is loaded but input dimensions are unavailable");

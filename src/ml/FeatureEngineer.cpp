@@ -14,43 +14,39 @@ namespace ml {
 
 FeatureEngineer::FeatureEngineer() {}
 
-void FeatureEngineer::initialize_default_parameters() {
-  // Raw feature pipeline dimensions:
-  // - 26 base features
-  // - 6 rolling windows x (mean + std) for each base feature = 312
-  // - 15 pairwise interactions from the first 5 features
-  // Total = 353.
-  constexpr std::size_t kFallbackFeatureDim = 353;
-
-  imputer_params.statistics.assign(kFallbackFeatureDim, 0.0);
-  scaler_params.mean.assign(kFallbackFeatureDim, 0.0);
-  scaler_params.scale.assign(kFallbackFeatureDim, 1.0);
-
-  pca_params.mean = xt::zeros<double>({kFallbackFeatureDim});
-  pca_params.components = xt::zeros<double>({kFallbackFeatureDim, kFallbackFeatureDim});
-  for (std::size_t i = 0; i < kFallbackFeatureDim; ++i) {
-    pca_params.components(i, i) = 1.0;
+void FeatureEngineer::clear_parameters() {
+  imputer_params.statistics.clear();
+  scaler_params.mean.clear();
+  scaler_params.scale.clear();
+  pca_params.components = xt::xarray<double>();
+  pca_params.mean = xt::xarray<double>();
+  transformer_feature_dim_ = 0;
+  {
+    std::lock_guard<std::mutex> lock(history_mutex);
+    history_windows_.clear();
+    transformer_sequence_windows_.clear();
   }
-
-  transformer_feature_dim_ = kFallbackFeatureDim;
-  history_windows_.clear();
-  transformer_sequence_windows_.clear();
-  parameters_loaded = true;
+  parameters_loaded = false;
 }
 
 bool FeatureEngineer::load_parameters(const std::string &filepath) {
+  clear_parameters();
   try {
     std::ifstream file(filepath);
     if (!file.is_open()) {
-      spdlog::warn(
-          "Could not open feature parameters file: {}; using built-in fallback parameters",
-          filepath);
-      initialize_default_parameters();
-      return true;
+      spdlog::error("Could not open feature parameters file: {}", filepath);
+      return false;
     }
 
     nlohmann::json j;
     file >> j;
+
+    if (!j.contains("imputer") || !j["imputer"].contains("statistics") ||
+        !j.contains("scaler") || !j["scaler"].contains("mean") ||
+        !j["scaler"].contains("scale") || !j.contains("pca") ||
+        !j["pca"].contains("components") || !j["pca"].contains("mean")) {
+      throw std::runtime_error("missing required parameter fields");
+    }
 
     // Imputer
     imputer_params.statistics =
@@ -63,8 +59,19 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
     // PCA
     std::vector<std::vector<double>> comp_vec =
         j["pca"]["components"].get<std::vector<std::vector<double>>>();
+    if (imputer_params.statistics.empty() || scaler_params.mean.empty() ||
+        scaler_params.mean.size() != scaler_params.scale.size() ||
+        comp_vec.empty() || comp_vec.front().empty() ||
+        scaler_params.mean.size() != comp_vec.front().size()) {
+      throw std::runtime_error("inconsistent feature parameter dimensions");
+    }
     size_t rows = comp_vec.size();
     size_t cols = comp_vec[0].size();
+    for (const auto &row : comp_vec) {
+      if (row.size() != cols) {
+        throw std::runtime_error("inconsistent PCA component dimensions");
+      }
+    }
 
     pca_params.components = xt::zeros<double>({rows, cols});
     for (size_t i = 0; i < rows; ++i) {
@@ -75,6 +82,21 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
 
     std::vector<double> pc_mean_vec =
         j["pca"]["mean"].get<std::vector<double>>();
+    if (pc_mean_vec.size() != cols || imputer_params.statistics.size() != cols) {
+      throw std::runtime_error("inconsistent PCA mean dimensions");
+    }
+    for (const auto value : imputer_params.statistics) {
+      if (!std::isfinite(value)) {
+        throw std::runtime_error("non-finite imputer parameter");
+      }
+    }
+    for (std::size_t i = 0; i < scaler_params.mean.size(); ++i) {
+      if (!std::isfinite(scaler_params.mean[i]) ||
+          !std::isfinite(scaler_params.scale[i]) ||
+          scaler_params.scale[i] == 0.0) {
+        throw std::runtime_error("invalid scaler parameter");
+      }
+    }
     pca_params.mean = xt::adapt(pc_mean_vec, {pc_mean_vec.size()});
     transformer_feature_dim_ = rows;
     history_windows_.clear();
@@ -85,11 +107,10 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
                  filepath, rows, cols);
     return true;
   } catch (const std::exception &e) {
-    spdlog::warn(
-        "Error loading feature parameters from {}; using built-in fallback parameters: {}",
-        filepath, e.what());
-    initialize_default_parameters();
-    return true;
+    clear_parameters();
+    spdlog::error("Error loading feature parameters from {}: {}", filepath,
+                  e.what());
+    return false;
   }
 }
 

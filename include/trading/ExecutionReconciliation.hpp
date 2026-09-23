@@ -118,6 +118,9 @@ struct SignalAttribution {
   std::string blocker_reason;
   std::string intended_side;
   std::string diagnostic_factor;
+  double strength = 0.0;
+  std::string strength_bucket;
+  std::string expected_return_bucket;
   double expected_return = 0.0;
   double fee_adjusted_expected_return = 0.0;
 };
@@ -169,6 +172,9 @@ struct StrategyReconciliation {
 
 struct ExecutionReconciliationReport {
   std::map<std::string, StrategyReconciliation> by_strategy;
+  // Keep symbol-level attribution alongside strategy totals so a selected
+  // universe can be reconciled without hiding a blocked or unfilled symbol.
+  std::map<std::string, StrategyReconciliation> by_symbol;
   StrategyReconciliation overall;
 };
 

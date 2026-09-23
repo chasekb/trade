@@ -88,9 +88,26 @@ private:
                              const std::vector<TradeOutcome> &outcomes);
 
   ModelMetrics train_transformer(const std::vector<OrderBookFeatures> &features,
-                                 const std::vector<TradeOutcome> &outcomes);
+                                 const std::vector<TradeOutcome> &outcomes,
+                                 const TrainingConfig &config);
 
   std::shared_ptr<DataCollector> collector_;
+
+  // Set by train_transformer on a successful run; consumed by
+  // export_transformer_artifact to persist the actual gradient-trained
+  // weights (transformer_weights.pt) alongside the packaged ONNX artifact.
+  // Not populated when the model type isn't TRANSFORMER or training failed,
+  // in which case export_transformer_artifact falls back to a shape-correct,
+  // weight-free ONNX placeholder as before.
+  //
+  // Type-erased (std::shared_ptr<void>) so this header never has to include
+  // TransformerModel.hpp/<torch/torch.h> — every target that merely includes
+  // ModelTrainer.hpp would otherwise need Torch include/link dirs wired into
+  // its own CMake target. Only ModelTrainer.cpp knows the real type
+  // (trade::ml::StockTransformer) and static_pointer_casts back to it.
+  std::shared_ptr<void> trained_transformer_;
+  bool has_trained_transformer_ = false;
+  int64_t trained_transformer_n_features_ = 0;
 };
 
 } // namespace ml

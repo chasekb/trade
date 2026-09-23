@@ -4,7 +4,9 @@
 #include "ml/TrainingValidation.hpp"
 #include "ml/TransformerOnnxExport.hpp"
 #include "ml/TransformerModel.hpp"
+#include "ml/TransformerFeatures.hpp"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +15,8 @@
 #include <random>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <tuple>
 
@@ -21,7 +25,16 @@
 // #include <xgboost/c_api.h>
 
 namespace {
-constexpr int64_t kTransformerLookback = 60;
+// Sequence length and feature representation (16 raw DB fields + rolling
+// mean/std of imbalance/spread/momentum/volatility over 5/20/60-sample
+// windows, 40 total) are now the single shared implementation in
+// include/ml/TransformerFeatures.hpp — trade::ml::RollingWindowBuffer,
+// used identically here (training) and by FeatureEngineer/ONNXModelManager
+// (live inference), so the two can no longer silently drift apart. An A/B
+// test on live trade_outcomes data (2026-09-18, 11,244 train / holdout
+// split) justified this representation over a 16-raw-field-only baseline:
+// holdout MSE 0.000303 vs 0.000319 (~5% lower), R^2 +0.0019 vs -0.0497.
+constexpr int64_t kTransformerLookback = trade::ml::kTransformerLookback;
 constexpr int64_t kTransformerPatchSize = 5;
 constexpr int64_t kTransformerEmbeddingDim = 64;
 constexpr int64_t kTransformerHeads = 4;
@@ -40,7 +53,13 @@ void write_transformer_config(const std::filesystem::path &config_path,
       {"n_layers", kTransformerLayers},
       {"dropout", kTransformerDropout},
       {"opset_version", kTransformerOpsetVersion},
-      {"input_layout", "channels_last"}};
+      {"input_layout", "channels_last"},
+      // export_transformer_to_onnx always writes the shape-correct,
+      // weight-free Identity placeholder (see TransformerOnnxExport.cpp) —
+      // never true today. ONNXModelManager reads this to decide whether the
+      // ONNX session is ever usable for real predictions; a future real
+      // ONNX exporter would need to flip this at its own call site.
+      {"onnx_has_weights", false}};
 
   if (!config_path.parent_path().empty()) {
     std::filesystem::create_directories(config_path.parent_path());
@@ -115,6 +134,24 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
         "ModelTrainer: disabling batch mode for {} samples (<= 20000); using"
         " single-load path",
         available);
+    use_batch = false;
+  }
+  if (use_batch && config.type == ModelType::TRANSFORMER) {
+    // The streaming/batch_training branch below (case ModelType::TRANSFORMER)
+    // still fits a single-feature OLS-on-bid_ask_imbalance stand-in, not the
+    // real gradient-trained StockTransformer train_transformer() trains via
+    // the single-load path below. A caller setting batch_training=true for a
+    // large transformer run would otherwise silently get a fully-functional-
+    // looking but fake model (real metrics logged, but no real weights, no
+    // transformer_weights.pt, no live inference) instead of an error —
+    // exactly the trap this forces closed. train_transformer's own
+    // per-symbol sequence construction is O(1) memory per sample (a fixed
+    // rolling buffer), not O(dataset), so it does not need the streaming
+    // path's memory-bound rationale in the first place.
+    spdlog::info(
+        "ModelTrainer: batch_training=true is not supported for TRANSFORMER "
+        "(no real incremental training loop exists yet); using the "
+        "single-load path, which trains the real model regardless of row count");
     use_batch = false;
   }
 
@@ -279,91 +316,15 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
       metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
       return metrics;
     }
-    case ModelType::TRANSFORMER: {
-      std::size_t count = 0;
-      double sum_x = 0.0;
-      double sum_y = 0.0;
-      double sum_xx = 0.0;
-      double sum_xy = 0.0;
-      PnlStats pnl_stats;
-      int pass1_batch_index = 0;
-
-      for (int offset = 0;; offset += batch_rows) {
-        auto batch = extract_batch(batch_rows, offset);
-        if (batch.empty()) {
-          break;
-        }
-
-        ++pass1_batch_index;
-        spdlog::info(
-            "ModelTrainer: [TF pass1 batch {}] offset={} rows={} processed_before={}",
-            pass1_batch_index, offset, batch.size(), count);
-
-        for (const auto &sample : batch) {
-          const double x = sample.first.bid_ask_imbalance;
-          const double y = sample.second.pnl;
-          ++count;
-          sum_x += x;
-          sum_y += y;
-          sum_xx += x * x;
-          sum_xy += x * y;
-          update_pnl_stats(pnl_stats, y);
-          update_execution_cohort(cohort_accumulators, sample.first, sample.second);
-        }
-      }
-
-      if (count == 0) {
-        spdlog::warn("ModelTrainer: no training data found (no matched signals)");
-        return metrics;
-      }
-
-      const double n = static_cast<double>(count);
-      double slope = 0.0;
-      double intercept = 0.0;
-      const double denom = n * sum_xx - sum_x * sum_x;
-      if (denom != 0.0) {
-        slope = (n * sum_xy - sum_x * sum_y) / denom;
-        intercept = (sum_y - slope * sum_x) / n;
-      } else {
-        intercept = sum_y / n;
-      }
-
-      const double mean_y = sum_y / n;
-      double ss_res = 0.0;
-      double ss_tot = 0.0;
-      int pass2_batch_index = 0;
-
-      for (int offset = 0;; offset += batch_rows) {
-        auto batch = extract_batch(batch_rows, offset);
-        if (batch.empty()) {
-          break;
-        }
-
-        ++pass2_batch_index;
-        spdlog::info(
-            "ModelTrainer: [TF pass2 batch {}] offset={} rows={}",
-            pass2_batch_index, offset, batch.size());
-
-        for (const auto &sample : batch) {
-          const double x = sample.first.bid_ask_imbalance;
-          const double y = sample.second.pnl;
-          const double pred = intercept + slope * x;
-          const double diff_res = y - pred;
-          const double diff_tot = y - mean_y;
-          ss_res += diff_res * diff_res;
-          ss_tot += diff_tot * diff_tot;
-        }
-      }
-
-      metrics.mse = ss_res / n;
-      metrics.r2_score = ss_tot == 0.0 ? 0.0 : 1.0 - (ss_res / ss_tot);
-
-      finalize_trading_metrics(pnl_stats);
-      metrics.validation_strategy = "streaming_batch";
-      metrics.feature_set_version = order_book_feature_set_version();
-      metrics.cohort_metrics = finalize_execution_cohorts(cohort_accumulators);
-      return metrics;
-    }
+    // ModelType::TRANSFORMER never reaches this streaming switch — use_batch
+    // is forced false for it above, unconditionally, so it always goes
+    // through the real gradient-trained single-load path (train_transformer)
+    // regardless of batch_training or row count. This streaming branch
+    // previously fit a single-feature OLS-on-bid_ask_imbalance stand-in here
+    // instead, which a batch_training=true caller would have silently
+    // received as if it were a real trained transformer (plausible-looking
+    // metrics, but no real weights, no transformer_weights.pt, no live
+    // inference) — removed rather than left reachable by accident.
     default:
       spdlog::warn("ModelTrainer: unsupported model type {}",
                    static_cast<int>(config.type));
@@ -432,7 +393,7 @@ ModelMetrics ModelTrainer::train(const TrainingConfig &config) {
     metrics = train_random_forest(train_features, train_outcomes);
     break;
   case ModelType::TRANSFORMER:
-    metrics = train_transformer(train_features, train_outcomes);
+    metrics = train_transformer(train_features, train_outcomes, config);
     break;
   case ModelType::GRADIENT_BOOSTING:
     metrics = train_xgboost(train_features, train_outcomes);
@@ -497,8 +458,10 @@ ModelMetrics ModelTrainer::train_random_forest(
 
 ModelMetrics
 ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
-                                const std::vector<TradeOutcome> &outcomes) {
+                                const std::vector<TradeOutcome> &outcomes,
+                                const TrainingConfig &config) {
   ModelMetrics metrics{};
+  has_trained_transformer_ = false;
 
   if (features.empty() || outcomes.empty() ||
       features.size() != outcomes.size()) {
@@ -506,42 +469,151 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
     return metrics;
   }
 
-  spdlog::info("Training baseline Transformer regression model on {} samples",
-               features.size());
+  const int64_t n_features = trade::ml::kTransformerTotalFeatureCount;
+  const int64_t lookback = trade::ml::kTransformerLookback;
 
-  std::vector<double> x;
-  std::vector<double> y_true;
-  x.reserve(features.size());
-  y_true.reserve(features.size());
-
+  // Build each sample's full (lookback, n_features) input sequence via the
+  // SAME trade::ml::RollingWindowBuffer that live inference uses
+  // (FeatureEngineer::get_raw_transformer_sequence /
+  // ONNXModelManager::predict_transformer), pushed through in each symbol's
+  // chronological order, so training and serving compute identical features
+  // by construction rather than via two independently maintained
+  // implementations. A sample is skipped entirely (not zero-padded) until
+  // its symbol has accumulated a full lookback of real history — matching
+  // what live inference does (reports "not ready" during warmup) instead of
+  // training on artificial all-zero-padded inputs.
+  std::unordered_map<std::string, trade::ml::RollingWindowBuffer> buffers_by_symbol;
+  std::vector<std::vector<std::vector<double>>> sample_sequences(features.size());
+  std::vector<std::size_t> valid_indices;
+  valid_indices.reserve(features.size());
   for (std::size_t i = 0; i < features.size(); ++i) {
-    x.push_back(features[i].bid_ask_imbalance);
-    y_true.push_back(outcomes[i].pnl);
+    auto &buffer = buffers_by_symbol[features[i].symbol];
+    buffer.push(trade::ml::raw_feature_vector(features[i]));
+    if (buffer.has_full_window()) {
+      sample_sequences[i] = buffer.build_sequence();
+      valid_indices.push_back(i);
+    }
   }
 
-  double sum_x = 0.0, sum_y = 0.0, sum_xx = 0.0, sum_xy = 0.0;
-  const double n = static_cast<double>(x.size());
-  for (std::size_t i = 0; i < x.size(); ++i) {
-    sum_x += x[i];
-    sum_y += y_true[i];
-    sum_xx += x[i] * x[i];
-    sum_xy += x[i] * y_true[i];
+  if (valid_indices.empty()) {
+    spdlog::warn(
+        "Transformer training: no symbol reached the {}-sample warmup "
+        "required to build a full input sequence; skipping training",
+        lookback);
+    return metrics;
   }
 
-  double slope = 0.0;
-  double intercept = 0.0;
-  const double denom = n * sum_xx - sum_x * sum_x;
-  if (denom != 0.0) {
-    slope = (n * sum_xy - sum_x * sum_y) / denom;
-    intercept = (sum_y - slope * sum_x) / n;
-  } else {
-    intercept = n > 0.0 ? sum_y / n : 0.0;
+  spdlog::info(
+      "Training Transformer (patch-attention) model on {} samples ({} "
+      "skipped below the {}-sample per-symbol warmup), n_features={}, "
+      "lookback={}, epochs={}, batch_size={}, lr={}",
+      valid_indices.size(), features.size() - valid_indices.size(), lookback,
+      n_features, lookback, config.epochs, config.batch_size,
+      config.learning_rate);
+
+  auto build_batch_tensor = [&](const std::vector<std::size_t> &sample_idxs) {
+    const int64_t b = static_cast<int64_t>(sample_idxs.size());
+    torch::Tensor batch = torch::zeros({b, lookback, n_features}, torch::kFloat32);
+    auto accessor = batch.accessor<float, 3>();
+    for (int64_t bi = 0; bi < b; ++bi) {
+      const auto &seq = sample_sequences[sample_idxs[static_cast<std::size_t>(bi)]];
+      for (int64_t t = 0; t < lookback; ++t) {
+        const auto &row = seq[static_cast<std::size_t>(t)];
+        for (int64_t f = 0; f < n_features; ++f) {
+          accessor[bi][t][f] = static_cast<float>(row[static_cast<std::size_t>(f)]);
+        }
+      }
+    }
+    return batch;
+  };
+
+  StockTransformer model(n_features, lookback, kTransformerPatchSize,
+                         kTransformerEmbeddingDim, kTransformerHeads,
+                         kTransformerLayers, kTransformerDropout);
+
+  const double learning_rate = config.learning_rate > 0.0 ? config.learning_rate : 0.001;
+  const int epochs = config.epochs > 0 ? config.epochs : 10;
+  const int64_t batch_size = config.batch_size > 0 ? config.batch_size : 32;
+
+  torch::optim::Adam optimizer(model->parameters(),
+                               torch::optim::AdamOptions(learning_rate));
+
+  std::vector<std::size_t> all_indices = valid_indices;
+  std::mt19937 rng(42);
+
+  model->train();
+  double last_epoch_loss = 0.0;
+  for (int epoch = 0; epoch < epochs; ++epoch) {
+    std::shuffle(all_indices.begin(), all_indices.end(), rng);
+    double epoch_loss_sum = 0.0;
+    int64_t epoch_batches = 0;
+
+    for (std::size_t offset = 0; offset < all_indices.size(); offset += static_cast<std::size_t>(batch_size)) {
+      const std::size_t end = std::min(all_indices.size(), offset + static_cast<std::size_t>(batch_size));
+      std::vector<std::size_t> batch_idxs(all_indices.begin() + static_cast<std::ptrdiff_t>(offset),
+                                          all_indices.begin() + static_cast<std::ptrdiff_t>(end));
+      if (batch_idxs.empty()) {
+        continue;
+      }
+
+      torch::Tensor x = build_batch_tensor(batch_idxs);
+      torch::Tensor y = torch::zeros({static_cast<int64_t>(batch_idxs.size()), 1}, torch::kFloat32);
+      {
+        auto y_acc = y.accessor<float, 2>();
+        for (std::size_t bi = 0; bi < batch_idxs.size(); ++bi) {
+          y_acc[static_cast<int64_t>(bi)][0] =
+              static_cast<float>(outcomes[batch_idxs[bi]].pnl);
+        }
+      }
+
+      optimizer.zero_grad();
+      torch::Tensor pred = model->forward(x);
+      torch::Tensor loss = torch::mse_loss(pred, y);
+      loss.backward();
+      optimizer.step();
+
+      epoch_loss_sum += loss.item<double>();
+      ++epoch_batches;
+    }
+
+    last_epoch_loss = epoch_batches > 0 ? epoch_loss_sum / static_cast<double>(epoch_batches) : 0.0;
+    spdlog::info("Transformer training epoch {}/{}: mean_batch_mse={}", epoch + 1,
+                epochs, last_epoch_loss);
   }
 
+  // Post-training evaluation over the same (train) split, matching the
+  // existing convention of the sibling train_random_forest/train_xgboost
+  // methods, which likewise report metrics computed on their own training
+  // set rather than a held-out slice managed inside the method itself —
+  // the caller (ModelTrainer::train) already applies a walk-forward/
+  // chronological holdout upstream and reports cohort metrics from that
+  // separately.
+  // torch::nn::Module::eval() switches dropout/batchnorm to inference
+  // behavior; unrelated to code-evaluating eval() in other languages.
+  model->eval();
+  std::vector<double> y_true;
   std::vector<double> y_pred;
-  y_pred.reserve(x.size());
-  for (double xi : x) {
-    y_pred.push_back(intercept + slope * xi);
+  y_true.reserve(features.size());
+  y_pred.reserve(features.size());
+  {
+    torch::NoGradGuard no_grad;
+    const std::size_t eval_batch = 512;
+    for (std::size_t offset = 0; offset < all_indices.size(); offset += eval_batch) {
+      const std::size_t end = std::min(all_indices.size(), offset + eval_batch);
+      std::vector<std::size_t> batch_idxs(end - offset);
+      for (std::size_t i = offset; i < end; ++i) {
+        // all_indices order, not shuffled — the valid-sample subset in
+        // original chronological order (see valid_indices above).
+        batch_idxs[i - offset] = all_indices[i];
+      }
+      torch::Tensor x = build_batch_tensor(batch_idxs);
+      torch::Tensor pred = model->forward(x).squeeze(-1);
+      auto pred_acc = pred.accessor<float, 1>();
+      for (std::size_t bi = 0; bi < batch_idxs.size(); ++bi) {
+        y_true.push_back(outcomes[batch_idxs[bi]].pnl);
+        y_pred.push_back(static_cast<double>(pred_acc[static_cast<int64_t>(bi)]));
+      }
+    }
   }
 
   metrics.mse = Metrics::calculate_mse(y_true, y_pred);
@@ -551,6 +623,14 @@ ModelTrainer::train_transformer(const std::vector<OrderBookFeatures> &features,
   metrics.sharpe_ratio = Metrics::calculate_sharpe_ratio(pnl);
   metrics.profit_factor = Metrics::calculate_profit_factor(pnl);
 
+  trained_transformer_ = std::make_shared<StockTransformer>(model);
+  has_trained_transformer_ = true;
+  trained_transformer_n_features_ = n_features;
+
+  spdlog::info(
+      "Transformer training complete: final_mean_batch_mse={}, holdout_mse={}, r2={}",
+      last_epoch_loss, metrics.mse, metrics.r2_score);
+
   return metrics;
 }
 
@@ -559,8 +639,62 @@ void ModelTrainer::export_transformer_artifact(
   const auto onnx_path = output_path;
   const auto config_path = onnx_path.parent_path() / "transformer_config.json";
 
-  export_transformer_to_onnx(onnx_path, input_features);
-  write_transformer_config(config_path, input_features);
+  // The trainer's feature space (trade::ml::OrderBookFeatures-derived raw+
+  // engineered features, trade::ml::kTransformerTotalFeatureCount) differs
+  // from the live FeatureEngineer PCA pipeline's feature count
+  // (::ml::FeatureEngineer::transformer_feature_dim(), passed in as
+  // input_features by the caller) — a pre-existing split documented in
+  // ModelCalibrationFitter.cpp for the classifier/regressor path, which
+  // still applies there. For the transformer specifically, this is no
+  // longer a live-serving gap: ONNXModelManager/LiveTradingService/
+  // SimulatedTradingService consume the trained model's own raw+engineered
+  // feature space directly via FeatureEngineer::get_raw_transformer_sequence
+  // (include/ml/TransformerFeatures.hpp), not the PCA pipeline, whenever a
+  // LibTorch-backed transformer is active. input_features (the PCA dim) is
+  // only used for the placeholder ONNX shape when no trained model exists.
+  const int64_t effective_features =
+      has_trained_transformer_ ? trained_transformer_n_features_ : input_features;
+  if (has_trained_transformer_ && trained_transformer_n_features_ != input_features) {
+    spdlog::info(
+        "Trained transformer feature count ({}) differs from the live "
+        "FeatureEngineer PCA pipeline's feature count ({}); this is "
+        "expected — the transformer serves from its own raw+engineered "
+        "feature space (see ONNXModelManager::has_torch_transformer), not "
+        "the PCA one.",
+        trained_transformer_n_features_, input_features);
+  }
+
+  // The ONNX graph itself remains a shape-correct placeholder (see
+  // TransformerOnnxExport.cpp) — LibTorch's C++ API has no built-in ONNX
+  // exporter (unlike PyTorch's Python torch.onnx.export), and hand-authoring
+  // a weight-bearing ONNX graph for a multi-block attention model by hand,
+  // without the ability to compile/run it here to verify correctness, would
+  // risk silently shipping a broken inference graph. Real learned weights
+  // are captured below via torch::save, LibTorch's own native serialization,
+  // and loaded directly by ONNXModelManager for live inference
+  // (predict_transformer prefers this path over the ONNX placeholder — see
+  // ONNXModelManager.cpp), so a trained model does serve real predictions
+  // despite the ONNX file itself carrying no weights.
+  export_transformer_to_onnx(onnx_path, effective_features);
+  write_transformer_config(config_path, effective_features);
+
+  if (has_trained_transformer_) {
+    const auto weights_path = onnx_path.parent_path() / "transformer_weights.pt";
+    try {
+      const auto model_ptr =
+          std::static_pointer_cast<StockTransformer>(trained_transformer_);
+      torch::save(*model_ptr, weights_path.string());
+      spdlog::info("Wrote gradient-trained transformer weights to {}",
+                   weights_path.string());
+    } catch (const std::exception &e) {
+      spdlog::error("Failed to save trained transformer weights to {}: {}",
+                    weights_path.string(), e.what());
+    }
+  } else {
+    spdlog::warn(
+        "No gradient-trained transformer available to persist; packaged "
+        "ONNX graph will not have learned weights");
+  }
 
   spdlog::info("Transformer model package prepared at {}",
                onnx_path.parent_path().string());

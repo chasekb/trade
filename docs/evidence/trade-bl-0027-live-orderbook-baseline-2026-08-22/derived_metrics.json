@@ -1,0 +1,179 @@
+{
+  "denominator_policy": {
+    "fetch_failure_rate": "not computed: selected-symbol fetch-attempt denominator is unavailable",
+    "pnl_statistics": "not computed: no joined terminal outcomes are present",
+    "quote_coverage": "not computed: selected universe and successful quote count are unavailable",
+    "signal_and_execution_rates": "not computed: no signal/order/fill rows are present"
+  },
+  "evidence_id": "trade-bl-0027-live-orderbook-baseline-2026-08-22",
+  "observed": {
+    "by_symbol": {
+      "AI-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "ALGO-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "AUDIO-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "FIGHT-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "FOX-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "JASMY-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "LSETH-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "MORPHO-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "NEX-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "PNUT-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "PYTH-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "RLS-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "SHIB-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "STRK-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "STX-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "XYO-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "YB-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      },
+      "ZK-USD": {
+        "coverage_status": "unknown: selected universe not captured",
+        "failed_fetches_observed": 1,
+        "fetch_attempts_observed": 1,
+        "successful_quotes_observed": 0
+      }
+    },
+    "database_outcome_query_failures": 1,
+    "failure_category_distribution": {
+      "tls": 18
+    },
+    "order_book_fetch_failures": 18,
+    "retry_distribution": {
+      "1": 18
+    },
+    "session_ids_observed": [
+      "sim_17874"
+    ],
+    "simulated_worker_start_events": 1,
+    "symbols_with_failed_fetch": [
+      "AI-USD",
+      "ALGO-USD",
+      "AUDIO-USD",
+      "FIGHT-USD",
+      "FOX-USD",
+      "JASMY-USD",
+      "LSETH-USD",
+      "MORPHO-USD",
+      "NEX-USD",
+      "PNUT-USD",
+      "PYTH-USD",
+      "RLS-USD",
+      "SHIB-USD",
+      "STRK-USD",
+      "STX-USD",
+      "XYO-USD",
+      "YB-USD",
+      "ZK-USD"
+    ],
+    "transformer_readiness_events": 1,
+    "unique_symbols_with_failed_fetch": 18
+  },
+  "safety_interpretation": "This evidence is a simulated-worker/log excerpt and does not establish live profitability or explain the absence of positive-PnL live trades.",
+  "source": "docs/evidence/trade-bl-0027-live-orderbook-baseline-2026-08-22/raw_tmux_excerpt.log",
+  "time_zone": "UTC",
+  "unavailable": {
+    "average_win_loss_expectancy_profit_factor_drawdown": "unavailable",
+    "blocked_intents": "unavailable",
+    "expected_return": "unavailable",
+    "fee_adjusted_expected_return": "unavailable",
+    "fees_realized_pnl_distribution": "unavailable; outcome query failed on missing is_closing_leg",
+    "fills": "unavailable",
+    "freshness_and_coverage": "unavailable; no selected-universe list or successful quote timestamps",
+    "generated_signals": "unavailable",
+    "positive_negative_zero_pnl_counts": "unavailable",
+    "quote_or_order_book_successes": "unavailable; observed failures are not a denominator",
+    "selected_universe": "unavailable",
+    "signal_strength": "unavailable",
+    "spread_slippage_buffer_required_edge": "unavailable",
+    "submitted_orders": "unavailable"
+  },
+  "window": {
+    "definition": "earliest/latest timestamped line in the frozen excerpt; not a live-session window",
+    "end_utc": "2026-08-23T03:24:09.281000Z",
+    "start_utc": "2026-08-22T15:51:55.995000Z"
+  }
+}

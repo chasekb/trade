@@ -41,8 +41,15 @@ namespace trade {
 namespace trading {
 
 namespace {
-constexpr double kFeeRate = 0.0005;
-constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.015;
+// Coinbase Advanced Trade fee schedule, verified 2026-09-19 against the live
+// account's actual (zero) 30-day trailing volume: the account sits at the
+// lowest US tier, and live order-book orders are submitted as
+// market_market_ioc, which Coinbase always prices as taker. Entry-tier US
+// taker fee is 0.90% per fill (Coinbase lowered volume-tier thresholds on
+// 2026-09-16 but did not change entry-tier pricing). Update this if the
+// account's 30-day volume advances it to a lower-fee tier.
+constexpr double kFeeRate = 0.009;
+constexpr double kDefaultOrderBookRoundTripFeeFraction = 0.018;
 constexpr double kDefaultOrderBookSlippageBufferFraction = 0.002;
 constexpr double kDefaultOrderBookMinSignalStrength = 0.22;
 // ml_orderbook_opportunity relies on the fee-adjusted profitability gate,
@@ -399,6 +406,31 @@ void LiveTradingService::ensureSchema() {
         "ALTER TABLE individual_trades ALTER COLUMN is_closing_leg DROP NOT NULL");
     DatabaseManager::getInstance().query(
         "UPDATE individual_trades SET is_closing_leg = NULL WHERE is_closing_leg = FALSE AND pnl <> 0");
+
+    DatabaseManager::getInstance().query(R"SQL(
+      CREATE TABLE IF NOT EXISTS generated_signal_outcomes (
+        id BIGSERIAL PRIMARY KEY, event_id TEXT NOT NULL,
+        contract_version INTEGER NOT NULL, session_id TEXT NOT NULL,
+        trade_type TEXT NOT NULL, signal_id TEXT NOT NULL, intent_id TEXT,
+        event_sequence INTEGER NOT NULL, event_version INTEGER NOT NULL,
+        outcome_state TEXT NOT NULL, strategy TEXT NOT NULL, symbol TEXT NOT NULL,
+        side TEXT NOT NULL, intended_action TEXT NOT NULL,
+        signal_generated BOOLEAN NOT NULL, strength REAL,
+        strength_bucket TEXT NOT NULL, expected_return REAL,
+        expected_return_bucket TEXT NOT NULL, fee_adjusted_expected_return REAL,
+        required_edge REAL, diagnostic_factor TEXT NOT NULL,
+        blocker_reason TEXT, skip_reason TEXT, client_order_id TEXT,
+        external_order_id TEXT, trade_id TEXT, observed_at TIMESTAMPTZ NOT NULL,
+        payload JSONB, UNIQUE (session_id, event_id),
+        UNIQUE (session_id, signal_id, event_sequence, event_version)
+      )
+    )SQL");
+    DatabaseManager::getInstance().query(
+        "CREATE INDEX IF NOT EXISTS generated_signal_outcomes_scope_idx "
+        "ON generated_signal_outcomes (session_id, trade_type, observed_at)");
+    DatabaseManager::getInstance().query(
+        "CREATE INDEX IF NOT EXISTS generated_signal_outcomes_dimensions_idx "
+        "ON generated_signal_outcomes (strategy, symbol, side, outcome_state)");
 
     DatabaseManager::getInstance().query(R"SQL(
       CREATE TABLE IF NOT EXISTS live_coinbase_orders (
@@ -1509,6 +1541,38 @@ bool LiveTradingService::flushWrites(PendingWrites &&writes) {
         << "total_signals = EXCLUDED.total_signals";
 
     DatabaseManager::getInstance().query(sql.str());
+
+    std::ostringstream outcomes_sql;
+    outcomes_sql << "INSERT INTO generated_signal_outcomes (event_id, contract_version, session_id, trade_type, signal_id, intent_id, event_sequence, event_version, outcome_state, strategy, symbol, side, intended_action, signal_generated, strength, strength_bucket, expected_return, expected_return_bucket, fee_adjusted_expected_return, required_edge, diagnostic_factor, blocker_reason, skip_reason, observed_at, payload) VALUES ";
+    bool outcome_first = true;
+    for (const auto &[signal_id, signal] : unique_signals) {
+      const Json::Value analysis = signal->payload.get("execution_analysis", Json::Value(Json::objectValue));
+      const bool generated = analysis.get("signal_generated", signal->signal_type != "hold").asBool();
+      const bool executable = analysis.get("executable_intent", Json::Value(false)).asBool();
+      const std::string state = !generated ? "explicit_skip" : (executable ? "executable_intent" : "blocked_intent");
+      const double expected = analysis.get("expected_return", Json::Value(0.0)).asDouble();
+      const std::string strength_bucket = signal->strength < 0.22 ? "weak" : (signal->strength < 0.5 ? "medium" : "strong");
+      const std::string expected_bucket = expected < 0.0 ? "negative" : (expected <= 1e-9 ? "near_zero" : "positive");
+      std::string factor = analysis.get("diagnostic_factor", Json::Value("none")).asString();
+      if (factor == "profitability_gate" || factor == "ml_confidence_gate") factor = "below_required_edge";
+      if (factor.empty() || factor == "hold") factor = "none";
+      const std::string blocker = generated && !executable ? analysis.get("blocker_reason", Json::Value("unknown")).asString() : "";
+      if (!outcome_first) outcomes_sql << ",";
+      outcome_first = false;
+      outcomes_sql << "('" << escapeSql(signal->signal_id + "_evaluation") << "',2,'" << escapeSql(signal->session_id)
+                   << "','live','" << escapeSql(signal->signal_id) << "'," << (generated ? "'" + escapeSql(signal->signal_id) + "'" : "NULL")
+                   << ",1,1,'" << state << "','" << escapeSql(analysis.get("strategy", Json::Value(strategy_)).asString())
+                   << "','" << escapeSql(signal->symbol) << "','" << escapeSql(analysis.get("intended_side", Json::Value("none")).asString())
+                   << "','" << escapeSql(analysis.get("intended_action", Json::Value("none")).asString()) << "'," << (generated ? "TRUE" : "FALSE")
+                   << "," << signal->strength << ",'" << strength_bucket << "'," << expected << ",'" << expected_bucket << "',"
+                   << analysis.get("fee_adjusted_expected_return", Json::Value(0.0)).asDouble() << "," << analysis.get("required_edge", Json::Value(0.0)).asDouble()
+                   << ",'" << escapeSql(factor) << "'," << (blocker.empty() ? "NULL" : "'" + escapeSql(blocker) + "'") << ","
+                   << (generated ? "NULL" : "'no_signal'") << ",to_timestamp(" << signal->timestamp << "),'" << escapeSql(jsonToString(signal->payload)) << "'::jsonb)";
+    }
+    if (!outcome_first) {
+      outcomes_sql << " ON CONFLICT (session_id, event_id) DO NOTHING";
+      DatabaseManager::getInstance().query(outcomes_sql.str());
+    }
   }
 
   if (!writes.trades.empty()) {
@@ -1715,6 +1779,7 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
     // is hurting expectancy, fall back to the honestly-labeled heuristic
     // path instead of continuing to gate/size live capital on it.
     if (engineer != nullptr && models != nullptr && models->is_ready() &&
+        (engineer->parameters_loaded_ok() || models->has_torch_transformer()) &&
         !modelDegradedLocked()) {
       try {
         ::ml::OrderBookFeatures features;
@@ -1746,8 +1811,17 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         cohort_features.volatility = features.volatility;
         const std::string execution_regime = ::trade::ml::classify_execution_regime(cohort_features);
 
-        const auto pca_features = engineer->preprocess(features);
-        const bool transformer_configured = models->has_transformer();
+        const bool pca_parameters_ready = engineer->parameters_loaded_ok();
+        std::vector<double> pca_features;
+        if (pca_parameters_ready) {
+          pca_features = engineer->preprocess(features);
+        } else if (!models->has_torch_transformer()) {
+          TR_LOG_WARN("ML inference blocked for {}; feature-engineering parameters are unavailable",
+                      symbol);
+        }
+        const bool transformer_configured =
+            models->has_transformer() &&
+            (models->has_torch_transformer() || pca_parameters_ready);
         // Match simulated trading's readiness contract instead of running
         // inference the moment a model is configured: a short/incomplete
         // sequence must report "warming up," not a ready prediction, or the
@@ -1757,13 +1831,26 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         // below can pass once enough history exists.
         const std::size_t expected_lookback = models->transformer_lookback();
         const std::size_t expected_features = models->transformer_features();
+        // A LibTorch-backed transformer (real gradient-trained weights, see
+        // ONNXModelManager::has_torch_transformer) was trained on
+        // ModelTrainer.cpp's raw+engineered feature space (16 raw DB fields
+        // + rolling stats, 40 total — see include/ml/TransformerFeatures.hpp),
+        // not FeatureEngineer's PCA-reduced pipeline; the ONNX placeholder
+        // path (weight-free, see ModelTrainer.cpp's export_transformer_artifact
+        // comment) is the only consumer of the PCA sequence. Always record
+        // this tick's raw features so the buffer is warm regardless of which
+        // path is active.
+        engineer->record_raw_transformer_features(symbol, features);
         const auto transformer_sequence =
-            engineer->get_transformer_sequence(symbol, expected_lookback);
+            models->has_torch_transformer()
+                ? engineer->get_raw_transformer_sequence(symbol)
+                : engineer->get_transformer_sequence(symbol, expected_lookback);
         const bool transformer_ready =
             !transformer_configured || models->transformer_input_ready(transformer_sequence);
 
         const bool classifier_output_available =
-            (!transformer_configured || transformer_ready) && models->has_classifier();
+            pca_parameters_ready && (!transformer_configured || transformer_ready) &&
+            models->has_classifier();
         const double raw_win_prob =
             classifier_output_available ? models->predict_win_prob(pca_features) : 0.5;
         double transformer_pnl = 0.0;
@@ -1774,7 +1861,8 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
         // for the shared order-book profitability gate, matching simulated
         // trading's producer contract instead of silently gating live to HOLD.
         const bool regressor_output_available =
-            (!transformer_configured || transformer_ready) && models->has_regressor();
+            pca_parameters_ready && (!transformer_configured || transformer_ready) &&
+            models->has_regressor();
         const bool transformer_output_available = transformer_configured && transformer_ready;
         const double raw_expected_pnl =
             regressor_output_available ? models->predict_pnl(pca_features) : transformer_pnl;
@@ -1810,6 +1898,14 @@ LiveTradingService::buildSignalRecordLocked(const std::string &symbol,
                                             ? CacheManager::getInstance().get("ml_active_model_id").value_or("onnx-pack")
                                             : "transformer-warming-up";
         ml_analysis["transformer_configured"] = transformer_configured;
+        // True only when transformer_expected_pnl came from real
+        // gradient-trained LibTorch weights, not the shape-correct-but-
+        // weight-free ONNX placeholder (see ONNXModelManager::has_transformer
+        // — false for a placeholder-only package, so transformer_configured
+        // would itself already be false in that case; this field
+        // distinguishes "no transformer at all" from "real transformer, not
+        // yet warmed up" from "real transformer, serving predictions now").
+        ml_analysis["torch_transformer_active"] = models->has_torch_transformer();
         ml_analysis["inference_status"] = !transformer_configured
                                                ? "not_configured"
                                                : (transformer_ready ? "ready" : "warming_up");

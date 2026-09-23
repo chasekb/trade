@@ -68,3 +68,11 @@ gh run view <run-id> --json status,conclusion,jobs
 
 - `rules/` contains operational doctrine docs for coding agents (git hygiene, output organization, etc.); `rules/08-git.md` asks for a commit per change with brief messages.
 - Working branch is `dev` (also the PR target).
+
+## Hermes Kanban board
+
+This project has a matching Hermes Agent kanban board (slug `trade`, workdir-mapped, already carrying
+699 tasks of history — todo items like `TRADE-BL-0022`/`TRADE-BL-0029`/`TRADE-BL-0030` track known
+open issues). Use the `hermes-kanban` skill to read prior task/blocker history before starting
+nontrivial work here, and to log what this session did so it's visible in the board's history. See
+~/.claude/skills/hermes-kanban/SKILL.md.

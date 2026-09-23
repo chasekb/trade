@@ -57,6 +57,23 @@ including `data_status`, `signal_reason`, `criteria_analysis`, `ml_analysis`,
 `strength_composition`, and `execution_analysis`. An optional `session_id`
 keeps persisted signal reads scoped to one simulated session.
 
+### Ranking and calibration status
+
+The supported prioritization diagnostics are independent mappings:
+`signal_strength`, `win_probability`, and `expected_return`. The selected
+mapping must be passed explicitly in strategy parameters; the frontend does
+not combine these values into an implied score. Held, rejected, or blocked
+signals remain filtered before ranking, and `none` preserves input order.
+
+The strategy calibration report
+(`docs/reports/strategy-calibration-report-2026-09-07.md`) found no
+timestamped paired baseline/candidate outcomes. Therefore all evaluated
+strategies remain **deferred**: no calibrated mapping, strategy promotion, or
+new global/per-symbol default is authorized. Existing frontend defaults are
+retained as uncalibrated baselines and must not be described as evidence of
+profitability. Reopen this decision only with the report's required
+walk-forward, fee-adjusted, symbol/regime/holding-period evidence.
+
 The simulated status portfolio uses:
 
 ```text
