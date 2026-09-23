@@ -98,7 +98,9 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
       }
     }
     pca_params.mean = xt::adapt(pc_mean_vec, {pc_mean_vec.size()});
-    transformer_feature_dim_ = rows;
+    // transformer_feature_dim_ is the pre-PCA engineered feature width fed to
+    // the transformer model (PredictController), not the PCA component count.
+    transformer_feature_dim_ = cols;
     history_windows_.clear();
     transformer_sequence_windows_.clear();
 

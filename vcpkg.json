@@ -15,6 +15,7 @@
         },
         "xtl",
         "xsimd",
-        "xtensor"
+        "xtensor",
+        "eigen3"
     ]
 }

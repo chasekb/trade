@@ -12,6 +12,7 @@ find_package(hiredis CONFIG REQUIRED)
 find_package(redis++ CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(xtensor CONFIG REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
 find_package(Python3 COMPONENTS Development REQUIRED)
 find_package(Torch REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -131,6 +132,19 @@ add_test(NAME feature_engineer COMMAND test_feature_engineer)
 # Loads data/cpp_assets/*.json by a path relative to the repo root; CTest's
 # default working directory is the CMake binary dir, not the source dir.
 set_tests_properties(feature_engineer PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# One-time deterministic fixture generator; intentionally not registered with CTest.
+add_executable(generate_feature_golden_data
+    src/tools/generate_feature_golden_data.cpp
+    src/ml/FeatureEngineer.cpp
+)
+target_include_directories(generate_feature_golden_data PRIVATE include)
+target_link_libraries(generate_feature_golden_data PRIVATE
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+    xtensor
+    Eigen3::Eigen
+)
 
 add_executable(test_execution_cohorts
     src/tests/test_execution_cohorts.cpp
