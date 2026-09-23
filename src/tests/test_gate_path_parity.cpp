@@ -85,6 +85,25 @@ int main() {
   expect(weak_simulated.reason_code == trade::trading::DiagnosticsReasonCode::WeakSignal,
          "simulated weak imbalance reports stable weak-signal reason");
 
+  // The strength boundary is inclusive: a signal exactly at the configured
+  // minimum is eligible, while the immediately lower value remains blocked.
+  GateFixture at_minimum = weak;
+  at_minimum.signal_strength = 0.22;
+  const auto at_minimum_live = trade::trading::evaluateOrderBookProfitabilityGate(
+      liveInput(at_minimum));
+  const auto at_minimum_simulated =
+      trade::trading::normalizeDiagnostics(simulatedInput(at_minimum));
+  expect(at_minimum_live.passes && at_minimum_simulated.actionable,
+         "minimum strength boundary admits both paths");
+  GateFixture below_minimum = at_minimum;
+  below_minimum.signal_strength = 0.22 - 1e-9;
+  const auto below_minimum_live = trade::trading::evaluateOrderBookProfitabilityGate(
+      liveInput(below_minimum));
+  const auto below_minimum_simulated =
+      trade::trading::normalizeDiagnostics(simulatedInput(below_minimum));
+  expect(!below_minimum_live.passes && !below_minimum_simulated.actionable,
+         "below-minimum strength boundary blocks both paths");
+
   // Directional handling must agree: a negative expected return is favorable
   // for a sell, but not for a buy.
   expectParity({"buy", 0.90, -0.030, 0.001, 0.010, 0.002},
@@ -98,6 +117,12 @@ int main() {
                "fee-neutral buy", false);
   expectParity({"buy", 0.90, 0.012, 0.001, 0.010, 0.002},
                "fee-negative buy", false);
+  expectParity({"buy", 0.90, 0.020, 0.001, 0.020, 0.0},
+               "fees erase edge", false);
+  expectParity({"buy", 0.90, 0.020, 0.020, 0.0, 0.0},
+               "spread erases edge", false);
+  expectParity({"buy", 0.90, 0.020, 0.0, 0.0, 0.020},
+               "slippage erases edge", false);
 
   // Both services pass the same signal-derived sizing inputs to the shared
   // sizing contract. Stronger inputs scale larger, while the configured base
