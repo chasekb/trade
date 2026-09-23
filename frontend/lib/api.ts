@@ -1337,6 +1337,23 @@ class ApiClient {
     return this.request(`/api/trading/execution-reconciliation${suffix ? `?${suffix}` : ''}`);
   }
 
+  // Execution attribution by strategy/diagnostic-factor, with symbol/side/
+  // strength/expected-return dimensional breakdowns. Distinct endpoint and
+  // hook from execution reconciliation above; callers should pass the
+  // payload through `normalizeExecutionAttribution`.
+  async getExecutionAttribution(params?: {
+    hours?: number | undefined;
+    sessionId?: string | undefined;
+    tradeType?: string | undefined;
+  }): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams();
+    if (params?.hours !== undefined) query.set('hours', String(params.hours));
+    if (params?.sessionId) query.set('session_id', params.sessionId);
+    if (params?.tradeType) query.set('trade_type', params.tradeType);
+    const suffix = query.toString();
+    return this.request(`/api/trading/execution-attribution${suffix ? `?${suffix}` : ''}`);
+  }
+
   async getPnlTrades(sortBy: string = 'pnl'): Promise<ApiResponse<any>> {
     return this.request(`/api/ml/pnl-trades?sort_by=${sortBy}`);
   }

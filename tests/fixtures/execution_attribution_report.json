@@ -1,0 +1,222 @@
+{
+  "contract_version": 1,
+  "window_hours": 24,
+  "session_id": "sim_fixture",
+  "trade_type": "live_parity",
+  "coverage_complete": true,
+  "signal_rows": 5,
+  "outcome_rows": 3,
+  "signal_rows_truncated": false,
+  "bucket_policy_version": "v1",
+  "by_strategy": [
+    {
+      "key": "orderbook",
+      "strategy": "orderbook",
+      "evaluated": 5,
+      "signals_generated": 4,
+      "explicit_skips": 1,
+      "executable_intents": 2,
+      "blocked_intents": 2,
+      "executed_count": 3,
+      "pnl_population": 2,
+      "win_count": 1,
+      "loss_count": 1,
+      "win_rate_pct": 50.0,
+      "average_realized_pnl": 4.0,
+      "average_win_pnl": 12.0,
+      "average_loss_magnitude": 4.0,
+      "outcome_coverage": 1.0,
+      "insufficient_data": false,
+      "blocker_counts": { "pending_order": 1, "spot_cannot_short": 1 },
+      "diagnostic_factor_counts": { "account_or_exchange_blocker": 1, "weak_strength": 1 },
+      "dimensions": {
+        "by_symbol": {
+          "BTC-USD": {
+            "evaluated": 3,
+            "blocked_intents": 0,
+            "explicit_skips": 1,
+            "executable_intents": 2,
+            "executed_count": 2,
+            "pnl_population": 1,
+            "win_count": 1,
+            "loss_count": 0,
+            "win_rate_pct": 100.0,
+            "average_realized_pnl": 12.0
+          },
+          "ETH-USD": {
+            "evaluated": 2,
+            "blocked_intents": 2,
+            "explicit_skips": 0,
+            "executable_intents": 0,
+            "executed_count": 1,
+            "pnl_population": 1,
+            "win_count": 0,
+            "loss_count": 1,
+            "win_rate_pct": 0.0,
+            "average_realized_pnl": -4.0
+          }
+        },
+        "by_side": {
+          "buy": {
+            "evaluated": 2,
+            "blocked_intents": 0,
+            "explicit_skips": 0,
+            "executable_intents": 2,
+            "executed_count": 3,
+            "pnl_population": 2,
+            "win_count": 1,
+            "loss_count": 1,
+            "win_rate_pct": 50.0,
+            "average_realized_pnl": 4.0
+          },
+          "sell": {
+            "evaluated": 2,
+            "blocked_intents": 2,
+            "explicit_skips": 0,
+            "executable_intents": 0,
+            "executed_count": 0,
+            "pnl_population": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate_pct": null,
+            "average_realized_pnl": null
+          },
+          "unknown": {
+            "evaluated": 1,
+            "blocked_intents": 0,
+            "explicit_skips": 1,
+            "executable_intents": 0,
+            "executed_count": 0,
+            "pnl_population": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate_pct": null,
+            "average_realized_pnl": null
+          }
+        },
+        "by_strength_bucket": {
+          "strong": {
+            "evaluated": 1,
+            "blocked_intents": 0,
+            "explicit_skips": 0,
+            "executable_intents": 1,
+            "executed_count": 0,
+            "pnl_population": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate_pct": null,
+            "average_realized_pnl": null
+          },
+          "medium": {
+            "evaluated": 1,
+            "blocked_intents": 0,
+            "explicit_skips": 0,
+            "executable_intents": 1,
+            "executed_count": 0,
+            "pnl_population": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate_pct": null,
+            "average_realized_pnl": null
+          },
+          "weak": {
+            "evaluated": 2,
+            "blocked_intents": 2,
+            "explicit_skips": 0,
+            "executable_intents": 0,
+            "executed_count": 0,
+            "pnl_population": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate_pct": null,
+            "average_realized_pnl": null
+          }
+        },
+        "by_expected_return_bucket": {
+          "high": {
+            "evaluated": 2,
+            "blocked_intents": 0,
+            "explicit_skips": 0,
+            "executable_intents": 2,
+            "executed_count": 3,
+            "pnl_population": 2,
+            "win_count": 1,
+            "loss_count": 1,
+            "win_rate_pct": 50.0,
+            "average_realized_pnl": 4.0
+          },
+          "negative": {
+            "evaluated": 2,
+            "blocked_intents": 2,
+            "explicit_skips": 0,
+            "executable_intents": 0,
+            "executed_count": 0,
+            "pnl_population": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate_pct": null,
+            "average_realized_pnl": null
+          }
+        }
+      }
+    }
+  ],
+  "by_diagnostic_factor": [
+    {
+      "key": "account_or_exchange_blocker",
+      "factor": "account_or_exchange_blocker",
+      "evaluated": 1,
+      "signals_generated": 0,
+      "explicit_skips": 0,
+      "executable_intents": 0,
+      "blocked_intents": 1,
+      "executed_count": 0,
+      "pnl_population": 0,
+      "win_count": 0,
+      "loss_count": 0,
+      "win_rate_pct": null,
+      "average_realized_pnl": null,
+      "average_win_pnl": null,
+      "average_loss_magnitude": null,
+      "outcome_coverage": null,
+      "insufficient_data": true
+    },
+    {
+      "key": "weak_strength",
+      "factor": "weak_strength",
+      "evaluated": 1,
+      "signals_generated": 0,
+      "explicit_skips": 0,
+      "executable_intents": 0,
+      "blocked_intents": 1,
+      "executed_count": 0,
+      "pnl_population": 0,
+      "win_count": 0,
+      "loss_count": 0,
+      "win_rate_pct": null,
+      "average_realized_pnl": null,
+      "average_win_pnl": null,
+      "average_loss_magnitude": null,
+      "outcome_coverage": null,
+      "insufficient_data": true
+    }
+  ],
+  "overall": {
+    "key": "overall",
+    "evaluated": 5,
+    "signals_generated": 4,
+    "explicit_skips": 1,
+    "executable_intents": 2,
+    "blocked_intents": 2,
+    "executed_count": 3,
+    "pnl_population": 2,
+    "win_count": 1,
+    "loss_count": 1,
+    "win_rate_pct": 50.0,
+    "average_realized_pnl": 4.0,
+    "average_win_pnl": 12.0,
+    "average_loss_magnitude": 4.0,
+    "outcome_coverage": 1.0,
+    "insufficient_data": false
+  }
+}
