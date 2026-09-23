@@ -97,6 +97,18 @@ bool FeatureEngineer::load_parameters(const std::string &filepath) {
         throw std::runtime_error("invalid scaler parameter");
       }
     }
+    for (const auto &row : comp_vec) {
+      for (const auto value : row) {
+        if (!std::isfinite(value)) {
+          throw std::runtime_error("non-finite PCA component");
+        }
+      }
+    }
+    for (const auto value : pc_mean_vec) {
+      if (!std::isfinite(value)) {
+        throw std::runtime_error("non-finite PCA mean");
+      }
+    }
     pca_params.mean = xt::adapt(pc_mean_vec, {pc_mean_vec.size()});
     // transformer_feature_dim_ is the pre-PCA engineered feature width fed to
     // the transformer model (PredictController), not the PCA component count.
