@@ -428,9 +428,7 @@ ${(row.ml_analysis.analytics && Object.keys(row.ml_analysis.analytics).length > 
                     </div>
                     <div className="text-center">
                         <div className="text-lg font-semibold text-blue-600">
-                            {(
-                                typeof summary?.average_strength === 'number' ? summary.average_strength.toFixed(2) : 'Unavailable'
-                            }
+                            {typeof summary?.average_strength === 'number' ? summary.average_strength.toFixed(2) : 'Unavailable'}
                         </div>
                         <div className="text-sm text-gray-600">Avg Strength</div>
                     </div>
