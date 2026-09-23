@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLiveTrading, useOrderBookSignals, useProducts, useLiveTabProducer } from '@/hooks/useTrading';
 import { normalizeSimulatedTradingSnapshot } from '@/lib/simulatedTradingStats';
 import { firstLiveTabProducerBlocker, normalizeLiveTabProducerSnapshot } from '@/lib/liveTabProducer';
+import { isUnverifiedReconciliationStatus } from '@/lib/livePositionReconciliation';
 import { FALLBACK_COINBASE_SYMBOLS, getAllSymbols, hasUsableProductCategories, parseCustomSymbols, resolveUniverseSymbols, symbolsMatch } from '@/lib/symbolUniverse';
 
 import { OpenPositionsSection } from './OpenPositionsSection';
@@ -44,6 +45,7 @@ type PositionLike = {
   balance_crypto?: number;
   balance_fiat?: number;
   unrealized_pnl?: number;
+  reconciliation_status?: string;
 };
 
 // Trading Configuration Section
@@ -361,7 +363,9 @@ function LiveTradingStatistics() {
 
   const coinbasePositions = liveProducer.positions as PositionLike[];
   const openPositions = coinbasePositions;
-  const activePositions = coinbasePositions.length;
+  const activePositions = coinbasePositions.filter(
+    (position) => !isUnverifiedReconciliationStatus(position.reconciliation_status)
+  ).length;
   const liquidationDisabledReason = liveProducer.canTrade
     ? null
     : firstLiveTabProducerBlocker(liveProducer) || 'Live trading and explicit Coinbase order execution are required.';
