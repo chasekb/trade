@@ -172,3 +172,34 @@ This prior run is authoritative evidence for
 `af13535a6931e60eb81a64d6d9800ab6deec76` only. It is not evidence for a later
 report commit, including the commit that adds this closeout record; the later
 report commit requires its own exact-SHA validation.
+
+## Earlier report closeout evidence (subsequent commit)
+
+The subsequent report closeout commit `e1b703df357a0e9ec65bed620dee8313d5c828a3`
+was verified by exact-SHA workflow-dispatch run `34041720187` (attempt 1):
+
+```text
+Workflow: Docker Build Validation
+Run: 34041720187 (attempt 1)
+URL: https://github.com/chasekb/trade/actions/runs/34041720187
+Head SHA: e1b703df357a0e9ec65bed620dee8313d5c828a3
+Conclusion: success
+Build C++ Backend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34041720187/job/101509581996
+Build C++ Backend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34041720187/job/101509582119
+Build Frontend (amd64): success
+  https://github.com/chasekb/trade/actions/runs/34041720187/job/101509582069
+Build Frontend (arm64): success
+  https://github.com/chasekb/trade/actions/runs/34041720187/job/101509581945
+Publish Frontend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34041720187/job/101509769137
+Publish C++ Backend manifest: success
+  https://github.com/chasekb/trade/actions/runs/34041720187/job/101554633798
+```
+
+This exact-SHA matrix is terminal success for that earlier report closeout
+commit (re-verified live via `gh run view 34041720187` during this session).
+No local C++ build, CTest run, or image build was used as a substitute for
+the remote gate.
+report commit requires its own exact-SHA validation.
