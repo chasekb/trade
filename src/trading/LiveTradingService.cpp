@@ -303,7 +303,16 @@ LiveTradingService &LiveTradingService::getInstance() {
   return instance;
 }
 
-LiveTradingService::LiveTradingService() = default;
+LiveTradingService::LiveTradingService() {
+  // Previously ensureSchema() only ran inside startSession(), so a fresh or
+  // reset database that never had a live session started could be missing
+  // columns (e.g. individual_trades.is_closing_leg) that read-only endpoints
+  // (stats/history) query unconditionally, causing a live "column does not
+  // exist" failure with no session ever needing to run. ensureSchema() is
+  // idempotent (CREATE/ALTER ... IF NOT EXISTS), so running it eagerly here
+  // at first singleton construction is safe.
+  ensureSchema();
+}
 
 LiveTradingService::~LiveTradingService() {
   {

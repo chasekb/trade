@@ -43,7 +43,7 @@ public:
   Json::Value getOpenPositions();
 
 private:
-  SimulatedTradingService() = default;
+  SimulatedTradingService();
   ~SimulatedTradingService();
   SimulatedTradingService(const SimulatedTradingService &) = delete;
   SimulatedTradingService &operator=(const SimulatedTradingService &) = delete;
