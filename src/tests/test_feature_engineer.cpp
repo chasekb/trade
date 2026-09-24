@@ -74,6 +74,20 @@ int main() {
     return 1;
   }
 
+  // A failed reload must clear a previously usable engineer; it must not
+  // retain stale production parameters after the configured file disappears.
+  if (fe.load_parameters("data/cpp_assets/does-not-exist.json") ||
+      fe.parameters_loaded_ok() || !fe.preprocess(ml::OrderBookFeatures{}).empty()) {
+    std::cerr << "FAIL: failed parameter reload retained usable state" << std::endl;
+    all_passed = false;
+  } else {
+    std::cout << "PASS: failed parameter reload clears usable state" << std::endl;
+  }
+  if (!fe.load_parameters("data/cpp_assets/feature_params.json")) {
+    std::cerr << "Failed to reload parameters!" << std::endl;
+    return 1;
+  }
+
   std::ifstream golden_file("data/cpp_assets/golden_features.json");
   if (!golden_file.is_open()) {
     std::cerr << "Failed to load golden data!" << std::endl;
