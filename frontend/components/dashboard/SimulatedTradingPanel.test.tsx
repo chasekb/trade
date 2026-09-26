@@ -11,6 +11,7 @@ const mockUseProducts = jest.fn();
 const mockUseSimulatedTradingStats = jest.fn();
 const mockUseSimulatedTradingDiagnosis = jest.fn();
 const mockUseExecutionReconciliation = jest.fn();
+const mockUseExecutionAttribution = jest.fn();
 
 jest.mock('@/hooks/useTrading', () => ({
   useLiveTrading: (...args: unknown[]) => mockUseLiveTrading(...args),
@@ -23,6 +24,9 @@ jest.mock('@/hooks/useTrading', () => ({
 jest.mock('@/hooks/useExecutionReconciliation', () => ({
   useExecutionReconciliation: (...args: unknown[]) => mockUseExecutionReconciliation(...args),
 }));
+jest.mock('@/hooks/useExecutionAttribution', () => ({
+  useExecutionAttribution: (...args: unknown[]) => mockUseExecutionAttribution(...args),
+}));
 jest.mock('./OpenPositionsSection', () => ({ OpenPositionsSection: () => null }));
 jest.mock('./RecentTradesTable', () => ({ RecentTradesTable: () => null }));
 jest.mock('./StrategySelector', () => ({ StrategySelector: () => null }));
@@ -33,6 +37,7 @@ jest.mock('./TradingControls', () => ({
 }));
 jest.mock('./StrategyConfigForm', () => ({ StrategyConfigForm: () => null }));
 jest.mock('./ExecutionReconciliationTable', () => ({ ExecutionReconciliationTable: () => null }));
+jest.mock('./ExecutionAttributionSummary', () => ({ __esModule: true, default: () => null }));
 
 const activeStatus = {
   isActive: true,
@@ -73,6 +78,7 @@ describe('SimulatedTradingPanel widget states', () => {
     mockUseProducts.mockReturnValue({ data: {} });
     mockUseSimulatedTradingDiagnosis.mockReturnValue({ data: undefined, error: null });
     mockUseExecutionReconciliation.mockReturnValue({ reconciliation: null, isLoading: false, error: null });
+    mockUseExecutionAttribution.mockReturnValue({ report: null, isLoading: false, error: null });
   });
 
   afterEach(() => {

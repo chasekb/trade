@@ -22,6 +22,8 @@ import { ManualTradeSection } from './ManualTradeSection';
 import { BotActivityLog } from './BotActivityLog';
 import { ExecutionReconciliationTable } from './ExecutionReconciliationTable';
 import { useExecutionReconciliation } from '@/hooks/useExecutionReconciliation';
+import ExecutionAttributionSummary from './ExecutionAttributionSummary';
+import { useExecutionAttribution } from '@/hooks/useExecutionAttribution';
 
 type TradingConfigState = {
   position_size_mode: 'percent' | 'dollar' | string;
@@ -592,6 +594,11 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
     isLoading: isReconciliationLoading,
     error: reconciliationError,
   } = useExecutionReconciliation({ hours: 24, tradeType: 'live' });
+  const {
+    report: attributionReport,
+    isLoading: isAttributionLoading,
+    error: attributionError,
+  } = useExecutionAttribution({ hours: 24, tradeType: 'live' });
   const [configHidden, setConfigHidden] = useState(false);
 
   // useOrderBookSignals fetches/merges all request chunks when the selected
@@ -806,6 +813,13 @@ export default function LiveTradingPanel({ className = '' }: LiveTradingPanelPro
           />
         </CardContent>
       </Card>
+
+      <ExecutionAttributionSummary
+        report={attributionReport}
+        isLoading={isAttributionLoading}
+        error={attributionError}
+        title="Live execution attribution"
+      />
 
       {/* Order Book Signals */}
       {status.isActive && (

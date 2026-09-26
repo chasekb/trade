@@ -17,6 +17,8 @@ import { StrategyConfigForm } from './StrategyConfigForm';
 import { OrderBookSignalsTable } from './OrderBookSignalsTable';
 import { ExecutionReconciliationTable } from './ExecutionReconciliationTable';
 import { useExecutionReconciliation } from '@/hooks/useExecutionReconciliation';
+import ExecutionAttributionSummary from './ExecutionAttributionSummary';
+import { useExecutionAttribution } from '@/hooks/useExecutionAttribution';
 
 type TradingConfigState = {
   position_size_mode: 'percent' | 'dollar' | string;
@@ -705,6 +707,15 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
     tradeType: executionMode,
     ...(status.sessionId ? { sessionId: status.sessionId } : {}),
   });
+  const {
+    report: attributionReport,
+    isLoading: isAttributionLoading,
+    error: attributionError,
+  } = useExecutionAttribution({
+    hours: 24,
+    tradeType: executionMode,
+    ...(status.sessionId ? { sessionId: status.sessionId } : {}),
+  });
 
   // Normalize optional summary fields for order book signals (prefer WebSocket data for real-time updates)
   const signalsSummary = {
@@ -859,6 +870,17 @@ export default function SimulatedTradingPanel({ className = '' }: LiveTradingPan
           />
         </CardContent>
       </Card>
+
+      <ExecutionAttributionSummary
+        report={attributionReport}
+        isLoading={isAttributionLoading}
+        error={attributionError}
+        title={
+          executionMode === 'live_parity'
+            ? 'Live-parity execution attribution'
+            : 'Simulated execution attribution'
+        }
+      />
     </div>
   );
 }
